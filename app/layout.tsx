@@ -3,7 +3,8 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { ClerkProvider } from "@clerk/nextjs";
 import { Toaster } from "sonner";
-import Script from "next/script";
+import AppHeader from "@/components/nav/AppHeader";
+import Footer from "@/components/nav/Footer";
 
 const inter = Inter({ 
   subsets: ["latin"], 
@@ -35,7 +36,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             }
           }}
         >
-          {children}
+          <AppHeader />
+          <main className="min-h-screen">
+            {children}
+          </main>
+          <Footer />
           
           {/* Toast notifications */}
           <Toaster richColors />
