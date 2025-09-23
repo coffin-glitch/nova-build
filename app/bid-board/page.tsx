@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { listActiveTelegramBids } from "@/lib/auctions";
-import { SectionHeader } from "@/components/ui/section";
+import PageHeader from "@/components/layout/PageHeader";
 import BidBoardClient from "./BidBoardClient";
 import { BidBoardSkeleton } from "@/components/ui/Skeletons";
 
@@ -9,17 +9,19 @@ export default async function BidBoardPage() {
   const initialBids = await listActiveTelegramBids({ limit: 50 });
 
   return (
-    <div className="min-h-screen py-8">
-      <div className="container mx-auto px-4">
-        <SectionHeader 
-          title="Live Auction Board" 
-          subtitle="Bid on USPS loads with 25-minute live countdowns"
-        />
+    <div className="py-8">
+      <PageHeader 
+        title="Live Auction Board" 
+        subtitle="Bid on USPS loads with 25-minute live countdowns"
+        breadcrumbs={[
+          { label: "Home", href: "/" },
+          { label: "Live Auctions" }
+        ]}
+      />
 
-        <Suspense fallback={<BidBoardSkeleton />}>
-          <BidBoardClient initialBids={initialBids} />
-        </Suspense>
-      </div>
+      <Suspense fallback={<BidBoardSkeleton />}>
+        <BidBoardClient initialBids={initialBids} />
+      </Suspense>
     </div>
   );
 }
