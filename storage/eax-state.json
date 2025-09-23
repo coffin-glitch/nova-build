@@ -1,0 +1,45 @@
+{
+  "cookies": [
+    {
+      "name": "EAX_SESSION",
+      "value": "RRBL$00182509202025ngdigguqeano",
+      "domain": "eax.shiprrexp.com",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "RRBL$00182509202025ngdigguqeano",
+      "value": "00000000000012080289",
+      "domain": "eax.shiprrexp.com",
+      "path": "/",
+      "expires": 1792901907.289266,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "ai_user",
+      "value": "xXxwVzxkml7owcFttsmD5F|2025-09-20T04:18:28.657Z",
+      "domain": "eax.shiprrexp.com",
+      "path": "/",
+      "expires": 1789877908.65806,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "ai_session",
+      "value": "axZqbRTcxNQuhZ5uTbnV0d|1758341908795|1758341912277",
+      "domain": "eax.shiprrexp.com",
+      "path": "/",
+      "expires": 1758343712.278654,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    }
+  ],
+  "origins": []
+}

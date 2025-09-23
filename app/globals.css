@@ -1,48 +1,311 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
 :root {
-  --background: 210 20% 98%;
-  --foreground: 222.2 47.4% 11.2%;
-  --card: 0 0% 100%;
-  --card-foreground: 222.2 47.4% 11.2%;
-  --border: 214.3 31.8% 91.4%;
-  --input: 214.3 31.8% 91.4%;
-  --ring: 222.2 84% 4.9%;
-  --primary: 221.2 83.2% 53.3%;
+  /* Base colors */
+  --background: 0 0% 100%;
+  --foreground: 222 47% 11%;
+  
+  /* Surface scale */
+  --surface-50: 210 40% 98%;
+  --surface-100: 210 40% 96%;
+  --surface-200: 214 32% 91%;
+  --surface-300: 213 27% 84%;
+  --surface-400: 215 20% 65%;
+  --surface-500: 215 16% 47%;
+  --surface-600: 215 19% 35%;
+  --surface-700: 215 25% 27%;
+  --surface-800: 217 33% 17%;
+  --surface-900: 222 47% 11%;
+  --surface-950: 229 84% 5%;
+  
+  /* Semantic colors */
+  --primary: 221 83% 53%;
   --primary-foreground: 210 40% 98%;
-  --secondary: 210 25% 96%;
-  --secondary-foreground: 222.2 47.4% 11.2%;
-  --muted: 215 16% 94%;
-  --muted-foreground: 215 16% 46%;
-  --accent: 210 25% 96%;
-  --accent-foreground: 222.2 47.4% 11.2%;
+  --secondary: 210 40% 96%;
+  --secondary-foreground: 222 47% 11%;
+  --muted: 214 32% 91%;
+  --muted-foreground: 222 9% 46%;
+  --accent: 210 40% 96%;
+  --accent-foreground: 222 47% 11%;
+  
+  /* UI elements */
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 47% 11%;
+  --border: 214 32% 91%;
+  --input: 214 32% 91%;
+  --ring: 221 83% 53%;
+  
+  /* Radius */
+  --radius: 0.75rem;
+  
+  /* Transitions */
+  color-scheme: light;
 }
 
 .dark {
-  --background: 224 71% 4%;
-  --foreground: 213 31% 91%;
-  --card: 224 64% 5%;
-  --card-foreground: 213 31% 91%;
+  /* Base colors */
+  --background: 222 47% 11%;
+  --foreground: 210 40% 98%;
+  
+  /* Surface scale */
+  --surface-50: 229 84% 5%;
+  --surface-100: 217 33% 17%;
+  --surface-200: 215 25% 27%;
+  --surface-300: 215 19% 35%;
+  --surface-400: 215 16% 47%;
+  --surface-500: 215 20% 65%;
+  --surface-600: 213 27% 84%;
+  --surface-700: 214 32% 91%;
+  --surface-800: 210 40% 96%;
+  --surface-900: 210 40% 98%;
+  --surface-950: 0 0% 100%;
+  
+  /* Semantic colors */
+  --primary: 217 91% 60%;
+  --primary-foreground: 222 47% 11%;
+  --secondary: 215 28% 17%;
+  --secondary-foreground: 210 40% 98%;
+  --muted: 215 28% 15%;
+  --muted-foreground: 217 10% 65%;
+  --accent: 215 28% 17%;
+  --accent-foreground: 210 40% 98%;
+  
+  /* UI elements */
+  --card: 222 47% 11%;
+  --card-foreground: 210 40% 98%;
+  --popover: 222 47% 11%;
+  --popover-foreground: 210 40% 98%;
   --border: 215 28% 17%;
   --input: 215 28% 17%;
-  --ring: 216 12% 84%;
-  --primary: 217.2 91.2% 59.8%;
-  --primary-foreground: 222.2 47.4% 11.2%;
-  --secondary: 215 28% 17%;
-  --secondary-foreground: 210 40% 96.1%;
-  --muted: 215 28% 15%;
-  --muted-foreground: 217.9 10.6% 64.9%;
-  --accent: 215 28% 17%;
-  --accent-foreground: 210 40% 96.1%;
+  --ring: 217 91% 60%;
+  
+  /* Transitions */
+  color-scheme: dark;
 }
 
+/* Tailwind v4 @theme mapping */
+@theme inline {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  
+  /* Surface scale */
+  --color-surface-50: hsl(var(--surface-50));
+  --color-surface-100: hsl(var(--surface-100));
+  --color-surface-200: hsl(var(--surface-200));
+  --color-surface-300: hsl(var(--surface-300));
+  --color-surface-400: hsl(var(--surface-400));
+  --color-surface-500: hsl(var(--surface-500));
+  --color-surface-600: hsl(var(--surface-600));
+  --color-surface-700: hsl(var(--surface-700));
+  --color-surface-800: hsl(var(--surface-800));
+  --color-surface-900: hsl(var(--surface-900));
+  --color-surface-950: hsl(var(--surface-950));
+  
+  /* Semantic colors */
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  
+  /* UI elements */
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  
+  /* Radius */
+  --radius: var(--radius);
+}
+
+/* Smooth color transitions */
+:root {
+  transition: color-scheme 0.3s ease;
+}
+
+/* Custom utility classes */
+@utility glass {
+  @apply bg-white/10 backdrop-blur-md border border-white/10;
+}
+
+@utility gradient-text {
+  @apply bg-clip-text text-transparent;
+  background-image: linear-gradient(to right, var(--color-primary), hsl(340 82% 52%));
+}
+
+/* Shadcn UI compatibility */
+@custom-variant dark (&:is(.dark *));
+
+/* Base layer styles */
 @layer base {
-  * { 
-    @apply border-border; 
+  * {
+    @apply border-border;
   }
-  body { 
-    @apply bg-background text-foreground antialiased; 
+  
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-semibold tracking-tight;
+  }
+  
+  h1 {
+    @apply text-4xl md:text-5xl;
+  }
+  
+  h2 {
+    @apply text-3xl;
+  }
+  
+  h3 {
+    @apply text-2xl;
+  }
+  
+  h4 {
+    @apply text-xl;
+  }
+  
+  h5 {
+    @apply text-lg;
+  }
+  
+  h6 {
+    @apply text-base;
+  }
+}
+
+/* Animation keyframes for shadcn */
+@keyframes accordion-down {
+  from {
+    height: 0;
+  }
+  to {
+    height: var(--radix-accordion-content-height);
+  }
+}
+
+@keyframes accordion-up {
+  from {
+    height: var(--radix-accordion-content-height);
+  }
+  to {
+    height: 0;
+  }
+}
+
+@keyframes collapsible-down {
+  from {
+    height: 0;
+  }
+  to {
+    height: var(--radix-collapsible-content-height);
+  }
+}
+
+@keyframes collapsible-up {
+  from {
+    height: var(--radix-collapsible-content-height);
+  }
+  to {
+    height: 0;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes slide-in-from-top {
+  from {
+    transform: translateY(-100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-in-from-bottom {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-in-from-left {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes slide-in-from-right {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes slide-out-to-top {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-100%);
+  }
+}
+
+@keyframes slide-out-to-bottom {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(100%);
+  }
+}
+
+@keyframes slide-out-to-left {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-100%);
+  }
+}
+
+@keyframes slide-out-to-right {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(100%);
   }
 }

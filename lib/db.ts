@@ -1,17 +1,11 @@
-import { Pool } from "pg";
+import 'dotenv/config';
+import postgres from 'postgres';
 
-// re-use a small pool (serverless-friendly)
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  max: 3,
-});
+// Use the original Supabase PostgreSQL database
+const sql = postgres(process.env.DATABASE_URL!, { ssl: 'require' });
 
-export async function dbQuery<T = any>(text: string, params?: any[]) {
-  const client = await pool.connect();
-  try {
-    const res = await client.query<T>(text, params);
-    return res;
-  } finally {
-    client.release();
-  }
-}
+export default sql;
+
+// Legacy function aliases for backward compatibility
+export const dbQuery = sql;
+export const useLocalDb = sql;

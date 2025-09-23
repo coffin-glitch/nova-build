@@ -39,3 +39,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+# Telethon session & env
+storage/telethon_session.session
+storage/telethon_session.session-journal
+.nova_telegram.env
+.env

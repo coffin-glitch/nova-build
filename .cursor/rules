@@ -1,0 +1,31 @@
+# NOVA Build Rules
+
+Context:
+- Next.js 15 App Router
+- Clerk auth (hash routing), role via Clerk publicMetadata.role ("admin" | "carrier")
+- Postgres via `postgres` npm package (DATABASE_URL)
+- Playwright scripts for EAX ingest (manual + persistent-profile flow)
+- Sections:
+  - Public: Home, Bid Board (Telegram)
+  - Carrier: Book Loads, My Loads, Current Offers, Dedicated Lanes
+  - Admin: Manage Loads (EAX), Manage Bids (Telegram)
+
+Security & Secrets:
+- Never hardcode secrets. Use .env / deployment secrets.
+- UI visibility is not security. Always protect server routes with helpers in `lib/auth.ts`.
+
+Conventions:
+- Use /app routes (server components). Use client components only for interactive parts.
+- API routes go under /app/api
+- Shared DB client: `lib/db.ts` (postgres connection)
+- DB migrations: `db/migrations/*.sql` (idempotent CREATE TABLE IF NOT EXISTS; ALTER as needed)
+
+Style:
+- Keep deps minimal.
+- Accept inline styles for scaffolding, then extract into components if time permits.
+
+When editing:
+1) Read all related files fully.
+2) Propose a plan (bulleted).
+3) Output *full-file replacements* (not snippets) and exact shell commands for new files.
+4) Provide a test command to verify.
