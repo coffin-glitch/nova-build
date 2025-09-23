@@ -35,7 +35,15 @@ export default function AdminAuctionsClient({ initialBids }: AdminAuctionsClient
   const [q, setQ] = useState("");
   const [tag, setTag] = useState("");
   const [selectedBid, setSelectedBid] = useState<TelegramBid | null>(null);
-  const [bidDetails, setBidDetails] = useState<any[]>([]);
+  const [bidDetails, setBidDetails] = useState<Array<{
+    id: number;
+    amount_cents: number;
+    notes: string | null;
+    created_at: string;
+    clerk_user_id: string;
+    carrier_legal_name?: string;
+    carrier_mc_number?: string;
+  }>>([]);
   const [loadingDetails, setLoadingDetails] = useState(false);
 
   const { data, mutate, isLoading } = useSWR(
@@ -317,7 +325,7 @@ export default function AdminAuctionsClient({ initialBids }: AdminAuctionsClient
                     <TableBody>
                       {bidDetails
                         .sort((a, b) => a.amount_cents - b.amount_cents)
-                        .map((bid: any, index: number) => (
+                        .map((bid, index: number) => (
                         <TableRow key={bid.id}>
                           <TableCell className="font-medium">
                             {bid.carrier_legal_name || "Unknown Carrier"}
