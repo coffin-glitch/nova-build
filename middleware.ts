@@ -23,7 +23,7 @@ const isPublicRoute = createRouteMatcher([
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
-  const { userId } = auth();
+  const { userId } = await auth();
   const { pathname } = req.nextUrl;
 
   // Allow public routes
