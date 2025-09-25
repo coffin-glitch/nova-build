@@ -98,33 +98,61 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
     <div className="space-y-6">
       {/* Filters */}
       <Glass className="p-6">
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="flex-1">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Search */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">Search</label>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                placeholder="Search by Bid #..."
+                placeholder="Bid number..."
                 className="pl-10"
               />
             </div>
           </div>
-          <div className="sm:w-48">
+
+          {/* State Filter */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">State</label>
             <Input
               value={tag}
               onChange={(e) => setTag(e.target.value.toUpperCase())}
               placeholder="State tag (e.g. GA)"
             />
           </div>
-          <Button
-            onClick={() => mutate()}
-            disabled={isLoading}
-            variant="outline"
-          >
-            <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
+
+          {/* Sort */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">Sort By</label>
+            <select 
+              className="w-full h-10 px-3 py-2 text-sm border border-input bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+              onChange={(e) => {
+                // TODO: Implement sorting logic
+                console.log("Sort by:", e.target.value);
+              }}
+            >
+              <option value="time-remaining">Time Remaining</option>
+              <option value="lowest-bid">Lowest Bid</option>
+              <option value="distance">Distance</option>
+              <option value="bid-number">Bid Number</option>
+            </select>
+          </div>
+
+          {/* Refresh */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground opacity-0">Refresh</label>
+            <Button
+              onClick={() => mutate()}
+              disabled={isLoading}
+              variant="outline"
+              className="w-full"
+            >
+              <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+          </div>
         </div>
       </Glass>
 
