@@ -1,9 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Map, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { Map, X, Zap, Target, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import SectionCard from "@/components/layout/SectionCard";
 import { cn } from "@/lib/utils";
 
 interface CollapsibleMapPanelProps {
@@ -12,131 +11,145 @@ interface CollapsibleMapPanelProps {
 
 export default function CollapsibleMapPanel({ className }: CollapsibleMapPanelProps) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
 
   const toggleExpanded = () => {
     setIsExpanded(!isExpanded);
   };
 
-  const handleMouseDown = (e: React.MouseEvent) => {
-    setIsDragging(true);
-    e.preventDefault();
-  };
-
-  const handleMouseUp = () => {
-    setIsDragging(false);
-  };
-
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (isDragging) {
-      // Handle dragging logic here if needed
-      e.preventDefault();
-    }
-  };
-
   return (
     <div className={cn("relative", className)}>
-      {/* Collapsed State - Floating Button */}
-      {!isExpanded && (
-        <Button
-          onClick={toggleExpanded}
-          className="fixed bottom-6 right-6 z-50 shadow-lg hover:shadow-xl transition-all duration-300 bg-primary hover:bg-primary/90"
-          size="lg"
-        >
-          <Map className="h-5 w-5 mr-2" />
-          Show Map
-        </Button>
-      )}
+      {/* Floating Bubble Button */}
+      <Button
+        onClick={toggleExpanded}
+        className={cn(
+          "fixed bottom-6 right-6 z-50 transition-all duration-500 ease-out",
+          "bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70",
+          "shadow-2xl hover:shadow-primary/25 hover:scale-110",
+          "rounded-full h-16 w-16 p-0",
+          "border-2 border-white/20 backdrop-blur-sm",
+          "animate-pulse hover:animate-none",
+          isExpanded && "scale-0 opacity-0"
+        )}
+      >
+        <Map className="h-8 w-8 text-white drop-shadow-lg" />
+      </Button>
 
-      {/* Expanded State - Draggable Panel */}
+      {/* Bubble Popup Window */}
       {isExpanded && (
-        <div className="fixed top-0 right-0 h-full w-96 z-50 bg-background border-l border-border shadow-2xl">
-          {/* Drag Handle */}
-          <div
-            className="absolute left-0 top-0 w-2 h-full bg-primary/20 cursor-col-resize hover:bg-primary/40 transition-colors"
-            onMouseDown={handleMouseDown}
-            onMouseUp={handleMouseUp}
-            onMouseMove={handleMouseMove}
+        <>
+          {/* Backdrop */}
+          <div 
+            className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 animate-in fade-in duration-300"
+            onClick={() => setIsExpanded(false)}
           />
-
-          {/* Panel Content */}
-          <div className="h-full flex flex-col">
-            {/* Header */}
-            <div className="flex items-center justify-between p-4 border-b border-border bg-surface-50 dark:bg-surface-900">
-              <div className="flex items-center gap-2">
-                <Map className="h-5 w-5 text-primary" />
-                <h3 className="text-lg font-semibold">Loads Map</h3>
-              </div>
-              <div className="flex items-center gap-2">
+          
+          {/* Bubble Window */}
+          <div className="fixed bottom-24 right-6 z-50 animate-in slide-in-from-bottom-4 duration-500 ease-out">
+            {/* Bubble Tail */}
+            <div className="absolute -bottom-2 right-8 w-4 h-4 bg-gradient-to-r from-primary to-primary/80 rotate-45 border-r border-b border-white/20"></div>
+            
+            {/* Main Bubble */}
+            <div className="relative bg-gradient-to-br from-white to-surface-50 dark:from-surface-800 dark:to-surface-900 rounded-3xl shadow-2xl border-2 border-white/20 backdrop-blur-lg overflow-hidden">
+              {/* Bubble Header */}
+              <div className="flex items-center justify-between p-4 bg-gradient-to-r from-primary/10 to-primary/5 border-b border-primary/20">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-primary/20 rounded-full">
+                    <Map className="h-5 w-5 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-primary">Live Map</h3>
+                    <p className="text-xs text-muted-foreground">Real-time bid locations</p>
+                  </div>
+                </div>
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => setIsExpanded(false)}
-                  className="h-8 w-8 p-0"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setIsExpanded(false)}
-                  className="h-8 w-8 p-0"
+                  className="h-8 w-8 p-0 rounded-full hover:bg-red-500/20 hover:text-red-500 transition-all duration-200"
                 >
                   <X className="h-4 w-4" />
                 </Button>
               </div>
-            </div>
 
-            {/* Map Content */}
-            <div className="flex-1 p-4 overflow-y-auto">
-              <SectionCard className="h-full">
-                {/* Map Placeholder */}
-                <div className="aspect-square bg-muted/30 rounded-lg flex flex-col items-center justify-center text-muted-foreground mb-4">
-                  <Map className="h-12 w-12 mb-2 text-muted" />
-                  <p className="font-medium">Map Unavailable</p>
-                  <p className="text-sm text-center">
-                    Set `NEXT_PUBLIC_MAPBOX_TOKEN` to enable map view.
-                  </p>
-                </div>
-
-                {/* Quick Stats */}
-                <div className="grid grid-cols-2 gap-4 text-sm mb-4">
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
-                    <span>Active: <span className="font-semibold">12</span></span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 bg-red-500 rounded-full"></div>
-                    <span>Expired: <span className="font-semibold">3</span></span>
+              {/* Map Content */}
+              <div className="p-4 space-y-4">
+                {/* Map Area */}
+                <div className="relative bg-gradient-to-br from-blue-50 to-green-50 dark:from-blue-900/20 dark:to-green-900/20 rounded-2xl p-6 border border-primary/10">
+                  <div className="aspect-square bg-gradient-to-br from-blue-100 to-green-100 dark:from-blue-800/30 dark:to-green-800/30 rounded-xl flex flex-col items-center justify-center text-muted-foreground relative overflow-hidden">
+                    {/* Animated Background Elements */}
+                    <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent animate-pulse"></div>
+                    <div className="absolute top-4 left-4 w-3 h-3 bg-green-500 rounded-full animate-ping"></div>
+                    <div className="absolute top-8 right-6 w-2 h-2 bg-blue-500 rounded-full animate-ping delay-300"></div>
+                    <div className="absolute bottom-6 left-8 w-2 h-2 bg-orange-500 rounded-full animate-ping delay-700"></div>
+                    <div className="absolute bottom-4 right-4 w-3 h-3 bg-purple-500 rounded-full animate-ping delay-1000"></div>
+                    
+                    <Map className="h-16 w-16 mb-3 text-primary drop-shadow-lg relative z-10" />
+                    <p className="font-bold text-lg text-primary relative z-10">Interactive Map</p>
+                    <p className="text-sm text-center relative z-10">
+                      Set `NEXT_PUBLIC_MAPBOX_TOKEN`<br />
+                      to enable live map view
+                    </p>
                   </div>
                 </div>
 
-                {/* Legend */}
-                <div>
-                  <h4 className="font-medium mb-2 text-sm">States</h4>
-                  <div className="space-y-1 text-sm">
-                    <div className="flex items-center justify-between">
-                      <span>GA</span>
-                      <span className="text-muted-foreground">5</span>
+                {/* Game-like Stats */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 rounded-xl p-3 border border-green-200 dark:border-green-700">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Zap className="h-4 w-4 text-green-600" />
+                      <span className="text-xs font-semibold text-green-700 dark:text-green-400">ACTIVE</span>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <span>TX</span>
-                      <span className="text-muted-foreground">3</span>
+                    <div className="text-2xl font-bold text-green-600">12</div>
+                    <div className="text-xs text-green-600/70">Live Bids</div>
+                  </div>
+                  
+                  <div className="bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20 rounded-xl p-3 border border-red-200 dark:border-red-700">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Target className="h-4 w-4 text-red-600" />
+                      <span className="text-xs font-semibold text-red-700 dark:text-red-400">EXPIRED</span>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <span>CA</span>
-                      <span className="text-muted-foreground">2</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span>FL</span>
-                      <span className="text-muted-foreground">2</span>
-                    </div>
+                    <div className="text-2xl font-bold text-red-600">3</div>
+                    <div className="text-xs text-red-600/70">Completed</div>
                   </div>
                 </div>
-              </SectionCard>
+
+                {/* State Leaderboard */}
+                <div className="bg-gradient-to-br from-surface-50 to-surface-100 dark:from-surface-700 dark:to-surface-800 rounded-xl p-3 border border-border">
+                  <div className="flex items-center gap-2 mb-2">
+                    <TrendingUp className="h-4 w-4 text-primary" />
+                    <span className="text-sm font-bold text-primary">State Leaderboard</span>
+                  </div>
+                  <div className="space-y-1">
+                    {[
+                      { state: "GA", count: 5, color: "bg-green-500" },
+                      { state: "TX", count: 3, color: "bg-blue-500" },
+                      { state: "CA", count: 2, color: "bg-orange-500" },
+                      { state: "FL", count: 2, color: "bg-purple-500" },
+                    ].map((item, index) => (
+                      <div key={item.state} className="flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-muted-foreground">#{index + 1}</span>
+                          <div className={cn("w-2 h-2 rounded-full", item.color)}></div>
+                          <span className="font-semibold">{item.state}</span>
+                        </div>
+                        <span className="font-bold text-primary">{item.count}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Action Button */}
+                <Button 
+                  className="w-full bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 rounded-xl font-bold shadow-lg hover:shadow-xl transition-all duration-300"
+                  onClick={() => setIsExpanded(false)}
+                >
+                  <Map className="h-4 w-4 mr-2" />
+                  Close Map
+                </Button>
+              </div>
             </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );
