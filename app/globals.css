@@ -51,15 +51,15 @@
   
   /* Surface scale */
   --surface-50: 229 84% 5%;
-  --surface-100: 217 33% 17%;
-  --surface-200: 215 25% 27%;
-  --surface-300: 215 19% 35%;
-  --surface-400: 215 16% 47%;
-  --surface-500: 215 20% 65%;
-  --surface-600: 213 27% 84%;
-  --surface-700: 214 32% 91%;
-  --surface-800: 210 40% 96%;
-  --surface-900: 210 40% 98%;
+  --surface-100: 217 33% 12%;
+  --surface-200: 215 25% 20%;
+  --surface-300: 215 19% 28%;
+  --surface-400: 215 16% 40%;
+  --surface-500: 215 20% 55%;
+  --surface-600: 213 27% 70%;
+  --surface-700: 214 32% 80%;
+  --surface-800: 210 40% 90%;
+  --surface-900: 210 40% 95%;
   --surface-950: 0 0% 100%;
   
   /* Semantic colors */
@@ -68,7 +68,7 @@
   --secondary: 215 28% 14%;
   --secondary-foreground: 210 40% 98%;
   --muted: 215 28% 12%;
-  --muted-foreground: 217 10% 55%;
+  --muted-foreground: 217 10% 75%;
   --accent: 215 28% 14%;
   --accent-foreground: 210 40% 98%;
   
@@ -77,8 +77,8 @@
   --card-foreground: 210 40% 98%;
   --popover: 222 47% 11%;
   --popover-foreground: 210 40% 98%;
-  --border: 215 28% 17%;
-  --input: 215 28% 17%;
+  --border: 215 28% 25%;
+  --input: 215 28% 20%;
   --ring: 217 91% 60%;
   
   /* Transitions */
