@@ -65,11 +65,11 @@
   /* Semantic colors */
   --primary: 217 91% 60%;
   --primary-foreground: 222 47% 11%;
-  --secondary: 215 28% 17%;
+  --secondary: 215 28% 14%;
   --secondary-foreground: 210 40% 98%;
-  --muted: 215 28% 15%;
-  --muted-foreground: 217 10% 65%;
-  --accent: 215 28% 17%;
+  --muted: 215 28% 12%;
+  --muted-foreground: 217 10% 55%;
+  --accent: 215 28% 14%;
   --accent-foreground: 210 40% 98%;
   
   /* UI elements */
