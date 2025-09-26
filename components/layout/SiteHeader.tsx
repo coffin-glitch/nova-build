@@ -63,10 +63,10 @@ export default function SiteHeader() {
                   key={item.name}
                   href={item.href}
                   className={cn(
-                    "flex items-center space-x-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                    "flex items-center space-x-1 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200",
                     isActive
-                      ? "bg-surface-100 text-foreground dark:bg-surface-900"
-                      : "text-muted-foreground hover:bg-surface-100 hover:text-foreground dark:hover:bg-surface-900"
+                      ? "bg-white/60 dark:bg-surface-800/80 dark:border-surface-600/30 backdrop-blur-sm border border-white/20 text-foreground shadow-sm"
+                      : "text-muted-foreground hover:bg-white/40 hover:text-foreground dark:hover:bg-surface-800/60 dark:hover:border-surface-600/20 hover:backdrop-blur-sm hover:border hover:border-white/10"
                   )}
                 >
                   <item.icon className="h-4 w-4" />
@@ -147,10 +147,10 @@ export default function SiteHeader() {
                         href={item.href}
                         onClick={() => setMobileMenuOpen(false)}
                         className={cn(
-                          "flex items-center space-x-3 rounded-lg px-3 py-3 text-sm font-medium transition-colors",
+                          "flex items-center space-x-3 rounded-lg px-3 py-3 text-sm font-medium transition-all duration-200",
                           isActive
-                            ? "bg-surface-100 text-foreground dark:bg-surface-900"
-                            : "text-muted-foreground hover:bg-surface-100 hover:text-foreground dark:hover:bg-surface-900"
+                            ? "bg-white/60 dark:bg-surface-800/80 dark:border-surface-600/30 backdrop-blur-sm border border-white/20 text-foreground shadow-sm"
+                            : "text-muted-foreground hover:bg-white/40 hover:text-foreground dark:hover:bg-surface-800/60 dark:hover:border-surface-600/20 hover:backdrop-blur-sm hover:border hover:border-white/10"
                         )}
                       >
                         <item.icon className="h-5 w-5" />
