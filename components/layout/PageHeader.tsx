@@ -1,7 +1,11 @@
+"use client";
+
 import { ReactNode } from "react";
 import { ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { useAccentColor } from "@/hooks/useAccentColor";
+import { useTheme } from "next-themes";
 
 interface BreadcrumbItem {
   label: string;
@@ -23,6 +27,33 @@ function PageHeader({
   actions,
   className,
 }: PageHeaderProps) {
+  const { accentColor } = useAccentColor();
+  const { theme } = useTheme();
+  
+  // Smart color handling for white accent color
+  const getTextColor = () => {
+    if (accentColor === 'hsl(0, 0%, 100%)') {
+      return theme === 'dark' ? '#ffffff' : '#000000';
+    }
+    return accentColor;
+  };
+  
+  const getShadowColor = () => {
+    if (accentColor === 'hsl(0, 0%, 100%)') {
+      return theme === 'dark' ? '#ffffff' : '#000000';
+    }
+    return accentColor;
+  };
+  
+  const getShadowStyle = () => {
+    if (accentColor === 'hsl(0, 0%, 100%)') {
+      return theme === 'dark' 
+        ? `0 1px 2px ${getShadowColor()}20, 0 0 4px ${getShadowColor()}10`
+        : `0 1px 2px ${getShadowColor()}20, 0 0 4px ${getShadowColor()}10`;
+    }
+    return `0 1px 2px ${accentColor}30, 0 0 4px ${accentColor}15`;
+  };
+  
   return (
     <div className={cn("mb-8", className)}>
       {/* Breadcrumbs */}
@@ -49,10 +80,14 @@ function PageHeader({
       {/* Header content */}
       <div className="flex items-start justify-between">
         <div className="flex-1">
-          <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-            <span className="bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
-              {title}
-            </span>
+          <h1 
+            className="text-3xl font-bold tracking-tight sm:text-4xl"
+            style={{ 
+              color: getTextColor(),
+              textShadow: getShadowStyle()
+            }}
+          >
+            {title}
           </h1>
           {subtitle && (
             <p className="mt-2 text-lg text-muted-foreground">{subtitle}</p>

@@ -8,7 +8,7 @@ export function Glass({
 }: React.PropsWithChildren<{className?: string}>) {
   return (
     <div className={cn(
-      "rounded-2xl border border-white/10 bg-white/70 dark:bg-surface-800/80 dark:border-surface-600/30 backdrop-blur-md shadow-glass",
+      "rounded-2xl border border-white/10 bg-white/70 dark:bg-surface-900/30 backdrop-blur-md shadow-glass",
       className
     )}>
       {children}

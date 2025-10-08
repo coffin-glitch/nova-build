@@ -18,11 +18,19 @@ import {
   DollarSign,
   RefreshCw,
   AlertCircle,
-  Gavel
+  Gavel,
+  Navigation,
+  Archive,
+  Calendar,
+  SortAsc
 } from "lucide-react";
-import { formatMoney, formatDistance, formatStops, formatTimeOnly } from "@/lib/format";
+import { formatMoney, formatDistance, formatStops, formatTimeOnly, formatPickupDateTime, formatStopCount, formatStopsDetailed } from "@/lib/format";
 import { TelegramBid } from "@/lib/auctions";
 import { toast } from "sonner";
+import { MapboxMap } from "@/components/ui/MapboxMap";
+import { useAccentColor } from "@/hooks/useAccentColor";
+import { useTheme } from "next-themes";
+import { useIsAdmin } from "@/hooks/useUserRole";
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
@@ -37,6 +45,38 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
   const [bidAmount, setBidAmount] = useState("");
   const [bidNotes, setBidNotes] = useState("");
   const [isBidding, setIsBidding] = useState(false);
+  const [viewDetailsBid, setViewDetailsBid] = useState<TelegramBid | null>(null);
+  
+  // New state for filtering
+  const [showExpired, setShowExpired] = useState(false);
+  const isAdmin = useIsAdmin();
+  const [showArchived, setShowArchived] = useState(false);
+  const [archivedFilters, setArchivedFilters] = useState({
+    date: "",
+    city: "",
+    state: "",
+    milesMin: "",
+    milesMax: "",
+    sortBy: "date" // "date", "bids"
+  });
+  
+  const { accentColor, accentColorStyle, accentBgStyle } = useAccentColor();
+  const { theme } = useTheme();
+  
+  // Smart color handling for white accent color
+  const getIconColor = () => {
+    if (accentColor === 'hsl(0, 0%, 100%)') {
+      return theme === 'dark' ? '#ffffff' : '#000000';
+    }
+    return accentColor;
+  };
+  
+  const getButtonTextColor = () => {
+    if (accentColor === 'hsl(0, 0%, 100%)') {
+      return '#000000';
+    }
+    return '#ffffff';
+  };
 
   const { data, mutate, isLoading } = useSWR(
     `/api/telegram-bids?q=${encodeURIComponent(q)}&tag=${encodeURIComponent(tag)}&limit=50`,
@@ -88,9 +128,26 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
     setBidNotes("");
   };
 
+  // Filter bids based on current settings
   const filteredBids = bids.filter((bid: TelegramBid) => {
+    // Text search filter
     if (q && !bid.bid_number.toLowerCase().includes(q.toLowerCase())) return false;
+    
+    // Tag filter
     if (tag && bid.tag !== tag.toUpperCase()) return false;
+    
+    // Show/hide expired bids
+    if (!showExpired && bid.is_expired) return false;
+    if (showExpired && !bid.is_expired) return false;
+    
+    // For non-admin users, only show today's bids
+    if (!isAdmin && !showExpired) {
+      const today = new Date();
+      const bidDate = new Date(bid.received_at);
+      const isToday = bidDate.toDateString() === today.toDateString();
+      if (!isToday) return false;
+    }
+    
     return true;
   });
 
@@ -156,11 +213,45 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
         </div>
       </Glass>
 
+      {/* Filter Controls */}
+      <Glass className="p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Button
+              variant={showExpired ? "default" : "outline"}
+              onClick={() => setShowExpired(!showExpired)}
+              style={showExpired ? {
+                backgroundColor: accentColor,
+                color: getButtonTextColor()
+              } : {}}
+            >
+              <Clock className="w-4 h-4 mr-2" />
+              {showExpired ? "Hide Expired" : "Show Expired"}
+            </Button>
+            
+            {isAdmin && (
+              <Button
+                variant="outline"
+                onClick={() => setShowArchived(true)}
+              >
+                <Archive className="w-4 h-4 mr-2" />
+                Archived Bids
+              </Button>
+            )}
+          </div>
+          
+          <div className="text-sm text-muted-foreground">
+            Showing {showExpired ? "expired" : "live"} bids
+            {!isAdmin && !showExpired && " (today only)"}
+          </div>
+        </div>
+      </Glass>
+
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Glass className="p-4">
           <div className="flex items-center gap-3">
-            <Truck className="w-5 h-5 text-primary" />
+            <Truck className="w-5 h-5" style={{ color: getIconColor() }} />
             <div>
               <p className="text-sm text-muted-foreground">Active Auctions</p>
               <p className="text-2xl font-bold text-foreground">
@@ -182,7 +273,7 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
         </Glass>
         <Glass className="p-4">
           <div className="flex items-center gap-3">
-            <MapPin className="w-5 h-5 text-primary" />
+            <MapPin className="w-5 h-5" style={{ color: getIconColor() }} />
             <div>
               <p className="text-sm text-muted-foreground">States</p>
               <p className="text-2xl font-bold text-foreground">
@@ -193,7 +284,7 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
         </Glass>
         <Glass className="p-4">
           <div className="flex items-center gap-3">
-            <DollarSign className="w-5 h-5 text-primary" />
+            <DollarSign className="w-5 h-5" style={{ color: getIconColor() }} />
             <div>
               <p className="text-sm text-muted-foreground">Total Value</p>
               <p className="text-2xl font-bold text-foreground">
@@ -228,7 +319,15 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
               {/* Header */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
+                  <Badge 
+                    variant="outline" 
+                    className="border-2"
+                    style={{
+                      backgroundColor: `${accentColor}15`,
+                      color: accentColor,
+                      borderColor: `${accentColor}40`
+                    }}
+                  >
                     #{bid.bid_number}
                   </Badge>
                   {bid.tag && (
@@ -255,9 +354,11 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
                 </div>
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <Clock className="w-4 h-4" />
-                  <span className="text-sm">
-                    {formatTimeOnly(bid.pickup_timestamp || bid.received_at)} - {formatTimeOnly(bid.delivery_timestamp || bid.received_at)}
-                  </span>
+                  <span className="text-sm">Pickup: {formatPickupDateTime(bid.pickup_timestamp)}</span>
+                </div>
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Navigation className="w-4 h-4" />
+                  <span className="text-sm">{formatStopCount(bid.stops)}</span>
                 </div>
               </div>
 
@@ -267,14 +368,6 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
                   <span className="text-muted-foreground">Bids:</span>
                   <span className="font-medium">{bid.bids_count || 0}</span>
                 </div>
-                {bid.lowest_amount_cents > 0 && (
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Lowest:</span>
-                    <span className="text-primary font-medium">
-                      {formatMoney(bid.lowest_amount_cents)}
-                    </span>
-                  </div>
-                )}
               </div>
 
               {/* Actions */}
@@ -287,7 +380,7 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setSelectedBid(bid)}
+                      onClick={() => setViewDetailsBid(bid)}
                     >
                       View Details
                     </Button>
@@ -295,6 +388,11 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
                       <Button
                         size="sm"
                         onClick={() => openBidDialog(bid)}
+                        style={{
+                          backgroundColor: accentColor,
+                          color: getButtonTextColor()
+                        }}
+                        className="hover:opacity-90"
                       >
                         <Gavel className="w-4 h-4 mr-1" />
                         Bid
@@ -381,12 +479,261 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
                 <Button
                   onClick={handlePlaceBid}
                   disabled={!bidAmount || isBidding || selectedBid.is_expired}
+                  style={{
+                    backgroundColor: accentColor,
+                    color: getButtonTextColor()
+                  }}
+                  className="hover:opacity-90"
                 >
                   {isBidding ? "Placing Bid..." : "Place Bid"}
                 </Button>
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* View Details Dialog */}
+      <Dialog open={!!viewDetailsBid} onOpenChange={() => setViewDetailsBid(null)}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Load Details - #{viewDetailsBid?.bid_number}</DialogTitle>
+          </DialogHeader>
+          
+          {viewDetailsBid && (
+            <div className="space-y-6">
+              {/* Basic Info */}
+              <div className="grid grid-cols-2 gap-4 p-4 bg-muted/50 rounded-lg">
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Bid Number</label>
+                  <p className="text-lg font-semibold">#{viewDetailsBid.bid_number}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Equipment Type</label>
+                  <p className="text-lg font-semibold">{viewDetailsBid.tag || 'N/A'}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Distance</label>
+                  <p className="text-lg font-semibold">{formatDistance(viewDetailsBid.distance_miles)}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Stops</label>
+                  <p className="text-lg font-semibold">{formatStopCount(viewDetailsBid.stops)}</p>
+                </div>
+              </div>
+
+              {/* Pickup & Delivery Times */}
+              <div className="grid grid-cols-2 gap-4 p-4 bg-muted/50 rounded-lg">
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Pickup Time</label>
+                  <p className="text-lg font-semibold">Pickup: {formatPickupDateTime(viewDetailsBid.pickup_timestamp)}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Delivery Time</label>
+                  <p className="text-lg font-semibold">Delivery: {formatPickupDateTime(viewDetailsBid.delivery_timestamp)}</p>
+                </div>
+              </div>
+
+              {/* Detailed Stops */}
+              <div className="space-y-3">
+                <h3 className="text-lg font-semibold">Route Details</h3>
+                <div className="space-y-2">
+                  {formatStopsDetailed(viewDetailsBid.stops).map((stop, index) => (
+                    <div key={index} className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg">
+                      <div className="flex items-center justify-center w-6 h-6 bg-primary text-primary-foreground rounded-full text-sm font-bold">
+                        {index + 1}
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-medium">{stop}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {index === 0 ? 'Pickup Location' : 
+                           index === formatStopsDetailed(viewDetailsBid.stops).length - 1 ? 'Delivery Location' : 
+                           'Stop Location'}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Interactive Route Map */}
+              <div className="space-y-3">
+                <h3 className="text-lg font-semibold">Route Map</h3>
+                <div className="rounded-lg overflow-hidden border border-border/40">
+                  <MapboxMap 
+                    stops={formatStopsDetailed(viewDetailsBid.stops)} 
+                    className="w-full"
+                  />
+                </div>
+              </div>
+
+              {/* Bidding Information */}
+              <div className="space-y-3">
+                <h3 className="text-lg font-semibold">Auction Information</h3>
+                <div className="grid grid-cols-2 gap-4 p-4 bg-muted/50 rounded-lg">
+                  <div>
+                    <label className="text-sm font-medium text-muted-foreground">Current Bids</label>
+                    <p className="text-lg font-semibold">{viewDetailsBid.bids_count || 0}</p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-muted-foreground">Status</label>
+                    <p className="text-lg font-semibold">
+                      {viewDetailsBid.is_expired ? 'Auction Closed' : 'Bidding Open'}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-muted-foreground">Time Remaining</label>
+                    <div className="flex items-center gap-2">
+                      <Countdown 
+                        expiresAt={viewDetailsBid.expires_at_25}
+                        variant={viewDetailsBid.is_expired ? "expired" : viewDetailsBid.time_left_seconds <= 300 ? "urgent" : "default"}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Source Information */}
+              <div className="space-y-3">
+                <h3 className="text-lg font-semibold">Source Information</h3>
+                <div className="p-4 bg-muted/50 rounded-lg">
+                  <div>
+                    <label className="text-sm font-medium text-muted-foreground">Received At</label>
+                    <p className="text-lg font-semibold">{formatPickupDateTime(viewDetailsBid.received_at)}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex justify-end gap-3 pt-4 border-t">
+                <Button
+                  variant="outline"
+                  onClick={() => setViewDetailsBid(null)}
+                >
+                  Close
+                </Button>
+                {!viewDetailsBid.is_expired && (
+                  <Button
+                    onClick={() => {
+                      setViewDetailsBid(null);
+                      openBidDialog(viewDetailsBid);
+                    }}
+                    style={{
+                      backgroundColor: accentColor,
+                      color: getButtonTextColor()
+                    }}
+                    className="hover:opacity-90"
+                  >
+                    <Gavel className="w-4 h-4 mr-2" />
+                    Place Bid
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Archived Bids Dialog */}
+      <Dialog open={showArchived} onOpenChange={setShowArchived}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Archive className="h-5 w-5" />
+              Archived Bids
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-6">
+            {/* Filters */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-muted/50 rounded-lg">
+              <div>
+                <label className="block text-sm font-medium mb-2">Date</label>
+                <Input
+                  type="date"
+                  value={archivedFilters.date}
+                  onChange={(e) => setArchivedFilters(prev => ({ ...prev, date: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">City</label>
+                <Input
+                  placeholder="Enter city"
+                  value={archivedFilters.city}
+                  onChange={(e) => setArchivedFilters(prev => ({ ...prev, city: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">State</label>
+                <Input
+                  placeholder="Enter state"
+                  value={archivedFilters.state}
+                  onChange={(e) => setArchivedFilters(prev => ({ ...prev, state: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Min Miles</label>
+                <Input
+                  type="number"
+                  placeholder="Min miles"
+                  value={archivedFilters.milesMin}
+                  onChange={(e) => setArchivedFilters(prev => ({ ...prev, milesMin: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Max Miles</label>
+                <Input
+                  type="number"
+                  placeholder="Max miles"
+                  value={archivedFilters.milesMax}
+                  onChange={(e) => setArchivedFilters(prev => ({ ...prev, milesMax: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Sort By</label>
+                <select
+                  className="w-full p-2 border border-border rounded-md bg-background"
+                  value={archivedFilters.sortBy}
+                  onChange={(e) => setArchivedFilters(prev => ({ ...prev, sortBy: e.target.value }))}
+                >
+                  <option value="date">Date (Newest First)</option>
+                  <option value="bids">Bid Count (Lowest to Highest)</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Archived Bids List */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold">Archived Bids</h3>
+              <div className="text-sm text-muted-foreground">
+                This feature will show all historical bids with advanced filtering options.
+                Implementation requires backend API changes to fetch archived data.
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex justify-end gap-3 pt-4 border-t">
+              <Button
+                variant="outline"
+                onClick={() => setShowArchived(false)}
+              >
+                Close
+              </Button>
+              <Button
+                onClick={() => {
+                  // TODO: Implement archived bids search
+                  console.log('Search archived bids with filters:', archivedFilters);
+                }}
+                style={{
+                  backgroundColor: accentColor,
+                  color: getButtonTextColor()
+                }}
+              >
+                <Search className="w-4 h-4 mr-2" />
+                Search Archived
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

@@ -2,7 +2,7 @@
 
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-import sql from "./db";
+import sql from "./db.server";
 import { getUserRole, requireAdmin, requireCarrier } from "./auth";
 
 // Profile Actions

@@ -8,6 +8,8 @@ import LoadsMap from "@/components/map/LoadsMap";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription, DrawerTrigger } from "vaul";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { useAccentColor } from "@/hooks/useAccentColor";
+import { useTheme } from "next-themes";
 
 type LoadRow = {
   rr_number: string;
@@ -29,6 +31,17 @@ const fetcher = (url: string, body: any) =>
   fetch(url, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(body) }).then(r=>r.json());
 
 export default function BookLoadsClient() {
+  const { accentColor } = useAccentColor();
+  const { theme } = useTheme();
+  
+  // Smart color handling for white accent color
+  const getTextColor = () => {
+    if (accentColor === 'hsl(0, 0%, 100%)') {
+      return theme === 'dark' ? '#ffffff' : '#000000';
+    }
+    return accentColor;
+  };
+  
   const [filters, setFilters] = useState<Filters>({
     q: "", origin: "", destination: "", equipment: "",
     pickupFrom: "", pickupTo: "", milesMin: "", milesMax: ""
@@ -85,7 +98,7 @@ export default function BookLoadsClient() {
       <div className="lg:col-span-1">
         <div className="sticky top-8">
           <div className="bg-white rounded-xl p-5 border shadow-sm">
-            <h3 className="text-lg font-semibold text-gray-800 mb-3">Loads Map</h3>
+            <h3 className="text-lg font-semibold mb-3" style={{ color: getTextColor() }}>Loads Map</h3>
             <LoadsMap points={points} />
             <div className="mt-4 space-y-2">
               <div className="flex items-center text-sm"><span className="w-3 h-3 rounded-full bg-emerald-500 mr-2" />Origin</div>

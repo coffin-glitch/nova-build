@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import sql from "@/lib/db";
+import sql from "@/lib/db.server";
 
 // Utility to build ILIKE patterns safely
 function ilike(s?: string|null) {

@@ -160,7 +160,7 @@ export function AdminBidsClient({ initialBids, initialTags }: AdminBidsClientPro
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All States</SelectItem>
-                {initialTags.map(tag => (
+                {initialTags.filter(tag => tag && tag.trim() !== "").map(tag => (
                   <SelectItem key={tag} value={tag}>
                     {tag}
                   </SelectItem>

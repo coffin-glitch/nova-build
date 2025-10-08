@@ -164,6 +164,67 @@ RX_DELIV   = re.compile(r"^\s*Delivery:\s*(?P<deliv>.+?)\s*$", re.I | re.M)
 RX_TAG     = re.compile(r"^\s*#(?P<tag>[A-Za-z0-9_-]+)\s*$", re.I | re.M)
 RX_STOP    = re.compile(r"^\s*Stop\s*\d+:\s*(?P<place>.+?)\s*$", re.I | re.M)
 
+def parse_datetime_string(dt_str: str) -> Optional[datetime]:
+    """Parse datetime string in various formats and return as-is (no timezone conversion)."""
+    if not dt_str:
+        return None
+    
+    # Common datetime formats to try
+    formats = [
+        "%m/%d/%Y %I:%M %p",      # 09/30/2025 02:00 AM
+        "%m/%d/%Y %H:%M",         # 09/30/2025 14:00
+        "%m-%d-%Y %I:%M %p",      # 09-30-2025 02:00 AM
+        "%m-%d-%Y %H:%M",         # 09-30-2025 14:00
+        "%Y-%m-%d %H:%M",         # 2025-09-30 14:00
+        "%Y-%m-%d %I:%M %p",      # 2025-09-30 02:00 PM
+        "%m/%d/%Y",               # 09/30/2025 (date only)
+        "%m-%d-%Y",               # 09-30-2025 (date only)
+        "%Y-%m-%d",               # 2025-09-30 (date only)
+    ]
+    
+    for fmt in formats:
+        try:
+            # Parse the datetime string
+            parsed_dt = datetime.strptime(dt_str.strip(), fmt)
+            
+            # If no time component, assume 9:00 AM
+            if fmt.endswith("%Y") and not any(x in fmt for x in ["%H", "%I"]):
+                parsed_dt = parsed_dt.replace(hour=9, minute=0, second=0)
+            
+            # Return the datetime as-is (no timezone conversion)
+            # The database will store it as-is and the frontend will display it as-is
+            return parsed_dt.replace(tzinfo=timezone.utc)
+            
+        except ValueError:
+            continue
+    
+    # If no format matched, try to extract date and time components manually
+    try:
+        # Look for patterns like "09/30/2025 02:00 AM"
+        import re
+        date_time_match = re.search(r'(\d{1,2})[/-](\d{1,2})[/-](\d{4})\s+(\d{1,2}):(\d{2})\s*(AM|PM)?', dt_str, re.IGNORECASE)
+        if date_time_match:
+            month, day, year, hour, minute, ampm = date_time_match.groups()
+            
+            # Convert to integers
+            month, day, year = int(month), int(day), int(year)
+            hour, minute = int(hour), int(minute)
+            
+            # Handle AM/PM
+            if ampm and ampm.upper() == 'PM' and hour != 12:
+                hour += 12
+            elif ampm and ampm.upper() == 'AM' and hour == 12:
+                hour = 0
+            
+            # Create datetime as-is (no timezone conversion)
+            dt = datetime(year, month, day, hour, minute, 0)
+            return dt.replace(tzinfo=timezone.utc)
+    except Exception:
+        pass
+    
+    # If all parsing attempts failed, return None
+    return None
+
 def parse_bid(text: str) -> Optional[Dict]:
     if not text:
         return None
@@ -188,9 +249,19 @@ def parse_bid(text: str) -> Optional[Dict]:
         except Exception:
             miles = None
 
-    # Optional: pickup / delivery strings (store raw; convert later if needed)
+    # Optional: pickup / delivery strings (parse to timestamps)
     pickup_str = RX_PICKUP.search(s).group("pickup").strip() if RX_PICKUP.search(s) else None
     delivery_str = RX_DELIV.search(s).group("deliv").strip() if RX_DELIV.search(s) else None
+    
+    # Parse pickup and delivery timestamps
+    pickup_timestamp = None
+    delivery_timestamp = None
+    
+    if pickup_str:
+        pickup_timestamp = parse_datetime_string(pickup_str)
+    
+    if delivery_str:
+        delivery_timestamp = parse_datetime_string(delivery_str)
 
     # Stops: collect all Stop N: lines anywhere
     stops: List[str] = []
@@ -210,6 +281,8 @@ def parse_bid(text: str) -> Optional[Dict]:
         "miles": miles,
         "pickup_dt": pickup_str,
         "delivery_dt": delivery_str,
+        "pickup_timestamp": pickup_timestamp,
+        "delivery_timestamp": delivery_timestamp,
         "stops": stops,
         "tag": tag,
     }
@@ -395,8 +468,8 @@ async def on_source_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 record = {
                     "bid_number": str(parsed["bid"]),
                     "distance_miles": parsed.get("miles"),
-                    "pickup_timestamp": None,
-                    "delivery_timestamp": None,
+                    "pickup_timestamp": parsed.get("pickup_timestamp"),
+                    "delivery_timestamp": parsed.get("delivery_timestamp"),
                     "stops": parsed.get("stops") or [],
                     "tag": parsed.get("tag"),
                     "source_channel": str(SOURCE_CHAT_ID),

@@ -2,10 +2,22 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { MapPin, Search } from "lucide-react";
 import { useState, useEffect } from "react";
+import { useAccentColor } from "@/hooks/useAccentColor";
+import { useTheme } from "next-themes";
 
 export default function SearchBar() {
   const sp = useSearchParams();
+  const { accentColor } = useAccentColor();
+  const { theme } = useTheme();
   const router = useRouter();
+  
+  // Smart color handling for white accent color
+  const getButtonTextColor = () => {
+    if (accentColor === 'hsl(0, 0%, 100%)') {
+      return '#000000';
+    }
+    return '#ffffff';
+  };
   const [origin, setOrigin] = useState(sp.get("origin") || "");
   const [dest, setDest] = useState(sp.get("dest") || "");
   const [eqp, setEqp] = useState(sp.get("eqp") || "");
@@ -58,7 +70,19 @@ export default function SearchBar() {
           </select>
         </div>
         <div className="flex items-end">
-          <button className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-md flex items-center justify-center">
+          <button 
+            className="w-full py-2 px-4 rounded-md flex items-center justify-center transition-colors"
+            style={{ 
+              backgroundColor: accentColor,
+              color: getButtonTextColor()
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = `${accentColor}dd`;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = accentColor;
+            }}
+          >
             <Search className="h-4 w-4 mr-2" /> Search Loads
           </button>
         </div>

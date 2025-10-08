@@ -4,8 +4,11 @@ import "./globals.css";
 import { ClerkProvider } from "@clerk/nextjs";
 import { Toaster } from "sonner";
 import { ThemeProvider } from "next-themes";
+import { UserPreferencesProvider } from "@/components/providers/UserPreferencesProvider";
 import SiteHeader from "@/components/layout/SiteHeader";
 import SiteFooter from "@/components/layout/SiteFooter";
+import FloatingChatButton from "@/components/ui/FloatingChatButton";
+import FloatingDevAdminButton from "@/components/ui/FloatingDevAdminButton";
 
 const inter = Inter({ 
   subsets: ["latin"], 
@@ -28,22 +31,23 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           enableSystem
           disableTransitionOnChange
         >
-          <ClerkProvider
-            appearance={{
-              layout: {
-                socialButtonsVariant: "iconButton",
-              },
-              elements: {
-                formButtonPrimary: "bg-primary hover:bg-primary/90 text-primary-foreground",
-                card: "shadow-card bg-card text-card-foreground border-border",
-                headerTitle: "text-foreground",
-                headerSubtitle: "text-muted-foreground",
-                socialButtonsBlockButton: "hover:bg-accent",
-                formFieldInput: "bg-input text-foreground border-border",
-                formFieldLabel: "text-foreground",
-              }
-            }}
-          >
+          <UserPreferencesProvider>
+            <ClerkProvider
+              appearance={{
+                layout: {
+                  socialButtonsVariant: "iconButton",
+                },
+                elements: {
+                  formButtonPrimary: "bg-primary hover:bg-primary/90 text-primary-foreground",
+                  card: "shadow-card bg-card text-card-foreground border-border",
+                  headerTitle: "text-foreground",
+                  headerSubtitle: "text-muted-foreground",
+                  socialButtonsBlockButton: "hover:bg-accent",
+                  formFieldInput: "bg-input text-foreground border-border",
+                  formFieldLabel: "text-foreground",
+                }
+              }}
+            >
             <div className="relative min-h-screen">
               {/* Premium background with subtle gradient and texture */}
               <div className="fixed inset-0 bg-background" />
@@ -74,7 +78,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 },
               }}
             />
-          </ClerkProvider>
+            
+            {/* Floating Chat Button */}
+            <FloatingChatButton />
+            
+            {/* Floating Dev Admin Button */}
+            <FloatingDevAdminButton />
+            </ClerkProvider>
+          </UserPreferencesProvider>
         </ThemeProvider>
       </body>
     </html>

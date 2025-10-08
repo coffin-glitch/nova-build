@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SignOutButton } from "@clerk/nextjs";
 import { 
   User, 
   Mail, 
@@ -37,21 +38,6 @@ interface ProfileClientProps {
 export function ProfileClient({ initialProfile, userRole }: ProfileClientProps) {
   const [profile, setProfile] = useState(initialProfile);
   const [isEditing, setIsEditing] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-
-  const handleSave = async (formData: FormData) => {
-    setIsSaving(true);
-    try {
-      await updateCarrierProfile(formData);
-      toast.success("Profile updated successfully");
-      setIsEditing(false);
-    } catch (error) {
-      console.error("Error updating profile:", error);
-      toast.error("Failed to update profile");
-    } finally {
-      setIsSaving(false);
-    }
-  };
 
   const handleCancel = () => {
     setProfile(initialProfile);
@@ -72,7 +58,6 @@ export function ProfileClient({ initialProfile, userRole }: ProfileClientProps) 
                     variant="outline"
                     size="sm"
                     onClick={handleCancel}
-                    disabled={isSaving}
                   >
                     <X className="w-4 h-4 mr-1" />
                     Cancel
@@ -81,10 +66,9 @@ export function ProfileClient({ initialProfile, userRole }: ProfileClientProps) 
                     size="sm"
                     className="btn-primary"
                     form="profile-form"
-                    disabled={isSaving}
                   >
                     <Save className="w-4 h-4 mr-1" />
-                    {isSaving ? "Saving..." : "Save"}
+                    Save
                   </Button>
                 </>
               ) : (
@@ -100,7 +84,17 @@ export function ProfileClient({ initialProfile, userRole }: ProfileClientProps) 
             </div>
           </div>
 
-          <form id="profile-form" action={handleSave} className="space-y-6">
+          <form id="profile-form" onSubmit={async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.currentTarget);
+            try {
+              await updateCarrierProfile(formData);
+              toast.success("Profile updated successfully!");
+              setIsEditing(false);
+            } catch (error) {
+              toast.error("Failed to update profile");
+            }
+          }} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="mc_number">MC Number</Label>
@@ -274,10 +268,15 @@ export function ProfileClient({ initialProfile, userRole }: ProfileClientProps) 
               <Mail className="w-4 h-4 mr-2" />
               Change Email
             </Button>
-            <Button variant="outline" className="w-full justify-start text-red-500 hover:text-red-600">
-              <X className="w-4 h-4 mr-2" />
-              Sign Out
-            </Button>
+            <SignOutButton>
+              <Button 
+                variant="outline" 
+                className="w-full justify-start text-red-500 hover:text-red-600"
+              >
+                <X className="w-4 h-4 mr-2" />
+                Sign Out
+              </Button>
+            </SignOutButton>
           </div>
         </Card>
       </div>

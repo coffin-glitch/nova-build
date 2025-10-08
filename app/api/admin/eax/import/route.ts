@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
-import sql from "@/lib/db";
+import sql from "@/lib/db.server";
 import * as XLSX from "xlsx";
 
 const RowSchema = z.object({

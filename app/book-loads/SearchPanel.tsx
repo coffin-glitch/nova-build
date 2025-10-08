@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { MapPin, Search } from "lucide-react";
+import { useAccentColor } from "@/hooks/useAccentColor";
 
 interface SearchPanelProps {
   onSearch: (filters: {
@@ -15,6 +16,17 @@ interface SearchPanelProps {
 }
 
 export default function SearchPanel({ onSearch }: SearchPanelProps) {
+  const { accentColor } = useAccentColor();
+  const { theme } = useTheme();
+  
+  // Smart color handling for white accent color
+  const getButtonTextColor = () => {
+    if (accentColor === 'hsl(0, 0%, 100%)') {
+      return '#000000';
+    }
+    return '#ffffff';
+  };
+  
   const [filters, setFilters] = useState({
     origin: "",
     destination: "",
@@ -83,7 +95,17 @@ export default function SearchPanel({ onSearch }: SearchPanelProps) {
       <div className="flex items-end">
         <Button 
           onClick={handleSearch}
-          className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-md flex items-center justify-center"
+          className="w-full py-2 px-4 rounded-md flex items-center justify-center transition-colors"
+          style={{ 
+            backgroundColor: accentColor,
+            color: getButtonTextColor()
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = `${accentColor}dd`;
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = accentColor;
+          }}
         >
           <Search className="w-4 h-4 mr-2" />
           Search Loads

@@ -1,5 +1,5 @@
 import { requireAdmin } from "@/lib/auth";
-import sql from "@/lib/db";
+import sql from "@/lib/db.server";
 import NavBar from "@/components/site/NavBar";
 import Footer from "@/components/site/Footer";
 import BidListClient from "./view.client";

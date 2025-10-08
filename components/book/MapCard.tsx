@@ -1,9 +1,23 @@
+"use client";
+
 import { Map } from "lucide-react";
+import { useAccentColor } from "@/hooks/useAccentColor";
+import { useTheme } from "next-themes";
 
 export default function MapCard() {
+  const { accentColor } = useAccentColor();
+  const { theme } = useTheme();
+  
+  // Smart color handling for white accent color
+  const getTextColor = () => {
+    if (accentColor === 'hsl(0, 0%, 100%)') {
+      return theme === 'dark' ? '#ffffff' : '#000000';
+    }
+    return accentColor;
+  };
   return (
     <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 sticky top-8">
-      <h3 className="text-lg font-semibold text-gray-800 mb-4">Loads Map</h3>
+      <h3 className="text-lg font-semibold text-gray-800 mb-4" style={{ color: getTextColor() }}>Loads Map</h3>
       <div className="h-96 rounded-xl bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <Map className="w-16 h-16 text-gray-300 mx-auto mb-2" />

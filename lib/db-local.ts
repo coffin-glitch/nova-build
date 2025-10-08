@@ -17,13 +17,25 @@ db.pragma('foreign_keys = ON');
 
 // Create tables if they don't exist
 const createTables = () => {
-  // User roles table
+  // User roles table (legacy)
   db.exec(`
     CREATE TABLE IF NOT EXISTS user_roles (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id TEXT NOT NULL UNIQUE,
       role TEXT NOT NULL CHECK (role IN ('admin', 'carrier')),
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // User roles cache table (centralized)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS user_roles_cache (
+      clerk_user_id TEXT PRIMARY KEY,
+      role TEXT NOT NULL CHECK (role IN ('admin', 'carrier', 'none')),
+      email TEXT NOT NULL,
+      last_synced DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      clerk_updated_at INTEGER NOT NULL DEFAULT 0,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
   `);
 
@@ -46,24 +58,39 @@ const createTables = () => {
   `);
 
   // Loads table
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS loads (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      rr_number TEXT NOT NULL UNIQUE,
-      origin_city TEXT,
-      origin_state TEXT,
-      destination_city TEXT,
-      destination_state TEXT,
-      equipment TEXT,
-      weight REAL,
-      rate_cents INTEGER,
-      pickup_date DATE,
-      delivery_date DATE,
-      published BOOLEAN DEFAULT 1,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS loads (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          rr_number TEXT NOT NULL UNIQUE,
+          tm_number TEXT,
+          status_code TEXT,
+          origin_city TEXT,
+          origin_state TEXT,
+          destination_city TEXT,
+          destination_state TEXT,
+          equipment TEXT,
+          weight REAL,
+          revenue REAL,
+          purchase REAL,
+          net REAL,
+          margin REAL,
+          customer_name TEXT,
+          customer_ref TEXT,
+          driver_name TEXT,
+          vendor_name TEXT,
+          dispatcher_name TEXT,
+          pickup_date DATE,
+          pickup_time TEXT,
+          delivery_date DATE,
+          delivery_time TEXT,
+          stops INTEGER,
+          miles INTEGER,
+          published BOOLEAN DEFAULT 0,
+          archived BOOLEAN DEFAULT 0,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
 
   // Telegram bid offers table
   db.exec(`
@@ -82,12 +109,16 @@ const createTables = () => {
   db.exec(`
     CREATE TABLE IF NOT EXISTS load_offers (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      rr_number TEXT NOT NULL,
-      user_id TEXT NOT NULL,
-      amount_cents INTEGER NOT NULL CHECK (amount_cents >= 0),
-      note TEXT,
+      load_rr_number TEXT NOT NULL,
+      carrier_user_id TEXT NOT NULL,
+      offer_amount INTEGER NOT NULL CHECK (offer_amount >= 0),
+      notes TEXT,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'rejected', 'countered')),
+      counter_amount INTEGER,
+      admin_notes TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (rr_number) REFERENCES loads(rr_number) ON DELETE CASCADE
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (load_rr_number) REFERENCES loads(rr_number) ON DELETE CASCADE
     )
   `);
 

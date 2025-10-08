@@ -37,12 +37,36 @@ export default function Error({
           {process.env.NODE_ENV === "development" && (
             <details className="mt-4 text-left">
               <summary className="cursor-pointer text-sm text-muted-foreground">
-                Error Details (Development)
+                🔍 Debug Information (Development)
               </summary>
-              <pre className="mt-2 text-xs bg-muted p-2 rounded overflow-auto">
-                {error.message}
-                {error.stack && `\n\n${error.stack}`}
-              </pre>
+              <div className="mt-2 text-xs bg-muted p-4 rounded overflow-auto space-y-2">
+                <div>
+                  <strong>Error Message:</strong>
+                  <pre className="mt-1 p-2 bg-red-100 text-red-800 rounded">{error.message}</pre>
+                </div>
+                <div>
+                  <strong>Error Digest:</strong>
+                  <pre className="mt-1 p-2 bg-yellow-100 text-yellow-800 rounded">{error.digest || 'No digest'}</pre>
+                </div>
+                <div>
+                  <strong>Error Name:</strong>
+                  <pre className="mt-1 p-2 bg-blue-100 text-blue-800 rounded">{error.name || 'Unknown'}</pre>
+                </div>
+                <div>
+                  <strong>Current URL:</strong>
+                  <pre className="mt-1 p-2 bg-green-100 text-green-800 rounded">{typeof window !== 'undefined' ? window.location.href : 'Server-side'}</pre>
+                </div>
+                <div>
+                  <strong>User Agent:</strong>
+                  <pre className="mt-1 p-2 bg-purple-100 text-purple-800 rounded">{typeof window !== 'undefined' ? window.navigator.userAgent : 'Server-side'}</pre>
+                </div>
+                {error.stack && (
+                  <div>
+                    <strong>Stack Trace:</strong>
+                    <pre className="mt-1 p-2 bg-gray-100 text-gray-800 rounded max-h-40 overflow-auto">{error.stack}</pre>
+                  </div>
+                )}
+              </div>
             </details>
           )}
         </div>

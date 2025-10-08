@@ -6,22 +6,42 @@ import SearchPanel from "./SearchPanel";
 import LoadCard from "./LoadCard";
 import MapPanel from "./MapPanel";
 import { Button } from "@/components/ui/button";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Upload, Database } from "lucide-react";
+import { useTheme } from "next-themes";
+import { useAccentColor } from "@/hooks/useAccentColor";
+import { useIsAdmin } from "@/hooks/useUserRole";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
 
-// Demo data structure
+// Real data structure from EAX
 interface Load {
-  id: string;
-  route: string;
-  pickup: string;
-  delivery: string;
-  equipment: string;
-  price: number;
-  miles: number;
-  broker: {
-    name: string;
-    avatar?: string;
-    rating: number;
-  };
+  rr_number: string;
+  tm_number?: string;
+  status_code?: string;
+  pickup_date?: string;
+  pickup_window?: string;
+  delivery_date?: string;
+  delivery_window?: string;
+  equipment?: string;
+  total_miles?: number;
+  revenue?: number;
+  purchase?: number;
+  net?: number;
+  margin?: number;
+  customer_name?: string;
+  customer_ref?: string;
+  driver_name?: string;
+  origin_city?: string;
+  origin_state?: string;
+  destination_city?: string;
+  destination_state?: string;
+  vendor_name?: string;
+  dispatcher_name?: string;
+  published: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 interface SearchFilters {
@@ -30,111 +50,162 @@ interface SearchFilters {
   equipment: string;
 }
 
-// Demo data generator
-const generateDemoLoads = (): Load[] => {
-  const routes = [
-    { from: "Chicago, IL", to: "Dallas, TX", miles: 925 },
-    { from: "Los Angeles, CA", to: "Phoenix, AZ", miles: 373 },
-    { from: "Atlanta, GA", to: "Miami, FL", miles: 661 },
-    { from: "Denver, CO", to: "Seattle, WA", miles: 1317 },
-    { from: "Houston, TX", to: "New York, NY", miles: 1630 },
-    { from: "Portland, OR", to: "San Diego, CA", miles: 1255 },
-    { from: "Boston, MA", to: "Chicago, IL", miles: 983 },
-    { from: "Detroit, MI", to: "Atlanta, GA", miles: 729 },
-  ];
-
-  const equipmentTypes = ["Dry Van", "Reefer", "Flatbed", "Container", "Tanker"];
-  const brokers = [
-    { name: "Swift Transportation", rating: 4.8 },
-    { name: "Schneider National", rating: 4.6 },
-    { name: "J.B. Hunt", rating: 4.7 },
-    { name: "Werner Enterprises", rating: 4.5 },
-    { name: "Knight-Swift", rating: 4.9 },
-  ];
-
-  return routes.map((route, index) => ({
-    id: `load-${index + 1}`,
-    route: `${route.from} → ${route.to}`,
-    pickup: `Today, 2:00 PM - 4:00 PM`,
-    delivery: `Tomorrow, 8:00 AM - 10:00 AM`,
-    equipment: equipmentTypes[Math.floor(Math.random() * equipmentTypes.length)],
-    price: Math.floor(Math.random() * 3000) + 1500,
-    miles: route.miles,
-    broker: brokers[Math.floor(Math.random() * brokers.length)],
-  }));
-};
+interface LoadsResponse {
+  loads: Load[];
+  pagination: {
+    total: number;
+    limit: number;
+    offset: number;
+    hasMore: boolean;
+  };
+}
 
 export default function FindLoadsClient() {
   const [loads, setLoads] = useState<Load[]>([]);
   const [filteredLoads, setFilteredLoads] = useState<Load[]>([]);
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
+  const isAdmin = useIsAdmin();
+  const [showEaxUploader, setShowEaxUploader] = useState(false);
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
+  
+  const { theme } = useTheme();
+  const { accentColor } = useAccentColor();
 
-  // Load demo data on mount
+  // Drag and drop handlers
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    
+    const files = Array.from(e.dataTransfer.files);
+    const file = files[0];
+    
+    if (file && (file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || 
+                file.type === 'application/vnd.ms-excel' || 
+                file.type === 'text/csv' ||
+                file.name.endsWith('.xlsx') ||
+                file.name.endsWith('.xls') ||
+                file.name.endsWith('.csv'))) {
+      setUploadFile(file);
+    } else {
+      toast.error("Please upload a valid Excel (.xlsx, .xls) or CSV (.csv) file");
+    }
+  };
+
+
+  // Load real data on mount
   useEffect(() => {
-    const loadDemoData = () => {
-      setLoading(true);
-      setTimeout(() => {
-        const demoLoads = generateDemoLoads();
-        setLoads(demoLoads);
-        setFilteredLoads(demoLoads);
-        setLoading(false);
-      }, 1000);
-    };
-
-    loadDemoData();
+    loadLoads();
   }, []);
+
+  const loadLoads = async (filters?: SearchFilters) => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (filters?.origin) params.append("origin", filters.origin);
+      if (filters?.destination) params.append("destination", filters.destination);
+      if (filters?.equipment) params.append("equipment", filters.equipment);
+      
+      const response = await fetch(`/api/loads?${params.toString()}`);
+      if (response.ok) {
+        const data: LoadsResponse = await response.json();
+        setLoads(data.loads);
+        setFilteredLoads(data.loads);
+      } else {
+        console.error("Failed to fetch loads");
+        toast.error("Failed to load loads");
+      }
+    } catch (error) {
+      console.error("Error loading loads:", error);
+      toast.error("Error loading loads");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSearch = async (filters: SearchFilters) => {
     setSearching(true);
-    
-    // Simulate API call delay
-    await new Promise(resolve => setTimeout(resolve, 800));
-    
-    let filtered = loads;
-    
-    // Filter by equipment
-    if (filters.equipment !== "all") {
-      const equipmentMap: { [key: string]: string } = {
-        "dry-van": "Dry Van",
-        "reefer": "Reefer",
-        "flatbed": "Flatbed",
-        "container": "Container",
-        "tanker": "Tanker",
-      };
-      filtered = filtered.filter(load => load.equipment === equipmentMap[filters.equipment]);
-    }
-    
-    // Filter by origin/destination (simple text search)
-    if (filters.origin) {
-      filtered = filtered.filter(load => 
-        load.route.toLowerCase().includes(filters.origin.toLowerCase())
-      );
-    }
-    
-    if (filters.destination) {
-      filtered = filtered.filter(load => 
-        load.route.toLowerCase().includes(filters.destination.toLowerCase())
-      );
-    }
-    
-    setFilteredLoads(filtered);
+    await loadLoads(filters);
     setSearching(false);
   };
 
   const handleBookLoad = (id: string) => {
     // TODO: Implement booking logic
     console.log("Booking load:", id);
+    toast.success("Load booking functionality coming soon!");
   };
 
   const handleRefresh = () => {
-    setLoading(true);
-    setTimeout(() => {
-      const demoLoads = generateDemoLoads();
-      setLoads(demoLoads);
-      setFilteredLoads(demoLoads);
-      setLoading(false);
-    }, 1000);
+    loadLoads();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && (file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || 
+                file.type === 'application/vnd.ms-excel' || 
+                file.type === 'text/csv' ||
+                file.name.endsWith('.xlsx') ||
+                file.name.endsWith('.xls') ||
+                file.name.endsWith('.csv'))) {
+      setUploadFile(file);
+    } else {
+      toast.error("Please upload a valid Excel (.xlsx, .xls) or CSV (.csv) file");
+    }
+  };
+
+  const handleFileUpload = async () => {
+    if (!uploadFile) {
+      toast.error("Please select a file to upload");
+      return;
+    }
+
+    setUploadingFile(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", uploadFile);
+
+      const response = await fetch("/api/admin/eax/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        toast.success(`Successfully processed ${result.data.rows_processed} loads`);
+        setShowEaxUploader(false);
+        setUploadFile(null);
+        // Refresh loads after successful upload
+        await loadLoads();
+      } else {
+        const error = await response.json();
+        toast.error(error.error || "Upload failed");
+      }
+    } catch (error) {
+      console.error("Upload error:", error);
+      toast.error("Upload failed");
+    } finally {
+      setUploadingFile(false);
+    }
+  };
+
+  // Smart color handling for white accent color
+  const getButtonTextColor = () => {
+    if (accentColor === 'hsl(0, 0%, 100%)') {
+      return '#000000';
+    }
+    return '#ffffff';
   };
 
   return (
@@ -152,15 +223,120 @@ export default function FindLoadsClient() {
             {loading ? "Please wait while we fetch available loads" : "Browse and book loads that match your criteria"}
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleRefresh}
-          disabled={loading}
-        >
-          <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* Admin EAX Uploader */}
+          {isAdmin && (
+            <Dialog open={showEaxUploader} onOpenChange={setShowEaxUploader}>
+            <DialogTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-purple-500/30 text-purple-600 hover:bg-purple-500/10 dark:text-purple-400 dark:hover:bg-purple-500/20"
+              >
+                <Upload className="h-4 w-4 mr-2" />
+                Update Loads
+              </Button>
+            </DialogTrigger>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <Database className="h-5 w-5 text-purple-500" />
+                    EAX Load Updater
+                  </DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    Upload an Excel (.xlsx, .xls) or CSV (.csv) file from EAX to update the loads database. Only published loads will be visible to carriers.
+                  </p>
+                  
+                  {/* Drag and Drop Area */}
+                  <div
+                    className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
+                      isDragOver
+                        ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20'
+                        : 'border-gray-300 dark:border-gray-600'
+                    }`}
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                  >
+                    <Upload className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                      Drag and drop your file here, or click to browse
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-500">
+                      Supports .xlsx, .xls, and .csv files
+                    </p>
+                    <Input
+                      type="file"
+                      accept=".xlsx,.xls,.csv"
+                      onChange={handleFileChange}
+                      className="mt-2"
+                    />
+                  </div>
+                  
+                  {/* Selected File Display */}
+                  {uploadFile && (
+                    <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                        <span className="text-sm font-medium text-green-800 dark:text-green-200">
+                          Selected: {uploadFile.name}
+                        </span>
+                      </div>
+                      <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+                        Size: {(uploadFile.size / 1024 / 1024).toFixed(2)} MB
+                      </p>
+                    </div>
+                  )}
+                  
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={handleFileUpload}
+                      disabled={!uploadFile || uploadingFile}
+                      className="flex-1"
+                      style={{ 
+                        backgroundColor: accentColor,
+                        color: getButtonTextColor()
+                      }}
+                    >
+                      {uploadingFile ? (
+                        <>
+                          <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                          Processing...
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="h-4 w-4 mr-2" />
+                          Upload & Process
+                        </>
+                      )}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setShowEaxUploader(false);
+                        setUploadFile(null);
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+          )}
+          
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={loading}
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {/* Results Layout */}
@@ -218,7 +394,7 @@ export default function FindLoadsClient() {
             // Load cards
             filteredLoads.map((load) => (
               <LoadCard
-                key={load.id}
+                key={load.rr_number}
                 {...load}
                 onBookLoad={handleBookLoad}
               />

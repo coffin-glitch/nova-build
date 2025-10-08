@@ -1,5 +1,6 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
+import { initializeRoleSystem } from "@/lib/role-sync";
 
 // If Clerk env vars are missing during build, fail fast with a readable error.
 if (!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || !process.env.CLERK_SECRET_KEY) {
@@ -16,10 +17,18 @@ const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
   "/sign-up(.*)",
   "/api/test-db",
+  "/api/test(.*)", // Test API routes
   "/api/bids(.*)", // Bid board API and all sub-routes
   "/api/telegram-bids(.*)", // Telegram bids API
   "/api/health(.*)", // Health check endpoints
+  "/api/dev-admin(.*)", // Dev admin API routes
+  "/api/admin(.*)", // Admin API routes
+  "/api/roles(.*)", // Role management API routes
+  "/api/loads(.*)", // Loads API routes
+  "/api/offers(.*)", // Offers API routes
   "/debug", // Debug page
+  "/dev-admin", // Dev admin page
+  // Admin pages now require authentication - removed from public routes
 ]);
 
 export default clerkMiddleware(async (auth, req) => {

@@ -1,5 +1,16 @@
 @import "tailwindcss";
 
+/* Game Console Animations */
+@keyframes scanlines {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100vh); }
+}
+
+.scanlines {
+  background-image: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(59,130,246,0.1) 2px, rgba(59,130,246,0.1) 4px);
+  animation: scanlines 0.1s linear infinite;
+}
+
 :root {
   /* Base colors */
   --background: 0 0% 100%;
@@ -68,7 +79,7 @@
   --secondary: 215 28% 14%;
   --secondary-foreground: 210 40% 98%;
   --muted: 215 28% 12%;
-  --muted-foreground: 217 10% 75%;
+  --muted-foreground: 217 10% 85%;
   --accent: 215 28% 14%;
   --accent-foreground: 210 40% 98%;
   

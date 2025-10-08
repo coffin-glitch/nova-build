@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import sql from "@/lib/db";
+import sql from "@/lib/db.server";
 import { requireAdmin } from "@/lib/auth";
 
 const CounterSchema = z.object({

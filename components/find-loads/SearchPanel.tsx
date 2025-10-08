@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import SectionCard from "@/components/layout/SectionCard";
+import { useAccentColor } from "@/hooks/useAccentColor";
+import { useTheme } from "next-themes";
 
 const equipmentTypes = [
   { value: "all", label: "All Equipment" },
@@ -28,6 +30,17 @@ interface SearchPanelProps {
 }
 
 export default function SearchPanel({ onSearch, loading = false }: SearchPanelProps) {
+  const { accentColor } = useAccentColor();
+  const { theme } = useTheme();
+  
+  // Smart color handling for white accent color
+  const getButtonTextColor = () => {
+    if (accentColor === 'hsl(0, 0%, 100%)') {
+      return '#000000';
+    }
+    return '#ffffff';
+  };
+  
   const [filters, setFilters] = useState<SearchFilters>({
     origin: "",
     destination: "",
@@ -108,6 +121,20 @@ export default function SearchPanel({ onSearch, loading = false }: SearchPanelPr
             disabled={loading}
             className="w-full group-hover:shadow-lg transition-all duration-300"
             size="lg"
+            style={{ 
+              backgroundColor: accentColor,
+              color: getButtonTextColor()
+            }}
+            onMouseEnter={(e) => {
+              if (!loading) {
+                e.currentTarget.style.backgroundColor = `${accentColor}dd`;
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!loading) {
+                e.currentTarget.style.backgroundColor = accentColor;
+              }
+            }}
           >
             <Search className="mr-2 h-4 w-4" />
             {loading ? "Searching..." : "Search Loads"}

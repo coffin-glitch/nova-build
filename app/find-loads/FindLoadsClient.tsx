@@ -8,20 +8,49 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Glass } from "@/components/ui/glass";
 import { MapPin, Truck, Clock, DollarSign, Search, RefreshCw, Filter } from "lucide-react";
+import { useAccentColor } from "@/hooks/useAccentColor";
+import LoadCard from "@/components/find-loads/LoadCard";
 
 interface Load {
-  id: string;
-  origin: string;
-  destination: string;
-  equipment: string;
-  miles: number;
-  rate: number;
-  pickup_date: string;
-  delivery_date: string;
-  description?: string;
+  rr_number: string;
+  tm_number?: string;
+  status_code?: string;
+  pickup_date?: string;
+  pickup_window?: string;
+  delivery_date?: string;
+  delivery_window?: string;
+  equipment?: string;
+  total_miles?: number;
+  revenue?: number;
+  purchase?: number;
+  net?: number;
+  margin?: number;
+  customer_name?: string;
+  customer_ref?: string;
+  driver_name?: string;
+  origin_city?: string;
+  origin_state?: string;
+  destination_city?: string;
+  destination_state?: string;
+  vendor_name?: string;
+  dispatcher_name?: string;
+  published: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export default function FindLoadsClient() {
+  const { accentColor } = useAccentColor();
+  const { theme } = useTheme();
+  
+  // Smart color handling for white accent color
+  const getButtonTextColor = () => {
+    if (accentColor === 'hsl(0, 0%, 100%)') {
+      return '#000000';
+    }
+    return '#ffffff';
+  };
+  
   const [loads, setLoads] = useState<Load[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -58,10 +87,13 @@ export default function FindLoadsClient() {
   };
 
   const filteredLoads = loads.filter(load => {
-    if (filters.origin && !load.origin.toLowerCase().includes(filters.origin.toLowerCase())) {
+    const origin = load.origin_city && load.origin_state ? `${load.origin_city}, ${load.origin_state}` : '';
+    const destination = load.destination_city && load.destination_state ? `${load.destination_city}, ${load.destination_state}` : '';
+    
+    if (filters.origin && !origin.toLowerCase().includes(filters.origin.toLowerCase())) {
       return false;
     }
-    if (filters.destination && !load.destination.toLowerCase().includes(filters.destination.toLowerCase())) {
+    if (filters.destination && !destination.toLowerCase().includes(filters.destination.toLowerCase())) {
       return false;
     }
     if (filters.equipment !== "all" && load.equipment !== filters.equipment) {
@@ -175,62 +207,11 @@ export default function FindLoadsClient() {
             </Card>
           ) : (
             filteredLoads.map((load) => (
-              <Card key={load.id} className="hover:shadow-card transition-all duration-300 hover:-translate-y-0.5">
-                <CardHeader>
-                  <div className="flex justify-between items-start">
-                    <div className="space-y-2">
-                      <div className="flex items-center space-x-2">
-                        <Badge variant="secondary" className="capitalize">
-                          {load.equipment.replace('-', ' ')}
-                        </Badge>
-                        <span className="text-sm text-muted-foreground">#{load.id}</span>
-                      </div>
-                      <CardTitle className="text-xl">{load.origin} → {load.destination}</CardTitle>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-2xl font-bold text-primary">${load.rate.toLocaleString()}</div>
-                      <div className="text-sm text-muted-foreground">${(load.rate / load.miles).toFixed(2)}/mile</div>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-                    <div className="flex items-center space-x-2">
-                      <MapPin className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm">{load.miles} miles</span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Truck className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm capitalize">{load.equipment.replace('-', ' ')}</span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Clock className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm">
-                        {new Date(load.pickup_date).toLocaleDateString()}
-                      </span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <DollarSign className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm">
-                        Delivery: {new Date(load.delivery_date).toLocaleDateString()}
-                      </span>
-                    </div>
-                  </div>
-                  
-                  {load.description && (
-                    <p className="text-sm text-muted-foreground mb-4">{load.description}</p>
-                  )}
-                  
-                  <div className="flex justify-between items-center">
-                    <div className="text-sm text-muted-foreground">
-                      Posted 2 hours ago
-                    </div>
-                    <Button className="hover:scale-105 transition-transform">
-                      Book Load
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
+              <LoadCard
+                key={load.rr_number}
+                {...load}
+                onOfferSubmitted={fetchLoads}
+              />
             ))
           )}
         </div>

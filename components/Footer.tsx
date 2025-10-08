@@ -33,19 +33,19 @@ const socialLinks = [
 
 export default function Footer() {
   return (
-    <footer className="bg-gray-800 text-white py-8 mt-12">
+    <footer className="bg-background border-t border-border text-foreground py-8 mt-12">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           <div>
-            <h4 className="text-lg font-semibold mb-4">NOVA Build</h4>
-            <p className="text-gray-400 text-sm">Connecting carriers with quality loads since 2024.</p>
+            <h4 className="text-lg font-semibold mb-4 text-foreground">NOVA Build</h4>
+            <p className="text-muted-foreground text-sm">Connecting carriers with quality loads since 2024.</p>
           </div>
           <div>
-            <h4 className="text-lg font-semibold mb-4">Quick Links</h4>
+            <h4 className="text-lg font-semibold mb-4 text-foreground">Quick Links</h4>
             <ul className="space-y-2">
               {footerLinks.quickLinks.map((link) => (
                 <li key={link.name}>
-                  <Link href={link.href} className="text-gray-400 hover:text-white text-sm">
+                  <Link href={link.href} className="text-muted-foreground hover:text-foreground text-sm transition-colors">
                     {link.name}
                   </Link>
                 </li>
@@ -53,11 +53,11 @@ export default function Footer() {
             </ul>
           </div>
           <div>
-            <h4 className="text-lg font-semibold mb-4">Support</h4>
+            <h4 className="text-lg font-semibold mb-4 text-foreground">Support</h4>
             <ul className="space-y-2">
               {footerLinks.support.map((link) => (
                 <li key={link.name}>
-                  <Link href={link.href} className="text-gray-400 hover:text-white text-sm">
+                  <Link href={link.href} className="text-muted-foreground hover:text-foreground text-sm transition-colors">
                     {link.name}
                   </Link>
                 </li>
@@ -65,18 +65,18 @@ export default function Footer() {
             </ul>
           </div>
           <div>
-            <h4 className="text-lg font-semibold mb-4">Contact</h4>
+            <h4 className="text-lg font-semibold mb-4 text-foreground">Contact</h4>
             <ul className="space-y-2">
-              <li className="flex items-center text-gray-400 text-sm">
-                <i data-feather="phone" className="w-4 h-4 mr-2"></i> (800) 555-1234
+              <li className="flex items-center text-muted-foreground text-sm">
+                <Phone className="w-4 h-4 mr-2" /> (800) 555-1234
               </li>
-              <li className="flex items-center text-gray-400 text-sm">
-                <i data-feather="mail" className="w-4 h-4 mr-2"></i> support@novabuild.com
+              <li className="flex items-center text-muted-foreground text-sm">
+                <Mail className="w-4 h-4 mr-2" /> support@novabuild.com
               </li>
             </ul>
           </div>
         </div>
-        <div className="border-t border-gray-700 mt-8 pt-8 text-sm text-gray-400">
+        <div className="border-t border-border mt-8 pt-8 text-sm text-muted-foreground">
           <p>© {new Date().getFullYear()} NOVA Build. All rights reserved.</p>
         </div>
       </div>

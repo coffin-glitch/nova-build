@@ -38,8 +38,11 @@ const socialLinks = [
 
 export default function SiteFooter() {
   return (
-    <footer className="border-t border-border bg-surface-50 dark:bg-surface-900">
-      <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+    <footer className="relative border-t border-border bg-background/95 backdrop-blur-sm">
+      {/* Subtle gradient overlay */}
+      <div className="absolute inset-0 bg-gradient-to-t from-background/50 to-transparent pointer-events-none"></div>
+      
+      <div className="relative mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-5">
           {/* Brand */}
           <div className="lg:col-span-1">
@@ -57,7 +60,7 @@ export default function SiteFooter() {
                 <Link
                   key={item.name}
                   href={item.href}
-                  className="text-muted-foreground hover:text-foreground transition-colors"
+                  className="text-muted-foreground hover:text-foreground transition-colors hover:scale-110 transform duration-200"
                 >
                   <span className="sr-only">{item.name}</span>
                   <item.icon className="h-5 w-5" />
@@ -74,7 +77,7 @@ export default function SiteFooter() {
                 <li key={item.name}>
                   <Link
                     href={item.href}
-                    className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                    className="text-sm text-muted-foreground hover:text-foreground transition-colors hover:underline underline-offset-4"
                   >
                     {item.name}
                   </Link>
@@ -91,7 +94,7 @@ export default function SiteFooter() {
                 <li key={item.name}>
                   <Link
                     href={item.href}
-                    className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                    className="text-sm text-muted-foreground hover:text-foreground transition-colors hover:underline underline-offset-4"
                   >
                     {item.name}
                   </Link>
@@ -108,7 +111,7 @@ export default function SiteFooter() {
                 <li key={item.name}>
                   <Link
                     href={item.href}
-                    className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                    className="text-sm text-muted-foreground hover:text-foreground transition-colors hover:underline underline-offset-4"
                   >
                     {item.name}
                   </Link>
@@ -125,7 +128,7 @@ export default function SiteFooter() {
                 <li key={item.name}>
                   <Link
                     href={item.href}
-                    className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                    className="text-sm text-muted-foreground hover:text-foreground transition-colors hover:underline underline-offset-4"
                   >
                     {item.name}
                   </Link>

@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import SectionCard from "@/components/layout/SectionCard";
@@ -14,8 +16,11 @@ import {
   ArrowRight,
   Star
 } from "lucide-react";
+import { useAccentColor } from "@/hooks/useAccentColor";
 
 export default function HomePage() {
+  const { accentColor } = useAccentColor();
+  
   return (
     <div className="min-h-screen">
       {/* Hero Section */}
@@ -32,7 +37,18 @@ export default function HomePage() {
             Real-time bidding, smart matching, and dedicated lanes for the freight industry.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
-            <Button asChild size="lg" className="text-lg px-8 py-6 group">
+            <Button 
+              asChild 
+              size="lg" 
+              className="text-lg px-8 py-6 group"
+              style={{ backgroundColor: accentColor }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = `${accentColor}dd`;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = accentColor;
+              }}
+            >
               <Link href="/find-loads">
                 <MapPin className="mr-2 h-5 w-5 group-hover:scale-110 transition-transform" />
                 Find Loads

@@ -130,6 +130,47 @@ export function formatStops(stops: string[] | null): string {
   return `${stops[0]} → ... → ${stops[stops.length - 1]}`;
 }
 
+// Pickup date/time formatting - matches format: 09/30/2025 02:00 AM
+export function formatPickupDateTime(timestamp: string | null): string {
+  if (!timestamp) return 'N/A';
+  
+  // Parse the UTC timestamp and extract components directly to avoid timezone conversion
+  const date = new Date(timestamp);
+  
+  // Check if date is valid
+  if (isNaN(date.getTime())) return 'N/A';
+  
+  // Extract UTC components to avoid timezone conversion
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  const hour = date.getUTCHours();
+  const minute = String(date.getUTCMinutes()).padStart(2, '0');
+  
+  // Convert to 12-hour format
+  const hour12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const hour12Str = String(hour12).padStart(2, '0');
+  
+  return `${month}/${day}/${year} ${hour12Str}:${minute} ${ampm}`;
+}
+
+// Stop count formatting - pickup doesn't count as a stop
+export function formatStopCount(stops: string[] | null): string {
+  if (!stops || stops.length === 0) return '0 stops';
+  // Subtract 1 because pickup location doesn't count as a stop
+  const actualStops = Math.max(0, stops.length - 1);
+  if (actualStops === 0) return '0 stops';
+  if (actualStops === 1) return '1 stop';
+  return `${actualStops} stops`;
+}
+
+// Detailed stops formatting for view details
+export function formatStopsDetailed(stops: string[] | null): string[] {
+  if (!stops || stops.length === 0) return ['No stops available'];
+  return stops;
+}
+
 // Validation helpers
 export function validateMoneyInput(value: string): {
   isValid: boolean;

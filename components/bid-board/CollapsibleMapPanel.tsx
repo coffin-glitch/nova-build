@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Map, X, Zap, Target, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useAccentColor } from "@/hooks/useAccentColor";
+import { useTheme } from "next-themes";
 
 interface CollapsibleMapPanelProps {
   className?: string;
@@ -11,6 +13,46 @@ interface CollapsibleMapPanelProps {
 
 export default function CollapsibleMapPanel({ className }: CollapsibleMapPanelProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const { accentColor } = useAccentColor();
+  const { theme } = useTheme();
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  
+  // Smart color handling for white accent color
+  const getIconColor = () => {
+    if (accentColor === 'hsl(0, 0%, 100%)') {
+      return theme === 'dark' ? '#ffffff' : '#000000';
+    }
+    return accentColor;
+  };
+
+  // Smart color handling for floating button icon (needs contrast against gradient background)
+  const getFloatingButtonIconColor = () => {
+    if (accentColor === 'hsl(0, 0%, 100%)') {
+      return '#ffffff'; // White icon on black gradient background
+    }
+    return '#ffffff'; // White icon on colored gradient background
+  };
+
+  // Smart color handling for solid background buttons (like close map button)
+  const getButtonTextColor = () => {
+    if (accentColor === 'hsl(0, 0%, 100%)') {
+      return '#000000'; // Black text on white background
+    }
+    return '#ffffff'; // White text on colored background
+  };
+
+  // Smart color handling for logo icon (always black background with white icon, like floating button)
+  const getLogoIconColor = () => {
+    return '#ffffff'; // Always white icon
+  };
+
+  const getLogoBackgroundColor = () => {
+    return '#000000'; // Always black background
+  };
 
   const toggleExpanded = () => {
     setIsExpanded(!isExpanded);
@@ -23,15 +65,32 @@ export default function CollapsibleMapPanel({ className }: CollapsibleMapPanelPr
         onClick={toggleExpanded}
         className={cn(
           "fixed bottom-6 right-6 z-50 transition-all duration-500 ease-out",
-          "bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70",
-          "shadow-2xl hover:shadow-primary/25 hover:scale-110",
+          "shadow-2xl hover:scale-110",
           "rounded-full h-16 w-16 p-0",
           "border-2 border-white/20 backdrop-blur-sm",
           "animate-pulse hover:animate-none",
           isExpanded && "scale-0 opacity-0"
         )}
+        style={{
+          background: accentColor === 'hsl(0, 0%, 100%)' 
+            ? 'linear-gradient(to right, #000000, #333333)' 
+            : `linear-gradient(to right, ${accentColor}, ${accentColor}80)`,
+          boxShadow: accentColor === 'hsl(0, 0%, 100%)' 
+            ? '0 25px 50px -12px rgba(0, 0, 0, 0.25)' 
+            : `0 25px 50px -12px ${accentColor}25`
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = accentColor === 'hsl(0, 0%, 100%)' 
+            ? 'linear-gradient(to right, #111111, #444444)' 
+            : `linear-gradient(to right, ${accentColor}90, ${accentColor}70)`;
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = accentColor === 'hsl(0, 0%, 100%)' 
+            ? 'linear-gradient(to right, #000000, #333333)' 
+            : `linear-gradient(to right, ${accentColor}, ${accentColor}80)`;
+        }}
       >
-        <Map className="h-8 w-8 text-white drop-shadow-lg" />
+        <Map className="h-8 w-8 drop-shadow-lg" style={{ color: getFloatingButtonIconColor() }} />
       </Button>
 
       {/* Bubble Popup Window */}
@@ -46,18 +105,40 @@ export default function CollapsibleMapPanel({ className }: CollapsibleMapPanelPr
           {/* Bubble Window */}
           <div className="fixed bottom-24 right-6 z-50 animate-in slide-in-from-bottom-4 duration-500 ease-out">
             {/* Bubble Tail */}
-            <div className="absolute -bottom-2 right-8 w-4 h-4 bg-gradient-to-r from-primary to-primary/80 rotate-45 border-r border-b border-white/20"></div>
+            <div 
+              className="absolute -bottom-2 right-8 w-4 h-4 rotate-45 border-r border-b border-white/20"
+              style={{ backgroundColor: accentColor }}
+            ></div>
             
             {/* Main Bubble */}
-            <div className="relative bg-gradient-to-br from-white to-surface-50 dark:from-surface-800 dark:to-surface-900 rounded-3xl shadow-2xl border-2 border-white/20 backdrop-blur-lg overflow-hidden">
+            <div className="relative bg-gradient-to-br from-white to-slate-50 dark:from-slate-800 dark:to-slate-900 rounded-3xl shadow-2xl border-2 border-white/20 backdrop-blur-lg overflow-hidden">
               {/* Bubble Header */}
-              <div className="flex items-center justify-between p-4 bg-gradient-to-r from-primary/10 to-primary/5 border-b border-primary/20">
+              <div 
+                className="flex items-center justify-between p-4 border-b"
+                style={{ 
+                  background: `linear-gradient(to right, ${accentColor}10, ${accentColor}05)`,
+                  borderBottomColor: `${accentColor}20`
+                }}
+              >
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-primary/20 rounded-full">
-                    <Map className="h-5 w-5 text-primary" />
+                  <div 
+                    className="p-2 rounded-full" 
+                    style={{ 
+                      backgroundColor: '#000000', 
+                      border: 'none',
+                      background: '#000000'
+                    }}
+                  >
+                    <Map 
+                      className="h-5 w-5" 
+                      style={{ 
+                        color: '#ffffff',
+                        fill: '#ffffff'
+                      }} 
+                    />
                   </div>
                   <div>
-                    <h3 className="text-lg font-bold text-primary">Live Map</h3>
+                    <h3 className="text-lg font-bold" style={{ color: getIconColor() }}>Live Map</h3>
                     <p className="text-xs text-muted-foreground">Real-time bid locations</p>
                   </div>
                 </div>
@@ -74,8 +155,8 @@ export default function CollapsibleMapPanel({ className }: CollapsibleMapPanelPr
               {/* Map Content */}
               <div className="p-4 space-y-4">
                 {/* Map Area */}
-                <div className="relative bg-gradient-to-br from-blue-50 to-green-50 dark:from-blue-900/20 dark:to-green-900/20 rounded-2xl p-6 border border-primary/10">
-                  <div className="aspect-square bg-gradient-to-br from-blue-100 to-green-100 dark:from-blue-800/30 dark:to-green-800/30 rounded-xl flex flex-col items-center justify-center text-muted-foreground relative overflow-hidden">
+                <div className="relative bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-900 rounded-2xl p-6 border border-border">
+                  <div className="aspect-square bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-800 rounded-xl flex flex-col items-center justify-center text-muted-foreground relative overflow-hidden">
                     {/* Animated Background Elements */}
                     <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent animate-pulse"></div>
                     <div className="absolute top-4 left-4 w-3 h-3 bg-green-500 rounded-full animate-ping"></div>
@@ -83,9 +164,9 @@ export default function CollapsibleMapPanel({ className }: CollapsibleMapPanelPr
                     <div className="absolute bottom-6 left-8 w-2 h-2 bg-orange-500 rounded-full animate-ping delay-700"></div>
                     <div className="absolute bottom-4 right-4 w-3 h-3 bg-purple-500 rounded-full animate-ping delay-1000"></div>
                     
-                    <Map className="h-16 w-16 mb-3 text-primary drop-shadow-lg relative z-10" />
-                    <p className="font-bold text-lg text-primary relative z-10">Interactive Map</p>
-                    <p className="text-sm text-center relative z-10">
+                    <Map className="h-16 w-16 mb-3 drop-shadow-lg relative z-10" style={{ color: getIconColor() }} />
+                    <p className="font-bold text-lg relative z-10" style={{ color: getIconColor() }}>Interactive Map</p>
+                    <p className="text-sm text-center relative z-10 text-muted-foreground">
                       Set `NEXT_PUBLIC_MAPBOX_TOKEN`<br />
                       to enable live map view
                     </p>
@@ -94,30 +175,30 @@ export default function CollapsibleMapPanel({ className }: CollapsibleMapPanelPr
 
                 {/* Game-like Stats */}
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 rounded-xl p-3 border border-green-200 dark:border-green-700">
+                  <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/30 dark:to-green-800/30 rounded-xl p-3 border border-green-200 dark:border-green-700">
                     <div className="flex items-center gap-2 mb-1">
-                      <Zap className="h-4 w-4 text-green-600" />
-                      <span className="text-xs font-semibold text-green-700 dark:text-green-400">ACTIVE</span>
+                      <Zap className="h-4 w-4 text-green-600 dark:text-green-400" />
+                      <span className="text-xs font-semibold text-green-700 dark:text-green-300">ACTIVE</span>
                     </div>
-                    <div className="text-2xl font-bold text-green-600">12</div>
-                    <div className="text-xs text-green-600/70">Live Bids</div>
+                    <div className="text-2xl font-bold text-green-600 dark:text-green-400">12</div>
+                    <div className="text-xs text-green-600/70 dark:text-green-400/70">Live Bids</div>
                   </div>
                   
-                  <div className="bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20 rounded-xl p-3 border border-red-200 dark:border-red-700">
+                  <div className="bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900/30 dark:to-red-800/30 rounded-xl p-3 border border-red-200 dark:border-red-700">
                     <div className="flex items-center gap-2 mb-1">
-                      <Target className="h-4 w-4 text-red-600" />
-                      <span className="text-xs font-semibold text-red-700 dark:text-red-400">EXPIRED</span>
+                      <Target className="h-4 w-4 text-red-600 dark:text-red-400" />
+                      <span className="text-xs font-semibold text-red-700 dark:text-red-300">EXPIRED</span>
                     </div>
-                    <div className="text-2xl font-bold text-red-600">3</div>
-                    <div className="text-xs text-red-600/70">Completed</div>
+                    <div className="text-2xl font-bold text-red-600 dark:text-red-400">3</div>
+                    <div className="text-xs text-red-600/70 dark:text-red-400/70">Completed</div>
                   </div>
                 </div>
 
                 {/* State Leaderboard */}
-                <div className="bg-gradient-to-br from-surface-50 to-surface-100 dark:from-surface-700 dark:to-surface-800 rounded-xl p-3 border border-border">
+                <div className="bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-700 dark:to-slate-800 rounded-xl p-3 border border-border">
                   <div className="flex items-center gap-2 mb-2">
-                    <TrendingUp className="h-4 w-4 text-primary" />
-                    <span className="text-sm font-bold text-primary">State Leaderboard</span>
+                    <TrendingUp className="h-4 w-4" style={{ color: getIconColor() }} />
+                    <span className="text-sm font-bold" style={{ color: getIconColor() }}>State Leaderboard</span>
                   </div>
                   <div className="space-y-1">
                     {[
@@ -130,9 +211,9 @@ export default function CollapsibleMapPanel({ className }: CollapsibleMapPanelPr
                         <div className="flex items-center gap-2">
                           <span className="font-bold text-muted-foreground">#{index + 1}</span>
                           <div className={cn("w-2 h-2 rounded-full", item.color)}></div>
-                          <span className="font-semibold">{item.state}</span>
+                          <span className="font-semibold text-foreground">{item.state}</span>
                         </div>
-                        <span className="font-bold text-primary">{item.count}</span>
+                        <span className="font-bold" style={{ color: getIconColor() }}>{item.count}</span>
                       </div>
                     ))}
                   </div>
@@ -140,10 +221,20 @@ export default function CollapsibleMapPanel({ className }: CollapsibleMapPanelPr
 
                 {/* Action Button */}
                 <Button 
-                  className="w-full bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 rounded-xl font-bold shadow-lg hover:shadow-xl transition-all duration-300"
+                  className="w-full rounded-xl font-bold shadow-lg hover:shadow-xl transition-all duration-300"
+                  style={{
+                    backgroundColor: accentColor,
+                    color: getButtonTextColor()
+                  }}
                   onClick={() => setIsExpanded(false)}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = `${accentColor}dd`;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = accentColor;
+                  }}
                 >
-                  <Map className="h-4 w-4 mr-2" />
+                  <Map className="h-4 w-4 mr-2" style={{ color: getButtonTextColor() }} />
                   Close Map
                 </Button>
               </div>

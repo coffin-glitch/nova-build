@@ -15,7 +15,7 @@ export default function ContactPage() {
           <div className="bg-white rounded-xl p-6 contact-card shadow-sm border border-gray-100" data-aos="fade-up">
             <h2 className="text-xl font-semibold text-gray-800 mb-6">Send us a message</h2>
             
-            <form className="space-y-6">
+            <form onSubmit={(e) => e.preventDefault()} className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-2">Full Name</label>
