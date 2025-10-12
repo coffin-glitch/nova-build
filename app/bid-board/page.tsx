@@ -1,10 +1,18 @@
-import { Suspense } from "react";
-import { listActiveTelegramBids } from "@/lib/auctions";
-import PageHeader from "@/components/layout/PageHeader";
-import BidBoardClient from "./BidBoardClient";
 import CollapsibleMapPanel from "@/components/bid-board/CollapsibleMapPanel";
+import PageHeader from "@/components/layout/PageHeader";
+import { listActiveTelegramBids } from "@/lib/auctions";
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
+import { Suspense } from "react";
+import BidBoardClient from "./BidBoardClient";
 
 export default async function BidBoardPage() {
+  const { userId } = await auth();
+  
+  if (!userId) {
+    redirect('/sign-in');
+  }
+
   // Fetch initial data server-side
   const initialBids = await listActiveTelegramBids({ limit: 50 });
 

@@ -1,20 +1,18 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { ThemeToggle } from "@/components/layout/ThemeToggle";
+import { useUserPreferences } from "@/components/providers/UserPreferencesProvider";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { ColorPalette } from "@/components/ui/ColorPalette";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { useAccentColor } from "@/hooks/useAccentColor";
+import { UserButton, useUser } from "@clerk/nextjs";
+import { Bell, BookOpen, DollarSign, FileText, Gavel, HandCoins, Menu, Package, Search, Shield, Truck, X } from "lucide-react";
+import { useTheme } from "next-themes";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { UserButton, useUser } from "@clerk/nextjs";
-import { Menu, X, Bell, Truck, Search, Gavel, BookOpen, DollarSign, Shield, Package, FileText, HandCoins } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Badge } from "@/components/ui/badge";
-import { ThemeToggle } from "@/components/layout/ThemeToggle";
-import { ColorPalette } from "@/components/ui/ColorPalette";
-import { useUserPreferences } from "@/components/providers/UserPreferencesProvider";
-import { useAccentColor } from "@/hooks/useAccentColor";
-import { useTheme } from "next-themes";
-import { useIsAdmin } from "@/hooks/useUserRole";
-import { cn } from "@/lib/utils";
+import { useEffect, useState } from "react";
 
 const navigation = [
   { name: "Home", href: "/", icon: Truck },

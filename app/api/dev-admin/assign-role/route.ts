@@ -1,5 +1,5 @@
+import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
-import sql from "@/lib/db.server";
 
 export async function POST(request: NextRequest) {
   try {
@@ -39,14 +39,14 @@ export async function POST(request: NextRequest) {
         console.log("❌ Both column names failed, creating table...");
         // Create table and try again
         await sql`
-          CREATE TABLE IF NOT EXISTS public.user_roles (
-            user_id text primary key,
-            role text not null check (role in ('admin', 'carrier')),
-            created_at timestamptz not null default now()
+          CREATE TABLE IF NOT EXISTS user_roles (
+            user_id TEXT PRIMARY KEY,
+            role TEXT NOT NULL CHECK (role IN ('admin', 'carrier')),
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
           )
         `;
         await sql`
-          CREATE INDEX IF NOT EXISTS idx_user_roles_role ON public.user_roles(role)
+          CREATE INDEX IF NOT EXISTS idx_user_roles_role ON user_roles(role)
         `;
         await sql`
           INSERT INTO user_roles (user_id, role, created_at)

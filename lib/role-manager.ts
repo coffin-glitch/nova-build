@@ -1,4 +1,4 @@
-import sql from "@/lib/db.server";
+import sql from "@/lib/db";
 
 export type UserRole = "admin" | "carrier" | "none";
 
@@ -30,15 +30,19 @@ class OptimizedRoleManager {
    */
   async getUserRole(userId: string): Promise<UserRole> {
     try {
+      console.log("🔍 Getting role for user:", userId);
+      
       // Check memory cache first
       const cached = this.roleCache.get(userId);
       if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
+        console.log("📦 Using memory cache:", cached.role);
         return cached.role;
       }
 
       // Check database cache
       const dbCached = await this.getCachedRoleFromDB(userId);
       if (dbCached && this.isDBCacheValid(dbCached)) {
+        console.log("🗄️ Using database cache:", dbCached.role);
         // Update memory cache
         this.roleCache.set(userId, {
           role: dbCached.role,
@@ -52,6 +56,7 @@ class OptimizedRoleManager {
 
       // Return cached role even if stale, or default to carrier
       if (dbCached) {
+        console.log("🔄 Using stale database cache:", dbCached.role);
         this.roleCache.set(userId, {
           role: dbCached.role,
           timestamp: Date.now()
@@ -62,6 +67,7 @@ class OptimizedRoleManager {
       // Fallback to legacy user_roles table
       const legacyRole = await this.getLegacyRole(userId);
       if (legacyRole) {
+        console.log("📜 Using legacy role:", legacyRole);
         // Update cache with legacy role
         await this.updateCachedRoleFromLegacy(userId, legacyRole);
         this.roleCache.set(userId, {
@@ -73,6 +79,7 @@ class OptimizedRoleManager {
 
       // Default to carrier for authenticated users
       const defaultRole: UserRole = "carrier";
+      console.log("🔧 Using default role:", defaultRole);
       this.roleCache.set(userId, {
         role: defaultRole,
         timestamp: Date.now()
@@ -116,6 +123,7 @@ class OptimizedRoleManager {
       if (result.length === 0) return null;
       
       const row = result[0];
+      console.log("🔍 Found cached role:", row);
       return {
         clerk_user_id: row.clerk_user_id,
         role: row.role as UserRole,
@@ -205,18 +213,12 @@ class OptimizedRoleManager {
           email, 
           last_synced, 
           clerk_updated_at
-        ) VALUES (
-          ${clerkUser.id},
-          ${role},
-          ${email},
-          CURRENT_TIMESTAMP,
-          ${clerkUpdatedAt}
-        )
+        ) VALUES (${clerkUser.id}, ${role}, ${email}, NOW(), ${clerkUpdatedAt})
         ON CONFLICT (clerk_user_id) 
         DO UPDATE SET 
           role = ${role},
           email = ${email},
-          last_synced = CURRENT_TIMESTAMP,
+          last_synced = NOW(),
           clerk_updated_at = ${clerkUpdatedAt}
       `;
     } catch (error) {
@@ -268,7 +270,7 @@ class OptimizedRoleManager {
   private async getLegacyRole(userId: string): Promise<UserRole | null> {
     try {
       const result = await sql`
-        SELECT role FROM user_roles WHERE clerk_user_id = ${userId}
+        SELECT role FROM user_roles WHERE user_id = ${userId}
         LIMIT 1
       `;
       
@@ -295,17 +297,11 @@ class OptimizedRoleManager {
           email, 
           last_synced, 
           clerk_updated_at
-        ) VALUES (
-          ${userId},
-          ${role},
-          'legacy@example.com',
-          CURRENT_TIMESTAMP,
-          0
-        )
+        ) VALUES (${userId}, ${role}, 'legacy@example.com', NOW(), 0)
         ON CONFLICT (clerk_user_id) 
         DO UPDATE SET 
           role = ${role},
-          last_synced = CURRENT_TIMESTAMP
+          last_synced = NOW()
       `;
     } catch (error) {
       console.error("Error updating cache from legacy:", error);

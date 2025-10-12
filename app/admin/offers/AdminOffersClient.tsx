@@ -1,293 +1,631 @@
 "use client";
 
-import { useState } from "react";
-import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { 
-  CheckCircle, 
-  XCircle, 
-  Clock, 
-  DollarSign,
-  MapPin,
-  Truck,
-  User,
-  Calendar,
-  Eye
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
+import { useAccentColor } from "@/hooks/useAccentColor";
+import {
+    ArrowUpDown,
+    Calendar,
+    CheckCircle2,
+    Clock,
+    Crown,
+    DollarSign,
+    Filter,
+    MessageSquare,
+    RefreshCw,
+    Search,
+    Shield,
+    TrendingUp,
+    Truck,
+    XCircle,
+    Zap
 } from "lucide-react";
+import { useTheme } from "next-themes";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import useSWR from "swr";
-import { getLoadOffers, acceptOffer, rejectOffer } from "@/lib/actions";
 
 interface Offer {
   id: number;
-  load_id: number;
-  clerk_user_id: string;
-  price: number;
-  notes: string | null;
-  status: string;
+  load_rr_number: string;
+  carrier_user_id: string;
+  offer_amount: number;
+  notes?: string;
+  status: 'pending' | 'accepted' | 'rejected' | 'countered';
+  counter_amount?: number;
+  admin_notes?: string;
   created_at: string;
   updated_at: string;
-  load_id: string;
-  origin: string;
-  destination: string;
-  load_rate: number;
-  equipment_type: string;
-  miles: number;
+  origin_city?: string;
+  origin_state?: string;
+  destination_city?: string;
+  destination_state?: string;
+  pickup_date?: string;
+  delivery_date?: string;
+  equipment?: string;
+  weight?: number;
+  carrier_email?: string;
 }
 
-interface AdminOffersClientProps {
-  initialOffers: Offer[];
-}
-
-export function AdminOffersClient({ initialOffers }: AdminOffersClientProps) {
+export default function AdminOffersClient() {
+  const [offers, setOffers] = useState<Offer[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selectedOffer, setSelectedOffer] = useState<Offer | null>(null);
-  const [isProcessing, setIsProcessing] = useState<number | null>(null);
+  const [actionDialogOpen, setActionDialogOpen] = useState(false);
+  const [actionType, setActionType] = useState<'accept' | 'reject' | 'counter'>('accept');
+  const [counterAmount, setCounterAmount] = useState("");
+  const [adminNotes, setAdminNotes] = useState("");
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<"newest" | "oldest" | "amount">("newest");
 
-  // Use SWR for real-time updates
-  const { data: offers = initialOffers } = useSWR(
-    "admin-offers",
-    getLoadOffers,
-    {
-      refreshInterval: 10000, // 10 seconds
-      fallbackData: initialOffers,
+  const { accentColor } = useAccentColor();
+  const { theme } = useTheme();
+
+  const getButtonTextColor = () => {
+    if (accentColor === 'hsl(0, 0%, 100%)') {
+      return '#000000';
     }
-  );
+    return '#ffffff';
+  };
+
+  useEffect(() => {
+    fetchOffers();
+    // Set up real-time updates every 30 seconds
+    const interval = setInterval(fetchOffers, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const fetchOffers = async () => {
+    try {
+      const response = await fetch('/api/offers');
+      if (!response.ok) throw new Error('Failed to fetch offers');
+      
+      const data = await response.json();
+      setOffers(data.offers || []);
+    } catch (error) {
+      toast.error('Failed to load offers');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleOfferAction = async () => {
+    if (!selectedOffer) return;
+
+    setIsProcessing(true);
+    try {
+      const response = await fetch(`/api/offers/${selectedOffer.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          offerId: selectedOffer.id,
+          action: actionType,
+          counterAmount: actionType === 'counter' ? Math.round(Number(counterAmount) * 100) : undefined,
+          adminNotes: adminNotes.trim() || undefined,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Failed to process offer');
+
+      toast.success(`Offer ${actionType}ed successfully!`);
+      setActionDialogOpen(false);
+      setSelectedOffer(null);
+      setCounterAmount("");
+      setAdminNotes("");
+      fetchOffers();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to process offer');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const formatPrice = (amount: number) => {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount / 100);
+  };
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",
+      year: "numeric",
       hour: "2-digit",
       minute: "2-digit"
     });
   };
 
-  const getStatusBadge = (status: string) => {
+  const formatRoute = (offer: Offer) => {
+    const origin = offer.origin_city && offer.origin_state 
+      ? `${offer.origin_city}, ${offer.origin_state}` 
+      : "Origin TBD";
+    const destination = offer.destination_city && offer.destination_state 
+      ? `${offer.destination_city}, ${offer.destination_state}` 
+      : "Destination TBD";
+    return `${origin} → ${destination}`;
+  };
+
+  const getStatusColor = (status: string) => {
     switch (status) {
-      case "accepted":
-        return <Badge className="bg-green-500/10 text-green-500 border-green-500/20">Accepted</Badge>;
-      case "rejected":
-        return <Badge className="bg-red-500/10 text-red-500 border-red-500/20">Rejected</Badge>;
-      case "countered":
-        return <Badge className="bg-orange-500/10 text-orange-500 border-orange-500/20">Countered</Badge>;
-      default:
-        return <Badge className="bg-blue-500/10 text-blue-500 border-blue-500/20">Pending</Badge>;
+      case 'pending': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 border-yellow-200 dark:border-yellow-800';
+      case 'accepted': return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 border-green-200 dark:border-green-800';
+      case 'rejected': return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 border-red-200 dark:border-red-800';
+      case 'countered': return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 border-blue-200 dark:border-blue-800';
+      default: return 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200 border-gray-200 dark:border-gray-800';
     }
   };
 
-  const handleAcceptOffer = async (offerId: number) => {
-    setIsProcessing(offerId);
-    try {
-      await acceptOffer(offerId);
-      toast.success("Offer accepted successfully");
-    } catch (error) {
-      console.error("Error accepting offer:", error);
-      toast.error("Failed to accept offer");
-    } finally {
-      setIsProcessing(null);
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'pending': return <Clock className="h-4 w-4" />;
+      case 'accepted': return <CheckCircle2 className="h-4 w-4" />;
+      case 'rejected': return <XCircle className="h-4 w-4" />;
+      case 'countered': return <TrendingUp className="h-4 w-4" />;
+      default: return <Clock className="h-4 w-4" />;
     }
   };
 
-  const handleRejectOffer = async (offerId: number) => {
-    setIsProcessing(offerId);
-    try {
-      await rejectOffer(offerId);
-      toast.success("Offer rejected successfully");
-    } catch (error) {
-      console.error("Error rejecting offer:", error);
-      toast.error("Failed to reject offer");
-    } finally {
-      setIsProcessing(null);
+  // Filter and sort offers
+  const filteredOffers = offers.filter(offer => {
+    const matchesSearch = searchTerm === "" || 
+      formatRoute(offer).toLowerCase().includes(searchTerm.toLowerCase()) ||
+      offer.load_rr_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      offer.carrier_email?.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesStatus = statusFilter === "all" || offer.status === statusFilter;
+    
+    return matchesSearch && matchesStatus;
+  }).sort((a, b) => {
+    switch (sortBy) {
+      case "newest": return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      case "oldest": return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      case "amount": return b.offer_amount - a.offer_amount;
+      default: return 0;
     }
-  };
+  });
 
-  // Group offers by load
-  const groupedOffers = offers.reduce((acc, offer) => {
-    const key = offer.load_id;
-    if (!acc[key]) {
-      acc[key] = [];
-    }
-    acc[key].push(offer);
-    return acc;
-  }, {} as Record<string, Offer[]>);
+  const pendingOffers = filteredOffers.filter(o => o.status === 'pending');
+  const processedOffers = filteredOffers.filter(o => o.status !== 'pending');
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-center space-y-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <p className="text-muted-foreground">Loading offers...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6">
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card className="card-premium p-4 text-center">
-          <div className="text-2xl font-bold text-primary">{offers.length}</div>
-          <div className="text-sm text-muted-foreground">Total Offers</div>
+    <div className="space-y-8">
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <Card className="relative overflow-hidden bg-gradient-to-br from-yellow-50 to-yellow-100 dark:from-yellow-950/50 dark:to-yellow-900/50 border-yellow-200 dark:border-yellow-800 hover:shadow-lg transition-all duration-300">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200">Pending Offers</p>
+                <p className="text-3xl font-bold text-yellow-900 dark:text-yellow-100">{pendingOffers.length}</p>
+                <p className="text-xs text-yellow-700 dark:text-yellow-300 mt-1">Awaiting review</p>
+              </div>
+              <div className="p-3 rounded-full bg-yellow-200 dark:bg-yellow-800">
+                <Clock className="h-6 w-6 text-yellow-800 dark:text-yellow-200" />
+              </div>
+            </div>
+          </CardContent>
         </Card>
-        <Card className="card-premium p-4 text-center">
-          <div className="text-2xl font-bold text-blue-500">
-            {offers.filter(o => o.status === 'pending').length}
-          </div>
-          <div className="text-sm text-muted-foreground">Pending</div>
+
+        <Card className="relative overflow-hidden bg-gradient-to-br from-green-50 to-green-100 dark:from-green-950/50 dark:to-green-900/50 border-green-200 dark:border-green-800 hover:shadow-lg transition-all duration-300">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-green-800 dark:text-green-200">Accepted</p>
+                <p className="text-3xl font-bold text-green-900 dark:text-green-100">
+                  {offers.filter(o => o.status === 'accepted').length}
+                </p>
+                <p className="text-xs text-green-700 dark:text-green-300 mt-1">Confirmed loads</p>
+              </div>
+              <div className="p-3 rounded-full bg-green-200 dark:bg-green-800">
+                <CheckCircle2 className="h-6 w-6 text-green-800 dark:text-green-200" />
+              </div>
+            </div>
+          </CardContent>
         </Card>
-        <Card className="card-premium p-4 text-center">
-          <div className="text-2xl font-bold text-green-500">
-            {offers.filter(o => o.status === 'accepted').length}
-          </div>
-          <div className="text-sm text-muted-foreground">Accepted</div>
+
+        <Card className="relative overflow-hidden bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950/50 dark:to-blue-900/50 border-blue-200 dark:border-blue-800 hover:shadow-lg transition-all duration-300">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-blue-800 dark:text-blue-200">Countered</p>
+                <p className="text-3xl font-bold text-blue-900 dark:text-blue-100">
+                  {offers.filter(o => o.status === 'countered').length}
+                </p>
+                <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">Negotiations</p>
+              </div>
+              <div className="p-3 rounded-full bg-blue-200 dark:bg-blue-800">
+                <TrendingUp className="h-6 w-6 text-blue-800 dark:text-blue-200" />
+              </div>
+            </div>
+          </CardContent>
         </Card>
-        <Card className="card-premium p-4 text-center">
-          <div className="text-2xl font-bold text-orange-500">
-            {Object.keys(groupedOffers).length}
-          </div>
-          <div className="text-sm text-muted-foreground">Loads</div>
+
+        <Card className="relative overflow-hidden bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950/50 dark:to-purple-900/50 border-purple-200 dark:border-purple-800 hover:shadow-lg transition-all duration-300">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-purple-800 dark:text-purple-200">Total Offers</p>
+                <p className="text-3xl font-bold text-purple-900 dark:text-purple-100">{offers.length}</p>
+                <p className="text-xs text-purple-700 dark:text-purple-300 mt-1">All time</p>
+              </div>
+              <div className="p-3 rounded-full bg-purple-200 dark:bg-purple-800">
+                <Crown className="h-6 w-6 text-purple-800 dark:text-purple-200" />
+              </div>
+            </div>
+          </CardContent>
         </Card>
       </div>
 
-      {/* Offers by Load */}
-      <div className="space-y-6">
-        {Object.entries(groupedOffers).map(([loadId, loadOffers]) => {
-          const bestOffer = loadOffers.reduce((best, current) => 
-            current.price > best.price ? current : best
-          );
+      {/* Controls */}
+      <Card className="p-6">
+        <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+          <div className="flex flex-col sm:flex-row gap-4 flex-1">
+            {/* Search */}
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search offers..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            
+            {/* Status Filter */}
+            <div className="flex items-center gap-2">
+              <Filter className="h-4 w-4 text-muted-foreground" />
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="px-3 py-2 border border-border rounded-md bg-background text-foreground"
+              >
+                <option value="all">All Status</option>
+                <option value="pending">Pending</option>
+                <option value="accepted">Accepted</option>
+                <option value="rejected">Rejected</option>
+                <option value="countered">Countered</option>
+              </select>
+            </div>
+
+            {/* Sort */}
+            <div className="flex items-center gap-2">
+              <ArrowUpDown className="h-4 w-4 text-muted-foreground" />
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as "newest" | "oldest" | "amount")}
+                className="px-3 py-2 border border-border rounded-md bg-background text-foreground"
+              >
+                <option value="newest">Newest First</option>
+                <option value="oldest">Oldest First</option>
+                <option value="amount">Highest Amount</option>
+              </select>
+            </div>
+          </div>
           
-          return (
-            <Card key={loadId} className="card-premium overflow-hidden">
-              <div className="p-6 border-b border-border">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-2">
-                    <h3 className="text-lg font-semibold color: hsl(var(--foreground))">
-                      Load #{loadOffers[0].load_id}
-                    </h3>
-                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                      <div className="flex items-center gap-1">
-                        <MapPin className="w-4 h-4" />
-                        <span>{loadOffers[0].origin} → {loadOffers[0].destination}</span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={fetchOffers}
+            disabled={loading}
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        </div>
+      </Card>
+
+      {/* Offers Tabs */}
+      <Tabs defaultValue="pending" className="space-y-6">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="pending" className="flex items-center gap-2">
+            <Zap className="h-4 w-4" />
+            Pending ({pendingOffers.length})
+          </TabsTrigger>
+          <TabsTrigger value="processed" className="flex items-center gap-2">
+            <Shield className="h-4 w-4" />
+            Processed ({processedOffers.length})
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="pending" className="space-y-4">
+          {pendingOffers.length === 0 ? (
+            <Card className="p-8 text-center">
+              <div className="space-y-4">
+                <div className="w-16 h-16 mx-auto bg-yellow-100 dark:bg-yellow-900/50 rounded-full flex items-center justify-center">
+                  <Clock className="h-8 w-8 text-yellow-600 dark:text-yellow-400" />
+                </div>
+                <h3 className="text-lg font-semibold text-foreground">No pending offers</h3>
+                <p className="text-muted-foreground">
+                  All offers have been processed. Check back later for new carrier submissions.
+                </p>
+              </div>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {pendingOffers.map((offer) => (
+                <Card key={offer.id} className="group hover:shadow-xl transition-all duration-300 hover:-translate-y-1 border-l-4 border-l-yellow-500">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between">
+                      <div className="space-y-1">
+                        <CardTitle className="text-lg">{formatRoute(offer)}</CardTitle>
+                        <div className="flex items-center gap-2">
+                          <Badge className={getStatusColor(offer.status)}>
+                            {getStatusIcon(offer.status)}
+                            <span className="ml-1 capitalize">{offer.status}</span>
+                          </Badge>
+                          <span className="text-sm text-muted-foreground">RR: {offer.load_rr_number}</span>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-1">
-                        <Truck className="w-4 h-4" />
-                        <span>{loadOffers[0].miles} mi • {loadOffers[0].equipment_type}</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <DollarSign className="w-4 h-4" />
-                        <span>Listed: ${loadOffers[0].load_rate.toLocaleString()}</span>
+                      <div className="text-right">
+                        <div className="text-2xl font-bold text-foreground">{formatPrice(offer.offer_amount)}</div>
+                        <div className="text-sm text-muted-foreground">Carrier Offer</div>
                       </div>
                     </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-sm text-muted-foreground">Best Offer</div>
-                    <div className="text-xl font-bold text-primary">
-                      ${bestOffer.price.toLocaleString()}
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div className="flex items-center gap-2">
+                        <Truck className="h-4 w-4 text-muted-foreground" />
+                        <span>{offer.equipment || "TBD"}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Calendar className="h-4 w-4 text-muted-foreground" />
+                        <span>{formatDate(offer.created_at)}</span>
+                      </div>
                     </div>
-                  </div>
+
+                    {offer.notes && (
+                      <div className="bg-muted/50 rounded-lg p-3">
+                        <div className="flex items-center gap-2 mb-2">
+                          <MessageSquare className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-sm font-medium">Carrier Notes</span>
+                        </div>
+                        <p className="text-sm text-muted-foreground">{offer.notes}</p>
+                      </div>
+                    )}
+
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+                        onClick={() => {
+                          setSelectedOffer(offer);
+                          setActionType('accept');
+                          setActionDialogOpen(true);
+                        }}
+                      >
+                        <CheckCircle2 className="h-4 w-4 mr-2" />
+                        Accept
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1"
+                        onClick={() => {
+                          setSelectedOffer(offer);
+                          setActionType('counter');
+                          setActionDialogOpen(true);
+                        }}
+                      >
+                        <TrendingUp className="h-4 w-4 mr-2" />
+                        Counter
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => {
+                          setSelectedOffer(offer);
+                          setActionType('reject');
+                          setActionDialogOpen(true);
+                        }}
+                      >
+                        <XCircle className="h-4 w-4 mr-2" />
+                        Reject
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="processed" className="space-y-4">
+          {processedOffers.length === 0 ? (
+            <Card className="p-8 text-center">
+              <div className="space-y-4">
+                <div className="w-16 h-16 mx-auto bg-blue-100 dark:bg-blue-900/50 rounded-full flex items-center justify-center">
+                  <Shield className="h-8 w-8 text-blue-600 dark:text-blue-400" />
+                </div>
+                <h3 className="text-lg font-semibold text-foreground">No processed offers</h3>
+                <p className="text-muted-foreground">
+                  Processed offers will appear here once you take action on pending offers.
+                </p>
+              </div>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {processedOffers.map((offer) => (
+                <Card key={offer.id} className="group hover:shadow-lg transition-all duration-300">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between">
+                      <div className="space-y-1">
+                        <CardTitle className="text-lg">{formatRoute(offer)}</CardTitle>
+                        <div className="flex items-center gap-2">
+                          <Badge className={getStatusColor(offer.status)}>
+                            {getStatusIcon(offer.status)}
+                            <span className="ml-1 capitalize">{offer.status}</span>
+                          </Badge>
+                          <span className="text-sm text-muted-foreground">RR: {offer.load_rr_number}</span>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-2xl font-bold text-foreground">{formatPrice(offer.offer_amount)}</div>
+                        <div className="text-sm text-muted-foreground">Carrier Offer</div>
+                        {offer.counter_amount && (
+                          <div className="text-lg font-semibold text-blue-600 dark:text-blue-400">
+                            {formatPrice(offer.counter_amount)}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div className="flex items-center gap-2">
+                        <Truck className="h-4 w-4 text-muted-foreground" />
+                        <span>{offer.equipment || "TBD"}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Calendar className="h-4 w-4 text-muted-foreground" />
+                        <span>{formatDate(offer.updated_at)}</span>
+                      </div>
+                    </div>
+
+                    {offer.notes && (
+                      <div className="bg-muted/50 rounded-lg p-3">
+                        <div className="flex items-center gap-2 mb-2">
+                          <MessageSquare className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-sm font-medium">Carrier Notes</span>
+                        </div>
+                        <p className="text-sm text-muted-foreground">{offer.notes}</p>
+                      </div>
+                    )}
+
+                    {offer.admin_notes && (
+                      <div className="bg-blue-50 dark:bg-blue-950/50 rounded-lg p-3">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Shield className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                          <span className="text-sm font-medium text-blue-800 dark:text-blue-200">Admin Notes</span>
+                        </div>
+                        <p className="text-sm text-blue-700 dark:text-blue-300">{offer.admin_notes}</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
+
+      {/* Action Dialog */}
+      <Dialog open={actionDialogOpen} onOpenChange={setActionDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {actionType === 'accept' && <CheckCircle2 className="h-5 w-5 text-green-500" />}
+              {actionType === 'reject' && <XCircle className="h-5 w-5 text-red-500" />}
+              {actionType === 'counter' && <TrendingUp className="h-5 w-5 text-blue-500" />}
+              {actionType === 'accept' && 'Accept Offer'}
+              {actionType === 'reject' && 'Reject Offer'}
+              {actionType === 'counter' && 'Counter Offer'}
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            {selectedOffer && (
+              <div className="bg-muted/50 rounded-lg p-3">
+                <div className="text-sm font-medium text-foreground mb-1">
+                  {formatRoute(selectedOffer)}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Carrier Offer: {formatPrice(selectedOffer.offer_amount)}
                 </div>
               </div>
+            )}
 
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Carrier</TableHead>
-                    <TableHead>Offer Price</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Submitted</TableHead>
-                    <TableHead>Notes</TableHead>
-                    <TableHead className="w-32">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {loadOffers
-                    .sort((a, b) => b.price - a.price)
-                    .map((offer) => (
-                    <TableRow key={offer.id} className="hover:bg-accent/50">
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <User className="w-4 h-4 text-muted-foreground" />
-                          <span className="font-mono text-sm">
-                            {offer.clerk_user_id.slice(-8)}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <DollarSign className="w-4 h-4 text-primary" />
-                          <span className="font-semibold text-primary">
-                            ${offer.price.toLocaleString()}
-                          </span>
-                          {offer.price === bestOffer.price && offer.status === 'pending' && (
-                            <Badge className="bg-green-500/10 text-green-500 border-green-500/20 text-xs">
-                              Best
-                            </Badge>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {getStatusBadge(offer.status)}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                          <Calendar className="w-4 h-4" />
-                          {formatDate(offer.created_at)}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="max-w-xs truncate text-sm text-muted-foreground">
-                          {offer.notes || "—"}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-1">
-                          {offer.status === 'pending' && (
-                            <>
-                              <Button
-                                size="sm"
-                                className="bg-green-500 hover:bg-green-600 text-white"
-                                onClick={() => handleAcceptOffer(offer.id)}
-                                disabled={isProcessing === offer.id}
-                              >
-                                <CheckCircle className="w-3 h-3 mr-1" />
-                                Accept
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="text-red-500 hover:text-red-600 hover:bg-red-50"
-                                onClick={() => handleRejectOffer(offer.id)}
-                                disabled={isProcessing === offer.id}
-                              >
-                                <XCircle className="w-3 h-3 mr-1" />
-                                Reject
-                              </Button>
-                            </>
-                          )}
-                          {offer.status !== 'pending' && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => setSelectedOffer(offer)}
-                            >
-                              <Eye className="w-3 h-3 mr-1" />
-                              View
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </Card>
-          );
-        })}
-      </div>
+            {actionType === 'counter' && (
+              <div className="space-y-2">
+                <Label htmlFor="counterAmount">Counter Offer Amount</Label>
+                <div className="relative">
+                  <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="counterAmount"
+                    type="number"
+                    placeholder="Enter counter offer"
+                    value={counterAmount}
+                    onChange={(e) => setCounterAmount(e.target.value)}
+                    className="pl-10"
+                    min="0"
+                    step="0.01"
+                  />
+                </div>
+              </div>
+            )}
 
-      {offers.length === 0 && (
-        <Card className="card-premium p-8 text-center">
-          <div className="space-y-4">
-            <Clock className="w-12 h-12 text-muted-foreground mx-auto" />
-            <h3 className="text-lg font-semibold color: hsl(var(--foreground))">No offers yet</h3>
-            <p className="text-muted-foreground">
-              Carriers haven't submitted any offers yet. Check back later.
-            </p>
+            <div className="space-y-2">
+              <Label htmlFor="adminNotes">Admin Notes (Optional)</Label>
+              <Textarea
+                id="adminNotes"
+                placeholder="Add any notes about this decision..."
+                value={adminNotes}
+                onChange={(e) => setAdminNotes(e.target.value)}
+                rows={3}
+                className="resize-none"
+              />
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4">
+              <Button
+                variant="outline"
+                onClick={() => setActionDialogOpen(false)}
+                disabled={isProcessing}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleOfferAction}
+                disabled={isProcessing || (actionType === 'counter' && !counterAmount)}
+                className="transition-colors"
+                style={{ 
+                  backgroundColor: actionType === 'accept' ? '#16a34a' : actionType === 'reject' ? '#dc2626' : accentColor,
+                  color: '#ffffff'
+                }}
+              >
+                {isProcessing ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2" />
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    {actionType === 'accept' && <CheckCircle2 className="h-4 w-4 mr-2" />}
+                    {actionType === 'reject' && <XCircle className="h-4 w-4 mr-2" />}
+                    {actionType === 'counter' && <TrendingUp className="h-4 w-4 mr-2" />}
+                    {actionType === 'accept' && 'Accept Offer'}
+                    {actionType === 'reject' && 'Reject Offer'}
+                    {actionType === 'counter' && 'Send Counter'}
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
-        </Card>
-      )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

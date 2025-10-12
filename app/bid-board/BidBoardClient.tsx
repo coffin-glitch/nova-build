@@ -1,36 +1,32 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import useSWR from "swr";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Glass } from "@/components/ui/glass";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { Countdown } from "@/components/ui/Countdown";
-import { 
-  Search, 
-  Filter, 
-  MapPin, 
-  Clock, 
-  Truck, 
-  DollarSign,
-  RefreshCw,
-  AlertCircle,
-  Gavel,
-  Navigation,
-  Archive,
-  Calendar,
-  SortAsc
-} from "lucide-react";
-import { formatMoney, formatDistance, formatStops, formatTimeOnly, formatPickupDateTime, formatStopCount, formatStopsDetailed } from "@/lib/format";
-import { TelegramBid } from "@/lib/auctions";
-import { toast } from "sonner";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Glass } from "@/components/ui/glass";
+import { Input } from "@/components/ui/input";
 import { MapboxMap } from "@/components/ui/MapboxMap";
 import { useAccentColor } from "@/hooks/useAccentColor";
-import { useTheme } from "next-themes";
 import { useIsAdmin } from "@/hooks/useUserRole";
+import { TelegramBid } from "@/lib/auctions";
+import { formatDistance, formatPickupDateTime, formatStopCount, formatStops, formatStopsDetailed, formatTimeOnly } from "@/lib/format";
+import {
+    Archive,
+    Calendar,
+    Clock,
+    DollarSign,
+    Gavel,
+    MapPin,
+    Navigation,
+    RefreshCw,
+    Search,
+    Truck
+} from "lucide-react";
+import { useTheme } from "next-themes";
+import { useState } from "react";
+import { toast } from "sonner";
+import useSWR from "swr";
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
@@ -51,6 +47,8 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
   const [showExpired, setShowExpired] = useState(false);
   const isAdmin = useIsAdmin();
   const [showArchived, setShowArchived] = useState(false);
+  const [archivedBids, setArchivedBids] = useState<any[]>([]);
+  const [isLoadingArchived, setIsLoadingArchived] = useState(false);
   const [archivedFilters, setArchivedFilters] = useState({
     date: "",
     city: "",
@@ -79,7 +77,7 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
   };
 
   const { data, mutate, isLoading } = useSWR(
-    `/api/telegram-bids?q=${encodeURIComponent(q)}&tag=${encodeURIComponent(tag)}&limit=50`,
+    `/api/telegram-bids?q=${encodeURIComponent(q)}&tag=${encodeURIComponent(tag)}&limit=1000&showExpired=${showExpired}&isAdmin=${isAdmin}`,
     fetcher,
     { 
       refreshInterval: 10000,
@@ -128,28 +126,34 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
     setBidNotes("");
   };
 
-  // Filter bids based on current settings
-  const filteredBids = bids.filter((bid: TelegramBid) => {
-    // Text search filter
-    if (q && !bid.bid_number.toLowerCase().includes(q.toLowerCase())) return false;
-    
-    // Tag filter
-    if (tag && bid.tag !== tag.toUpperCase()) return false;
-    
-    // Show/hide expired bids
-    if (!showExpired && bid.is_expired) return false;
-    if (showExpired && !bid.is_expired) return false;
-    
-    // For non-admin users, only show today's bids
-    if (!isAdmin && !showExpired) {
-      const today = new Date();
-      const bidDate = new Date(bid.received_at);
-      const isToday = bidDate.toDateString() === today.toDateString();
-      if (!isToday) return false;
+  const loadArchivedBids = async () => {
+    setIsLoadingArchived(true);
+    try {
+      const params = new URLSearchParams();
+      if (archivedFilters.date) params.append('date', archivedFilters.date);
+      if (archivedFilters.city) params.append('city', archivedFilters.city);
+      if (archivedFilters.state) params.append('state', archivedFilters.state);
+      if (archivedFilters.milesMin) params.append('milesMin', archivedFilters.milesMin);
+      if (archivedFilters.milesMax) params.append('milesMax', archivedFilters.milesMax);
+      if (archivedFilters.sortBy) params.append('sortBy', archivedFilters.sortBy);
+      
+      const response = await fetch(`/api/archive-bids/list?${params.toString()}`);
+      const result = await response.json();
+      
+      if (result.ok) {
+        setArchivedBids(result.data);
+      } else {
+        toast.error("Failed to load archived bids");
+      }
+    } catch (error) {
+      toast.error("Failed to load archived bids");
+    } finally {
+      setIsLoadingArchived(false);
     }
-    
-    return true;
-  });
+  };
+
+  // Filter bids based on current settings (now handled server-side)
+  const filteredBids = bids; // Server-side filtering is now implemented
 
   return (
     <div className="space-y-6">
@@ -346,7 +350,7 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
               <div className="space-y-2">
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <MapPin className="w-4 h-4" />
-                  <span className="text-sm">{formatStops(bid.stops)}</span>
+                  <span className="text-sm">{formatStops(JSON.parse(bid.stops || '[]'))}</span>
                 </div>
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <Truck className="w-4 h-4" />
@@ -358,7 +362,7 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
                 </div>
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <Navigation className="w-4 h-4" />
-                  <span className="text-sm">{formatStopCount(bid.stops)}</span>
+                  <span className="text-sm">{formatStopCount(JSON.parse(bid.stops || '[]'))}</span>
                 </div>
               </div>
 
@@ -419,7 +423,7 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
               <div className="space-y-3 p-4 bg-muted/50 rounded-lg">
                 <div className="flex items-center gap-2">
                   <MapPin className="w-4 h-4 text-muted-foreground" />
-                  <span className="text-sm">{formatStops(selectedBid.stops)}</span>
+                  <span className="text-sm">{formatStops(JSON.parse(selectedBid.stops || '[]'))}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Truck className="w-4 h-4 text-muted-foreground" />
@@ -518,7 +522,7 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
                 </div>
                 <div>
                   <label className="text-sm font-medium text-muted-foreground">Stops</label>
-                  <p className="text-lg font-semibold">{formatStopCount(viewDetailsBid.stops)}</p>
+                  <p className="text-lg font-semibold">{formatStopCount(JSON.parse(viewDetailsBid.stops || '[]'))}</p>
                 </div>
               </div>
 
@@ -538,7 +542,7 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
               <div className="space-y-3">
                 <h3 className="text-lg font-semibold">Route Details</h3>
                 <div className="space-y-2">
-                  {formatStopsDetailed(viewDetailsBid.stops).map((stop, index) => (
+                  {formatStopsDetailed(JSON.parse(viewDetailsBid.stops || '[]')).map((stop, index) => (
                     <div key={index} className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg">
                       <div className="flex items-center justify-center w-6 h-6 bg-primary text-primary-foreground rounded-full text-sm font-bold">
                         {index + 1}
@@ -547,7 +551,7 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
                         <p className="font-medium">{stop}</p>
                         <p className="text-sm text-muted-foreground">
                           {index === 0 ? 'Pickup Location' : 
-                           index === formatStopsDetailed(viewDetailsBid.stops).length - 1 ? 'Delivery Location' : 
+                           index === formatStopsDetailed(JSON.parse(viewDetailsBid.stops || '[]')).length - 1 ? 'Delivery Location' : 
                            'Stop Location'}
                         </p>
                       </div>
@@ -561,7 +565,7 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
                 <h3 className="text-lg font-semibold">Route Map</h3>
                 <div className="rounded-lg overflow-hidden border border-border/40">
                   <MapboxMap 
-                    stops={formatStopsDetailed(viewDetailsBid.stops)} 
+                    stops={formatStopsDetailed(JSON.parse(viewDetailsBid.stops || '[]'))} 
                     className="w-full"
                   />
                 </div>
@@ -705,10 +709,49 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
             {/* Archived Bids List */}
             <div className="space-y-4">
               <h3 className="text-lg font-semibold">Archived Bids</h3>
-              <div className="text-sm text-muted-foreground">
-                This feature will show all historical bids with advanced filtering options.
-                Implementation requires backend API changes to fetch archived data.
-              </div>
+              {isLoadingArchived ? (
+                <div className="text-center py-8">
+                  <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">Loading archived bids...</p>
+                </div>
+              ) : archivedBids.length === 0 ? (
+                <div className="text-center py-8">
+                  <Archive className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                  <h4 className="text-lg font-semibold mb-2">No Archived Bids Found</h4>
+                  <p className="text-sm text-muted-foreground">
+                    Try adjusting your filters or select a different date range.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 max-h-96 overflow-y-auto">
+                  {archivedBids.map((bid: any) => (
+                    <div key={`${bid.bid_number}-${bid.archived_date}`} className="p-4 bg-muted/30 rounded-lg border">
+                      <div className="flex items-center justify-between mb-2">
+                        <Badge variant="outline">#{bid.bid_number}</Badge>
+                        <Badge variant="secondary">{bid.tag}</Badge>
+                      </div>
+                      <div className="space-y-1 text-sm">
+                        <div className="flex items-center gap-2">
+                          <MapPin className="w-4 h-4 text-muted-foreground" />
+                          <span>{formatStops(bid.stops)}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Truck className="w-4 h-4 text-muted-foreground" />
+                          <span>{formatDistance(bid.distance_miles)}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Calendar className="w-4 h-4 text-muted-foreground" />
+                          <span>{new Date(bid.archived_date).toLocaleDateString()}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Gavel className="w-4 h-4 text-muted-foreground" />
+                          <span>{bid.bids_count || 0} bids</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Actions */}
@@ -720,17 +763,15 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
                 Close
               </Button>
               <Button
-                onClick={() => {
-                  // TODO: Implement archived bids search
-                  console.log('Search archived bids with filters:', archivedFilters);
-                }}
+                onClick={loadArchivedBids}
+                disabled={isLoadingArchived}
                 style={{
                   backgroundColor: accentColor,
                   color: getButtonTextColor()
                 }}
               >
                 <Search className="w-4 h-4 mr-2" />
-                Search Archived
+                {isLoadingArchived ? "Searching..." : "Search Archived"}
               </Button>
             </div>
           </div>

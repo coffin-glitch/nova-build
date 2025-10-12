@@ -1,16 +1,16 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import { Settings, X, Shield, Crown, Truck, User, Search, RefreshCw, AlertTriangle, CheckCircle } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { useIsAdmin } from "@/lib/clerk-roles";
 import { cn } from "@/lib/utils";
 import { useUser } from "@clerk/nextjs";
+import { Crown, RefreshCw, Search, Settings, Shield, Truck, User, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { useIsAdmin } from "@/hooks/useUserRole";
 
 export default function FloatingDevAdminButton() {
   const [isOpen, setIsOpen] = useState(false);
@@ -90,8 +90,10 @@ export default function FloatingDevAdminButton() {
   }, [isDragging, dragOffset]);
 
   const handleButtonClick = () => {
+    console.log("🔍 Button clicked! isDragging:", isDragging, "dragDuration:", Date.now() - dragStartTime);
     const dragDuration = Date.now() - dragStartTime;
-    if (!isDragging && dragDuration > 100) {
+    // Only open console if not dragging and enough time has passed since drag start
+    if (!isDragging && dragDuration > 10) {
       if (isAdmin) {
         // Admin users can access directly
         console.log("🎯 Admin user clicking button - opening floating dev console");
@@ -102,6 +104,8 @@ export default function FloatingDevAdminButton() {
         console.log("🔑 Non-admin user clicking button - showing key dialog");
         setShowKeyDialog(true);
       }
+    } else {
+      console.log("❌ Click ignored - dragging or too soon");
     }
   };
 
@@ -160,7 +164,7 @@ export default function FloatingDevAdminButton() {
   const loadUsers = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch('/api/dev-admin/users');
+      const response = await fetch('/api/clerk-roles?action=list');
       if (response.ok) {
         const data = await response.json();
         setUsers(data.users || []);
@@ -178,14 +182,15 @@ export default function FloatingDevAdminButton() {
   const assignRole = async (userId: string, role: "admin" | "carrier") => {
     setIsLoading(true);
     try {
-      const response = await fetch('/api/dev-admin/assign-role', {
+      const response = await fetch('/api/clerk-roles', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, role }),
+        body: JSON.stringify({ targetUserId: userId, role }),
       });
 
       if (response.ok) {
-        toast.success(`Role ${role} assigned successfully`);
+        const result = await response.json();
+        toast.success(result.message);
         loadUsers(); // Reload users
         setSelectedUser(null);
       } else {

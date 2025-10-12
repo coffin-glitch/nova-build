@@ -1,18 +1,15 @@
-import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import Link from "next/link";
-import { 
-  Truck, 
-  TrendingUp, 
-  Users, 
-  DollarSign, 
-  Clock, 
-  BarChart3,
-  FileText,
-  Upload
-} from "lucide-react";
+import { Card } from "@/components/ui/card";
 import { getAdminStats } from "@/lib/actions";
-import { requireAdmin } from "@/lib/auth";
+import { requireAdmin } from "@/lib/clerk-server";
+import {
+    FileText,
+    TrendingUp,
+    Truck,
+    Upload,
+    Users
+} from "lucide-react";
+import Link from "next/link";
 
 export default async function AdminDashboard() {
   await requireAdmin();

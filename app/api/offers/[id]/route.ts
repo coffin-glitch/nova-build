@@ -1,8 +1,12 @@
-import { roleManager } from "@/lib/role-manager";
-import { NextResponse } from "next/server";
+import { isClerkAdmin } from "@/lib/clerk-server";
+import { db } from "@/lib/db-local";
 import { auth } from "@clerk/nextjs/server";
+import { NextResponse } from "next/server";
 
-export async function PUT(req: Request) {
+export async function PUT(
+  req: Request,
+  { params }: { params: { id: string } }
+) {
   try {
     const { userId } = await auth();
     if (!userId) {
@@ -10,68 +14,72 @@ export async function PUT(req: Request) {
     }
 
     // Check if user is admin
-    const userRole = await roleManager.getUserRole(userId);
-    if (userRole !== 'admin') {
+    const isAdmin = await isClerkAdmin(userId);
+    if (!isAdmin) {
       return NextResponse.json({ error: "Only admins can manage offers" }, { status: 403 });
     }
 
     const body = await req.json();
-    const { offerId, action, counterAmount, adminNotes } = body;
+    const { action, counterAmount, adminNotes } = body;
 
-    if (!offerId || !action) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    if (!action || !['accept', 'reject', 'counter'].includes(action)) {
+      return NextResponse.json({ error: "Invalid action" }, { status: 400 });
     }
 
-    const db = sql;
+    if (action === 'counter' && !counterAmount) {
+      return NextResponse.json({ error: "Counter amount required" }, { status: 400 });
+    }
 
     // Get the current offer
-    const offer = await db`
-      SELECT * FROM load_offers WHERE id = ${offerId}
-    `;
+    const offer = db.prepare(`
+      SELECT * FROM load_offers WHERE id = ?
+    `).get(params.id);
 
-    if (!offer || offer.length === 0) {
+    if (!offer) {
       return NextResponse.json({ error: "Offer not found" }, { status: 404 });
     }
 
-    let updateQuery;
+    if (offer.status !== 'pending') {
+      return NextResponse.json({ error: "Offer is not pending" }, { status: 400 });
+    }
+
     let status;
+    let updateQuery;
 
     switch (action) {
       case 'accept':
         status = 'accepted';
-        updateQuery = db`
+        updateQuery = db.prepare(`
           UPDATE load_offers 
-          SET status = ${status}, admin_notes = ${adminNotes || ''}, updated_at = datetime('now')
-          WHERE id = ${offerId}
-        `;
+          SET status = ?, admin_notes = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `);
+        updateQuery.run(status, adminNotes || '', params.id);
         break;
       
       case 'reject':
         status = 'rejected';
-        updateQuery = db`
+        updateQuery = db.prepare(`
           UPDATE load_offers 
-          SET status = ${status}, admin_notes = ${adminNotes || ''}, updated_at = datetime('now')
-          WHERE id = ${offerId}
-        `;
+          SET status = ?, admin_notes = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `);
+        updateQuery.run(status, adminNotes || '', params.id);
         break;
       
       case 'counter':
-        if (!counterAmount) {
-          return NextResponse.json({ error: "Counter amount required" }, { status: 400 });
-        }
         status = 'countered';
-        updateQuery = db`
+        updateQuery = db.prepare(`
           UPDATE load_offers 
-          SET status = ${status}, counter_amount = ${counterAmount}, admin_notes = ${adminNotes || ''}, updated_at = datetime('now')
-          WHERE id = ${offerId}
-        `;
+          SET status = ?, counter_amount = ?, admin_notes = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `);
+        updateQuery.run(status, counterAmount, adminNotes || '', params.id);
         break;
       
       default:
         return NextResponse.json({ error: "Invalid action" }, { status: 400 });
     }
-
-    await updateQuery;
 
     return NextResponse.json({ 
       success: true, 
@@ -84,4 +92,3 @@ export async function PUT(req: Request) {
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
-

@@ -1,14 +1,15 @@
-import type { Metadata } from "next";
-import { Inter } from "next/font/google";
-import "./globals.css";
-import { ClerkProvider } from "@clerk/nextjs";
-import { Toaster } from "sonner";
-import { ThemeProvider } from "next-themes";
-import { UserPreferencesProvider } from "@/components/providers/UserPreferencesProvider";
-import SiteHeader from "@/components/layout/SiteHeader";
+import { CarrierVerificationConsole } from "@/components/admin/CarrierVerificationConsole";
 import SiteFooter from "@/components/layout/SiteFooter";
+import SiteHeader from "@/components/layout/SiteHeaderNew";
+import { UserPreferencesProvider } from "@/components/providers/UserPreferencesProvider";
 import FloatingChatButton from "@/components/ui/FloatingChatButton";
 import FloatingDevAdminButton from "@/components/ui/FloatingDevAdminButton";
+import { ClerkProvider } from "@clerk/nextjs";
+import type { Metadata } from "next";
+import { ThemeProvider } from "next-themes";
+import { Inter } from "next/font/google";
+import { Toaster } from "sonner";
+import "./globals.css";
 
 const inter = Inter({ 
   subsets: ["latin"], 
@@ -84,6 +85,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             
             {/* Floating Dev Admin Button */}
             <FloatingDevAdminButton />
+            
+            {/* Carrier Verification Console */}
+            <CarrierVerificationConsole />
             </ClerkProvider>
           </UserPreferencesProvider>
         </ThemeProvider>

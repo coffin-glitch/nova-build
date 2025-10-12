@@ -1,25 +1,21 @@
-import { roleManager } from "@/lib/role-manager";
-import { redirect } from "next/navigation";
-import { auth } from "@clerk/nextjs/server";
-import AdminOffersClient from "./view.client";
+import { requireAdmin } from "@/lib/clerk-server";
+import AdminOffersClient from "./AdminOffersClient";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminOffersPage() {
-  const { userId } = await auth();
-  if (!userId) {
-    redirect("/sign-in");
-  }
-
-  // Check if user is admin
-  const userRole = await roleManager.getUserRole(userId);
-  if (userRole !== 'admin') {
-    redirect("/");
-  }
+  // This will redirect if user is not admin
+  await requireAdmin();
 
   return (
-    <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
-      <h1 className="text-2xl font-bold mb-6 text-foreground">Manage Offers</h1>
+    <div className="space-y-8">
+      <div className="space-y-4">
+        <h1 className="text-3xl font-bold text-foreground">Offers Management</h1>
+        <p className="text-muted-foreground">
+          Review and manage carrier offers on published loads. Accept, reject, or counter offers to optimize your freight operations.
+        </p>
+      </div>
+      
       <AdminOffersClient />
     </div>
   );

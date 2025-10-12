@@ -1,15 +1,15 @@
 "use client";
 
-import { useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { DollarSign, MessageSquare, Send } from "lucide-react";
-import { toast } from "sonner";
+import { Textarea } from "@/components/ui/textarea";
 import { useAccentColor } from "@/hooks/useAccentColor";
+import { DollarSign, MessageSquare, Send } from "lucide-react";
 import { useTheme } from "next-themes";
+import { useState } from "react";
+import { toast } from "sonner";
 
 interface OfferDialogProps {
   loadRrNumber: string;
@@ -76,7 +76,7 @@ export default function OfferDialog({ loadRrNumber, loadDetails, onOfferSubmitte
         },
         body: JSON.stringify({
           loadRrNumber,
-          offerAmount: Math.round(Number(offerAmount) * 100), // Convert to cents
+          offerAmount: parseFloat(offerAmount),
           notes: notes.trim() || undefined,
         }),
       });

@@ -10,13 +10,7 @@ const nextConfig = {
     },
   }),
 
-  // Experimental features for better development experience
-  experimental: {
-    // Enable faster refresh
-    optimizePackageImports: ['lucide-react', '@radix-ui/react-icons'],
-    // Better error handling
-    serverComponentsExternalPackages: ['better-sqlite3'],
-  },
+  // Removed experimental features for stability
 
   // Webpack configuration for better caching
   webpack: (config, { dev, isServer }) => {

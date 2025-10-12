@@ -1,6 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-import sql from "./db.server";
+import sqlTemplate from "./db";
 
 /** Redirect to /sign-in if not authenticated. Returns userId on success. */
 export async function requireSignedIn() {
@@ -15,7 +15,7 @@ export async function getUserRole(userId: string): Promise<"admin" | "carrier"> 
     console.log("🔍 getUserRole: Checking role for user:", userId);
     
     // Try with 'user_id' first (newer schema)
-    let result = await sql`
+    let result = await sqlTemplate`
       SELECT role FROM user_roles WHERE user_id = ${userId}
     `;
     
@@ -24,7 +24,7 @@ export async function getUserRole(userId: string): Promise<"admin" | "carrier"> 
     if (result.length === 0) {
       console.log("🔄 getUserRole: No result with user_id, trying clerk_user_id...");
       // Fallback to 'clerk_user_id' (older schema)
-      result = await sql`
+      result = await sqlTemplate`
         SELECT role FROM user_roles WHERE clerk_user_id = ${userId}
       `;
       console.log("📊 getUserRole: clerk_user_id query result:", result);
@@ -70,17 +70,17 @@ export async function setUserRole(userId: string, role: "admin" | "carrier") {
   try {
     // Try with 'user_id' first (newer schema)
     try {
-      await sql`
-        INSERT INTO user_roles (user_id, role) 
-        VALUES (${userId}, ${role})
+      await sqlTemplate`
+        INSERT INTO user_roles (user_id, role, created_at) 
+        VALUES (${userId}, ${role}, NOW())
         ON CONFLICT (user_id) 
         DO UPDATE SET role = ${role}
       `;
     } catch (error) {
       // Fallback to 'clerk_user_id' (older schema)
-      await sql`
-        INSERT INTO user_roles (clerk_user_id, role) 
-        VALUES (${userId}, ${role})
+      await sqlTemplate`
+        INSERT INTO user_roles (clerk_user_id, role, created_at) 
+        VALUES (${userId}, ${role}, NOW())
         ON CONFLICT (clerk_user_id) 
         DO UPDATE SET role = ${role}
       `;

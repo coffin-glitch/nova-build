@@ -1,26 +1,81 @@
 "use client";
 
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import SectionCard from "@/components/layout/SectionCard";
 import PageHeader from "@/components/layout/PageHeader";
-import { 
-  Truck, 
-  Zap, 
-  Shield, 
-  Clock, 
-  MapPin, 
-  DollarSign,
-  Users,
-  CheckCircle,
-  ArrowRight,
-  Star
-} from "lucide-react";
+import SectionCard from "@/components/layout/SectionCard";
+import { Button } from "@/components/ui/button";
 import { useAccentColor } from "@/hooks/useAccentColor";
+import { useUser } from "@clerk/nextjs";
+import {
+    ArrowRight,
+    CheckCircle,
+    Clock,
+    DollarSign,
+    MapPin,
+    Shield,
+    Truck,
+    Zap
+} from "lucide-react";
+import Link from "next/link";
 
 export default function HomePage() {
   const { accentColor } = useAccentColor();
+  const { user, isLoaded } = useUser();
+
+  // Show landing page for unauthenticated users
+  if (!isLoaded || !user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="max-w-4xl mx-auto text-center px-4">
+          <div className="mb-8">
+            <div className="mx-auto w-20 h-20 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center mb-6 shadow-lg">
+              <Truck className="w-10 h-10 text-white" />
+            </div>
+            <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight mb-6">
+              Welcome to{" "}
+              <span className="bg-gradient-to-r from-blue-500 via-purple-600 to-indigo-600 bg-clip-text text-transparent">
+                NOVA Build
+              </span>
+            </h1>
+            <p className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto leading-relaxed">
+              The modern logistics platform connecting carriers with premium freight opportunities. 
+              Real-time bidding, smart matching, and dedicated lanes for the freight industry.
+            </p>
+          </div>
+
+          {/* Features */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+            <div className="flex items-center justify-center space-x-3 p-4 rounded-lg bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/50 dark:to-purple-950/50">
+              <Zap className="h-6 w-6 text-blue-600" />
+              <span className="font-medium">Smart Load Matching</span>
+            </div>
+            <div className="flex items-center justify-center space-x-3 p-4 rounded-lg bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-950/50 dark:to-indigo-950/50">
+              <Clock className="h-6 w-6 text-purple-600" />
+              <span className="font-medium">Real-time Bidding</span>
+            </div>
+            <div className="flex items-center justify-center space-x-3 p-4 rounded-lg bg-gradient-to-r from-indigo-50 to-blue-50 dark:from-indigo-950/50 dark:to-blue-950/50">
+              <Shield className="h-6 w-6 text-indigo-600" />
+              <span className="font-medium">Secure & Reliable</span>
+            </div>
+          </div>
+
+          {/* CTA */}
+          <div className="space-y-4">
+            <Button asChild size="lg" className="w-full max-w-md bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white shadow-lg">
+              <Link href="/sign-in" className="flex items-center justify-center space-x-2">
+                <span>Get Started</span>
+                <ArrowRight className="w-4 h-4" />
+              </Link>
+            </Button>
+            <p className="text-sm text-muted-foreground">
+              Join thousands of carriers already using NOVA Build
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
   
+  // Show full homepage for authenticated users
   return (
     <div className="min-h-screen">
       {/* Hero Section */}

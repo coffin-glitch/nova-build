@@ -1,8 +1,15 @@
-import { Suspense } from "react";
-import PageHeader from "@/components/layout/PageHeader";
 import FindLoadsClient from "@/components/find-loads/FindLoadsClient";
+import PageHeader from "@/components/layout/PageHeader";
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
+import { Suspense } from "react";
 
-export default function FindLoadsPage() {
+export default async function FindLoadsPage() {
+  const { userId } = await auth();
+  
+  if (!userId) {
+    redirect('/sign-in');
+  }
   return (
     <div className="py-8">
       <PageHeader 

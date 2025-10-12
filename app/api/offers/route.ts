@@ -1,16 +1,20 @@
-import { roleManager } from "@/lib/role-manager";
-import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { getClerkUserRole, isClerkCarrier } from "@/lib/clerk-server";
 import { db } from "@/lib/db-local";
+import { auth } from "@clerk/nextjs/server";
+import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
   try {
-    // For now, allow unauthenticated requests for testing
-    // TODO: Implement proper authentication
-    const { userId } = await auth().catch(() => ({ userId: null }));
-    
-    // If no user ID, create a test user ID for demo purposes
-    const testUserId = userId || 'test_carrier_user';
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Check if user is a carrier
+    const isCarrier = await isClerkCarrier(userId);
+    if (!isCarrier) {
+      return NextResponse.json({ error: "Only carriers can make offers" }, { status: 403 });
+    }
 
     const body = await req.json();
     const { loadRrNumber, offerAmount, notes } = body;
@@ -18,13 +22,6 @@ export async function POST(req: Request) {
     if (!loadRrNumber || !offerAmount) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
-
-        // For testing, skip role check
-        // TODO: Implement proper role checking
-        // const userRole = await roleManager.getUserRole(testUserId);
-        // if (userRole !== 'carrier') {
-        //   return NextResponse.json({ error: "Only carriers can make offers" }, { status: 403 });
-        // }
 
     // Check if load exists and is published
     const load = db.prepare(`
@@ -36,21 +33,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Load not found or not published" }, { status: 404 });
     }
 
-        // Check if carrier already has an offer for this load
-        const existingOffer = db.prepare(`
-          SELECT id FROM load_offers 
-          WHERE rr_number = ? AND user_id = ?
-        `).all(loadRrNumber, testUserId);
+    // Check if carrier already has an offer for this load
+    const existingOffer = db.prepare(`
+      SELECT id FROM load_offers 
+      WHERE load_rr_number = ? AND carrier_user_id = ?
+    `).all(loadRrNumber, userId);
 
     if (existingOffer && existingOffer.length > 0) {
       return NextResponse.json({ error: "You already have an offer for this load" }, { status: 409 });
     }
 
-        // Create the offer
-        const result = db.prepare(`
-          INSERT INTO load_offers (rr_number, user_id, amount_cents, note)
-          VALUES (?, ?, ?, ?)
-        `).run(loadRrNumber, testUserId, offerAmount * 100, notes || '');
+    // Create the offer
+    const result = db.prepare(`
+      INSERT INTO load_offers (load_rr_number, carrier_user_id, offer_amount, notes, status)
+      VALUES (?, ?, ?, ?, 'pending')
+    `).run(loadRrNumber, userId, offerAmount, notes || '');
 
     return NextResponse.json({ 
       success: true, 
@@ -71,7 +68,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const userRole = await roleManager.getUserRole(userId);
+    const userRole = await getClerkUserRole(userId);
 
     if (userRole === 'admin') {
       // Admin can see all offers
