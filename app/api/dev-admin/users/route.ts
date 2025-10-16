@@ -1,4 +1,4 @@
-import sqlTemplate from "@/lib/db";
+import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
@@ -94,7 +94,7 @@ export async function GET(request: NextRequest) {
     let userRoles;
     try {
       // Try with 'user_id' first (newer schema)
-      userRoles = await sqlTemplate`
+      userRoles = await sql`
         SELECT 
           user_id,
           role,
@@ -106,7 +106,7 @@ export async function GET(request: NextRequest) {
       console.log("❌ 'user_id' column not found, trying 'clerk_user_id'...");
       try {
         // Fallback to 'clerk_user_id' (older schema)
-        userRoles = await sqlTemplate`
+        userRoles = await sql`
           SELECT 
             clerk_user_id as user_id,
             role,
@@ -117,14 +117,14 @@ export async function GET(request: NextRequest) {
       } catch (fallbackError) {
         console.log("❌ user_roles table doesn't exist, creating it...");
         // Create the table if it doesn't exist
-        await sqlTemplate`
+        await sql`
           CREATE TABLE IF NOT EXISTS user_roles (
             user_id TEXT PRIMARY KEY,
             role TEXT NOT NULL CHECK (role IN ('admin', 'carrier')),
             created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
           )
         `;
-        await sqlTemplate`
+        await sql`
           CREATE INDEX IF NOT EXISTS idx_user_roles_role ON user_roles(role)
         `;
         userRoles = [];

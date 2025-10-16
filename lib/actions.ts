@@ -2,8 +2,9 @@
 
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
+import { getUserRole } from "./auth";
 import { requireAdmin } from "./clerk-server";
-import sqlTemplate from "./db";
+import sql from "./db";
 
 // Profile Actions
 export async function getCarrierProfile() {
@@ -11,7 +12,7 @@ export async function getCarrierProfile() {
   if (!userId) return null;
 
   try {
-    const profile = await sqlTemplate`
+    const profile = await sql`
       SELECT mc_number, dot_number, phone, dispatch_email 
       FROM carrier_profiles 
       WHERE user_id = ${userId}
@@ -33,7 +34,7 @@ export async function updateCarrierProfile(formData: FormData) {
     const phone = formData.get("phone") as string;
     const dispatch_email = formData.get("dispatch_email") as string;
 
-    await sqlTemplate`
+    await sql`
       INSERT INTO carrier_profiles (user_id, mc_number, dot_number, phone, dispatch_email, updated_at)
       VALUES (${userId}, ${mc_number || null}, ${dot_number || null}, ${phone || null}, ${dispatch_email || null}, NOW())
       ON CONFLICT (user_id) 
@@ -63,26 +64,26 @@ export async function getAdminStats() {
       carriersStats,
       todayBidsStats
     ] = await Promise.all([
-      sqlTemplate`
+      sql`
         SELECT 
           COUNT(*) as total_loads,
           COUNT(*) FILTER (WHERE published = true) as published_loads
         FROM loads
       `,
-      sqlTemplate`
+      sql`
         SELECT 
           COUNT(*) as total_bids,
           COUNT(*) FILTER (WHERE expires_at > NOW()) as active_bids
         FROM telegram_bids
       `,
-      sqlTemplate`
+      sql`
         SELECT 
           COUNT(*) as total_carriers,
           COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '30 days') as active_carriers
         FROM user_roles 
         WHERE role = 'carrier'
       `,
-      sqlTemplate`
+      sql`
         SELECT COUNT(*) as today_bids
         FROM telegram_bids
         WHERE DATE(received_at::timestamp) = CURRENT_DATE
@@ -115,7 +116,7 @@ export async function getAdminStats() {
 // Bid Actions
 export async function getActiveBids() {
   try {
-    const bids = await sqlTemplate`
+    const bids = await sql`
       SELECT 
         id, bid_number, distance_miles, pickup_timestamp, 
         delivery_timestamp, stops, tag, source_channel, 
@@ -133,7 +134,7 @@ export async function getActiveBids() {
 
 export async function getBidOffers(bidId: number) {
   try {
-    const offers = await sqlTemplate`
+    const offers = await sql`
       SELECT id, user_id, amount_cents, note, created_at
       FROM telegram_bid_offers
       WHERE bid_id = ${bidId}
@@ -163,7 +164,7 @@ export async function getUserRoleAction() {
 // Debug Actions
 export async function testDatabaseConnection() {
   try {
-    const result = await sqlTemplate`SELECT 1 as test`;
+    const result = await sql`SELECT 1 as test`;
     return { success: true, data: result[0] };
   } catch (error) {
     console.error("Database connection test failed:", error);
@@ -174,7 +175,7 @@ export async function testDatabaseConnection() {
 // Bid Board Actions
 export async function getDistinctTags() {
   try {
-    const result = await sqlTemplate`
+    const result = await sql`
       SELECT DISTINCT tag
       FROM telegram_bids
       WHERE tag IS NOT NULL
@@ -189,7 +190,7 @@ export async function getDistinctTags() {
 
 export async function getPublishedLoads() {
   try {
-    const result = await sqlTemplate`
+    const result = await sql`
       SELECT 
         id, 
         pickup_city || ', ' || pickup_state as origin,
@@ -219,7 +220,7 @@ export async function getLoadOffers(loadId?: number) {
   try {
     let query;
     if (loadId) {
-      query = sqlTemplate`
+      query = sql`
         SELECT 
           lo.*,
           l.load_id,
@@ -234,7 +235,7 @@ export async function getLoadOffers(loadId?: number) {
         ORDER BY lo.created_at DESC
       `;
     } else {
-      query = sqlTemplate`
+      query = sql`
         SELECT 
           lo.*,
           l.load_id,
@@ -263,7 +264,7 @@ export async function acceptOffer(offerId: number) {
     await requireAdmin();
     
     // Get offer details
-    const offer = await sqlTemplate`
+    const offer = await sql`
       SELECT lo.*, l.load_id, l.origin, l.destination
       FROM load_offers lo
       JOIN loads l ON lo.load_id = l.id
@@ -277,20 +278,20 @@ export async function acceptOffer(offerId: number) {
     const offerData = offer[0];
     
     // Create assignment
-    await sqlTemplate`
+    await sql`
       INSERT INTO assignments (load_id, clerk_user_id, accepted_price, created_at)
       VALUES (${offerData.load_id}, ${offerData.clerk_user_id}, ${offerData.price}, NOW())
     `;
     
     // Update offer status
-    await sqlTemplate`
+    await sql`
       UPDATE load_offers 
       SET status = 'accepted', updated_at = NOW()
       WHERE id = ${offerId}
     `;
     
     // Reject other offers for the same load
-    await sqlTemplate`
+    await sql`
       UPDATE load_offers 
       SET status = 'rejected', updated_at = NOW()
       WHERE load_id = ${offerData.load_id} AND id != ${offerId} AND status = 'pending'
@@ -307,7 +308,7 @@ export async function rejectOffer(offerId: number) {
   try {
     await requireAdmin();
     
-    await sqlTemplate`
+    await sql`
       UPDATE load_offers 
       SET status = 'rejected', updated_at = NOW()
       WHERE id = ${offerId}

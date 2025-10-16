@@ -10,18 +10,18 @@ import { MapboxMap } from "@/components/ui/MapboxMap";
 import { useAccentColor } from "@/hooks/useAccentColor";
 import { useIsAdmin } from "@/hooks/useUserRole";
 import { TelegramBid } from "@/lib/auctions";
-import { formatDistance, formatPickupDateTime, formatStopCount, formatStops, formatStopsDetailed, formatTimeOnly } from "@/lib/format";
+import { formatDistance, formatPickupDateTime, formatStopCount, formatStops, formatStopsDetailed } from "@/lib/format";
 import {
-    Archive,
-    Calendar,
-    Clock,
-    DollarSign,
-    Gavel,
-    MapPin,
-    Navigation,
-    RefreshCw,
-    Search,
-    Truck
+  Archive,
+  Calendar,
+  Clock,
+  DollarSign,
+  Gavel,
+  MapPin,
+  Navigation,
+  RefreshCw,
+  Search,
+  Truck
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useState } from "react";
@@ -61,10 +61,10 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
   const { accentColor, accentColorStyle, accentBgStyle } = useAccentColor();
   const { theme } = useTheme();
   
-  // Smart color handling for white accent color
+  // Smart color handling for white accent color - using stable color to prevent hydration mismatch
   const getIconColor = () => {
     if (accentColor === 'hsl(0, 0%, 100%)') {
-      return theme === 'dark' ? '#ffffff' : '#000000';
+      return '#6b7280'; // Use a neutral gray color that works in both themes
     }
     return accentColor;
   };
@@ -152,8 +152,12 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
     }
   };
 
-  // Filter bids based on current settings (now handled server-side)
-  const filteredBids = bids; // Server-side filtering is now implemented
+  // Filter bids based on current settings
+  const filteredBids = bids.filter((bid: TelegramBid) => {
+    // Apply showExpired filter
+    if (!showExpired && bid.is_expired) return false;
+    return true;
+  });
 
   return (
     <div className="space-y-6">
@@ -245,7 +249,7 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
           </div>
           
           <div className="text-sm text-muted-foreground">
-            Showing {showExpired ? "expired" : "live"} bids
+            Showing {showExpired ? "all" : "live"} bids
             {!isAdmin && !showExpired && " (today only)"}
           </div>
         </div>
@@ -259,7 +263,7 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
             <div>
               <p className="text-sm text-muted-foreground">Active Auctions</p>
               <p className="text-2xl font-bold text-foreground">
-                {bids.filter((b: TelegramBid) => !b.is_expired).length}
+                {filteredBids.filter((b: TelegramBid) => !b.is_expired).length}
               </p>
             </div>
           </div>
@@ -270,7 +274,7 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
             <div>
               <p className="text-sm text-muted-foreground">Expired</p>
               <p className="text-2xl font-bold text-foreground">
-                {bids.filter((b: TelegramBid) => b.is_expired).length}
+                {filteredBids.filter((b: TelegramBid) => b.is_expired).length}
               </p>
             </div>
           </div>
@@ -281,7 +285,7 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
             <div>
               <p className="text-sm text-muted-foreground">States</p>
               <p className="text-2xl font-bold text-foreground">
-                {new Set(bids.map((b: TelegramBid) => b.tag).filter(Boolean)).size}
+                {new Set(filteredBids.map((b: TelegramBid) => b.tag).filter(Boolean)).size}
               </p>
             </div>
           </div>
@@ -350,7 +354,7 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
               <div className="space-y-2">
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <MapPin className="w-4 h-4" />
-                  <span className="text-sm">{formatStops(JSON.parse(bid.stops || '[]'))}</span>
+                  <span className="text-sm">{formatStops(bid.stops || [])}</span>
                 </div>
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <Truck className="w-4 h-4" />
@@ -362,7 +366,7 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
                 </div>
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <Navigation className="w-4 h-4" />
-                  <span className="text-sm">{formatStopCount(JSON.parse(bid.stops || '[]'))}</span>
+                  <span className="text-sm">{formatStopCount(bid.stops || [])}</span>
                 </div>
               </div>
 
@@ -423,7 +427,7 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
               <div className="space-y-3 p-4 bg-muted/50 rounded-lg">
                 <div className="flex items-center gap-2">
                   <MapPin className="w-4 h-4 text-muted-foreground" />
-                  <span className="text-sm">{formatStops(JSON.parse(selectedBid.stops || '[]'))}</span>
+                  <span className="text-sm">{formatStops(selectedBid.stops || [])}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Truck className="w-4 h-4 text-muted-foreground" />
@@ -432,7 +436,7 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
                 <div className="flex items-center gap-2">
                   <Clock className="w-4 h-4 text-muted-foreground" />
                   <span className="text-sm">
-                    {formatTimeOnly(selectedBid.pickup_timestamp || selectedBid.received_at)} - {formatTimeOnly(selectedBid.delivery_timestamp || selectedBid.received_at)}
+                    Pickup: {formatPickupDateTime(selectedBid.pickup_timestamp)} | Delivery: {formatPickupDateTime(selectedBid.delivery_timestamp)}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -522,7 +526,7 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
                 </div>
                 <div>
                   <label className="text-sm font-medium text-muted-foreground">Stops</label>
-                  <p className="text-lg font-semibold">{formatStopCount(JSON.parse(viewDetailsBid.stops || '[]'))}</p>
+                  <p className="text-lg font-semibold">{formatStopCount(viewDetailsBid.stops || [])}</p>
                 </div>
               </div>
 
@@ -542,7 +546,7 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
               <div className="space-y-3">
                 <h3 className="text-lg font-semibold">Route Details</h3>
                 <div className="space-y-2">
-                  {formatStopsDetailed(JSON.parse(viewDetailsBid.stops || '[]')).map((stop, index) => (
+                  {formatStopsDetailed(viewDetailsBid.stops || []).map((stop, index) => (
                     <div key={index} className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg">
                       <div className="flex items-center justify-center w-6 h-6 bg-primary text-primary-foreground rounded-full text-sm font-bold">
                         {index + 1}
@@ -551,7 +555,7 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
                         <p className="font-medium">{stop}</p>
                         <p className="text-sm text-muted-foreground">
                           {index === 0 ? 'Pickup Location' : 
-                           index === formatStopsDetailed(JSON.parse(viewDetailsBid.stops || '[]')).length - 1 ? 'Delivery Location' : 
+                           index === formatStopsDetailed(viewDetailsBid.stops || []).length - 1 ? 'Delivery Location' : 
                            'Stop Location'}
                         </p>
                       </div>
@@ -565,7 +569,7 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
                 <h3 className="text-lg font-semibold">Route Map</h3>
                 <div className="rounded-lg overflow-hidden border border-border/40">
                   <MapboxMap 
-                    stops={formatStopsDetailed(JSON.parse(viewDetailsBid.stops || '[]'))} 
+                    stops={formatStopsDetailed(viewDetailsBid.stops || [])} 
                     className="w-full"
                   />
                 </div>

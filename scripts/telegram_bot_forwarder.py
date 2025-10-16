@@ -165,7 +165,7 @@ RX_TAG     = re.compile(r"^\s*#(?P<tag>[A-Za-z0-9_-]+)\s*$", re.I | re.M)
 RX_STOP    = re.compile(r"^\s*Stop\s*\d+:\s*(?P<place>.+?)\s*$", re.I | re.M)
 
 def parse_datetime_string(dt_str: str) -> Optional[datetime]:
-    """Parse datetime string in various formats and return as-is (no timezone conversion)."""
+    """Parse datetime string in various formats and return in CST timezone."""
     if not dt_str:
         return None
     
@@ -191,9 +191,10 @@ def parse_datetime_string(dt_str: str) -> Optional[datetime]:
             if fmt.endswith("%Y") and not any(x in fmt for x in ["%H", "%I"]):
                 parsed_dt = parsed_dt.replace(hour=9, minute=0, second=0)
             
-            # Return the datetime as-is (no timezone conversion)
-            # The database will store it as-is and the frontend will display it as-is
-            return parsed_dt.replace(tzinfo=timezone.utc)
+            # Set timezone to CDT since telegram messages are in local time
+            from datetime import timezone, timedelta
+            cdt_tz = timezone(timedelta(hours=-5))  # CDT is UTC-5
+            return parsed_dt.replace(tzinfo=cdt_tz)
             
         except ValueError:
             continue
@@ -216,9 +217,11 @@ def parse_datetime_string(dt_str: str) -> Optional[datetime]:
             elif ampm and ampm.upper() == 'AM' and hour == 12:
                 hour = 0
             
-            # Create datetime as-is (no timezone conversion)
-            dt = datetime(year, month, day, hour, minute, 0)
-            return dt.replace(tzinfo=timezone.utc)
+            # Create datetime with CDT timezone since telegram messages are in local time
+            from datetime import timezone, timedelta
+            cdt_tz = timezone(timedelta(hours=-5))  # CDT is UTC-5
+            dt = datetime(year, month, day, hour, minute, 0, tzinfo=cdt_tz)
+            return dt
     except Exception:
         pass
     

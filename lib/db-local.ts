@@ -1,5 +1,5 @@
-import 'dotenv/config';
 import Database from 'better-sqlite3';
+import 'dotenv/config';
 import { existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 
@@ -57,7 +57,7 @@ const createTables = () => {
     )
   `);
 
-  // Loads table
+  // Loads table (cleaned up - removed unused fields)
       db.exec(`
         CREATE TABLE IF NOT EXISTS loads (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -71,14 +71,9 @@ const createTables = () => {
           equipment TEXT,
           weight REAL,
           revenue REAL,
-          purchase REAL,
-          net REAL,
-          margin REAL,
           customer_name TEXT,
           customer_ref TEXT,
           driver_name TEXT,
-          vendor_name TEXT,
-          dispatcher_name TEXT,
           pickup_date DATE,
           pickup_time TEXT,
           delivery_date DATE,
@@ -92,18 +87,7 @@ const createTables = () => {
         )
       `);
 
-  // Telegram bid offers table
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS telegram_bid_offers (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      bid_id INTEGER NOT NULL,
-      user_id TEXT NOT NULL,
-      amount_cents INTEGER NOT NULL CHECK (amount_cents >= 0),
-      note TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (bid_id) REFERENCES telegram_bids(id) ON DELETE CASCADE
-    )
-  `);
+  // Telegram bid offers table - REMOVED (unused)
 
   // Load offers table
   db.exec(`
@@ -122,17 +106,7 @@ const createTables = () => {
     )
   `);
 
-  // Assignments table
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS assignments (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      rr_number TEXT NOT NULL,
-      user_id TEXT NOT NULL,
-      assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      status TEXT NOT NULL DEFAULT 'assigned' CHECK (status IN ('assigned', 'picked_up', 'delivered', 'cancelled')),
-      FOREIGN KEY (rr_number) REFERENCES loads(rr_number) ON DELETE CASCADE
-    )
-  `);
+  // Assignments table - REMOVED (unused)
 
   // Carrier profiles table
   db.exec(`
@@ -144,28 +118,48 @@ const createTables = () => {
       phone TEXT,
       dispatch_email TEXT,
       company_name TEXT,
+      contact_name TEXT,
+      is_locked BOOLEAN DEFAULT FALSE,
+      locked_at DATETIME,
+      locked_by TEXT,
+      lock_reason TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
 
-  // Dedicated lanes table
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS dedicated_lanes (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      title TEXT NOT NULL,
-      description TEXT,
-      rate TEXT,
-      primary_lanes TEXT,
-      contract_length TEXT,
-      client TEXT,
-      requirements TEXT, -- JSON string
-      benefits TEXT, -- JSON string
-      status TEXT DEFAULT 'active' CHECK (status IN ('active', 'upcoming', 'completed')),
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
+  // Add missing columns to existing carrier_profiles table if they don't exist
+  try {
+    db.exec(`ALTER TABLE carrier_profiles ADD COLUMN contact_name TEXT`);
+  } catch (e) {
+    // Column already exists, ignore error
+  }
+  
+  try {
+    db.exec(`ALTER TABLE carrier_profiles ADD COLUMN is_locked BOOLEAN DEFAULT FALSE`);
+  } catch (e) {
+    // Column already exists, ignore error
+  }
+  
+  try {
+    db.exec(`ALTER TABLE carrier_profiles ADD COLUMN locked_at DATETIME`);
+  } catch (e) {
+    // Column already exists, ignore error
+  }
+  
+  try {
+    db.exec(`ALTER TABLE carrier_profiles ADD COLUMN locked_by TEXT`);
+  } catch (e) {
+    // Column already exists, ignore error
+  }
+  
+  try {
+    db.exec(`ALTER TABLE carrier_profiles ADD COLUMN lock_reason TEXT`);
+  } catch (e) {
+    // Column already exists, ignore error
+  }
+
+  // Dedicated lanes table - REMOVED (unused, page uses mock data)
 };
 
 // Initialize tables

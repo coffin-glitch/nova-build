@@ -87,7 +87,7 @@ export function CarrierVerificationConsole() {
   const handleButtonClick = () => {
     const dragDuration = Date.now() - dragStartTime;
     // Only open console if not dragging and enough time has passed since drag start
-    if (!isDragging && dragDuration > 10) {
+    if (!isDragging && dragDuration < 200) {
       setIsOpen(true);
     }
   };

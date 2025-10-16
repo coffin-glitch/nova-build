@@ -1,4 +1,4 @@
-import sqlTemplate from './db';
+import sql from './db';
 import { formatCountdown } from './format';
 
 // Types
@@ -82,7 +82,7 @@ export async function listActiveTelegramBids({
 } = {}): Promise<TelegramBid[]> {
   try {
     // Create telegram_bids table if it doesn't exist
-    await sqlTemplate`
+    await sql`
       CREATE TABLE IF NOT EXISTS telegram_bids (
         id SERIAL PRIMARY KEY,
         bid_number TEXT NOT NULL UNIQUE,
@@ -100,7 +100,7 @@ export async function listActiveTelegramBids({
     `;
 
     // Insert some sample data if none exists
-    const count = await sqlTemplate`SELECT COUNT(*) as count FROM telegram_bids`;
+    const count = await sql`SELECT COUNT(*) as count FROM telegram_bids`;
     if (count[0].count === 0) {
       const sampleBids = [
         ['BID001', 250, '2025-01-15T08:00:00Z', '2025-01-15T18:00:00Z', '["Chicago, IL", "Detroit, MI"]', 'URGENT', 'telegram', 'admin', '2025-01-15T07:30:00Z'],
@@ -109,7 +109,7 @@ export async function listActiveTelegramBids({
       ];
 
       for (const bid of sampleBids) {
-        await sqlTemplate`
+        await sql`
           INSERT INTO telegram_bids (bid_number, distance_miles, pickup_timestamp, delivery_timestamp, stops, tag, source_channel, forwarded_to, received_at)
           VALUES (${bid[0]}, ${bid[1]}, ${bid[2]}, ${bid[3]}, ${bid[4]}, ${bid[5]}, ${bid[6]}, ${bid[7]}, ${bid[8]})
         `;
@@ -119,64 +119,84 @@ export async function listActiveTelegramBids({
     // Build query with PostgreSQL template literals
     let query;
     if (q && tag) {
-      query = sqlTemplate`
+      query = sql`
         SELECT 
-          *,
+          id,
+          bid_number,
+          distance_miles,
+          pickup_timestamp,
+          delivery_timestamp,
+          tag,
+          source_channel,
+          forwarded_to,
+          received_at,
+          expires_at,
           (received_at::timestamp + INTERVAL '25 minutes')::text as expires_at_25,
           NOW() > (received_at::timestamp + INTERVAL '25 minutes') as is_expired,
-          CASE 
-            WHEN stops IS NOT NULL AND stops != '' 
-            THEN jsonb_array_length(stops::jsonb)
-            ELSE 0 
-          END as stops_count
+          0 as stops_count
         FROM telegram_bids 
         WHERE bid_number LIKE ${`%${q}%`} AND tag = ${tag.toUpperCase()}
         ORDER BY received_at DESC 
         LIMIT ${limit} OFFSET ${offset}
       `;
     } else if (q) {
-      query = sqlTemplate`
+      query = sql`
         SELECT 
-          *,
+          id,
+          bid_number,
+          distance_miles,
+          pickup_timestamp,
+          delivery_timestamp,
+          tag,
+          source_channel,
+          forwarded_to,
+          received_at,
+          expires_at,
           (received_at::timestamp + INTERVAL '25 minutes')::text as expires_at_25,
           NOW() > (received_at::timestamp + INTERVAL '25 minutes') as is_expired,
-          CASE 
-            WHEN stops IS NOT NULL AND stops != '' 
-            THEN jsonb_array_length(stops::jsonb)
-            ELSE 0 
-          END as stops_count
+          0 as stops_count
         FROM telegram_bids 
         WHERE bid_number LIKE ${`%${q}%`}
         ORDER BY received_at DESC 
         LIMIT ${limit} OFFSET ${offset}
       `;
     } else if (tag) {
-      query = sqlTemplate`
+      query = sql`
         SELECT 
-          *,
+          id,
+          bid_number,
+          distance_miles,
+          pickup_timestamp,
+          delivery_timestamp,
+          tag,
+          source_channel,
+          forwarded_to,
+          received_at,
+          expires_at,
           (received_at::timestamp + INTERVAL '25 minutes')::text as expires_at_25,
           NOW() > (received_at::timestamp + INTERVAL '25 minutes') as is_expired,
-          CASE 
-            WHEN stops IS NOT NULL AND stops != '' 
-            THEN jsonb_array_length(stops::jsonb)
-            ELSE 0 
-          END as stops_count
+          0 as stops_count
         FROM telegram_bids 
         WHERE tag = ${tag.toUpperCase()}
         ORDER BY received_at DESC 
         LIMIT ${limit} OFFSET ${offset}
       `;
     } else {
-      query = sqlTemplate`
+      query = sql`
         SELECT 
-          *,
+          id,
+          bid_number,
+          distance_miles,
+          pickup_timestamp,
+          delivery_timestamp,
+          tag,
+          source_channel,
+          forwarded_to,
+          received_at,
+          expires_at,
           (received_at::timestamp + INTERVAL '25 minutes')::text as expires_at_25,
           NOW() > (received_at::timestamp + INTERVAL '25 minutes') as is_expired,
-          CASE 
-            WHEN stops IS NOT NULL AND stops != '' 
-            THEN jsonb_array_length(stops::jsonb)
-            ELSE 0 
-          END as stops_count
+          0 as stops_count
         FROM telegram_bids 
         ORDER BY received_at DESC 
         LIMIT ${limit} OFFSET ${offset}
@@ -205,12 +225,12 @@ export async function listActiveTelegramBids({
 export async function getBidSummary(bid_number: string, userId?: string): Promise<BidSummary | null> {
   try {
     // Get the telegram bid
-    const telegramBid = await sqlTemplate`
+    const telegramBid = await sql`
       SELECT 
         tb.*,
         tb.received_at + INTERVAL '25 minutes' as expires_at_25,
         NOW() > (tb.received_at + INTERVAL '25 minutes') as is_expired,
-        COALESCE(jsonb_array_length(tb.stops), 0) as stops_count
+        0 as stops_count
       FROM public.telegram_bids tb
       WHERE tb.bid_number = ${bid_number}
     `;
@@ -223,7 +243,7 @@ export async function getBidSummary(bid_number: string, userId?: string): Promis
     const countdown = formatCountdown(bid.expires_at_25);
 
     // Get all carrier bids with carrier info
-    const carrierBids = await sqlTemplate`
+    const carrierBids = await sql`
       SELECT 
         cb.*,
         cp.legal_name as carrier_legal_name,
@@ -270,7 +290,7 @@ export async function upsertCarrierBid({
 }): Promise<CarrierBid> {
   try {
     // First check if the auction is still active
-    const bidCheck = await sqlTemplate`
+    const bidCheck = await sql`
       SELECT 
         (tb.received_at::timestamp + INTERVAL '25 minutes')::text as expires_at_25,
         NOW() > (tb.received_at::timestamp + INTERVAL '25 minutes') as is_expired
@@ -289,8 +309,15 @@ export async function upsertCarrierBid({
     // Ensure carrier profile exists
     await ensureCarrierProfile(userId);
 
+    // Validate that carrier profile is 100% complete before allowing bidding
+    const profileValidation = await validateCarrierProfileComplete(userId);
+    if (!profileValidation.isComplete) {
+      const missingFieldsText = profileValidation.missingFields.join(', ');
+      throw new Error(`Profile incomplete. Please complete the following required fields: ${missingFieldsText}. Go to your profile page to update your information.`);
+    }
+
     // Upsert the bid
-    const result = await sqlTemplate`
+    const result = await sql`
       INSERT INTO public.carrier_bids (bid_number, clerk_user_id, amount_cents, notes)
       VALUES (${bid_number}, ${userId}, ${amount_cents}, ${notes || null})
       ON CONFLICT (bid_number, clerk_user_id)
@@ -301,10 +328,77 @@ export async function upsertCarrierBid({
       RETURNING *
     `;
 
+    // Create admin notifications for new bids
+    try {
+      await createAdminBidNotifications(bid_number, userId, amount_cents);
+    } catch (notificationError) {
+      console.error('Failed to create admin notifications:', notificationError);
+      // Don't throw error - bid creation should still succeed
+    }
+
     return result[0];
   } catch (error) {
     console.error('Database error in upsertCarrierBid:', error);
     throw error; // Re-throw to maintain API contract
+  }
+}
+
+async function createAdminBidNotifications(bid_number: string, carrier_user_id: string, amount_cents: number) {
+  try {
+    // Get all admin users from user_roles table
+    const admins = await sql`
+      SELECT clerk_user_id 
+      FROM user_roles 
+      WHERE role = 'admin'
+    `;
+
+    if (admins.length === 0) {
+      console.log('No admin users found for notifications');
+      return;
+    }
+
+    // Get carrier profile info for the notification
+    const carrierProfile = await sql`
+      SELECT legal_name, mc_number, company_name
+      FROM carrier_profiles
+      WHERE clerk_user_id = ${carrier_user_id}
+      LIMIT 1
+    `;
+
+    const carrierName = carrierProfile[0]?.legal_name || carrierProfile[0]?.company_name || 'Unknown Carrier';
+    const mcNumber = carrierProfile[0]?.mc_number || 'N/A';
+    const amountDollars = (amount_cents / 100).toFixed(2);
+
+    // Create notifications for all admins
+    const notifications = admins.map(admin => ({
+      user_id: admin.clerk_user_id,
+      type: 'bid_received',
+      title: '📨 New Bid Received',
+      message: `${carrierName} (MC: ${mcNumber}) placed a bid of $${amountDollars} on Bid #${bid_number}`,
+      data: {
+        bid_number,
+        carrier_user_id,
+        carrier_name: carrierName,
+        mc_number: mcNumber,
+        amount_cents,
+        amount_dollars: amountDollars
+      },
+      read: false,
+      created_at: new Date()
+    }));
+
+    // Insert all notifications
+    for (const notification of notifications) {
+      await sql`
+        INSERT INTO notifications (user_id, type, title, message, data, read, created_at)
+        VALUES (${notification.user_id}, ${notification.type}, ${notification.title}, ${notification.message}, ${JSON.stringify(notification.data)}, ${notification.read}, ${notification.created_at})
+      `;
+    }
+
+    console.log(`Created ${notifications.length} admin notifications for bid #${bid_number}`);
+  } catch (error) {
+    console.error('Error creating admin bid notifications:', error);
+    throw error;
   }
 }
 
@@ -319,7 +413,7 @@ export async function awardAuction({
 }): Promise<AuctionAward> {
   try {
     // Verify the winner has a bid for this auction
-    const winnerBid = await sqlTemplate`
+    const winnerBid = await sql`
       SELECT amount_cents
       FROM public.carrier_bids
       WHERE bid_number = ${bid_number} AND clerk_user_id = ${winner_user_id}
@@ -330,7 +424,7 @@ export async function awardAuction({
     }
 
     // Check if already awarded
-    const existingAward = await sqlTemplate`
+    const existingAward = await sql`
       SELECT id FROM public.auction_awards WHERE bid_number = ${bid_number}
     `;
 
@@ -339,28 +433,28 @@ export async function awardAuction({
     }
 
     // Create the award
-    const award = await sqlTemplate`
+    const award = await sql`
       INSERT INTO public.auction_awards (bid_number, winner_user_id, winner_amount_cents, awarded_by)
       VALUES (${bid_number}, ${winner_user_id}, ${winnerBid[0].amount_cents}, ${awarded_by})
       RETURNING *
     `;
 
     // Create notification for winner
-    await sqlTemplate`
+    await sql`
       INSERT INTO public.notifications (recipient_user_id, type, title, body)
       VALUES (${winner_user_id}, 'success', 'Auction Won!', 
               'Congratulations! You won Bid #${bid_number} for ${formatMoney(winnerBid[0].amount_cents)}. Check your My Loads for next steps.')
     `;
 
     // Create notifications for other bidders
-    const otherBidders = await sqlTemplate`
+    const otherBidders = await sql`
       SELECT DISTINCT clerk_user_id 
       FROM public.carrier_bids 
       WHERE bid_number = ${bid_number} AND clerk_user_id != ${winner_user_id}
     `;
 
     for (const bidder of otherBidders) {
-      await sqlTemplate`
+      await sql`
         INSERT INTO public.notifications (recipient_user_id, type, title, body)
         VALUES (${bidder.clerk_user_id}, 'info', 'Auction Awarded', 
                 'Bid #${bid_number} was awarded to another carrier.')
@@ -368,7 +462,7 @@ export async function awardAuction({
     }
 
     // Create a load assignment for the winner
-    await sqlTemplate`
+    await sql`
       INSERT INTO public.loads (rr_number, carrier_user_id, status, meta)
       VALUES (${bid_number}, ${winner_user_id}, 'awarded', 
               jsonb_build_object('bid_number', ${bid_number}, 'awarded_at', NOW()))
@@ -384,7 +478,7 @@ export async function awardAuction({
 
 export async function listAwardsForUser(userId: string): Promise<AuctionAward[]> {
   try {
-    const awards = await sqlTemplate`
+    const awards = await sql`
       SELECT 
         aa.*,
         cp.legal_name as winner_legal_name,
@@ -405,7 +499,7 @@ export async function listAwardsForUser(userId: string): Promise<AuctionAward[]>
 export async function ensureCarrierProfile(userId: string): Promise<CarrierProfile> {
   try {
     // Check if profile exists
-    const existing = await sqlTemplate`
+    const existing = await sql`
       SELECT * FROM public.carrier_profiles WHERE clerk_user_id = ${userId}
     `;
 
@@ -413,10 +507,11 @@ export async function ensureCarrierProfile(userId: string): Promise<CarrierProfi
       return existing[0];
     }
 
-    // Create a basic profile (will need to be completed later)
-    const profile = await sqlTemplate`
+    // Create a basic profile with a unique MC number
+    const uniqueMcNumber = `TBD-${userId.slice(-8)}-${Date.now()}`;
+    const profile = await sql`
       INSERT INTO public.carrier_profiles (clerk_user_id, legal_name, mc_number)
-      VALUES (${userId}, 'Pending Setup', 'TBD')
+      VALUES (${userId}, 'Pending Setup', ${uniqueMcNumber})
       RETURNING *
     `;
 
@@ -427,9 +522,48 @@ export async function ensureCarrierProfile(userId: string): Promise<CarrierProfi
   }
 }
 
+export async function validateCarrierProfileComplete(userId: string): Promise<{ isComplete: boolean; missingFields: string[] }> {
+  try {
+    const profile = await sql`
+      SELECT company_name, mc_number, contact_name, phone
+      FROM public.carrier_profiles 
+      WHERE clerk_user_id = ${userId}
+    `;
+
+    if (profile.length === 0) {
+      return { isComplete: false, missingFields: ['company_name', 'mc_number', 'contact_name', 'phone'] };
+    }
+
+    const p = profile[0];
+    const missingFields: string[] = [];
+
+    // Check required fields
+    if (!p.company_name || p.company_name === 'Pending Setup') {
+      missingFields.push('company_name');
+    }
+    if (!p.mc_number || p.mc_number.startsWith('TBD-')) {
+      missingFields.push('mc_number');
+    }
+    if (!p.contact_name) {
+      missingFields.push('contact_name');
+    }
+    if (!p.phone) {
+      missingFields.push('phone');
+    }
+
+    return {
+      isComplete: missingFields.length === 0,
+      missingFields
+    };
+  } catch (error) {
+    console.error('Database error in validateCarrierProfileComplete:', error);
+    return { isComplete: false, missingFields: ['company_name', 'mc_number', 'contact_name', 'phone'] };
+  }
+}
+
 export async function getCarrierProfile(userId: string): Promise<CarrierProfile | null> {
   try {
-    const profiles = await sqlTemplate`
+    const profiles = await sql`
       SELECT * FROM public.carrier_profiles WHERE clerk_user_id = ${userId}
     `;
 
@@ -467,9 +601,9 @@ export async function updateCarrierProfile({
       .map(key => `${key} = $${key}`)
       .join(', ');
 
-    const result = await sqlTemplate`
+    const result = await sql`
       UPDATE public.carrier_profiles 
-      SET ${sqlTemplate(setClause, ...Object.values(updates))}
+      SET ${sql(setClause, ...Object.values(updates))}
       WHERE clerk_user_id = ${userId}
       RETURNING *
     `;

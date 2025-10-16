@@ -93,7 +93,7 @@ export default function FloatingDevAdminButton() {
     console.log("🔍 Button clicked! isDragging:", isDragging, "dragDuration:", Date.now() - dragStartTime);
     const dragDuration = Date.now() - dragStartTime;
     // Only open console if not dragging and enough time has passed since drag start
-    if (!isDragging && dragDuration > 10) {
+    if (!isDragging && dragDuration < 200) {
       if (isAdmin) {
         // Admin users can access directly
         console.log("🎯 Admin user clicking button - opening floating dev console");
@@ -252,18 +252,20 @@ export default function FloatingDevAdminButton() {
           <Button
             onClick={handleButtonClick}
             className={cn(
-              "h-16 w-16 rounded-full p-0 transition-all duration-200 ease-out",
-              "bg-gradient-to-br from-purple-500 via-purple-600 to-purple-700",
-              "hover:from-purple-600 hover:via-purple-700 hover:to-purple-800",
-              "shadow-2xl hover:shadow-3xl hover:scale-110",
-              "border-2 border-purple-300/50 backdrop-blur-sm",
+              "h-16 w-16 rounded-full p-0 transition-all duration-300 ease-out",
+              "bg-gradient-to-br from-violet-500 via-purple-600 to-indigo-700",
+              "hover:from-violet-600 hover:via-purple-700 hover:to-indigo-800",
+              "shadow-2xl hover:shadow-4xl hover:scale-110",
+              "border-2 border-violet-300/60 backdrop-blur-md",
               "text-white font-bold",
               "cursor-move select-none",
+              "ring-2 ring-violet-500/20 hover:ring-violet-400/40",
+              "before:absolute before:inset-0 before:rounded-full before:bg-gradient-to-br before:from-white/10 before:to-transparent before:opacity-0 hover:before:opacity-100 before:transition-opacity before:duration-300",
               isDragging && "scale-105 cursor-grabbing"
             )}
             style={{ userSelect: 'none' }}
           >
-            <Settings className="h-8 w-8" />
+            <Settings className="h-8 w-8 drop-shadow-lg" />
           </Button>
         </div>
       </div>
@@ -350,23 +352,25 @@ export default function FloatingDevAdminButton() {
           
           {/* Dev Console */}
           <div className="fixed inset-4 z-50 animate-in slide-in-from-bottom-4 duration-500 ease-out">
-            <div className="h-full bg-gradient-to-br from-slate-900 via-purple-900 to-indigo-900 rounded-3xl shadow-2xl border border-purple-500/20 overflow-hidden flex flex-col">
+            <div className="h-full bg-gradient-to-br from-slate-950 via-violet-950 to-indigo-950 rounded-3xl shadow-2xl border border-violet-500/30 overflow-hidden flex flex-col backdrop-blur-xl">
               {/* Header */}
-              <div className="flex items-center justify-between p-6 bg-gradient-to-r from-purple-500/10 via-blue-500/10 to-indigo-500/10 border-b border-purple-500/20">
+              <div className="flex items-center justify-between p-6 bg-gradient-to-r from-violet-500/20 via-purple-500/20 to-indigo-500/20 border-b border-violet-500/30 backdrop-blur-md">
                 <div className="flex items-center gap-4">
-                  <div className="p-3 bg-gradient-to-r from-purple-500 to-purple-600 rounded-full">
-                    <Settings className="w-6 h-6 text-white" />
+                  <div className="p-3 bg-gradient-to-r from-violet-500 to-purple-600 rounded-full shadow-lg ring-2 ring-violet-400/30">
+                    <Settings className="w-6 h-6 text-white drop-shadow-lg" />
                   </div>
                   <div>
-                    <h2 className="text-2xl font-bold text-white">Dev Admin Console</h2>
-                    <p className="text-purple-200">Manage user roles and system settings</p>
+                    <h2 className="text-2xl font-bold text-white bg-gradient-to-r from-violet-200 to-purple-200 bg-clip-text text-transparent">
+                      Dev Admin Console
+                    </h2>
+                    <p className="text-violet-200/80 text-sm font-medium">Manage user roles and system settings</p>
                   </div>
                 </div>
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => setShowDevConsole(false)}
-                  className="h-10 w-10 p-0 rounded-full hover:bg-red-500/20 hover:text-red-400 transition-all duration-200"
+                  className="h-10 w-10 p-0 rounded-full hover:bg-red-500/20 hover:text-red-400 transition-all duration-200 ring-1 ring-red-500/20 hover:ring-red-400/40"
                 >
                   <X className="h-5 w-5" />
                 </Button>
@@ -376,40 +380,48 @@ export default function FloatingDevAdminButton() {
               <div className="flex-1 overflow-y-auto p-6">
                 <div className="space-y-6">
                   {/* Stats Cards */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <Card className="bg-gradient-to-br from-purple-500/20 to-purple-600/20 border-purple-500/30">
-                      <CardContent className="p-4">
-                        <div className="flex items-center gap-3">
-                          <Crown className="w-6 h-6 text-purple-400" />
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <Card className="bg-gradient-to-br from-violet-500/20 to-purple-600/20 border-violet-500/40 backdrop-blur-sm hover:border-violet-400/60 transition-all duration-300 hover:scale-105 group">
+                      <CardContent className="p-6">
+                        <div className="flex items-center gap-4">
+                          <div className="p-3 bg-gradient-to-br from-violet-500 to-purple-600 rounded-xl shadow-lg group-hover:shadow-violet-500/25 transition-all duration-300">
+                            <Crown className="w-6 h-6 text-white drop-shadow-lg" />
+                          </div>
                           <div>
-                            <p className="text-sm text-purple-200">Admins</p>
-                            <p className="text-2xl font-bold text-white">
+                            <p className="text-sm text-violet-200/80 font-medium">Admins</p>
+                            <p className="text-3xl font-bold text-white bg-gradient-to-r from-violet-200 to-purple-200 bg-clip-text text-transparent">
                               {users.filter(u => u.role === "admin").length}
                             </p>
                           </div>
                         </div>
                       </CardContent>
                     </Card>
-                    <Card className="bg-gradient-to-br from-blue-500/20 to-blue-600/20 border-blue-500/30">
-                      <CardContent className="p-4">
-                        <div className="flex items-center gap-3">
-                          <Truck className="w-6 h-6 text-blue-400" />
+                    <Card className="bg-gradient-to-br from-blue-500/20 to-indigo-600/20 border-blue-500/40 backdrop-blur-sm hover:border-blue-400/60 transition-all duration-300 hover:scale-105 group">
+                      <CardContent className="p-6">
+                        <div className="flex items-center gap-4">
+                          <div className="p-3 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl shadow-lg group-hover:shadow-blue-500/25 transition-all duration-300">
+                            <Truck className="w-6 h-6 text-white drop-shadow-lg" />
+                          </div>
                           <div>
-                            <p className="text-sm text-blue-200">Carriers</p>
-                            <p className="text-2xl font-bold text-white">
+                            <p className="text-sm text-blue-200/80 font-medium">Carriers</p>
+                            <p className="text-3xl font-bold text-white bg-gradient-to-r from-blue-200 to-indigo-200 bg-clip-text text-transparent">
                               {users.filter(u => u.role === "carrier").length}
                             </p>
                           </div>
                         </div>
                       </CardContent>
                     </Card>
-                    <Card className="bg-gradient-to-br from-slate-500/20 to-slate-600/20 border-slate-500/30">
-                      <CardContent className="p-4">
-                        <div className="flex items-center gap-3">
-                          <User className="w-6 h-6 text-slate-400" />
+                    <Card className="bg-gradient-to-br from-slate-500/20 to-gray-600/20 border-slate-500/40 backdrop-blur-sm hover:border-slate-400/60 transition-all duration-300 hover:scale-105 group">
+                      <CardContent className="p-6">
+                        <div className="flex items-center gap-4">
+                          <div className="p-3 bg-gradient-to-br from-slate-500 to-gray-600 rounded-xl shadow-lg group-hover:shadow-slate-500/25 transition-all duration-300">
+                            <User className="w-6 h-6 text-white drop-shadow-lg" />
+                          </div>
                           <div>
-                            <p className="text-sm text-slate-200">Total Users</p>
-                            <p className="text-2xl font-bold text-white">{users.length}</p>
+                            <p className="text-sm text-slate-200/80 font-medium">Total Users</p>
+                            <p className="text-3xl font-bold text-white bg-gradient-to-r from-slate-200 to-gray-200 bg-clip-text text-transparent">
+                              {users.length}
+                            </p>
                           </div>
                         </div>
                       </CardContent>
@@ -417,16 +429,18 @@ export default function FloatingDevAdminButton() {
                   </div>
 
                   {/* Search and Controls */}
-                  <Card className="bg-gradient-to-br from-slate-800/60 to-slate-900/60 border-slate-600/40">
-                    <CardContent className="p-4">
+                  <Card className="bg-gradient-to-br from-slate-800/40 to-slate-900/40 border-slate-600/30 backdrop-blur-sm hover:border-slate-500/50 transition-all duration-300">
+                    <CardContent className="p-6">
                       <div className="flex items-center gap-4">
                         <div className="flex items-center gap-3 flex-1">
-                          <Search className="w-5 h-5 text-purple-300" />
+                          <div className="p-2 bg-gradient-to-br from-violet-500/20 to-purple-600/20 rounded-lg border border-violet-500/30">
+                            <Search className="w-5 h-5 text-violet-300" />
+                          </div>
                           <Input
-                            placeholder="Search users..."
+                            placeholder="Search users by name or email..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="flex-1 bg-slate-700/50 border-slate-600/50 text-white placeholder:text-slate-400"
+                            className="flex-1 bg-slate-800/50 border-slate-600/50 text-white placeholder:text-slate-400 focus:border-violet-500/50 focus:ring-violet-500/20 transition-all duration-300"
                           />
                         </div>
                         <Button
@@ -434,9 +448,10 @@ export default function FloatingDevAdminButton() {
                           disabled={isLoading}
                           variant="outline"
                           size="sm"
-                          className="border-slate-600/50 text-slate-300 hover:bg-slate-700/50"
+                          className="border-violet-500/50 text-violet-300 hover:bg-violet-500/20 hover:border-violet-400/60 transition-all duration-300 px-4"
                         >
-                          <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+                          <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+                          Refresh
                         </Button>
                       </div>
                     </CardContent>
@@ -455,8 +470,8 @@ export default function FloatingDevAdminButton() {
                       </div>
                     ) : (
                       filteredUsers.map((user) => (
-                        <Card key={user.id} className="bg-gradient-to-r from-slate-800/60 to-slate-900/60 border-slate-600/40">
-                          <CardContent className="p-4">
+                        <Card key={user.id} className="bg-gradient-to-r from-slate-800/40 to-slate-900/40 border-slate-600/30 backdrop-blur-sm hover:border-slate-500/50 transition-all duration-300 hover:scale-[1.02] group">
+                          <CardContent className="p-6">
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-4">
                                 <div className="relative">
@@ -464,26 +479,26 @@ export default function FloatingDevAdminButton() {
                                     <img 
                                       src={user.profileImageUrl} 
                                       alt="Profile" 
-                                      className="w-10 h-10 rounded-full object-cover border-2 border-slate-600/50"
+                                      className="w-12 h-12 rounded-full object-cover border-2 border-slate-600/50 shadow-lg group-hover:border-violet-500/50 transition-all duration-300"
                                     />
                                   ) : (
-                                    <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-bold">
+                                    <div className="w-12 h-12 bg-gradient-to-br from-violet-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold shadow-lg group-hover:shadow-violet-500/25 transition-all duration-300">
                                       {user.firstName?.[0] || user.email[0].toUpperCase()}
                                     </div>
                                   )}
-                                  <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-slate-800 ${getRoleColor(user.role)} flex items-center justify-center`}>
+                                  <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full border-2 border-slate-800 ${getRoleColor(user.role)} flex items-center justify-center shadow-lg`}>
                                     {getRoleIcon(user.role)}
                                   </div>
                                 </div>
-                                <div>
-                                  <h3 className="font-bold text-white">
+                                <div className="flex-1">
+                                  <h3 className="font-bold text-white text-lg group-hover:text-violet-200 transition-colors duration-300">
                                     {user.firstName && user.lastName 
                                       ? `${user.firstName} ${user.lastName}` 
                                       : user.email
                                     }
                                   </h3>
-                                  <p className="text-slate-400 text-sm">{user.email}</p>
-                                  <Badge className={`${getRoleColor(user.role)} text-white px-2 py-1 text-xs mt-1`}>
+                                  <p className="text-slate-400 text-sm mb-2">{user.email}</p>
+                                  <Badge className={`${getRoleColor(user.role)} text-white px-3 py-1 text-xs font-medium shadow-sm`}>
                                     {user.role}
                                   </Badge>
                                 </div>
@@ -492,9 +507,9 @@ export default function FloatingDevAdminButton() {
                                 variant="outline"
                                 size="sm"
                                 onClick={() => setSelectedUser(user)}
-                                className="border-slate-600/50 text-slate-300 hover:bg-slate-700/50"
+                                className="border-violet-500/50 text-violet-300 hover:bg-violet-500/20 hover:border-violet-400/60 transition-all duration-300 px-4"
                               >
-                                <Shield className="w-4 h-4 mr-1" />
+                                <Shield className="w-4 h-4 mr-2" />
                                 Manage
                               </Button>
                             </div>
@@ -512,10 +527,12 @@ export default function FloatingDevAdminButton() {
 
       {/* Role Assignment Dialog */}
       <Dialog open={!!selectedUser} onOpenChange={() => setSelectedUser(null)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md bg-gradient-to-br from-slate-900 via-violet-900 to-indigo-900 border-violet-500/30 backdrop-blur-xl">
           <DialogHeader>
-            <DialogTitle className="text-center text-white flex items-center justify-center gap-2">
-              <Shield className="w-5 h-5 text-green-400" />
+            <DialogTitle className="text-center text-white flex items-center justify-center gap-2 text-xl font-bold bg-gradient-to-r from-violet-200 to-purple-200 bg-clip-text text-transparent">
+              <div className="p-2 bg-gradient-to-br from-violet-500/20 to-purple-600/20 rounded-lg border border-violet-500/30">
+                <Shield className="w-5 h-5 text-violet-300" />
+              </div>
               Assign Role
             </DialogTitle>
           </DialogHeader>
@@ -546,27 +563,27 @@ export default function FloatingDevAdminButton() {
                 </Badge>
               </div>
 
-              <div className="space-y-3">
+              <div className="space-y-4">
                 <Button
                   onClick={() => assignRole(selectedUser.id, "admin")}
-                  className="w-full bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700"
+                  className="w-full bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700 shadow-lg hover:shadow-violet-500/25 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
                   disabled={isLoading || selectedUser.role === "admin"}
                 >
-                  <Crown className="w-4 h-4 mr-2" />
+                  <Crown className="w-4 h-4 mr-2 drop-shadow-sm" />
                   Make Admin
                 </Button>
                 <Button
                   onClick={() => assignRole(selectedUser.id, "carrier")}
-                  className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
+                  className="w-full bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 shadow-lg hover:shadow-blue-500/25 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
                   disabled={isLoading || selectedUser.role === "carrier"}
                 >
-                  <Truck className="w-4 h-4 mr-2" />
+                  <Truck className="w-4 h-4 mr-2 drop-shadow-sm" />
                   Make Carrier
                 </Button>
                 <Button
                   variant="outline"
                   onClick={() => setSelectedUser(null)}
-                  className="w-full border-slate-600 text-slate-300 hover:bg-slate-700"
+                  className="w-full border-slate-600/50 text-slate-300 hover:bg-slate-700/50 hover:border-slate-500/50 transition-all duration-300"
                 >
                   Cancel
                 </Button>

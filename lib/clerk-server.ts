@@ -112,3 +112,34 @@ export async function isCarrier(userId?: string) {
   }
   return await isClerkCarrier(userId);
 }
+
+/**
+ * Server-side function to get user information from Clerk
+ */
+export async function getClerkUserInfo(userId: string) {
+  try {
+    const { users } = await import("@clerk/clerk-sdk-node");
+    const user = await users.getUser(userId);
+    
+    return {
+      id: user.id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      fullName: user.fullName,
+      emailAddresses: user.emailAddresses,
+      username: user.username,
+      role: (user.publicMetadata?.role as string)?.toLowerCase() || "carrier"
+    };
+  } catch (error) {
+    console.error("Error getting Clerk user info:", error);
+    return {
+      id: userId,
+      firstName: null,
+      lastName: null,
+      fullName: null,
+      emailAddresses: [],
+      username: null,
+      role: "carrier"
+    };
+  }
+}

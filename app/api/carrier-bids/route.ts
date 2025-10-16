@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+import { getCarrierProfile, upsertCarrierBid, validateCarrierProfileComplete } from "@/lib/auctions";
+import { validateMoneyInput } from "@/lib/format";
 import { auth } from "@clerk/nextjs/server";
-import { upsertCarrierBid, getCarrierProfile } from "@/lib/auctions";
-import { parseMoneyToCents, validateMoneyInput } from "@/lib/format";
+import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
   try {
@@ -37,6 +37,16 @@ export async function POST(request: NextRequest) {
 
     // Ensure carrier profile exists
     await getCarrierProfile(userId);
+
+    // Validate that carrier profile is 100% complete before allowing bidding
+    const profileValidation = await validateCarrierProfileComplete(userId);
+    if (!profileValidation.isComplete) {
+      const missingFieldsText = profileValidation.missingFields.join(', ');
+      return NextResponse.json(
+        { ok: false, error: `Profile incomplete. Please complete the following required fields: ${missingFieldsText}. Go to your profile page to update your information.` },
+        { status: 400 }
+      );
+    }
 
     const bid = await upsertCarrierBid({
       bid_number,

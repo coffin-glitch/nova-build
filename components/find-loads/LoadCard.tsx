@@ -1,43 +1,33 @@
 "use client";
 
-import { MapPin, Clock, DollarSign, Star, User, Calendar, Eye, Truck } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { cn } from "@/lib/utils";
 import { useAccentColor } from "@/hooks/useAccentColor";
+import { cn } from "@/lib/utils";
+import { Calendar, Clock, Star, User } from "lucide-react";
 import { useTheme } from "next-themes";
-import OfferDialog from "./OfferDialog";
 import LoadDetailsDialog from "./LoadDetailsDialog";
+import OfferDialog from "./OfferDialog";
 
-// Real EAX data structure
+// Real EAX data structure - Carrier visible fields only
 interface LoadCardProps {
   rr_number: string;
   tm_number?: string;
   status_code?: string;
   pickup_date?: string;
   pickup_time?: string;
-  pickup_window?: string;
   delivery_date?: string;
   delivery_time?: string;
-  delivery_window?: string;
   equipment?: string;
   weight?: number;
   miles?: number;
   stops?: number;
-  revenue?: number;
-  purchase?: number;
-  net?: number;
-  margin?: number;
+  target_buy?: number; // Carrier can see target buy
   customer_name?: string;
-  customer_ref?: string;
-  driver_name?: string;
   origin_city?: string;
   origin_state?: string;
   destination_city?: string;
   destination_state?: string;
-  vendor_name?: string;
-  dispatcher_name?: string;
   published: boolean;
   archived?: boolean;
   created_at: string;
@@ -62,27 +52,18 @@ export default function LoadCard({
   status_code,
   pickup_date,
   pickup_time,
-  pickup_window,
   delivery_date,
   delivery_time,
-  delivery_window,
   equipment,
   weight,
   miles,
   stops,
-  revenue,
-  purchase,
-  net,
-  margin,
+  target_buy,
   customer_name,
-  customer_ref,
-  driver_name,
   origin_city,
   origin_state,
   destination_city,
   destination_state,
-  vendor_name,
-  dispatcher_name,
   published,
   archived,
   created_at,
@@ -139,19 +120,19 @@ export default function LoadCard({
   const formatPickupTime = () => {
     if (!pickup_date) return "TBD";
     const date = formatDate(pickup_date);
-    const window = pickup_window ? ` (${pickup_window})` : "";
-    return `${date}${window}`;
+    const time = pickup_time ? ` at ${pickup_time}` : "";
+    return `${date}${time}`;
   };
 
   const formatDeliveryTime = () => {
     if (!delivery_date) return "TBD";
     const date = formatDate(delivery_date);
-    const window = delivery_window ? ` (${delivery_window})` : "";
-    return `${date}${window}`;
+    const time = delivery_time ? ` at ${delivery_time}` : "";
+    return `${date}${time}`;
   };
 
   const getBrokerName = () => {
-    return customer_name || vendor_name || "Unknown Broker";
+    return customer_name || "Unknown Broker";
   };
 
   const getBrokerRating = () => {
@@ -200,11 +181,11 @@ export default function LoadCard({
           )}
         </div>
         <div className="text-right">
-          <div className="text-2xl font-bold text-foreground">{formatPrice(revenue)}</div>
+          <div className="text-2xl font-bold text-foreground">{formatPrice(target_buy)}</div>
           <div className="text-sm text-muted-foreground">{formatMiles(miles)}</div>
-          {net && (
-            <div className="text-xs text-green-600 dark:text-green-400">
-              Net: {formatPrice(net)}
+          {weight && (
+            <div className="text-xs text-muted-foreground">
+              Weight: {weight.toLocaleString()} lbs
             </div>
           )}
         </div>
@@ -233,24 +214,19 @@ export default function LoadCard({
               tm_number,
               status_code,
               pickup_date,
-              pickup_window,
+              pickup_time,
               delivery_date,
-              delivery_window,
+              delivery_time,
               equipment,
               weight,
-              revenue,
-              purchase,
-              net,
-              margin,
+              miles,
+              stops,
+              target_buy,
               customer_name,
-              customer_ref,
-              driver_name,
               origin_city,
               origin_state,
               destination_city,
               destination_state,
-              vendor_name,
-              dispatcher_name,
               published,
               created_at,
               updated_at,
@@ -263,7 +239,7 @@ export default function LoadCard({
               origin_state,
               destination_city,
               destination_state,
-              revenue,
+              target_buy,
               equipment,
             }}
             onOfferSubmitted={onOfferSubmitted}

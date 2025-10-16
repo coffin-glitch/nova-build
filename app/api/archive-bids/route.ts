@@ -1,10 +1,10 @@
-import sqlTemplate from '@/lib/db';
+import sql from '@/lib/db';
 import { NextResponse } from "next/server";
 
 export async function GET() {
   try {
     // Create archive_bids table for storing historical bids
-    await sqlTemplate`
+    await sql`
       CREATE TABLE IF NOT EXISTS archive_bids (
         id SERIAL PRIMARY KEY,
         bid_number TEXT NOT NULL,
@@ -25,11 +25,11 @@ export async function GET() {
     `;
 
     // Create index for efficient date-based queries
-    await sqlTemplate`
+    await sql`
       CREATE INDEX IF NOT EXISTS idx_archive_bids_date ON archive_bids(archived_date)
     `;
 
-    await sqlTemplate`
+    await sql`
       CREATE INDEX IF NOT EXISTS idx_archive_bids_bid_number ON archive_bids(bid_number)
     `;
 
@@ -37,7 +37,7 @@ export async function GET() {
     const today = new Date().toISOString().split('T')[0];
     
     // Get all expired bids from today that haven't been archived yet
-    const expiredBids = await sqlTemplate`
+    const expiredBids = await sql`
       SELECT tb.*
       FROM telegram_bids tb
       WHERE NOW() > (tb.received_at::timestamp + INTERVAL '25 minutes')
@@ -54,7 +54,7 @@ export async function GET() {
       console.log(`📦 Archiving ${expiredBids.length} expired bids from today`);
       
       for (const bid of expiredBids) {
-        await sqlTemplate`
+        await sql`
           INSERT INTO archive_bids (
             bid_number, distance_miles, pickup_timestamp, delivery_timestamp,
             stops, tag, source_channel, forwarded_to, received_at, expires_at,
@@ -71,7 +71,7 @@ export async function GET() {
     }
 
     // Get archive statistics
-    const archiveStats = await sqlTemplate`
+    const archiveStats = await sql`
       SELECT 
         archived_date,
         COUNT(*) as bid_count

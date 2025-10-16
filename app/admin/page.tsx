@@ -128,6 +128,21 @@ export default async function AdminDashboard() {
               </Button>
             </div>
           </Card>
+
+          <Card className="card-premium p-6 hover-lift">
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <Users className="w-5 h-5 text-primary" />
+                <h3 className="text-lg font-semibold color: hsl(var(--foreground))">Manage Carriers</h3>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Manage carrier profiles, send messages, and lock/unlock accounts.
+              </p>
+              <Button asChild className="w-full btn-primary">
+                <Link href="/admin/users">Manage Carriers</Link>
+              </Button>
+            </div>
+          </Card>
         </div>
       </div>
     </div>

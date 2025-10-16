@@ -55,7 +55,7 @@ export function formatMiles(miles: number | null): string {
   return `${miles.toLocaleString()} mi`;
 }
 
-// Timestamp formatting
+// Timestamp formatting - system timezone (CST)
 export function formatTimestamp(timestamp: string | Date): string {
   const date = new Date(timestamp);
   return new Intl.DateTimeFormat('en-US', {
@@ -64,6 +64,7 @@ export function formatTimestamp(timestamp: string | Date): string {
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
+    timeZone: 'America/Chicago', // CST
   }).format(date);
 }
 
@@ -73,6 +74,7 @@ export function formatTimeOnly(timestamp: string | Date): string {
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
+    timeZone: 'America/Chicago', // CST
   }).format(date);
 }
 
@@ -130,29 +132,35 @@ export function formatStops(stops: string[] | null): string {
   return `${stops[0]} → ... → ${stops[stops.length - 1]}`;
 }
 
-// Pickup date/time formatting - matches format: 09/30/2025 02:00 AM
+// Pickup date/time formatting - display times as stored in database (already in local timezone)
 export function formatPickupDateTime(timestamp: string | null): string {
   if (!timestamp) return 'N/A';
   
-  // Parse the UTC timestamp and extract components directly to avoid timezone conversion
   const date = new Date(timestamp);
   
   // Check if date is valid
   if (isNaN(date.getTime())) return 'N/A';
   
-  // Extract UTC components to avoid timezone conversion
-  const year = date.getUTCFullYear();
-  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(date.getUTCDate()).padStart(2, '0');
-  const hour = date.getUTCHours();
-  const minute = String(date.getUTCMinutes()).padStart(2, '0');
+  // Format without timezone conversion since database already stores times in local timezone
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    month: '2-digit',
+    day: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+    // No timeZone specified - use the timezone already in the timestamp
+  });
   
-  // Convert to 12-hour format
-  const hour12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
-  const ampm = hour >= 12 ? 'PM' : 'AM';
-  const hour12Str = String(hour12).padStart(2, '0');
+  const parts = formatter.formatToParts(date);
+  const month = parts.find(part => part.type === 'month')?.value;
+  const day = parts.find(part => part.type === 'day')?.value;
+  const year = parts.find(part => part.type === 'year')?.value;
+  const hour = parts.find(part => part.type === 'hour')?.value;
+  const minute = parts.find(part => part.type === 'minute')?.value;
+  const dayPeriod = parts.find(part => part.type === 'dayPeriod')?.value;
   
-  return `${month}/${day}/${year} ${hour12Str}:${minute} ${ampm}`;
+  return `${month}/${day}/${year} ${hour}:${minute} ${dayPeriod}`;
 }
 
 // Stop count formatting - pickup doesn't count as a stop

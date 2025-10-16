@@ -1,5 +1,5 @@
 import { getClerkUserRole, isClerkCarrier } from "@/lib/clerk-server";
-import { db } from "@/lib/db-local";
+import sql from "@/lib/db";
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
@@ -24,34 +24,38 @@ export async function POST(req: Request) {
     }
 
     // Check if load exists and is published
-    const load = db.prepare(`
+    const load = await sql`
       SELECT rr_number, published FROM loads 
-      WHERE rr_number = ? AND published = 1
-    `).all(loadRrNumber);
+      WHERE rr_number = ${loadRrNumber} AND published = true
+    `;
 
     if (!load || load.length === 0) {
       return NextResponse.json({ error: "Load not found or not published" }, { status: 404 });
     }
 
     // Check if carrier already has an offer for this load
-    const existingOffer = db.prepare(`
+    const existingOffer = await sql`
       SELECT id FROM load_offers 
-      WHERE load_rr_number = ? AND carrier_user_id = ?
-    `).all(loadRrNumber, userId);
+      WHERE load_rr_number = ${loadRrNumber} AND carrier_user_id = ${userId}
+    `;
 
     if (existingOffer && existingOffer.length > 0) {
       return NextResponse.json({ error: "You already have an offer for this load" }, { status: 409 });
     }
 
-    // Create the offer
-    const result = db.prepare(`
-      INSERT INTO load_offers (load_rr_number, carrier_user_id, offer_amount, notes, status)
-      VALUES (?, ?, ?, ?, 'pending')
-    `).run(loadRrNumber, userId, offerAmount, notes || '');
+    // Create the offer with 24-hour expiration
+    const expiresAt = new Date();
+    expiresAt.setHours(expiresAt.getHours() + 24); // 24 hours from now
+
+    const result = await sql`
+      INSERT INTO load_offers (load_rr_number, carrier_user_id, offer_amount, notes, status, expires_at, is_expired)
+      VALUES (${loadRrNumber}, ${userId}, ${offerAmount}, ${notes || ''}, 'pending', ${expiresAt.toISOString()}, false)
+      RETURNING id
+    `;
 
     return NextResponse.json({ 
       success: true, 
-      offerId: result.lastInsertRowid,
+      offerId: result[0].id,
       message: "Offer submitted successfully" 
     });
 
@@ -71,31 +75,48 @@ export async function GET(req: Request) {
     const userRole = await getClerkUserRole(userId);
 
     if (userRole === 'admin') {
-      // Admin can see all offers
-      const offers = db.prepare(`
+      // Admin can see all offers (including expired ones)
+      const offers = await sql`
         SELECT 
           lo.*,
           l.origin_city, l.origin_state, l.destination_city, l.destination_state,
-          l.pickup_date, l.delivery_date, l.equipment, l.weight,
-          urc.email as carrier_email
+          l.pickup_date, l.delivery_date, l.equipment, l.total_miles,
+          urc.email as carrier_email,
+          CASE 
+            WHEN lo.expires_at < NOW() AND lo.status = 'pending' THEN true
+            ELSE lo.is_expired
+          END as is_expired,
+          CASE 
+            WHEN lo.expires_at < NOW() AND lo.status = 'pending' THEN 'expired'
+            ELSE lo.status
+          END as effective_status
         FROM load_offers lo
         JOIN loads l ON lo.load_rr_number = l.rr_number
         LEFT JOIN user_roles_cache urc ON lo.carrier_user_id = urc.clerk_user_id
         ORDER BY lo.created_at DESC
-      `).all();
+      `;
       return NextResponse.json({ offers });
     } else if (userRole === 'carrier') {
-      // Carrier can only see their own offers
-      const offers = db.prepare(`
+      // Carrier can only see their own non-expired offers
+      const offers = await sql`
         SELECT 
           lo.*,
           l.origin_city, l.origin_state, l.destination_city, l.destination_state,
-          l.pickup_date, l.delivery_date, l.equipment, l.weight
+          l.pickup_date, l.delivery_date, l.equipment, l.total_miles,
+          CASE 
+            WHEN lo.expires_at < NOW() AND lo.status = 'pending' THEN true
+            ELSE lo.is_expired
+          END as is_expired,
+          CASE 
+            WHEN lo.expires_at < NOW() AND lo.status = 'pending' THEN 'expired'
+            ELSE lo.status
+          END as effective_status
         FROM load_offers lo
         JOIN loads l ON lo.load_rr_number = l.rr_number
-        WHERE lo.carrier_user_id = ?
+        WHERE lo.carrier_user_id = ${userId}
+        AND (lo.expires_at IS NULL OR lo.expires_at > NOW() OR lo.status != 'pending')
         ORDER BY lo.created_at DESC
-      `).all(userId);
+      `;
       return NextResponse.json({ offers });
     } else {
       return NextResponse.json({ error: "Access denied" }, { status: 403 });

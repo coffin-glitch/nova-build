@@ -6,12 +6,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ColorPalette } from "@/components/ui/ColorPalette";
 import FloatingBubbleLanding from "@/components/ui/FloatingBubbleLanding";
+import { NotificationBell } from "@/components/ui/NotificationBell";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useAccentColor } from "@/hooks/useAccentColor";
+import { useUnreadMessageCount } from "@/hooks/useUnreadMessageCount";
 import { useClerkRole } from "@/lib/clerk-roles";
 import { cn } from "@/lib/utils";
 import { UserButton, useUser } from "@clerk/nextjs";
-import { Bell, Menu, Truck, X } from "lucide-react";
+import { Mail, MailOpen, Menu, Truck, X } from "lucide-react";
 import { useTheme } from "next-themes";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -27,6 +29,7 @@ export default function SiteHeader() {
   const { preferences, updateAccentColor } = useUserPreferences();
   const { accentColor } = useAccentColor();
   const { theme } = useTheme();
+  const unreadMessageCount = useUnreadMessageCount();
   
   // Smart color handling for white accent color
   const getIconColor = () => {
@@ -157,15 +160,25 @@ export default function SiteHeader() {
           {/* Right side actions */}
           <div className="flex items-center space-x-2">
             {/* Notifications */}
-            <Button variant="ghost" size="icon" className="relative">
-              <Bell className="h-5 w-5" />
-              <Badge
-                variant="destructive"
-                className="absolute -right-1 -top-1 h-5 w-5 rounded-full p-0 text-xs"
-              >
-                3
-              </Badge>
-            </Button>
+            <NotificationBell />
+
+            {/* Messages for Carriers */}
+            {isCarrier && (
+              <Button variant="ghost" size="icon" asChild>
+                <Link href="/carrier/messages">
+                  <Mail className="h-5 w-5" />
+                </Link>
+              </Button>
+            )}
+
+            {/* Messages for Admins */}
+            {isAdmin && (
+              <Button variant="ghost" size="icon" asChild>
+                <Link href="/admin/messages">
+                  <Mail className="h-5 w-5" />
+                </Link>
+              </Button>
+            )}
 
             {/* Theme Toggle */}
             <ThemeToggle />
@@ -244,6 +257,31 @@ export default function SiteHeader() {
                         onColorChange={updateAccentColor}
                       />
                     </div>
+                    
+                    {/* Messages for Mobile */}
+                    {(isAdmin || isCarrier) && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">Messages</span>
+                        <Button variant="ghost" size="sm" asChild className="relative">
+                          <Link href={isAdmin ? "/admin/messages" : "/carrier/messages"}>
+                            {unreadMessageCount > 0 ? (
+                              <Mail className="h-4 w-4 mr-2" />
+                            ) : (
+                              <MailOpen className="h-4 w-4 mr-2" />
+                            )}
+                            Messages
+                            {unreadMessageCount > 0 && (
+                              <Badge
+                                variant="destructive"
+                                className="ml-2 h-5 w-5 rounded-full p-0 text-xs"
+                              >
+                                {unreadMessageCount}
+                              </Badge>
+                            )}
+                          </Link>
+                        </Button>
+                      </div>
+                    )}
                     <div className="flex items-center space-x-3">
                       <UserButton
                         afterSignOutUrl="/"

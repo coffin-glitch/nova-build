@@ -1,15 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import LoadCard from "@/components/find-loads/LoadCard";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Glass } from "@/components/ui/glass";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import { Glass } from "@/components/ui/glass";
-import { MapPin, Truck, Clock, DollarSign, Search, RefreshCw, Filter } from "lucide-react";
 import { useAccentColor } from "@/hooks/useAccentColor";
-import LoadCard from "@/components/find-loads/LoadCard";
+import { Filter, MapPin, RefreshCw, Search, Truck } from "lucide-react";
+import { useTheme } from "next-themes";
+import { useEffect, useState } from "react";
 
 interface Load {
   rr_number: string;

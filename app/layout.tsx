@@ -2,7 +2,8 @@ import { CarrierVerificationConsole } from "@/components/admin/CarrierVerificati
 import SiteFooter from "@/components/layout/SiteFooter";
 import SiteHeader from "@/components/layout/SiteHeaderNew";
 import { UserPreferencesProvider } from "@/components/providers/UserPreferencesProvider";
-import FloatingChatButton from "@/components/ui/FloatingChatButton";
+import FloatingAdminChatButton from "@/components/ui/FloatingAdminChatButton";
+import FloatingCarrierChatButtonNew from "@/components/ui/FloatingCarrierChatButtonNew";
 import FloatingDevAdminButton from "@/components/ui/FloatingDevAdminButton";
 import { ClerkProvider } from "@clerk/nextjs";
 import type { Metadata } from "next";
@@ -80,8 +81,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               }}
             />
             
-            {/* Floating Chat Button */}
-            <FloatingChatButton />
+            {/* Floating Carrier Messages Button */}
+            <FloatingCarrierChatButtonNew />
+        <FloatingAdminChatButton />
+            
+            {/* Floating Admin Messages Button - Replaced with FloatingAdminChatButton */}
             
             {/* Floating Dev Admin Button */}
             <FloatingDevAdminButton />

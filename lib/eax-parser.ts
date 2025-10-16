@@ -37,6 +37,12 @@ export interface EAXLoadData {
   net?: number;
   margin?: number;
   rate_cents?: number;
+  target_buy?: number;
+  max_buy?: number;
+  purch_tr?: number;
+  net_mrg?: number;
+  cm?: number;
+  fuel_surcharge?: number;
   
   // Contact information
   customer_name?: string;
@@ -44,6 +50,14 @@ export interface EAXLoadData {
   driver_name?: string;
   dispatcher_name?: string;
   vendor_name?: string;
+  vendor_dispatch?: string;
+  
+  // Additional EAX fields
+  spot_bid?: string;
+  docs_scanned?: string;
+  invoice_date?: string;
+  invoice_audit?: string;
+  nbr_of_stops?: number;
   
   // Additional data
   notes?: string;
@@ -61,20 +75,116 @@ export interface EAXCSVHeaders {
   delivery_date: number;
   delivery_time: number;
   dispatcher: number;
+  invoice_date: number;
+  docs_scanned: number;
+  invoice_audit: number;
+  revenue: number;
+  purch_tr: number;
+  target_buy: number;
+  max_buy: number;
+  net_mrg: number;
+  cm: number;
+  nbr_of_stops: number;
+  weight: number;
+  equipment: number;
   customer_name: number;
   customer_ref: number;
-  equipment: number;
-  weight: number;
+  spot_bid: number;
   driver: number;
   miles: number;
-  revenue: number;
-  commodity: number;
-  vendor_dispatch: number;
+  fuel_surcharge: number;
   origin: number;
   destination: number;
-  stops: number;
-  pickup_window: number;
-  delivery_window: number;
+  vendor_dispatch: number;
+}
+
+/**
+ * Adjust time ranges for USPS loads (e.g., 1200-1300)
+ */
+function adjustTimeRange(timeValue: string): string {
+  if (!timeValue) return timeValue;
+  
+  // Check if it's a range format like 1200-1300
+  const rangeMatch = timeValue.match(/^(\d{3,4})-(\d{3,4})$/);
+  if (rangeMatch) {
+    const [, startTime, endTime] = rangeMatch;
+    // Return the start time in 24-hour format
+    return formatMilitaryTime(startTime);
+  }
+  
+  return formatMilitaryTime(timeValue);
+}
+
+/**
+ * Format time to 24-hour military format
+ */
+function formatMilitaryTime(timeValue: string): string {
+  if (!timeValue) return timeValue;
+  
+  // Remove any non-digit characters
+  const cleanTime = timeValue.replace(/\D/g, '');
+  
+  // Handle 3-digit times (e.g., 800 -> 0800)
+  if (cleanTime.length === 3) {
+    return `0${cleanTime}`;
+  }
+  
+  // Handle 4-digit times (e.g., 1200 -> 1200)
+  if (cleanTime.length === 4) {
+    return cleanTime;
+  }
+  
+  return timeValue;
+}
+
+/**
+ * Apply stops modification logic for all loads
+ */
+function modifyStops(stopsValue: string | number): number {
+  if (!stopsValue) return 1; // Default to 1 stop
+  
+  const stops = typeof stopsValue === 'string' ? parseInt(stopsValue) : stopsValue;
+  
+  // Apply stops modification logic
+  if (stops <= 0) return 1;
+  if (stops > 10) return 10; // Cap at 10 stops
+  
+  return stops;
+}
+
+/**
+ * Parse date from EAX CSV format (MM/DD/YY or MM/DD/YYYY)
+ */
+function parseEAXDate(dateValue: string): string | undefined {
+  if (!dateValue || dateValue.trim() === '') return undefined;
+  
+  const trimmed = dateValue.trim();
+  
+  // Handle MM/DD/YY format
+  if (/^\d{1,2}\/\d{1,2}\/\d{2}$/.test(trimmed)) {
+    const [month, day, year] = trimmed.split('/');
+    const fullYear = parseInt(year) < 50 ? 2000 + parseInt(year) : 1900 + parseInt(year);
+    const date = new Date(fullYear, parseInt(month) - 1, parseInt(day));
+    if (!isNaN(date.getTime()) && date.getFullYear() > 1900 && date.getFullYear() < 2100) {
+      return trimmed; // Return original format for now
+    }
+  }
+  
+  // Handle MM/DD/YYYY format
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(trimmed)) {
+    const date = new Date(trimmed);
+    if (!isNaN(date.getTime()) && date.getFullYear() > 1900 && date.getFullYear() < 2100) {
+      return trimmed; // Return original format for now
+    }
+  }
+  
+  // Try parsing as a general date
+  const date = new Date(trimmed);
+  if (!isNaN(date.getTime()) && date.getFullYear() > 1900 && date.getFullYear() < 2100) {
+    return trimmed;
+  }
+  
+  return undefined;
 }
 
 /**
@@ -93,6 +203,20 @@ function isValidDate(value: string): boolean {
   // Check if it's a currency format
   if (/^\$?[\d,]+\.?\d*$/.test(trimmed)) {
     return false;
+  }
+  
+  // Check for MM/DD/YY format specifically (common in EAX files)
+  if (/^\d{1,2}\/\d{1,2}\/\d{2}$/.test(trimmed)) {
+    const [month, day, year] = trimmed.split('/');
+    const fullYear = parseInt(year) < 50 ? 2000 + parseInt(year) : 1900 + parseInt(year);
+    const date = new Date(fullYear, parseInt(month) - 1, parseInt(day));
+    return !isNaN(date.getTime()) && date.getFullYear() > 1900 && date.getFullYear() < 2100;
+  }
+  
+  // Check for MM/DD/YYYY format
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(trimmed)) {
+    const date = new Date(trimmed);
+    return !isNaN(date.getTime()) && date.getFullYear() > 1900 && date.getFullYear() < 2100;
   }
   
   // Check if it's a valid date
@@ -137,57 +261,69 @@ export function detectEAXHeaders(headers: string[]): Partial<EAXCSVHeaders> {
   headers.forEach((header, index) => {
     const normalizedHeader = header.toLowerCase().trim().replace(/[^a-z0-9\s]/g, '');
     
-    // Intelligent pattern matching for EAX headers
-    if (normalizedHeader.match(/^(rr|rr#|rr number|rrnum)/)) {
+    // Exact matching for the specific EAX format from RRBLOD02R.csv
+    // Headers: "RR#","Load#","Tm#","Sts","Pickup Date","Pickup Time","Delivery Date","Delivery Time","Dispatcher","Invoice Date","Docs Scanned","Invoice Audit","Revenue$","Purch Tr$","Target Buy","Max Buy","Net Mrg$","CM$","Nbr of Stops","Weight","Equipment","Cust Name","Cust Ref#","Spot Bid","Driver","Tot Miles","Fuel Surcharge","Origin","Destination","Vendor Dispatch"
+    
+    if (normalizedHeader === 'rr' || normalizedHeader === 'rr number') {
       headerMap.rr_number = index;
-    } else if (normalizedHeader.match(/^(load|load#|load number|loadnum)/)) {
+    } else if (normalizedHeader === 'load' || normalizedHeader === 'load number') {
       headerMap.load_number = index;
-    } else if (normalizedHeader.match(/^(tm|tm#|tm number|tmnum)/)) {
+    } else if (normalizedHeader === 'tm' || normalizedHeader === 'tm number') {
       headerMap.tm_number = index;
-    } else if (normalizedHeader.match(/^(sts|status|stat)/)) {
+    } else if (normalizedHeader === 'sts' || normalizedHeader === 'status') {
       headerMap.status = index;
-    } else if (normalizedHeader.match(/^(pickup date|pickup|pu date|pu)$/) && !normalizedHeader.includes('time') && !normalizedHeader.includes('window')) {
+    } else if (normalizedHeader === 'pickup date') {
       headerMap.pickup_date = index;
-    } else if (normalizedHeader.match(/^(pickup time|pu time|pickup window|pu window)/)) {
-      if (normalizedHeader.includes('window')) {
-        headerMap.pickup_window = index;
-      } else {
-        headerMap.pickup_time = index;
-      }
-    } else if (normalizedHeader.match(/^(delivery date|delivery|del date|del)$/) && !normalizedHeader.includes('time') && !normalizedHeader.includes('window')) {
+    } else if (normalizedHeader === 'pickup time') {
+      headerMap.pickup_time = index;
+    } else if (normalizedHeader === 'delivery date') {
       headerMap.delivery_date = index;
-    } else if (normalizedHeader.match(/^(delivery time|del time|delivery window|del window)/)) {
-      if (normalizedHeader.includes('window')) {
-        headerMap.delivery_window = index;
-      } else {
-        headerMap.delivery_time = index;
-      }
-    } else if (normalizedHeader.match(/^(dispatcher|disp)/)) {
+    } else if (normalizedHeader === 'delivery time') {
+      headerMap.delivery_time = index;
+    } else if (normalizedHeader === 'dispatcher') {
       headerMap.dispatcher = index;
-    } else if (normalizedHeader.match(/^(cust name|customer name|customer|cust)/)) {
-      headerMap.customer_name = index;
-    } else if (normalizedHeader.match(/^(cust ref|customer ref|custref)/)) {
-      headerMap.customer_ref = index;
-    } else if (normalizedHeader.match(/^(equipment|eq|equip)/)) {
-      headerMap.equipment = index;
-    } else if (normalizedHeader.match(/^(weight|wt)/)) {
-      headerMap.weight = index;
-    } else if (normalizedHeader.match(/^(driver|dr)/)) {
-      headerMap.driver = index;
-    } else if (normalizedHeader.match(/^(miles|tot miles|mi|distance)/)) {
-      headerMap.miles = index;
-    } else if (normalizedHeader.match(/^(revenue|rate|rev|rate per mile)$/)) {
+    } else if (normalizedHeader === 'invoice date') {
+      headerMap.invoice_date = index;
+    } else if (normalizedHeader === 'docs scanned') {
+      headerMap.docs_scanned = index;
+    } else if (normalizedHeader === 'invoice audit') {
+      headerMap.invoice_audit = index;
+    } else if (normalizedHeader === 'revenue' || normalizedHeader === 'revenue$') {
       headerMap.revenue = index;
-    } else if (normalizedHeader.match(/^(commodity|commod|spot bid|commodity type)/)) {
-      headerMap.commodity = index;
-    } else if (normalizedHeader.match(/^(vendor dispatch|vendor|vend)/)) {
-      headerMap.vendor_dispatch = index;
-    } else if (normalizedHeader.match(/^(origin|orig|from)/)) {
+    } else if (normalizedHeader === 'purch tr' || normalizedHeader === 'purch tr$') {
+      headerMap.purch_tr = index;
+    } else if (normalizedHeader === 'target buy') {
+      headerMap.target_buy = index;
+    } else if (normalizedHeader === 'max buy') {
+      headerMap.max_buy = index;
+    } else if (normalizedHeader === 'net mrg' || normalizedHeader === 'net mrg$') {
+      headerMap.net_mrg = index;
+    } else if (normalizedHeader === 'cm' || normalizedHeader === 'cm$') {
+      headerMap.cm = index;
+    } else if (normalizedHeader === 'nbr of stops') {
+      headerMap.nbr_of_stops = index;
+    } else if (normalizedHeader === 'weight') {
+      headerMap.weight = index;
+    } else if (normalizedHeader === 'equipment') {
+      headerMap.equipment = index;
+    } else if (normalizedHeader === 'cust name' || normalizedHeader === 'customer name') {
+      headerMap.customer_name = index;
+    } else if (normalizedHeader === 'cust ref' || normalizedHeader === 'cust ref#' || normalizedHeader === 'customer ref') {
+      headerMap.customer_ref = index;
+    } else if (normalizedHeader === 'spot bid') {
+      headerMap.spot_bid = index;
+    } else if (normalizedHeader === 'driver') {
+      headerMap.driver = index;
+    } else if (normalizedHeader === 'tot miles' || normalizedHeader === 'miles') {
+      headerMap.miles = index;
+    } else if (normalizedHeader === 'fuel surcharge') {
+      headerMap.fuel_surcharge = index;
+    } else if (normalizedHeader === 'origin') {
       headerMap.origin = index;
-    } else if (normalizedHeader.match(/^(destination|dest|to)/)) {
+    } else if (normalizedHeader === 'destination') {
       headerMap.destination = index;
-    } else if (normalizedHeader.match(/^(stops|stop count|number of stops)/)) {
-      headerMap.stops = index;
+    } else if (normalizedHeader === 'vendor dispatch') {
+      headerMap.vendor_dispatch = index;
     }
   });
   
@@ -203,23 +339,31 @@ export function mapEquipmentType(equipmentCode: string): string {
   
   const code = equipmentCode.toUpperCase().trim();
   
-  // EAX equipment code mapping
+  // EAX equipment code mapping based on user specifications
   const equipmentMap: { [key: string]: string } = {
     'V': 'Dry Van',
+    'VR': 'Dry Van or Reefer',
     'R': 'Reefer',
-    'VR': 'Van/Reefer',
-    'F': 'Flatbed',
-    'C': 'Container',
-    'T': 'Tanker',
+    'F': 'Flat Bed',
+    'CN': 'Conestoga',
+    'DT': 'Dump Trailer',
+    'FT': 'Flat Bed w/ Tarps',
+    'FD': 'Flat Bed or Step Deck',
+    'FH': 'Flat Bed or HotShot',
+    'HTSH': 'HotShot',
+    'PO': 'Power Only',
+    'SD': 'Step Deck',
+    'VF': 'Dry Van or Refer',
+    // Legacy mappings for backward compatibility
     'DRY VAN': 'Dry Van',
     'REEFER': 'Reefer',
-    'FLATBED': 'Flatbed',
+    'FLATBED': 'Flat Bed',
     'CONTAINER': 'Container',
     'TANKER': 'Tanker',
-    'VAN/REEFER': 'Van/Reefer',
+    'VAN/REEFER': 'Dry Van or Reefer',
     'DRY': 'Dry Van',
     'REEF': 'Reefer',
-    'FLAT': 'Flatbed',
+    'FLAT': 'Flat Bed',
     'CONT': 'Container',
     'TANK': 'Tanker'
   };
@@ -256,31 +400,64 @@ export function parseEAXLoadRow(row: string[], headers: Partial<EAXCSVHeaders>):
   // Parse dates and times with validation
   const pickupDateRaw = getValue(headers.pickup_date);
   const deliveryDateRaw = getValue(headers.delivery_date);
-  const pickupTime = getValue(headers.pickup_time);
-  const deliveryTime = getValue(headers.delivery_time);
-  const pickupWindow = getValue(headers.pickup_window);
-  const deliveryWindow = getValue(headers.delivery_window);
+  const pickupTimeRaw = getValue(headers.pickup_time);
+  const deliveryTimeRaw = getValue(headers.delivery_time);
 
-  // Validate that pickup/delivery dates are actually dates, not times or currency
-  const pickupDate = isValidDate(pickupDateRaw) ? pickupDateRaw : undefined;
-  const deliveryDate = isValidDate(deliveryDateRaw) ? deliveryDateRaw : undefined;
+  // Parse dates using the new EAX date parser
+  const pickupDate = parseEAXDate(pickupDateRaw);
+  const deliveryDate = parseEAXDate(deliveryDateRaw);
 
   // Parse financial data
   const revenue = getNumber(headers.revenue);
   const miles = getInt(headers.miles);
-  const weight = getNumber(headers.weight);
-  const stops = getInt(headers.stops);
+  const weightRaw = getNumber(headers.weight);
+  const stopsRaw = getInt(headers.nbr_of_stops);
+  const targetBuy = getNumber(headers.target_buy);
+  const maxBuy = getNumber(headers.max_buy);
+  const purchTr = getNumber(headers.purch_tr);
+  const netMrg = getNumber(headers.net_mrg);
+  const cm = getNumber(headers.cm);
+  const fuelSurcharge = getNumber(headers.fuel_surcharge) || 0; // Default to 0
 
   // Parse equipment with intelligent mapping
   const equipmentCode = getValue(headers.equipment);
   const equipment = mapEquipmentType(equipmentCode);
 
+  // Get customer name for special USPS logic
+  const customerName = getValue(headers.customer_name);
+
+  // Special logic for USPS loads
+  let weight = weightRaw;
+  let pickupTime = pickupTimeRaw;
+  let deliveryTime = deliveryTimeRaw;
+  let stops = stopsRaw;
+
+  if (customerName && customerName.toLowerCase().includes('usps')) {
+    // Set default weight to 30,000 lbs for USPS loads
+    weight = weight || 30000;
+    
+    // Adjust time ranges for USPS loads
+    pickupTime = adjustTimeRange(pickupTimeRaw);
+    deliveryTime = adjustTimeRange(deliveryTimeRaw);
+  } else {
+    // Format times to military format for all loads
+    pickupTime = formatMilitaryTime(pickupTimeRaw);
+    deliveryTime = formatMilitaryTime(deliveryTimeRaw);
+  }
+
+  // Apply stops modification logic for all loads
+  stops = modifyStops(stopsRaw);
+
   // Calculate derived values
   const rateCents = revenue ? Math.round(revenue * 100) : undefined;
 
+  // Debug logging for RR number
+  const rrNumberRaw = getValue(headers.rr_number);
+  console.log("Raw RR number:", rrNumberRaw, "Headers:", headers.rr_number);
+  
   return {
     // Core identifiers
-    rr_number: getValue(headers.rr_number) || `UNKNOWN_${Date.now()}`,
+    rr_number: rrNumberRaw || `UNKNOWN_${Date.now()}`,
     tm_number: getValue(headers.tm_number),
     load_number: getValue(headers.load_number),
     status_code: getValue(headers.status),
@@ -294,36 +471,48 @@ export function parseEAXLoadRow(row: string[], headers: Partial<EAXCSVHeaders>):
     // Timing
     pickup_date: pickupDate || undefined,
     pickup_time: pickupTime || undefined,
-    pickup_window: pickupWindow || undefined,
     delivery_date: deliveryDate || undefined,
     delivery_time: deliveryTime || undefined,
-    delivery_window: deliveryWindow || undefined,
     
     // Load specifications
     equipment: equipment,
     weight: weight,
-    commodity: getValue(headers.commodity),
     stops: stops,
     miles: miles,
     
     // Financial
     revenue: revenue,
+    target_buy: targetBuy,
+    max_buy: maxBuy,
+    purch_tr: purchTr,
+    net_mrg: netMrg,
+    cm: cm,
+    fuel_surcharge: fuelSurcharge,
     rate_cents: rateCents,
     
     // Contact information
-    customer_name: getValue(headers.customer_name),
+    customer_name: customerName,
     customer_ref: getValue(headers.customer_ref),
     driver_name: getValue(headers.driver),
     dispatcher_name: getValue(headers.dispatcher),
     vendor_name: getValue(headers.vendor_dispatch),
+    vendor_dispatch: getValue(headers.vendor_dispatch),
+    
+    // Additional EAX fields
+    spot_bid: getValue(headers.spot_bid),
+    docs_scanned: getValue(headers.docs_scanned),
+    invoice_date: getValue(headers.invoice_date),
+    invoice_audit: getValue(headers.invoice_audit),
+    nbr_of_stops: stops,
     
     // Additional data
-    notes: getValue(headers.commodity), // Use commodity as notes for now
+    notes: getValue(headers.spot_bid), // Use spot bid as notes for now
     archived: false,
     raw_data: {
       original_row: row,
       headers: headers,
-      equipment_code: equipmentCode
+      equipment_code: equipmentCode,
+      is_usps_load: customerName && customerName.toLowerCase().includes('usps')
     }
   };
 }

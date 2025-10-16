@@ -1,10 +1,14 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import { MessageCircle, X, Send, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useClerkRole } from "@/lib/clerk-roles";
 import { cn } from "@/lib/utils";
+import { MessageCircle, Send, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+
+const fetcher = (url: string) => fetch(url).then(r => r.json());
 
 interface ChatMessage {
   id: string;
@@ -15,6 +19,7 @@ interface ChatMessage {
 }
 
 export default function FloatingChatButton() {
+  const { isCarrier } = useClerkRole();
   const [isOpen, setIsOpen] = useState(false);
   const [position, setPosition] = useState({ x: 20, y: 20 });
   const [isDragging, setIsDragging] = useState(false);
@@ -80,7 +85,7 @@ export default function FloatingChatButton() {
     }
   }, [isDragging, dragOffset]);
 
-  const sendMessage = () => {
+  const sendMessage = async () => {
     if (!message.trim()) return;
     
     const newMessage: ChatMessage = {
@@ -92,19 +97,40 @@ export default function FloatingChatButton() {
     };
     
     setMessages(prev => [...prev, newMessage]);
+    const messageText = message.trim();
     setMessage("");
     
-    // Simulate admin response
-    setTimeout(() => {
-      const adminResponse: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        sender: "Admin",
-        message: "Thank you for your message. We'll get back to you shortly!",
-        timestamp: new Date(),
-        isAdmin: true,
-      };
-      setMessages(prev => [...prev, adminResponse]);
-    }, 1000);
+    try {
+      // Send message to admins via API
+      const response = await fetch('/api/carrier/chat-message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: messageText
+        })
+      });
+
+      if (response.ok) {
+        toast.success("Message sent to administrators");
+        
+        // Add admin acknowledgment
+        setTimeout(() => {
+          const adminResponse: ChatMessage = {
+            id: (Date.now() + 1).toString(),
+            sender: "Admin",
+            message: "Thank you for your message. We'll get back to you shortly!",
+            timestamp: new Date(),
+            isAdmin: true,
+          };
+          setMessages(prev => [...prev, adminResponse]);
+        }, 1000);
+      } else {
+        throw new Error('Failed to send message');
+      }
+    } catch (error) {
+      toast.error("Failed to send message");
+      console.error(error);
+    }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -113,6 +139,11 @@ export default function FloatingChatButton() {
       sendMessage();
     }
   };
+
+  // Only show for carriers
+  if (!isCarrier) {
+    return null;
+  }
 
   return (
     <div className="fixed z-50" style={{ left: position.x, top: position.y }}>

@@ -1,4 +1,4 @@
-import sqlTemplate from '@/lib/db';
+import sql from '@/lib/db';
 import { NextRequest, NextResponse } from "next/server";
 
 // Cache for frequently accessed data
@@ -28,39 +28,8 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Create tables if they don't exist
-    await sqlTemplate`
-      CREATE TABLE IF NOT EXISTS telegram_bids (
-        id SERIAL PRIMARY KEY,
-        bid_number TEXT NOT NULL UNIQUE,
-        distance_miles INTEGER,
-        pickup_timestamp TEXT,
-        delivery_timestamp TEXT,
-        stops TEXT, -- JSON string
-        tag TEXT,
-        source_channel TEXT,
-        forwarded_to TEXT,
-        received_at TEXT NOT NULL,
-        expires_at TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `;
-
-    await sqlTemplate`
-      CREATE TABLE IF NOT EXISTS carrier_bids (
-        id SERIAL PRIMARY KEY,
-        bid_number TEXT NOT NULL,
-        clerk_user_id TEXT NOT NULL,
-        amount_cents INTEGER NOT NULL,
-        notes TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE(bid_number, clerk_user_id)
-      )
-    `;
-
     // Insert sample data if none exists
-    const count = await sqlTemplate`SELECT COUNT(*) as count FROM telegram_bids`;
+    const count = await sql`SELECT COUNT(*) as count FROM telegram_bids`;
     if (count[0].count === 0) {
       const sampleBids = [
         ['BID001', 250, '2025-01-15T08:00:00Z', '2025-01-15T18:00:00Z', JSON.stringify(["Chicago, IL", "Detroit, MI"]), 'URGENT', 'telegram', 'admin', '2025-01-15T07:30:00Z'],
@@ -69,7 +38,7 @@ export async function GET(request: NextRequest) {
       ];
 
       for (const bid of sampleBids) {
-        await sqlTemplate`
+        await sql`
           INSERT INTO telegram_bids (bid_number, distance_miles, pickup_timestamp, delivery_timestamp, stops, tag, source_channel, forwarded_to, received_at)
           VALUES (${bid[0]}, ${bid[1]}, ${bid[2]}, ${bid[3]}, ${bid[4]}, ${bid[5]}, ${bid[6]}, ${bid[7]}, ${bid[8]})
         `;
@@ -79,40 +48,37 @@ export async function GET(request: NextRequest) {
     // Build query with PostgreSQL template literals and daily filtering
     const today = new Date().toISOString().split('T')[0];
     
-    // Build WHERE conditions
+    // Build WHERE conditions with proper escaping
     let whereConditions = [];
     
     if (q) {
-      whereConditions.push(`tb.bid_number LIKE '%${q}%'`);
+      whereConditions.push(`tb.bid_number LIKE '%${q.replace(/'/g, "''")}%'`);
     }
     
     if (tag) {
-      whereConditions.push(`tb.tag = '${tag.toUpperCase()}'`);
+      whereConditions.push(`tb.tag = '${tag.toUpperCase().replace(/'/g, "''")}'`);
     }
     
-    if (!isAdmin) {
-      whereConditions.push(`DATE(tb.received_at::timestamp) = '${today}'`);
+    if (!isAdmin && !showExpired) {
+      whereConditions.push(`tb.received_at::date = CURRENT_DATE`);
     }
     
     if (showExpired) {
       whereConditions.push(`NOW() > (tb.received_at::timestamp + INTERVAL '25 minutes')`);
-    } else {
+    } else if (!isAdmin) {
+      // Only apply expiration filter for non-admin users
       whereConditions.push(`NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes')`);
     }
     
     const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
     
     // Single query with all conditions
-    const rows = await sqlTemplate`
+    const rows = await sql`
       SELECT 
         tb.*,
         (tb.received_at::timestamp + INTERVAL '25 minutes')::text as expires_at_25,
         NOW() > (tb.received_at::timestamp + INTERVAL '25 minutes') as is_expired,
-        CASE 
-          WHEN tb.stops IS NOT NULL AND tb.stops != '' 
-          THEN jsonb_array_length(tb.stops::jsonb)
-          ELSE 0 
-        END as stops_count,
+        0 as stops_count,
         COALESCE(lowest_bid.amount_cents, 0) as lowest_amount_cents,
         lowest_bid.clerk_user_id as lowest_user_id,
         COALESCE(bid_counts.bids_count, 0) as bids_count
@@ -138,7 +104,7 @@ export async function GET(request: NextRequest) {
         FROM carrier_bids
         GROUP BY bid_number
       ) bid_counts ON tb.bid_number = bid_counts.bid_number
-      ${sqlTemplate.unsafe(whereClause)}
+      ${sql.unsafe(whereClause)}
       ORDER BY tb.received_at DESC 
       LIMIT ${limit} OFFSET ${offset}
     `;

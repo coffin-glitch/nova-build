@@ -6,9 +6,12 @@ Create a `.env.local` file in your project root with the following variables:
 
 ```bash
 # Database Configuration
-# For production, use your Supabase PostgreSQL URL
-# For development, you can use SQLite (local) or PostgreSQL
-DATABASE_URL=postgresql://username:password@localhost:5432/nova_build
+# REQUIRED: PostgreSQL Database URL
+# For local development with PostgreSQL:
+DATABASE_URL=postgresql://postgres:password@localhost:5432/nova_build
+
+# For production with Supabase:
+DATABASE_URL=postgresql://postgres:[password]@[host]:5432/[database]
 
 # Clerk Authentication
 # Get these from your Clerk dashboard: https://dashboard.clerk.com
@@ -32,17 +35,49 @@ NODE_ENV=development
 
 ## Database Setup
 
-### Option 1: PostgreSQL (Recommended for Production)
-- Use Supabase, Railway, or any PostgreSQL provider
-- Set `DATABASE_URL` to your PostgreSQL connection string
+### PostgreSQL Setup (Required)
 
-### Option 2: SQLite (Development Only)
-- The app will automatically use SQLite if no `DATABASE_URL` is set
-- Database file will be created at `storage/nova-build.db`
+**Option 1: Local PostgreSQL**
+1. Install PostgreSQL on your machine
+2. Create a database: `createdb nova_build`
+3. Set `DATABASE_URL=postgresql://postgres:password@localhost:5432/nova_build`
+
+**Option 2: Supabase (Recommended)**
+1. Go to [Supabase](https://supabase.com)
+2. Create a new project
+3. Copy the database URL from Settings > Database
+4. Set `DATABASE_URL` to your Supabase connection string
+
+**Option 3: Other PostgreSQL Providers**
+- Railway, Neon, PlanetScale, etc.
+- Use their provided connection string
+
+### Database Migration
+
+After setting up your database, run the migration:
+
+```bash
+# Run the complete schema migration
+psql $DATABASE_URL -f db/migrations/012_complete_postgres_schema.sql
+```
 
 ## After Setup
 
 1. Restart your development server: `npm run dev`
-2. The sign-in button should now work properly
-3. You can create an account and test authentication
+2. The application will now use PostgreSQL exclusively
+3. All API endpoints will work with the PostgreSQL database
+4. You can create an account and test authentication
+
+## Troubleshooting
+
+**"DATABASE_URL environment variable is not set!" error:**
+- Make sure you have a `.env.local` file in your project root
+- Check that the DATABASE_URL is correctly formatted
+- Restart your development server after adding the environment variable
+
+**Database connection errors:**
+- Verify your PostgreSQL server is running
+- Check that the database exists
+- Ensure the connection string is correct
+- Run the migration script to create tables
 

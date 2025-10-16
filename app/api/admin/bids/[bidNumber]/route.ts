@@ -1,4 +1,4 @@
-import sqlTemplate from '@/lib/db';
+import sql from '@/lib/db';
 import { NextRequest, NextResponse } from "next/server";
 
 export async function DELETE(
@@ -16,13 +16,13 @@ export async function DELETE(
     }
 
     // First delete carrier bids for this bid number
-    await sqlTemplate`
+    await sql`
       DELETE FROM carrier_bids 
       WHERE bid_number = ${bidNumber}
     `;
 
     // Then delete the telegram bid
-    const result = await sqlTemplate`
+    const result = await sql`
       DELETE FROM telegram_bids 
       WHERE bid_number = ${bidNumber}
     `;

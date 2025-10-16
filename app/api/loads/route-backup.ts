@@ -1,6 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { roleManager } from "@/lib/role-manager";
 import { db } from "@/lib/db-local";
+import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
@@ -105,7 +104,20 @@ export async function GET(request: NextRequest) {
     }
 
     const countResult = db.prepare(countQuery).all(...countParams);
-    const total = parseInt(countResult[0]?.total || "0");
+
+    // Defensive handling: select "as total" returns [{total: num}] but TypeScript can't be sure.
+    const countRow = countResult[0] as { [key: string]: any } | undefined;
+    // Try known expected keys or use Object.values fallback
+    let total = 0;
+    if (countRow) {
+      if ('total' in countRow) {
+        total = parseInt(countRow.total);
+      } else {
+        // Fallback: parse first property value in the object
+        const value = Object.values(countRow)[0];
+        total = parseInt(typeof value === "number" ? value.toString() : value || "0");
+      }
+    }
 
     return NextResponse.json({
       loads,

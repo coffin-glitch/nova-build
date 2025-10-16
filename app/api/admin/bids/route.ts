@@ -1,5 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
-import sql from "@/lib/db.server";
+import sql from "@/lib/db";
 import { NextResponse } from "next/server";
 
 /**
@@ -22,8 +22,8 @@ export async function GET(req: Request) {
       tag,
       received_at,
       expires_at,
-      jsonb_array_length(stops::jsonb) as stop_count
-    from public.telegram_bids
+      0 as stop_count
+    from telegram_bids
     order by received_at desc
     limit ${limit}
   `;

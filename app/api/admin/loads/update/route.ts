@@ -1,4 +1,5 @@
 import { roleManager } from "@/lib/role-manager";
+import sql from "@/lib/db";
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 
@@ -25,7 +26,6 @@ export async function PUT(req: Request) {
       pickupDate,
       deliveryDate,
       equipment,
-      weight,
       revenue,
       purchase,
       net,
@@ -64,7 +64,6 @@ export async function PUT(req: Request) {
         pickup_date = ${pickupDate || null},
         delivery_date = ${deliveryDate || null},
         equipment = ${equipment || null},
-        weight = ${weight || null},
         revenue = ${revenue || null},
         purchase = ${purchase || null},
         net = ${net || null},
@@ -76,11 +75,12 @@ export async function PUT(req: Request) {
         dispatcher_name = ${dispatcherName || null},
         status_code = ${statusCode || null},
         tm_number = ${tmNumber || null},
-        updated_at = datetime('now')
+        updated_at = NOW()
       WHERE rr_number = ${rrNumber}
+      RETURNING *
     `;
 
-    if (result.changes === 0) {
+    if (result.length === 0) {
       return NextResponse.json({ error: "No changes made" }, { status: 400 });
     }
 

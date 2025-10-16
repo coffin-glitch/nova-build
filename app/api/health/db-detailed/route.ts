@@ -1,29 +1,29 @@
-import sqlTemplate from '@/lib/db';
+import sql from '@/lib/db';
 import { NextResponse } from "next/server";
 
 export async function GET() {
   try {
     // Get PostgreSQL version and basic info
-    const versionResult = await sqlTemplate`SELECT version()`;
+    const versionResult = await sql`SELECT version()`;
     const version = versionResult[0]?.version || 'Unknown';
 
     // Check database connection
-    const connectionTest = await sqlTemplate`SELECT 1 as test`;
+    const connectionTest = await sql`SELECT 1 as test`;
     
     // Get database size
-    const sizeResult = await sqlTemplate`
+    const sizeResult = await sql`
       SELECT pg_size_pretty(pg_database_size(current_database())) as database_size
     `;
     const databaseSize = sizeResult[0]?.database_size || 'Unknown';
 
     // Check if JSONB functions are available (PostgreSQL 9.4+)
-    const jsonbTest = await sqlTemplate`
+    const jsonbTest = await sql`
       SELECT jsonb_array_length('["test"]'::jsonb) as jsonb_test
     `;
     const jsonbSupported = jsonbTest[0]?.jsonb_test === 1;
 
     // Check if we have the required tables
-    const tablesResult = await sqlTemplate`
+    const tablesResult = await sql`
       SELECT table_name 
       FROM information_schema.tables 
       WHERE table_schema = 'public' 
@@ -36,7 +36,7 @@ export async function GET() {
     const counts: Record<string, number> = {};
     for (const table of existingTables) {
       try {
-        const countResult = await sqlTemplate`SELECT COUNT(*) as count FROM ${sqlTemplate(table)}`;
+        const countResult = await sql`SELECT COUNT(*) as count FROM ${sql(table)}`;
         counts[table] = parseInt(countResult[0]?.count || '0');
       } catch (error) {
         counts[table] = -1; // Error accessing table
@@ -44,7 +44,7 @@ export async function GET() {
     }
 
     // Check PostgreSQL extensions
-    const extensionsResult = await sqlTemplate`
+    const extensionsResult = await sql`
       SELECT extname, extversion 
       FROM pg_extension 
       WHERE extname IN ('uuid-ossp', 'pgcrypto', 'pg_stat_statements')

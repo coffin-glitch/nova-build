@@ -1,4 +1,4 @@
-import sqlTemplate from '@/lib/db';
+import sql from '@/lib/db';
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
         ab.*,
         CASE 
           WHEN ab.stops IS NOT NULL AND ab.stops != '' 
-          THEN jsonb_array_length(ab.stops::jsonb)
+          THEN 0
           ELSE 0 
         END as stops_count,
         COALESCE(bid_counts.bids_count, 0) as bids_count,
@@ -89,7 +89,7 @@ export async function GET(request: NextRequest) {
       LIMIT $${queryParams.length + 1} OFFSET $${queryParams.length + 2}
     `;
 
-    const rows = await sqlTemplate(query, ...queryParams, limit, offset);
+    const rows = await sql(query, ...queryParams, limit, offset);
 
     // Get total count for pagination
     const countQuery = `
@@ -97,7 +97,7 @@ export async function GET(request: NextRequest) {
       FROM archive_bids ab
       ${whereClause}
     `;
-    const countResult = await sqlTemplate(countQuery, ...queryParams);
+    const countResult = await sql(countQuery, ...queryParams);
     const total = parseInt(countResult[0]?.total || '0');
 
     // Get archive statistics by date
@@ -113,7 +113,7 @@ export async function GET(request: NextRequest) {
       ORDER BY archived_date DESC
       LIMIT 30
     `;
-    const stats = await sqlTemplate(statsQuery);
+    const stats = await sql(statsQuery);
 
     return NextResponse.json({
       ok: true,

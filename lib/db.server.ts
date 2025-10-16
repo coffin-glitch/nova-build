@@ -39,7 +39,7 @@ const createTables = () => {
     )
   `);
 
-  // Loads table with all required columns
+  // Loads table with all required columns (cleaned up - removed unused fields)
   db.exec(`
     CREATE TABLE IF NOT EXISTS loads (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -52,13 +52,8 @@ const createTables = () => {
       destination_state TEXT,
       equipment TEXT,
       revenue REAL,
-      purchase REAL,
-      net REAL,
-      margin REAL,
       customer_name TEXT,
       driver_name TEXT,
-      vendor_name TEXT,
-      dispatcher_name TEXT,
       pickup_date DATE,
       pickup_window TEXT,
       delivery_date DATE,

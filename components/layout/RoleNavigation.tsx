@@ -45,7 +45,10 @@ export default function RoleNavigation({ role }: RoleNavigationProps) {
   return (
     <nav className="hidden md:flex md:items-center md:space-x-1">
       {navigation.map((item) => {
-        const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
+        // Fix: Dashboard should only be active when exactly on /carrier or /admin, not sub-pages
+        const isActive = item.name === "Dashboard" 
+          ? pathname === item.href 
+          : pathname === item.href || pathname.startsWith(item.href + "/");
         return (
           <Link
             key={item.name}
@@ -77,7 +80,10 @@ export function MobileRoleNavigation({ role }: RoleNavigationProps) {
   return (
     <nav className="mt-6 space-y-2">
       {navigation.map((item) => {
-        const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
+        // Fix: Dashboard should only be active when exactly on /carrier or /admin, not sub-pages
+        const isActive = item.name === "Dashboard" 
+          ? pathname === item.href 
+          : pathname === item.href || pathname.startsWith(item.href + "/");
         return (
           <Link
             key={item.name}

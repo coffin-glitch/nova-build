@@ -1,14 +1,28 @@
+import { getClerkUserRole } from "@/lib/clerk-server";
+import sql from "@/lib/db";
+import { EAXLoadData, getLoadSummary, parseEAXCSV, parseEAXExcel, validateEAXLoad } from "@/lib/eax-parser";
+import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
-import { roleManager } from "@/lib/role-manager";
-import sql from "@/lib/db.server";
 import * as XLSX from "xlsx";
-import { parseEAXCSV, parseEAXExcel, validateEAXLoad, getLoadSummary, EAXLoadData } from "@/lib/eax-parser";
 
 export async function POST(request: NextRequest) {
   try {
-    // TODO: Add proper admin authentication here
-    // For now, we'll trust that the client-side admin check is sufficient
-    // In production, you should verify the JWT token or use session-based auth
+    // Check authentication and admin role
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json(
+        { error: "Authentication required" },
+        { status: 401 }
+      );
+    }
+
+    const userRole = await getClerkUserRole(userId);
+    if (userRole !== "admin") {
+      return NextResponse.json(
+        { error: "Admin access required" },
+        { status: 403 }
+      );
+    }
 
     const formData = await request.formData();
     const file = formData.get("file") as File;
@@ -37,8 +51,17 @@ export async function POST(request: NextRequest) {
     
     if (file.name.endsWith('.csv')) {
       // Parse CSV file using improved parser
+      console.log("Parsing CSV file...");
       const csvText = new TextDecoder().decode(buffer);
-      parsedLoads = parseEAXCSV(csvText);
+      console.log("CSV text length:", csvText.length);
+      console.log("CSV first 500 chars:", csvText.substring(0, 500));
+      try {
+        parsedLoads = parseEAXCSV(csvText);
+        console.log("CSV parsing successful, parsed loads:", parsedLoads.length);
+      } catch (parseError) {
+        console.error("CSV parsing error:", parseError);
+        throw parseError;
+      }
     } else {
       // Parse Excel file using improved parser
       const workbook = XLSX.read(buffer, { type: 'buffer' });
@@ -91,7 +114,21 @@ export async function POST(request: NextRequest) {
           
           if (load.pickup_date) {
             try {
-              const parsed = load.pickup_date instanceof Date ? load.pickup_date : new Date(load.pickup_date);
+              let parsed;
+              if (load.pickup_date instanceof Date) {
+                parsed = load.pickup_date;
+              } else {
+                // Handle MM/DD/YY format (common in EAX files)
+                const dateStr = load.pickup_date.toString().trim();
+                if (dateStr.match(/^\d{1,2}\/\d{1,2}\/\d{2}$/)) {
+                  // Convert MM/DD/YY to MM/DD/YYYY
+                  const [month, day, year] = dateStr.split('/');
+                  const fullYear = parseInt(year) < 50 ? 2000 + parseInt(year) : 1900 + parseInt(year);
+                  parsed = new Date(fullYear, parseInt(month) - 1, parseInt(day));
+                } else {
+                  parsed = new Date(load.pickup_date);
+                }
+              }
               // Check if date is valid and not in the year 0000 (invalid)
               if (!isNaN(parsed.getTime()) && parsed.getFullYear() > 1900 && parsed.getFullYear() < 2100) {
                 pickupDate = parsed;
@@ -105,7 +142,21 @@ export async function POST(request: NextRequest) {
           
           if (load.delivery_date) {
             try {
-              const parsed = load.delivery_date instanceof Date ? load.delivery_date : new Date(load.delivery_date);
+              let parsed;
+              if (load.delivery_date instanceof Date) {
+                parsed = load.delivery_date;
+              } else {
+                // Handle MM/DD/YY format (common in EAX files)
+                const dateStr = load.delivery_date.toString().trim();
+                if (dateStr.match(/^\d{1,2}\/\d{1,2}\/\d{2}$/)) {
+                  // Convert MM/DD/YY to MM/DD/YYYY
+                  const [month, day, year] = dateStr.split('/');
+                  const fullYear = parseInt(year) < 50 ? 2000 + parseInt(year) : 1900 + parseInt(year);
+                  parsed = new Date(fullYear, parseInt(month) - 1, parseInt(day));
+                } else {
+                  parsed = new Date(load.delivery_date);
+                }
+              }
               // Check if date is valid and not in the year 0000 (invalid)
               if (!isNaN(parsed.getTime()) && parsed.getFullYear() > 1900 && parsed.getFullYear() < 2100) {
                 deliveryDate = parsed;
@@ -119,22 +170,29 @@ export async function POST(request: NextRequest) {
           
           await db`
             INSERT INTO eax_loads_raw (
-              rr_number, tm_number, status_code, pickup_date, pickup_window, delivery_date, delivery_window,
+              rr_number, tm_number, status_code, pickup_date, pickup_time, pickup_window, delivery_date, delivery_time, delivery_window,
               revenue, purchase, net, margin, equipment, customer_name, customer_ref, driver_name,
               total_miles, origin_city, origin_state, destination_city, destination_state,
-              vendor_name, dispatcher_name, created_at
+              vendor_name, dispatcher_name, load_number, target_buy, max_buy, spot_bid, fuel_surcharge,
+              docs_scanned, invoice_date, invoice_audit, purch_tr, net_mrg, cm, nbr_of_stops, stops,
+              weight, vendor_dispatch, created_at
             ) VALUES (
               ${load.rr_number}, ${load.tm_number || null}, ${load.status_code || null}, 
-              ${pickupDate}, ${load.pickup_window || null}, 
-              ${deliveryDate}, ${load.delivery_window || null},
+              ${pickupDate}, ${load.pickup_time || null}, ${load.pickup_window || null}, 
+              ${deliveryDate}, ${load.delivery_time || null}, ${load.delivery_window || null},
               ${load.revenue || null}, ${load.purchase || null}, ${load.net || null}, ${load.margin || null}, 
               ${load.equipment || null}, ${load.customer_name || null}, ${load.customer_ref || null}, ${load.driver_name || null},
               ${load.miles || null}, ${load.origin_city || null}, ${load.origin_state || null}, 
               ${load.destination_city || null}, ${load.destination_state || null},
-              ${load.vendor_name || null}, ${load.dispatcher_name || null}, NOW()
+              ${load.vendor_name || null}, ${load.dispatcher_name || null}, ${load.load_number || null},
+              ${load.target_buy || null}, ${load.max_buy || null}, ${load.spot_bid || null}, ${load.fuel_surcharge || 0},
+              ${load.docs_scanned || null}, ${load.invoice_date || null}, ${load.invoice_audit || null},
+              ${load.purch_tr || null}, ${load.net_mrg || null}, ${load.cm || null}, ${load.nbr_of_stops || null},
+              ${load.stops || null}, ${load.weight || null}, ${load.vendor_dispatch || null}, NOW()
             )`;
         } catch (insertError) {
           console.error("Error inserting load:", load.rr_number, insertError);
+          console.error("Load data:", JSON.stringify(load, null, 2));
           throw insertError;
         }
       }
@@ -154,7 +212,21 @@ export async function POST(request: NextRequest) {
           
           if (load.pickup_date) {
             try {
-              const parsed = load.pickup_date instanceof Date ? load.pickup_date : new Date(load.pickup_date);
+              let parsed;
+              if (load.pickup_date instanceof Date) {
+                parsed = load.pickup_date;
+              } else {
+                // Handle MM/DD/YY format (common in EAX files)
+                const dateStr = load.pickup_date.toString().trim();
+                if (dateStr.match(/^\d{1,2}\/\d{1,2}\/\d{2}$/)) {
+                  // Convert MM/DD/YY to MM/DD/YYYY
+                  const [month, day, year] = dateStr.split('/');
+                  const fullYear = parseInt(year) < 50 ? 2000 + parseInt(year) : 1900 + parseInt(year);
+                  parsed = new Date(fullYear, parseInt(month) - 1, parseInt(day));
+                } else {
+                  parsed = new Date(load.pickup_date);
+                }
+              }
               // Check if date is valid and not in the year 0000 (invalid)
               if (!isNaN(parsed.getTime()) && parsed.getFullYear() > 1900 && parsed.getFullYear() < 2100) {
                 pickupDate = parsed;
@@ -166,7 +238,21 @@ export async function POST(request: NextRequest) {
           
           if (load.delivery_date) {
             try {
-              const parsed = load.delivery_date instanceof Date ? load.delivery_date : new Date(load.delivery_date);
+              let parsed;
+              if (load.delivery_date instanceof Date) {
+                parsed = load.delivery_date;
+              } else {
+                // Handle MM/DD/YY format (common in EAX files)
+                const dateStr = load.delivery_date.toString().trim();
+                if (dateStr.match(/^\d{1,2}\/\d{1,2}\/\d{2}$/)) {
+                  // Convert MM/DD/YY to MM/DD/YYYY
+                  const [month, day, year] = dateStr.split('/');
+                  const fullYear = parseInt(year) < 50 ? 2000 + parseInt(year) : 1900 + parseInt(year);
+                  parsed = new Date(fullYear, parseInt(month) - 1, parseInt(day));
+                } else {
+                  parsed = new Date(load.delivery_date);
+                }
+              }
               // Check if date is valid and not in the year 0000 (invalid)
               if (!isNaN(parsed.getTime()) && parsed.getFullYear() > 1900 && parsed.getFullYear() < 2100) {
                 deliveryDate = parsed;
@@ -179,17 +265,23 @@ export async function POST(request: NextRequest) {
           await db`
             INSERT INTO loads (
               rr_number, tm_number, status_code, origin_city, origin_state, destination_city, destination_state,
-              equipment, miles, revenue, pickup_date, delivery_date,
-              customer_name, customer_ref, driver_name, dispatcher_name, vendor_name,
+              equipment, weight, miles, revenue, pickup_date, pickup_time, delivery_date, delivery_time,
+              customer_name, customer_ref, driver_name, dispatcher_name, vendor_name, vendor_dispatch,
+              load_number, target_buy, max_buy, spot_bid, fuel_surcharge, docs_scanned, invoice_date,
+              invoice_audit, purch_tr, net_mrg, cm, nbr_of_stops, stops,
               published, archived, created_at, updated_at
             ) VALUES (
               ${load.rr_number}, ${load.tm_number || null}, ${load.status_code || null}, 
               ${load.origin_city}, ${load.origin_state}, ${load.destination_city}, ${load.destination_state},
-              ${load.equipment}, ${load.miles || 0}, ${load.revenue || 0}, 
-              ${pickupDate}, ${deliveryDate},
+              ${load.equipment}, ${load.weight || null}, ${load.miles || 0}, ${load.revenue || 0}, 
+              ${pickupDate}, ${load.pickup_time || null}, ${deliveryDate}, ${load.delivery_time || null},
               ${load.customer_name || null}, ${load.customer_ref || null},
-              ${load.driver_name || null}, ${load.dispatcher_name || null}, ${load.vendor_name || null},
-              false, false, NOW(), NOW()
+              ${load.driver_name || null}, ${load.dispatcher_name || null}, ${load.vendor_name || null}, ${load.vendor_dispatch || null},
+              ${load.load_number || null}, ${load.target_buy || null}, ${load.max_buy || null}, ${load.spot_bid || null},
+              ${load.fuel_surcharge || 0}, ${load.docs_scanned || null}, ${load.invoice_date || null},
+              ${load.invoice_audit || null}, ${load.purch_tr || null}, ${load.net_mrg || null}, ${load.cm || null},
+              ${load.nbr_of_stops || null}, ${load.stops || null},
+              true, false, NOW(), NOW()
             )
             ON CONFLICT (rr_number) 
             DO UPDATE SET
@@ -200,15 +292,33 @@ export async function POST(request: NextRequest) {
               destination_city = EXCLUDED.destination_city,
               destination_state = EXCLUDED.destination_state,
               equipment = EXCLUDED.equipment,
+              weight = EXCLUDED.weight,
               miles = EXCLUDED.miles,
               revenue = EXCLUDED.revenue,
               pickup_date = EXCLUDED.pickup_date,
+              pickup_time = EXCLUDED.pickup_time,
               delivery_date = EXCLUDED.delivery_date,
+              delivery_time = EXCLUDED.delivery_time,
               customer_name = EXCLUDED.customer_name,
               customer_ref = EXCLUDED.customer_ref,
               driver_name = EXCLUDED.driver_name,
               dispatcher_name = EXCLUDED.dispatcher_name,
               vendor_name = EXCLUDED.vendor_name,
+              vendor_dispatch = EXCLUDED.vendor_dispatch,
+              load_number = EXCLUDED.load_number,
+              target_buy = EXCLUDED.target_buy,
+              max_buy = EXCLUDED.max_buy,
+              spot_bid = EXCLUDED.spot_bid,
+              fuel_surcharge = EXCLUDED.fuel_surcharge,
+              docs_scanned = EXCLUDED.docs_scanned,
+              invoice_date = EXCLUDED.invoice_date,
+              invoice_audit = EXCLUDED.invoice_audit,
+              purch_tr = EXCLUDED.purch_tr,
+              net_mrg = EXCLUDED.net_mrg,
+              cm = EXCLUDED.cm,
+              nbr_of_stops = EXCLUDED.nbr_of_stops,
+              stops = EXCLUDED.stops,
+              published = EXCLUDED.published,
               updated_at = NOW()
           `;
           mergedCount++;

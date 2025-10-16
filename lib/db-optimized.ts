@@ -25,7 +25,7 @@ export const optimizedQueries = {
       tb.*,
       tb.received_at + INTERVAL '25 minutes' as expires_at_25,
       NOW() > (tb.received_at + INTERVAL '25 minutes') as is_expired,
-      COALESCE(jsonb_array_length(tb.stops), 0) as stops_count,
+      0 as stops_count,
       COALESCE(lowest_bid.amount_cents, 0) as lowest_amount_cents,
       lowest_bid.clerk_user_id as lowest_user_id,
       COALESCE(bid_counts.bids_count, 0) as bids_count

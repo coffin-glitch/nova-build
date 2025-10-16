@@ -1,24 +1,16 @@
-import { isClerkAdmin } from "@/lib/clerk-server";
-import { db } from "@/lib/db-local";
-import { auth } from "@clerk/nextjs/server";
+import { requireAdmin } from "@/lib/clerk-server";
+import sql from "@/lib/db";
 import { NextResponse } from "next/server";
 
 export async function PUT(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    // This will redirect if user is not admin
+    await requireAdmin();
 
-    // Check if user is admin
-    const isAdmin = await isClerkAdmin(userId);
-    if (!isAdmin) {
-      return NextResponse.json({ error: "Only admins can manage offers" }, { status: 403 });
-    }
-
+    const { id } = await params;
     const body = await req.json();
     const { action, counterAmount, adminNotes } = body;
 
@@ -31,50 +23,133 @@ export async function PUT(
     }
 
     // Get the current offer
-    const offer = db.prepare(`
-      SELECT * FROM load_offers WHERE id = ?
-    `).get(params.id);
+    const offerResult = await sql`
+      SELECT * FROM load_offers WHERE id = ${id}
+    `;
 
-    if (!offer) {
+    if (offerResult.length === 0) {
       return NextResponse.json({ error: "Offer not found" }, { status: 404 });
     }
+
+    const offer = offerResult[0];
 
     if (offer.status !== 'pending') {
       return NextResponse.json({ error: "Offer is not pending" }, { status: 400 });
     }
 
     let status;
-    let updateQuery;
+    let updateResult;
 
     switch (action) {
       case 'accept':
         status = 'accepted';
-        updateQuery = db.prepare(`
+        updateResult = await sql`
           UPDATE load_offers 
-          SET status = ?, admin_notes = ?, updated_at = CURRENT_TIMESTAMP
-          WHERE id = ?
-        `);
-        updateQuery.run(status, adminNotes || '', params.id);
+          SET status = ${status}, admin_notes = ${adminNotes || null}, driver_info_required = true, updated_at = NOW()
+          WHERE id = ${id}
+          RETURNING *
+        `;
+        
+        // Create notification for carrier
+        await sql`
+          INSERT INTO carrier_notifications (
+            carrier_user_id, type, title, message, priority, load_id, action_url
+          ) VALUES (
+            ${updateResult[0].carrier_user_id},
+            'offer_accepted',
+            'Offer Accepted!',
+            'Your offer for load ${updateResult[0].load_rr_number} has been accepted.',
+            'high',
+            ${updateResult[0].id}::uuid,
+            '/carrier/my-loads'
+          )
+        `;
+        
+        // Create history record
+        await sql`
+          INSERT INTO offer_history (
+            offer_id, action, old_status, new_status, old_amount, new_amount, 
+            admin_notes, performed_by, performed_at
+          ) VALUES (
+            ${id}, 'accepted', 'pending', 'accepted', 
+            ${updateResult[0].offer_amount}, ${updateResult[0].offer_amount},
+            ${adminNotes || null}, ${updateResult[0].carrier_user_id}, NOW()
+          )
+        `;
         break;
       
       case 'reject':
         status = 'rejected';
-        updateQuery = db.prepare(`
+        updateResult = await sql`
           UPDATE load_offers 
-          SET status = ?, admin_notes = ?, updated_at = CURRENT_TIMESTAMP
-          WHERE id = ?
-        `);
-        updateQuery.run(status, adminNotes || '', params.id);
+          SET status = ${status}, admin_notes = ${adminNotes || null}, updated_at = NOW()
+          WHERE id = ${id}
+          RETURNING *
+        `;
+        
+        // Create notification for carrier
+        await sql`
+          INSERT INTO carrier_notifications (
+            carrier_user_id, type, title, message, priority, load_id, action_url
+          ) VALUES (
+            ${updateResult[0].carrier_user_id},
+            'offer_rejected',
+            'Offer Rejected',
+            'Your offer for load ${updateResult[0].load_rr_number} has been rejected.',
+            'medium',
+            ${updateResult[0].id}::uuid,
+            '/carrier/my-loads'
+          )
+        `;
+        
+        // Create history record
+        await sql`
+          INSERT INTO offer_history (
+            offer_id, action, old_status, new_status, old_amount, new_amount, 
+            admin_notes, performed_by, performed_at
+          ) VALUES (
+            ${id}, 'rejected', 'pending', 'rejected', 
+            ${updateResult[0].offer_amount}, ${updateResult[0].offer_amount},
+            ${adminNotes || null}, ${updateResult[0].carrier_user_id}, NOW()
+          )
+        `;
         break;
       
       case 'counter':
         status = 'countered';
-        updateQuery = db.prepare(`
+        updateResult = await sql`
           UPDATE load_offers 
-          SET status = ?, counter_amount = ?, admin_notes = ?, updated_at = CURRENT_TIMESTAMP
-          WHERE id = ?
-        `);
-        updateQuery.run(status, counterAmount, adminNotes || '', params.id);
+          SET status = ${status}, counter_amount = ${counterAmount}, admin_notes = ${adminNotes || null}, updated_at = NOW()
+          WHERE id = ${id}
+          RETURNING *
+        `;
+        
+        // Create notification for carrier
+        await sql`
+          INSERT INTO carrier_notifications (
+            carrier_user_id, type, title, message, priority, load_id, action_url
+          ) VALUES (
+            ${updateResult[0].carrier_user_id},
+            'offer_countered',
+            'Counter Offer Received',
+            'You have received a counter offer of $${(counterAmount / 100).toFixed(2)} for load ${updateResult[0].load_rr_number}.',
+            'high',
+            ${updateResult[0].id}::uuid,
+            '/carrier/my-loads'
+          )
+        `;
+        
+        // Create history record
+        await sql`
+          INSERT INTO offer_history (
+            offer_id, action, old_status, new_status, old_amount, new_amount, 
+            admin_notes, performed_by, performed_at
+          ) VALUES (
+            ${id}, 'countered', 'pending', 'countered', 
+            ${updateResult[0].offer_amount}, ${counterAmount},
+            ${adminNotes || null}, ${updateResult[0].carrier_user_id}, NOW()
+          )
+        `;
         break;
       
       default:
@@ -82,9 +157,9 @@ export async function PUT(
     }
 
     return NextResponse.json({ 
-      success: true, 
+      ok: true,
       message: `Offer ${action}ed successfully`,
-      status 
+      offer: updateResult[0]
     });
 
   } catch (error) {

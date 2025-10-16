@@ -76,6 +76,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ users: usersWithRoles });
     }
 
+    if (action === "make-admin") {
+      // Special action to make current user admin (for development)
+      await setClerkUserRole(userId, "admin");
+      return NextResponse.json({ 
+        success: true, 
+        message: "Current user role set to admin" 
+      });
+    }
+
     if (!targetUserId || !action) {
       return NextResponse.json({ error: "Missing required parameters" }, { status: 400 });
     }

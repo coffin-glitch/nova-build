@@ -1,5 +1,5 @@
+import sql from "@/lib/db";
 import { NextResponse } from "next/server";
-import sql from "@/lib/db.server";
 
 export const dynamic = "force-dynamic";
 
@@ -67,7 +67,7 @@ export async function GET(req: Request) {
     // Try to query the database first
     let base = sql/*sql*/`
       select bid_number, distance_miles, pickup_timestamp, delivery_timestamp, stops, tag, received_at, expires_at
-      from public.telegram_bids
+      from telegram_bids
       where published = true
     `;
     if (q) base = sql/*sql*/`${base} and bid_number ilike ${"%"+q+"%"}`;

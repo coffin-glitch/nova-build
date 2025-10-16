@@ -1,5 +1,5 @@
 import { cacheManager } from "@/lib/cache-manager";
-import sql from "@/lib/db.server";
+import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
 // Cache for frequently accessed data
@@ -36,34 +36,30 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Build optimized query with proper indexing hints
+    // Build optimized query with proper indexing hints - Carrier visible fields only
     const loads = await sql`
       SELECT 
         rr_number,
         COALESCE(tm_number, '') as tm_number,
         COALESCE(status_code, 'active') as status_code,
         pickup_date,
-        COALESCE(pickup_time, '') as pickup_window,
+        pickup_time,
         delivery_date,
-        COALESCE(delivery_time, '') as delivery_window,
-        COALESCE(revenue, 0) as revenue,
-        COALESCE(purchase, 0) as purchase,
-        COALESCE(net, 0) as net,
-        COALESCE(margin, 0) as margin,
+        delivery_time,
+        COALESCE(target_buy, 0) as target_buy,
         equipment,
+        COALESCE(weight, 0) as weight,
+        COALESCE(miles, 0) as miles,
+        COALESCE(stops, 0) as stops,
         COALESCE(customer_name, '') as customer_name,
-        COALESCE(driver_name, '') as driver_name,
-        COALESCE(miles, 0) as total_miles,
         origin_city,
         origin_state,
         destination_city,
         destination_state,
-        COALESCE(vendor_name, '') as vendor_name,
-        COALESCE(dispatcher_name, '') as dispatcher_name,
         updated_at,
         published
       FROM loads
-      WHERE published = 1
+      WHERE published = true
       LIMIT ${limit} OFFSET ${offset}
     `;
 
@@ -71,7 +67,7 @@ export async function GET(request: NextRequest) {
     // TODO: Add proper filtering logic
 
     // Get total count for pagination (simplified)
-    const countResult = await sql`SELECT COUNT(*) as total FROM loads WHERE published = 1`;
+    const countResult = await sql`SELECT COUNT(*) as total FROM loads WHERE published = true`;
     const total = parseInt((countResult as any[])[0]?.total || "0");
 
     const result = {
@@ -142,7 +138,7 @@ export async function POST(request: NextRequest) {
                     updated_at = CURRENT_TIMESTAMP
                   WHERE rr_number IN (${rrNumbers.join("','")})
                 `;
-                message = `Archived ${(result as any).changes} load(s)`;
+                message = `Archived ${(result as any).count || 0} load(s)`;
                 break;
 
               case "delete":
@@ -150,7 +146,7 @@ export async function POST(request: NextRequest) {
                   DELETE FROM loads 
                   WHERE rr_number IN (${rrNumbers.join("','")})
                 `;
-                message = `Deleted ${(result as any).changes} load(s)`;
+                message = `Deleted ${(result as any).count || 0} load(s)`;
                 break;
 
               case "publish":
@@ -158,22 +154,22 @@ export async function POST(request: NextRequest) {
                   UPDATE loads 
                   SET 
                     status_code = 'published',
-                    published = 1,
+                    published = true,
                     updated_at = CURRENT_TIMESTAMP
                   WHERE rr_number IN (${rrNumbers.join("','")})
                 `;
-                message = `Published ${(result as any).changes} load(s)`;
+                message = `Published ${(result as any).count || 0} load(s)`;
                 break;
 
               case "unpublish":
                 result = await sql`
                   UPDATE loads 
                   SET 
-                    published = 0,
+                    published = false,
                     updated_at = CURRENT_TIMESTAMP
                   WHERE rr_number IN (${rrNumbers.join("','")})
                 `;
-                message = `Unpublished ${(result as any).changes} load(s)`;
+                message = `Unpublished ${(result as any).count || 0} load(s)`;
                 break;
 
       default:
@@ -189,7 +185,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({
               success: true,
               message,
-              affectedCount: (result as any).changes || 0,
+              affectedCount: (result as any).count || 0,
               affectedLoads: rrNumbers
             });
 

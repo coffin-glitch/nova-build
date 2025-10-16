@@ -1,0 +1,8 @@
+{
+  "dialect": "postgresql",
+  "dbCredentials": {
+    "url": "postgresql://dukeisaac@localhost:5432/nova_build"
+  },
+  "schema": "./lib/schema.ts",
+  "out": "./drizzle"
+}

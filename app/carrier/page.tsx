@@ -124,7 +124,7 @@ export default function CarrierDashboard() {
                 Manage your booked loads and track delivery progress.
               </p>
               <Button asChild className="w-full">
-                <Link href="/carrier/my-loads">View My Loads</Link>
+                <Link href="/carrier/my-loads">Manage My Loads</Link>
               </Button>
             </CardContent>
           </Card>
