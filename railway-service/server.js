@@ -75,11 +75,11 @@ function startTelegramForwarder() {
 
   console.log('Starting telegram forwarder...');
   
-  // Use the telegram forwarder script from the parent directory
-  const scriptPath = path.join(__dirname, '..', 'scripts', 'telegram_bot_forwarder.py');
+  // Use the telegram forwarder script from the current directory
+  const scriptPath = path.join(__dirname, 'scripts', 'telegram_bot_forwarder.py');
   
   telegramProcess = spawn('python3', [scriptPath], {
-    cwd: path.join(__dirname, '..'),
+    cwd: __dirname,
     env: { 
       ...process.env,
       DATABASE_URL: process.env.DATABASE_URL
