@@ -1,4 +1,7 @@
 {
-  "installCommand": "npm install --legacy-peer-deps"
+  "installCommand": "npm install --legacy-peer-deps",
+  "env": {
+    "ESLINT_NO_DEV_ERRORS": "true"
+  }
 }
 
