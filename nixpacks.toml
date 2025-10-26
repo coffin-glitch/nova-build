@@ -1,0 +1,13 @@
+# nixpacks.toml
+[phases.setup]
+nixPkgs = ["nodejs_20", "python3", "pip"]
+
+[phases.install]
+dependsOn = ["setup"]
+
+[phases.build]
+dependsOn = ["install"]
+cmds = ["cd railway-service && npm install"]
+
+[start]
+cmd = "cd railway-service && npm start"
