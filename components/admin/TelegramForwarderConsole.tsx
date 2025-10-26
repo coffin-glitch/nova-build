@@ -81,7 +81,7 @@ export function TelegramForwarderConsole() {
     const connectWebSocket = () => {
       try {
         // Use Railway WebSocket URL in production, local in development
-        const wsUrl = process.env.NODE_ENV === 'production' 
+        const wsUrl = process.env.NEXT_PUBLIC_RAILWAY_URL
           ? `wss://${process.env.NEXT_PUBLIC_RAILWAY_URL}/telegram-forwarder`
           : `ws://localhost:3001/telegram-forwarder`;
         
