@@ -21,8 +21,8 @@ RUN npm install --production
 COPY requirements.txt ./
 RUN pip3 install --break-system-packages --no-cache-dir -r requirements.txt
 
-# Copy the telegram forwarder script
-COPY ../scripts/telegram_bot_forwarder.py ./scripts/
+# Copy the telegram forwarder script from railway-service directory
+COPY scripts/telegram_bot_forwarder.py ./scripts/
 
 # Copy the main server file
 COPY server.js ./
