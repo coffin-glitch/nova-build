@@ -17,9 +17,9 @@ COPY package*.json ./
 # Install Node.js dependencies
 RUN npm install --production
 
-# Copy Python requirements and install
+# Copy Python requirements and install in virtual environment
 COPY requirements.txt ./
-RUN pip3 install --no-cache-dir -r requirements.txt
+RUN pip3 install --break-system-packages --no-cache-dir -r requirements.txt
 
 # Copy the telegram forwarder script
 COPY ../scripts/telegram_bot_forwarder.py ./scripts/
