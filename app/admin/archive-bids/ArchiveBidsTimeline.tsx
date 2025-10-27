@@ -146,6 +146,31 @@ export function ArchiveBidsTimeline() {
     }
   };
 
+  const handleResetArchivedAt = async () => {
+    if (!selectedDate) {
+      toast.error('Please select a date');
+      return;
+    }
+    
+    try {
+      const response = await fetch('/api/archive-bids/reset-archived-at', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetDate: selectedDate })
+      });
+      const result = await response.json();
+      if (result.ok) {
+        toast.success(`Reset archived_at for ${result.updated} bids from ${selectedDate}`);
+        mutate(); // Refresh data
+        setSelectedDate(""); // Clear date picker
+      } else {
+        toast.error('Failed to reset archived_at');
+      }
+    } catch (error) {
+      toast.error('Failed to reset archived_at');
+    }
+  };
+
   const handleToggleAutoArchiving = async () => {
     try {
       const response = await fetch('/api/archive-bids/toggle-auto-archiving', {
@@ -753,23 +778,32 @@ export function ArchiveBidsTimeline() {
             </div>
 
             {/* Action Buttons */}
-            <div className="flex justify-end gap-3">
+            <div className="flex justify-between gap-3">
               <Button
-                variant="outline"
-                onClick={() => {
-                  setShowArchiveDialog(false);
-                  setSelectedDate("");
-                }}
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleArchiveForDate}
+                variant="destructive"
+                onClick={handleResetArchivedAt}
                 disabled={!selectedDate}
               >
-                <Archive className="w-4 h-4 mr-2" />
-                Archive Bids
+                Reset
               </Button>
+              <div className="flex gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowArchiveDialog(false);
+                    setSelectedDate("");
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleArchiveForDate}
+                  disabled={!selectedDate}
+                >
+                  <Archive className="w-4 h-4 mr-2" />
+                  Archive Bids
+                </Button>
+              </div>
             </div>
           </div>
         </DialogContent>
