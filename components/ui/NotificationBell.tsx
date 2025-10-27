@@ -27,12 +27,18 @@ export function NotificationBell() {
   const [previewTimeout, setPreviewTimeout] = useState<NodeJS.Timeout | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   
-  const { data, mutate } = useSWR('/api/notifications', fetcher, {
+  // Use carrier-specific notifications endpoint
+  const { data, mutate } = useSWR('/api/carrier/notifications', fetcher, {
     refreshInterval: 10000, // Refresh every 10 seconds
+    onError: (err) => console.error('Notification fetch error:', err),
   });
 
+  // Get pagination data to calculate unread count
   const notifications = data?.data?.notifications || [];
-  const unreadCount = data?.data?.unreadCount || 0;
+  const pagination = data?.data?.pagination;
+  
+  // Calculate unread count from notifications
+  const unreadCount = notifications.filter((n: Notification) => !n.read).length;
   const recentNotifications = notifications.slice(0, 3); // Show only 3 most recent for preview
 
   const getNotificationIcon = (type: string) => {
@@ -75,11 +81,15 @@ export function NotificationBell() {
 
   const markAsRead = async (notificationId: string) => {
     try {
-      await fetch('/api/notifications', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ notificationId, read: true })
+      const response = await fetch(`/api/carrier/notifications/${notificationId}/read`, {
+        method: 'POST'
       });
+      
+      if (!response.ok) {
+        console.error('Failed to mark notification as read:', await response.text());
+        return;
+      }
+      
       mutate(); // Refresh the data
     } catch (error) {
       console.error('Error marking notification as read:', error);
@@ -88,16 +98,15 @@ export function NotificationBell() {
 
   const markAllAsRead = async () => {
     try {
-      const unreadNotifications = notifications.filter((n: Notification) => !n.read);
-      await Promise.all(
-        unreadNotifications.map((n: Notification) =>
-          fetch('/api/notifications', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ notificationId: n.id, read: true })
-          })
-        )
-      );
+      const response = await fetch('/api/carrier/notifications/read-all', {
+        method: 'POST'
+      });
+      
+      if (!response.ok) {
+        console.error('Failed to mark all notifications as read:', await response.text());
+        return;
+      }
+      
       mutate(); // Refresh the data
     } catch (error) {
       console.error('Error marking all notifications as read:', error);
