@@ -401,21 +401,27 @@ export function ArchiveBidsTimeline() {
           </div>
           
           <div className="space-y-2">
-            <label className="text-sm font-medium">Date From</label>
+            <label className="text-sm font-medium">Date From (CDT)</label>
             <Input
               type="date"
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
             />
+            <p className="text-xs text-muted-foreground">
+              Select date in CDT timezone
+            </p>
           </div>
           
           <div className="space-y-2">
-            <label className="text-sm font-medium">Date To</label>
+            <label className="text-sm font-medium">Date To (CDT)</label>
             <Input
               type="date"
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
             />
+            <p className="text-xs text-muted-foreground">
+              Select date in CDT timezone
+            </p>
           </div>
           
           <div className="space-y-2">

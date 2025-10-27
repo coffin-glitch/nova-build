@@ -28,14 +28,14 @@ export async function GET(request: NextRequest) {
     }
     
     if (dateFrom) {
-      // Convert UTC archived_at to user's local timezone for comparison
-      // archived_at is stored in UTC, so we convert to local timezone to match what the cards show
-      whereConditionsList.push(`DATE(tb.archived_at AT TIME ZONE 'UTC') >= '${dateFrom}'`);
+      // Convert archived_at from UTC to CDT timezone for date comparison
+      // The date picker selects CDT dates, so we need to convert UTC to CDT to match
+      whereConditionsList.push(`DATE(tb.archived_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Chicago') >= '${dateFrom}'`);
     }
     
     if (dateTo) {
-      // Convert UTC archived_at to user's local timezone for comparison
-      whereConditionsList.push(`DATE(tb.archived_at AT TIME ZONE 'UTC') <= '${dateTo}'`);
+      // Convert archived_at from UTC to CDT timezone for date comparison
+      whereConditionsList.push(`DATE(tb.archived_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Chicago') <= '${dateTo}'`);
     }
     
     if (city) {
@@ -141,13 +141,13 @@ export async function GET(request: NextRequest) {
     const total = countResult[0]?.total || 0;
 
     // Get comprehensive statistics
-    // Convert UTC archived_at to date for comparisons
+    // Convert UTC archived_at to CDT timezone for date comparisons
     const stats = await sql`
       SELECT 
         COUNT(*) as total_bids,
-        COUNT(DISTINCT DATE(archived_at AT TIME ZONE 'UTC')) as archive_days,
-        MIN(DATE(archived_at AT TIME ZONE 'UTC')) as earliest_date,
-        MAX(DATE(archived_at AT TIME ZONE 'UTC')) as latest_date,
+        COUNT(DISTINCT DATE(archived_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Chicago')) as archive_days,
+        MIN(DATE(archived_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Chicago')) as earliest_date,
+        MAX(DATE(archived_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Chicago')) as latest_date,
         AVG(distance_miles) as avg_distance,
         MIN(distance_miles) as min_distance,
         MAX(distance_miles) as max_distance,
@@ -158,16 +158,16 @@ export async function GET(request: NextRequest) {
     `;
 
     // Get archive activity by day
-    // Convert UTC archived_at to date for grouping
+    // Convert UTC archived_at to CDT timezone for grouping
     const dailyActivity = await sql`
       SELECT 
-        DATE(archived_at AT TIME ZONE 'UTC') as archive_date,
+        DATE(archived_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Chicago') as archive_date,
         COUNT(*) as bids_archived,
         MIN(archived_at::time) as first_archive_time,
         MAX(archived_at::time) as last_archive_time
       FROM telegram_bids tb
       WHERE tb.archived_at IS NOT NULL ${sql.unsafe(wherePart)}
-      GROUP BY DATE(archived_at AT TIME ZONE 'UTC')
+      GROUP BY DATE(archived_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Chicago')
       ORDER BY archive_date DESC
       LIMIT 30
     `;
