@@ -587,7 +587,10 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                       
                       {/* Route Match Threshold */}
                       <div>
-                        <label className="text-xs font-medium">Route Match Threshold (%)</label>
+                        <label className="text-xs font-medium flex items-center gap-1">
+                          Route Match Threshold (%)
+                          <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-muted text-[10px] cursor-help" title="How similar the pickup/delivery cities need to be. Higher = need almost exact same cities">?</span>
+                        </label>
                         <Input
                           type="number"
                           min="0"
@@ -597,7 +600,7 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                           placeholder="60"
                         />
                         <p className="text-xs text-muted-foreground mt-1">
-                          Minimum route similarity required
+                          How similar pickup/delivery cities must be (higher = same exact cities)
                         </p>
                       </div>
                       
