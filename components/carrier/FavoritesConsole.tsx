@@ -104,6 +104,7 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
   const [editingPreferences, setEditingPreferences] = useState<NotificationPreferences | null>(null);
   const [showNotificationTriggers, setShowNotificationTriggers] = useState(false);
   const [isCreatingTrigger, setIsCreatingTrigger] = useState(false);
+  const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   
   const { accentColor, accentBgStyle } = useAccentColor();
 
@@ -546,14 +547,130 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                     <h3 className="text-sm font-semibold">Notification Preferences</h3>
                   </div>
                   <Button
-                    variant="outline"
+                    variant={showAdvancedSettings ? "default" : "outline"}
                     size="sm"
                     className="text-xs"
                     title="Advanced Matching Settings"
+                    onClick={() => setShowAdvancedSettings(!showAdvancedSettings)}
                   >
-                    Advanced
+                    {showAdvancedSettings ? "Hide Advanced" : "Show Advanced"}
                   </Button>
                 </div>
+                
+                {/* Advanced Settings Panel */}
+                {showAdvancedSettings && (
+                  <div className="mt-4 p-4 bg-muted/20 rounded-lg border border-primary/20">
+                    <div className="flex items-center gap-2 mb-4">
+                      <Target className="h-4 w-4 text-purple-400" />
+                      <h4 className="text-sm font-semibold">Advanced Matching Criteria</h4>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Min Match Score */}
+                      <div>
+                        <label className="text-xs font-medium">Min Match Score (0-100)</label>
+                        <Input
+                          type="number"
+                          min="0"
+                          max="100"
+                          defaultValue={70}
+                          className="mt-1 text-xs"
+                          placeholder="70"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Only notify on matches above this score
+                        </p>
+                      </div>
+                      
+                      {/* Route Match Threshold */}
+                      <div>
+                        <label className="text-xs font-medium">Route Match Threshold (%)</label>
+                        <Input
+                          type="number"
+                          min="0"
+                          max="100"
+                          defaultValue={60}
+                          className="mt-1 text-xs"
+                          placeholder="60"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Minimum route similarity required
+                        </p>
+                      </div>
+                      
+                      {/* Distance Flexibility */}
+                      <div>
+                        <label className="text-xs font-medium">Distance Flexibility (%)</label>
+                        <Input
+                          type="number"
+                          min="0"
+                          max="50"
+                          defaultValue={25}
+                          className="mt-1 text-xs"
+                          placeholder="25"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Allowed distance variance percentage
+                        </p>
+                      </div>
+                      
+                      {/* Equipment Strict */}
+                      <div className="flex items-center justify-between mt-6">
+                        <div>
+                          <label className="text-xs font-medium">Strict Equipment Match</label>
+                          <p className="text-xs text-muted-foreground">
+                            Require exact equipment type
+                          </p>
+                        </div>
+                        <Button variant="outline" size="sm" className="text-xs">
+                          OFF
+                        </Button>
+                      </div>
+                      
+                      {/* Prioritize Backhaul */}
+                      <div className="flex items-center justify-between mt-6">
+                        <div>
+                          <label className="text-xs font-medium">Prioritize Backhaul</label>
+                          <p className="text-xs text-muted-foreground">
+                            Prefer return route matches
+                          </p>
+                        </div>
+                        <Button variant="default" size="sm" className="text-xs">
+                          ON
+                        </Button>
+                      </div>
+                      
+                      {/* Avoid High Competition */}
+                      <div className="flex items-center justify-between mt-6">
+                        <div>
+                          <label className="text-xs font-medium">Avoid High Competition</label>
+                          <p className="text-xs text-muted-foreground">
+                            Skip loads with many bids
+                          </p>
+                        </div>
+                        <Button variant="outline" size="sm" className="text-xs">
+                          OFF
+                        </Button>
+                      </div>
+                      
+                      {/* Max Competition Bids */}
+                      <div>
+                        <label className="text-xs font-medium">Max Competition Bids</label>
+                        <Input
+                          type="number"
+                          min="0"
+                          max="50"
+                          defaultValue={10}
+                          className="mt-1 text-xs"
+                          placeholder="10"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Maximum acceptable competition level
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
