@@ -18,8 +18,8 @@ export async function GET(request: NextRequest) {
     let queryParams = [];
 
     if (date) {
-      // Convert archived_at from UTC to CDT timezone for date comparison
-      whereConditions.push(`(archived_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Chicago')::date = $${queryParams.length + 1}::date`);
+      // Convert archived_at from UTC to CDT for date comparison
+      whereConditions.push(`DATE(archived_at AT TIME ZONE 'America/Chicago') = $${queryParams.length + 1}`);
       queryParams.push(date);
     }
 
@@ -104,17 +104,17 @@ export async function GET(request: NextRequest) {
     const total = parseInt(countResult[0]?.total || '0');
 
     // Get archive statistics by date
-    // Convert UTC archived_at to CDT timezone for grouping
+    // Convert archived_at from UTC to CDT for grouping
     const statsQuery = `
       SELECT 
-        (archived_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Chicago')::date as archived_date,
+        DATE(archived_at AT TIME ZONE 'America/Chicago') as archived_date,
         COUNT(*) as bid_count,
         AVG(distance_miles) as avg_distance,
         MIN(distance_miles) as min_distance,
         MAX(distance_miles) as max_distance
       FROM telegram_bids
       WHERE archived_at IS NOT NULL
-      GROUP BY (archived_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Chicago')::date
+      GROUP BY DATE(archived_at AT TIME ZONE 'America/Chicago')
       ORDER BY archived_date DESC
       LIMIT 30
     `;
