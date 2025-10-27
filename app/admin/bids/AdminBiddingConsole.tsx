@@ -1243,30 +1243,82 @@ export function AdminBiddingConsole() {
     }
   );
 
+  // Fetch data for analytics regardless of showExpired filter
+  const { data: activeData } = useSWR(
+    `/api/telegram-bids?q=&tag=&limit=1000&showExpired=false&isAdmin=true`,
+    fetcher,
+    { refreshInterval: 5000 }
+  );
+
+  const { data: expiredData } = useSWR(
+    `/api/telegram-bids?q=&tag=&limit=1000&showExpired=true&isAdmin=true`,
+    fetcher,
+    { refreshInterval: 5000 }
+  );
+
   const bids = data?.data || [];
+  const activeBidsAll = activeData?.data || [];
+  const expiredBidsAll = expiredData?.data || [];
+  
+  // Calculate today's counts properly
+  const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
   
   // Debug logging
   console.log('AdminBiddingConsole - data:', data);
   console.log('AdminBiddingConsole - bids:', bids);
   console.log('AdminBiddingConsole - bids.length:', bids.length);
 
-  // Filter bids
+  // Filter bids based on showExpired toggle
   const filteredBids = bids.filter((bid: TelegramBid) => {
+    // Apply date filtering based on showExpired mode
+    const bidDate = new Date(bid.received_at).toISOString().split('T')[0];
+    
+    // If showing active bids, only show today's bids
+    if (!showExpired) {
+      if (bidDate !== today) return false;
+    }
+    // If showing expired bids, we'll show all expired bids (the API already filtered by is_archived=false and archived_at IS NULL)
+    
+    // Apply search and tag filters
     if (q && !bid.bid_number.toLowerCase().includes(q.toLowerCase())) return false;
     if (tag && !bid.tag?.toLowerCase().includes(tag.toLowerCase())) return false;
+    
+    // Apply status filter
     if (statusFilter === 'active' && bid.is_expired) return false;
     if (statusFilter === 'expired' && !bid.is_expired) return false;
-    // Apply showExpired filter
-    if (!showExpired && bid.is_expired) return false;
+    
     return true;
   });
+  
+  // Get all bids for today (regardless of showExpired filter)
+  const todaysBids = bids.filter((bid: TelegramBid) => {
+    const bidDate = new Date(bid.received_at).toISOString().split('T')[0];
+    return bidDate === today;
+  });
 
-  // Analytics calculations
-  const analytics = {
-    totalBids: filteredBids.length,
-    activeBids: filteredBids.filter((b: TelegramBid) => !b.is_expired).length,
-    expiredBids: filteredBids.filter((b: TelegramBid) => b.is_expired).length,
-    totalCarrierBids: filteredBids.reduce((sum: number, b: TelegramBid) => sum + (b.bids_count || 0), 0)
+  // Analytics calculations - show stats based on current view mode
+  const todaysActiveBids = activeBidsAll.filter((b: TelegramBid) => {
+    const bidDate = new Date(b.received_at).toISOString().split('T')[0];
+    return bidDate === today && !b.is_expired;
+  });
+  
+  const todaysExpiredBids = expiredBidsAll.filter((b: TelegramBid) => {
+    const bidDate = new Date(b.received_at).toISOString().split('T')[0];
+    return bidDate === today;
+  });
+  
+  // If showing active bids, show only active bid stats (hide expired)
+  // If showing expired bids, show all expired stats
+  const analytics = showExpired ? {
+    totalBids: expiredBidsAll.length, // All expired bids
+    activeBids: todaysActiveBids.length, // Today's active bids
+    expiredBids: expiredBidsAll.length, // All expired bids
+    totalCarrierBids: expiredBidsAll.reduce((sum: number, b: TelegramBid) => sum + (Number(b.bids_count) || 0), 0)
+  } : {
+    totalBids: todaysActiveBids.length, // Only today's active bids
+    activeBids: todaysActiveBids.length, // Only today's active bids
+    expiredBids: 0, // Don't show expired count when viewing active bids
+    totalCarrierBids: todaysActiveBids.reduce((sum: number, b: TelegramBid) => sum + (Number(b.bids_count) || 0), 0)
   };
 
   const handleArchiveBid = async (bidNumber: string) => {
@@ -1348,6 +1400,14 @@ export function AdminBiddingConsole() {
               >
                 <BarChart3 className="w-4 h-4" />
                 Analytics
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => window.open('/admin/archive-bids', '_blank')}
+                className="flex items-center gap-2"
+              >
+                <Archive className="w-4 h-4" />
+                Archive Bids
               </Button>
               <Button
                 onClick={() => mutate()}
@@ -1513,7 +1573,10 @@ export function AdminBiddingConsole() {
                   </Button>
                 </div>
                 <div className="text-sm text-muted-foreground">
-                  Showing {filteredBids.length} of {bids.length} bids
+                  {showExpired 
+                    ? `Showing ${filteredBids.length} expired bid${filteredBids.length !== 1 ? 's' : ''} (pending archive)`
+                    : `Showing ${filteredBids.length} active bid${filteredBids.length !== 1 ? 's' : ''}`
+                  }
                 </div>
               </div>
             </Glass>
@@ -1532,8 +1595,24 @@ export function AdminBiddingConsole() {
             ) : filteredBids.length === 0 ? (
               <Glass className="p-12 text-center">
                 <Truck className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                <h3 className="text-xl font-semibold text-foreground mb-2">No Bids Found</h3>
-                <p className="text-muted-foreground">Try adjusting your filters or check back later.</p>
+                {!showExpired && todaysBids.filter((b: TelegramBid) => !b.is_expired).length === 0 ? (
+                  <>
+                    <h3 className="text-xl font-semibold text-foreground mb-2">No Active Bids</h3>
+                    <p className="text-muted-foreground">
+                      Last bid seen: {todaysBids.length > 0 
+                        ? new Date(todaysBids[todaysBids.length - 1]?.received_at).toLocaleString('en-US', { 
+                            month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit'
+                          })
+                        : 'None'
+                      }
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <h3 className="text-xl font-semibold text-foreground mb-2">No Bids Found</h3>
+                    <p className="text-muted-foreground">Try adjusting your filters or check back later.</p>
+                  </>
+                )}
               </Glass>
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
@@ -1639,14 +1718,6 @@ export function AdminBiddingConsole() {
                               Adjudicate
                             </Button>
                           )}
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleArchiveBid(bid.bid_number)}
-                          >
-                            <Archive className="w-4 h-4 mr-1" />
-                            Archive
-                          </Button>
                           <Button
                             variant="outline"
                             size="sm"
@@ -1799,14 +1870,6 @@ export function AdminBiddingConsole() {
                     onClick={() => setShowBidDetails(false)}
                   >
                     Close
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => handleArchiveBid(selectedBid.bid_number)}
-                    className="flex items-center gap-2"
-                  >
-                    <Archive className="w-4 h-4" />
-                    Archive Bid
                   </Button>
                   <Button
                     onClick={() => handleDeleteBid(selectedBid.bid_number)}

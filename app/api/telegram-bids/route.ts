@@ -31,7 +31,13 @@ export async function GET(request: NextRequest) {
     // Insert sample data if none exists
     const count = await sql`SELECT COUNT(*) as count FROM telegram_bids`;
     if (count[0].count === 0) {
+      const today = new Date().toISOString().split('T')[0]; // Get today's date in YYYY-MM-DD format
       const sampleBids = [
+        // Today's bids
+        [`BID${today.replace(/-/g, '')}001`, 250, `${today}T08:00:00Z`, `${today}T18:00:00Z`, JSON.stringify(["Chicago, IL", "Detroit, MI"]), 'URGENT', 'telegram', 'admin', `${today}T07:30:00Z`],
+        [`BID${today.replace(/-/g, '')}002`, 400, `${today}T10:00:00Z`, `${today}T20:00:00Z`, JSON.stringify(["Los Angeles, CA", "Phoenix, AZ"]), 'STANDARD', 'telegram', 'admin', `${today}T09:30:00Z`],
+        [`BID${today.replace(/-/g, '')}003`, 150, `${today}T12:00:00Z`, `${today}T22:00:00Z`, JSON.stringify(["Miami, FL", "Orlando, FL"]), 'HOT', 'telegram', 'admin', `${today}T11:30:00Z`],
+        // Some older bids for context
         ['BID001', 250, '2025-01-15T08:00:00Z', '2025-01-15T18:00:00Z', JSON.stringify(["Chicago, IL", "Detroit, MI"]), 'URGENT', 'telegram', 'admin', '2025-01-15T07:30:00Z'],
         ['BID002', 400, '2025-01-15T10:00:00Z', '2025-01-16T08:00:00Z', JSON.stringify(["Los Angeles, CA", "Phoenix, AZ"]), 'STANDARD', 'telegram', 'admin', '2025-01-15T09:30:00Z'],
         ['BID003', 150, '2025-01-15T12:00:00Z', '2025-01-15T20:00:00Z', JSON.stringify(["Miami, FL", "Orlando, FL"]), 'HOT', 'telegram', 'admin', '2025-01-15T11:30:00Z'],
@@ -45,6 +51,10 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Automatically archive expired bids from previous days only
+    // This runs for both admin and non-admin users
+    await sql`SELECT archive_expired_bids()`;
+    
     // Build query with PostgreSQL template literals and daily filtering
     const today = new Date().toISOString().split('T')[0];
     
@@ -59,15 +69,18 @@ export async function GET(request: NextRequest) {
       whereConditions.push(`tb.tag = '${tag.toUpperCase().replace(/'/g, "''")}'`);
     }
     
-    if (!isAdmin && !showExpired) {
+    // For showExpired=false: Show active bids (is_archived = false, countdown still running)
+    if (!showExpired) {
       whereConditions.push(`tb.received_at::date = CURRENT_DATE`);
+      whereConditions.push(`tb.is_archived = false`);
+      whereConditions.push(`NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes')`); // Only get bids where countdown hasn't expired
     }
     
+    // For showExpired=true: Show expired bids (including those marked as archived)
+    // These are bids that expired but haven't been end-of-day archived yet
     if (showExpired) {
-      whereConditions.push(`NOW() > (tb.received_at::timestamp + INTERVAL '25 minutes')`);
-    } else if (!isAdmin) {
-      // Only apply expiration filter for non-admin users
-      whereConditions.push(`NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes')`);
+      whereConditions.push(`tb.archived_at IS NULL`); // Not yet end-of-day archived
+      whereConditions.push(`NOW() > (tb.received_at::timestamp + INTERVAL '25 minutes')`); // Only get actually expired bids
     }
     
     const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';

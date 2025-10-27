@@ -1,5 +1,7 @@
 "use client";
 
+import FavoritesConsole from "@/components/carrier/FavoritesConsole";
+import ManageBidsConsole from "@/components/carrier/ManageBidsConsole";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Countdown } from "@/components/ui/Countdown";
@@ -12,19 +14,23 @@ import { useIsAdmin } from "@/hooks/useUserRole";
 import { TelegramBid } from "@/lib/auctions";
 import { formatDistance, formatPickupDateTime, formatStopCount, formatStops, formatStopsDetailed } from "@/lib/format";
 import {
-  Archive,
-  Calendar,
-  Clock,
-  DollarSign,
-  Gavel,
-  MapPin,
-  Navigation,
-  RefreshCw,
-  Search,
-  Truck
+    AlertCircle,
+    Archive,
+    Calendar,
+    Clock,
+    DollarSign,
+    Gavel,
+    MapPin,
+    Navigation,
+    RefreshCw,
+    Search,
+    Star,
+    Truck,
+    User
 } from "lucide-react";
 import { useTheme } from "next-themes";
-import { useState } from "react";
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
 
@@ -42,6 +48,9 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
   const [bidNotes, setBidNotes] = useState("");
   const [isBidding, setIsBidding] = useState(false);
   const [viewDetailsBid, setViewDetailsBid] = useState<TelegramBid | null>(null);
+  const [isTogglingFavorite, setIsTogglingFavorite] = useState<string | null>(null);
+  const [showManageBidsConsole, setShowManageBidsConsole] = useState(false);
+  const [showFavoritesConsole, setShowFavoritesConsole] = useState(false);
   
   // New state for filtering
   const [showExpired, setShowExpired] = useState(false);
@@ -61,31 +70,71 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
   const { accentColor, accentColorStyle, accentBgStyle } = useAccentColor();
   const { theme } = useTheme();
   
-  // Smart color handling for white accent color - using stable color to prevent hydration mismatch
-  const getIconColor = () => {
-    if (accentColor === 'hsl(0, 0%, 100%)') {
-      return '#6b7280'; // Use a neutral gray color that works in both themes
+  // Check profile status for access restriction
+  const { data: profileData, isLoading: profileLoading } = useSWR(
+    `/api/carrier/profile`,
+    fetcher,
+    {
+      fallbackData: { ok: true, data: null }
     }
-    return accentColor;
-  };
-  
-  const getButtonTextColor = () => {
-    if (accentColor === 'hsl(0, 0%, 100%)') {
-      return '#000000';
-    }
-    return '#ffffff';
-  };
+  );
 
+  const profile = profileData?.data;
+  
+  // Stable color values to prevent hydration mismatch
+  const [iconColor, setIconColor] = useState('#6b7280');
+  const [buttonTextColor, setButtonTextColor] = useState('#ffffff');
+  
+  useEffect(() => {
+    // Calculate colors on client side only to prevent hydration mismatch
+    if (accentColor === 'hsl(0, 0%, 100%)') {
+      setIconColor('#6b7280');
+      setButtonTextColor('#000000');
+    } else {
+      setIconColor(accentColor);
+      setButtonTextColor('#ffffff');
+    }
+  }, [accentColor]);
+
+  // Fetch data for the main view - uses same API as admin page
   const { data, mutate, isLoading } = useSWR(
-    `/api/telegram-bids?q=${encodeURIComponent(q)}&tag=${encodeURIComponent(tag)}&limit=1000&showExpired=${showExpired}&isAdmin=${isAdmin}`,
+    `/api/telegram-bids?q=${encodeURIComponent(q)}&tag=${encodeURIComponent(tag)}&limit=1000&showExpired=${showExpired}&isAdmin=false`,
     fetcher,
     { 
-      refreshInterval: 10000,
+      refreshInterval: 5000, // Match admin refresh interval
       fallbackData: { ok: true, data: initialBids }
     }
   );
 
-  const bids = data?.data || [];
+  // Fetch separate data for accurate stats (like admin page)
+  const { data: activeData } = useSWR(
+    `/api/telegram-bids?q=&tag=&limit=1000&showExpired=false&isAdmin=false`,
+    fetcher,
+    { refreshInterval: 5000 }
+  );
+
+  const { data: expiredData } = useSWR(
+    `/api/telegram-bids?q=&tag=&limit=1000&showExpired=true&isAdmin=false`,
+    fetcher,
+    { refreshInterval: 5000 }
+  );
+
+  const bids = data?.data || initialBids;
+  const activeBidsAll = activeData?.data || [];
+  const expiredBidsAll = expiredData?.data || [];
+
+  // Fetch favorites status for all bids
+  const { data: favoritesData } = useSWR(
+    bids.length > 0 ? `/api/carrier/favorites/check?bid_numbers=${bids.map((b: TelegramBid) => b.bid_number).join(',')}` : null,
+    fetcher,
+    { 
+      refreshInterval: 30000,
+      fallbackData: { ok: true, data: {} }
+    }
+  );
+
+  // Use favorites data directly (stable reference pattern)
+  const favorites = favoritesData?.data || {};
 
   const handlePlaceBid = async () => {
     if (!selectedBid || !bidAmount) return;
@@ -126,6 +175,49 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
     setBidNotes("");
   };
 
+  const handleToggleFavorite = async (bidNumber: string) => {
+    setIsTogglingFavorite(bidNumber);
+    try {
+      const isFavorited = favorites[bidNumber];
+      
+      if (isFavorited) {
+        // Remove from favorites
+        const deleteResponse = await fetch(`/api/carrier/favorites?bid_number=${bidNumber}`, {
+          method: 'DELETE'
+        });
+        const deleteResult = await deleteResponse.json();
+        
+        if (deleteResult.ok) {
+          toast.success("Removed from favorites");
+          // Trigger SWR revalidation to update the favorites data
+          mutate();
+        } else {
+          toast.error(deleteResult.error || "Failed to remove from favorites");
+        }
+      } else {
+        // Add to favorites
+        const response = await fetch('/api/carrier/favorites', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bid_number: bidNumber })
+        });
+        const result = await response.json();
+        
+        if (result.ok) {
+          toast.success("Added to favorites");
+          // Trigger SWR revalidation to update the favorites data
+          mutate();
+        } else {
+          toast.error(result.error || "Failed to add to favorites");
+        }
+      }
+    } catch (error) {
+      toast.error("Failed to update favorites");
+    } finally {
+      setIsTogglingFavorite(null);
+    }
+  };
+
   const loadArchivedBids = async () => {
     setIsLoadingArchived(true);
     try {
@@ -152,17 +244,73 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
     }
   };
 
-  // Filter bids based on current settings
-  const filteredBids = bids.filter((bid: TelegramBid) => {
-    // Apply showExpired filter
-    if (!showExpired && bid.is_expired) return false;
-    return true;
-  });
+  // Filter bids based on current settings - use useMemo to prevent hydration mismatch
+  const filteredBids = useMemo(() => {
+    return bids.filter((bid: TelegramBid) => {
+      // Apply showExpired filter
+      if (!showExpired && bid.is_expired) return false;
+      return true;
+    });
+  }, [bids, showExpired]);
+
+  // Calculate stats with useMemo to prevent hydration mismatch
+  const stats = useMemo(() => {
+    // Use separate API calls for accurate counts (matching admin page logic)
+    // activeBidsAll already contains only active bids (from showExpired=false query)
+    // expiredBidsAll already contains only expired bids (from showExpired=true query)
+    const activeCount = activeBidsAll.length;
+    const expiredCount = expiredBidsAll.length;
+    const uniqueStates = new Set([...activeBidsAll, ...expiredBidsAll].map((b: TelegramBid) => b.tag).filter(Boolean)).size;
+    
+    return {
+      activeCount,
+      expiredCount,
+      statesCount: uniqueStates,
+      totalValue: filteredBids.length > 0 ? "Live" : "0"
+    };
+  }, [activeBidsAll, expiredBidsAll, showExpired, filteredBids]);
+
+  // Show access restriction banner for unapproved users
+  const renderAccessBanner = () => {
+    if (profileLoading) return null;
+    
+    if (!profile || profile.profile_status !== 'approved') {
+      return (
+        <Glass className="border-l-4 border-l-red-500 dark:border-l-red-400 mb-6">
+          <div className="p-6">
+            <div className="flex items-center gap-3">
+              <AlertCircle className="h-6 w-6 text-red-500 dark:text-red-400" />
+              <div className="flex-1">
+                <h3 className="font-semibold text-red-700 dark:text-red-400">Access Restricted</h3>
+                <p className="text-sm text-muted-foreground">
+                  <strong>Access to website features are restricted until you setup your profile and it has been reviewed by an admin.</strong>
+                </p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Complete your profile to gain access to all features and start bidding on loads.
+                </p>
+              </div>
+              <Button asChild>
+                <Link href="/carrier/profile">
+                  <User className="h-4 w-4 mr-2" />
+                  Complete Profile
+                </Link>
+              </Button>
+            </div>
+          </div>
+        </Glass>
+      );
+    }
+    return null;
+  };
 
   return (
     <div className="space-y-6">
-      {/* Filters */}
-      <Glass className="p-6">
+      {/* Access Restriction Banner */}
+      {renderAccessBanner()}
+      
+      {/* Filters - Only show for approved users */}
+      {profile?.profile_status === 'approved' && (
+        <Glass className="p-6">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* Search */}
           <div className="space-y-2">
@@ -219,10 +367,12 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
             </Button>
           </div>
         </div>
-      </Glass>
+        </Glass>
+      )}
 
-      {/* Filter Controls */}
-      <Glass className="p-4">
+      {/* Filter Controls - Only show for approved users */}
+      {profile?.profile_status === 'approved' && (
+        <Glass className="p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Button
@@ -230,11 +380,29 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
               onClick={() => setShowExpired(!showExpired)}
               style={showExpired ? {
                 backgroundColor: accentColor,
-                color: getButtonTextColor()
+                color: buttonTextColor
               } : {}}
             >
               <Clock className="w-4 h-4 mr-2" />
               {showExpired ? "Hide Expired" : "Show Expired"}
+            </Button>
+            
+            <Button
+              variant="outline"
+              onClick={() => setShowManageBidsConsole(true)}
+              className="hover:bg-blue-500/20 hover:text-blue-400 hover:border-blue-500/30"
+            >
+              <Gavel className="w-4 h-4 mr-2" />
+              Manage Bids
+            </Button>
+            
+            <Button
+              variant="outline"
+              onClick={() => setShowFavoritesConsole(true)}
+              className="hover:bg-yellow-500/20 hover:text-yellow-400 hover:border-yellow-500/30"
+            >
+              <Star className="w-4 h-4 mr-2" />
+              Favorites
             </Button>
             
             {isAdmin && (
@@ -253,17 +421,19 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
             {!isAdmin && !showExpired && " (today only)"}
           </div>
         </div>
-      </Glass>
+        </Glass>
+      )}
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      {/* Stats - Only show for approved users */}
+      {profile?.profile_status === 'approved' && (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Glass className="p-4">
           <div className="flex items-center gap-3">
-            <Truck className="w-5 h-5" style={{ color: getIconColor() }} />
+            <Truck className="w-5 h-5" style={{ color: iconColor }} />
             <div>
               <p className="text-sm text-muted-foreground">Active Auctions</p>
               <p className="text-2xl font-bold text-foreground">
-                {filteredBids.filter((b: TelegramBid) => !b.is_expired).length}
+                {stats.activeCount}
               </p>
             </div>
           </div>
@@ -274,37 +444,40 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
             <div>
               <p className="text-sm text-muted-foreground">Expired</p>
               <p className="text-2xl font-bold text-foreground">
-                {filteredBids.filter((b: TelegramBid) => b.is_expired).length}
+                {stats.expiredCount}
               </p>
             </div>
           </div>
         </Glass>
         <Glass className="p-4">
           <div className="flex items-center gap-3">
-            <MapPin className="w-5 h-5" style={{ color: getIconColor() }} />
+            <MapPin className="w-5 h-5" style={{ color: iconColor }} />
             <div>
               <p className="text-sm text-muted-foreground">States</p>
               <p className="text-2xl font-bold text-foreground">
-                {new Set(filteredBids.map((b: TelegramBid) => b.tag).filter(Boolean)).size}
+                {stats.statesCount}
               </p>
             </div>
           </div>
         </Glass>
         <Glass className="p-4">
           <div className="flex items-center gap-3">
-            <DollarSign className="w-5 h-5" style={{ color: getIconColor() }} />
+            <DollarSign className="w-5 h-5" style={{ color: iconColor }} />
             <div>
               <p className="text-sm text-muted-foreground">Total Value</p>
               <p className="text-2xl font-bold text-foreground">
-                {bids.length > 0 ? "Live" : "0"}
+                {stats.totalValue}
               </p>
             </div>
           </div>
         </Glass>
-      </div>
+        </div>
+      )}
 
-      {/* Bids Grid */}
-      {isLoading ? (
+      {/* Bids Grid - Only show for approved users */}
+      {profile?.profile_status === 'approved' && (
+        <>
+        {isLoading ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
           {[...Array(6)].map((_, i) => (
             <Glass key={i} className="p-6 space-y-4 animate-pulse">
@@ -388,6 +561,23 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
                     <Button
                       variant="outline"
                       size="sm"
+                      onClick={() => handleToggleFavorite(bid.bid_number)}
+                      disabled={isTogglingFavorite === bid.bid_number}
+                      className={`${
+                        favorites[bid.bid_number] 
+                          ? 'text-yellow-400 hover:text-yellow-300 hover:bg-yellow-500/20 border-yellow-500/30' 
+                          : 'text-muted-foreground hover:text-yellow-400 hover:bg-yellow-500/20'
+                      }`}
+                    >
+                      {isTogglingFavorite === bid.bid_number ? (
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Star className={`w-4 h-4 ${favorites[bid.bid_number] ? 'fill-current' : ''}`} />
+                      )}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
                       onClick={() => setViewDetailsBid(bid)}
                     >
                       View Details
@@ -398,7 +588,7 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
                         onClick={() => openBidDialog(bid)}
                         style={{
                           backgroundColor: accentColor,
-                          color: getButtonTextColor()
+                          color: buttonTextColor
                         }}
                         className="hover:opacity-90"
                       >
@@ -489,7 +679,7 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
                   disabled={!bidAmount || isBidding || selectedBid.is_expired}
                   style={{
                     backgroundColor: accentColor,
-                    color: getButtonTextColor()
+                    color: buttonTextColor
                   }}
                   className="hover:opacity-90"
                 >
@@ -517,7 +707,7 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
                   <p className="text-lg font-semibold">#{viewDetailsBid.bid_number}</p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-muted-foreground">Equipment Type</label>
+                  <label className="text-sm font-medium text-muted-foreground">State Tag</label>
                   <p className="text-lg font-semibold">{viewDetailsBid.tag || 'N/A'}</p>
                 </div>
                 <div>
@@ -628,7 +818,7 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
                     }}
                     style={{
                       backgroundColor: accentColor,
-                      color: getButtonTextColor()
+                      color: buttonTextColor
                     }}
                     className="hover:opacity-90"
                   >
@@ -771,7 +961,7 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
                 disabled={isLoadingArchived}
                 style={{
                   backgroundColor: accentColor,
-                  color: getButtonTextColor()
+                  color: buttonTextColor
                 }}
               >
                 <Search className="w-4 h-4 mr-2" />
@@ -781,6 +971,20 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
           </div>
         </DialogContent>
       </Dialog>
+        </>
+      )}
+
+      {/* Manage Bids Console */}
+      <ManageBidsConsole 
+        isOpen={showManageBidsConsole} 
+        onClose={() => setShowManageBidsConsole(false)} 
+      />
+
+      {/* Favorites Console */}
+      <FavoritesConsole 
+        isOpen={showFavoritesConsole} 
+        onClose={() => setShowFavoritesConsole(false)} 
+      />
     </div>
   );
 }
