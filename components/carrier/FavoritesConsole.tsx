@@ -654,23 +654,23 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                       <div className="text-sm font-medium">Active Triggers</div>
                       {notificationTriggers.map((trigger) => (
                         <div key={trigger.id} className="flex items-center justify-between p-2 bg-muted/20 rounded text-xs">
-                          <div className="flex items-center gap-2 flex-1">
+                          <div className="flex items-center gap-2 flex-1 flex-wrap">
                             <Badge variant="outline" className="text-xs">
                               {trigger.trigger_type.replace('_', ' ')}
                             </Badge>
-                            <span className="text-muted-foreground">
-                              {trigger.is_active ? 'Active' : 'Inactive'}
-                            </span>
                             {trigger.bid_number && (
                               <span className="text-muted-foreground">
-                                • Bid #{trigger.bid_number}
+                                Bid #{trigger.bid_number}
                               </span>
                             )}
                             {trigger.route && (
                               <span className="text-muted-foreground truncate">
-                                • {Array.isArray(trigger.route) ? trigger.route.join(' → ') : trigger.route}
+                                {Array.isArray(trigger.route) ? trigger.route.join(' → ') : trigger.route}
                               </span>
                             )}
+                            <span className="text-muted-foreground">
+                              • {trigger.is_active ? 'Active' : 'Inactive'}
+                            </span>
                           </div>
                           <div className="flex items-center gap-1">
                             <Button

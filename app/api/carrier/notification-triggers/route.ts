@@ -48,7 +48,8 @@ export async function GET(request: NextRequest) {
     const whereClause = `WHERE ${whereConditions.join(' AND ')}`;
 
     // Get notification triggers with bid and route info for exact_match triggers
-    const triggers = await sql`
+    // First get all triggers
+    const triggersBase = await sql`
       SELECT 
         nt.id,
         nt.carrier_user_id,
@@ -56,29 +57,35 @@ export async function GET(request: NextRequest) {
         nt.trigger_config,
         nt.is_active,
         nt.created_at,
-        nt.updated_at,
-        -- For exact_match triggers, get the bid number and route from the first favorite bid
-        CASE 
-          WHEN nt.trigger_type = 'exact_match' AND nt.trigger_config->>'favoriteBidNumbers' IS NOT NULL
-          THEN (nt.trigger_config->>'favoriteBidNumbers')::jsonb->>0
-          ELSE NULL
-        END as bid_number,
-        CASE 
-          WHEN nt.trigger_type = 'exact_match' AND nt.trigger_config->>'favoriteBidNumbers' IS NOT NULL
-          THEN (
-            SELECT tb.stops
-            FROM carrier_favorites cf
-            JOIN telegram_bids tb ON cf.bid_number = tb.bid_number
-            WHERE cf.carrier_user_id = nt.carrier_user_id
-              AND cf.bid_number = (nt.trigger_config->>'favoriteBidNumbers')::jsonb->>0
-            LIMIT 1
-          )
-          ELSE NULL
-        END as route
+        nt.updated_at
       FROM notification_triggers nt
       ${sql.unsafe(whereClause)}
       ORDER BY created_at DESC
     `;
+
+    // For exact_match triggers, enrich with bid number and route
+    const triggers = await Promise.all(triggersBase.map(async (trigger) => {
+      if (trigger.trigger_type === 'exact_match' && trigger.trigger_config?.favoriteBidNumbers?.length > 0) {
+        const bidNumber = trigger.trigger_config.favoriteBidNumbers[0];
+        
+        // Get route for this bid
+        const routeResult = await sql`
+          SELECT tb.stops
+          FROM carrier_favorites cf
+          JOIN telegram_bids tb ON cf.bid_number = tb.bid_number
+          WHERE cf.carrier_user_id = ${trigger.carrier_user_id}
+            AND cf.bid_number = ${bidNumber}
+          LIMIT 1
+        `;
+        
+        return {
+          ...trigger,
+          bid_number: bidNumber,
+          route: routeResult[0]?.stops || null
+        };
+      }
+      return trigger;
+    }));
 
     return NextResponse.json({
       ok: true,
