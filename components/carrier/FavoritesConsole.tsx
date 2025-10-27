@@ -568,7 +568,10 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {/* Min Match Score */}
                       <div>
-                        <label className="text-xs font-medium">Min Match Score (0-100)</label>
+                        <label className="text-xs font-medium flex items-center gap-1">
+                          Min Match Score (0-100)
+                          <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-muted text-[10px] cursor-help" title="Like getting a test score - only notify you if the match is REALLY good! Higher = pickier">?</span>
+                        </label>
                         <Input
                           type="number"
                           min="0"
@@ -578,7 +581,7 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                           placeholder="70"
                         />
                         <p className="text-xs text-muted-foreground mt-1">
-                          Only notify on matches above this score
+                          Only notify on matches above this score (like a grade - higher is pickier!)
                         </p>
                       </div>
                       
@@ -614,12 +617,14 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                         </p>
                       </div>
                       
-                      {/* Equipment Strict */}
+                      {/* Strict Weight Match */}
                       <div className="flex items-center justify-between mt-6">
                         <div>
-                          <label className="text-xs font-medium">Strict Equipment Match</label>
+                          <label className="text-xs font-medium">Strict Weight Match
+                            <span className="ml-1 inline-flex items-center justify-center w-3 h-3 rounded-full bg-muted text-xs">?</span>
+                          </label>
                           <p className="text-xs text-muted-foreground">
-                            Require exact equipment type
+                            Require similar load weight (replaces equipment matching for dry van)
                           </p>
                         </div>
                         <Button variant="outline" size="sm" className="text-xs">

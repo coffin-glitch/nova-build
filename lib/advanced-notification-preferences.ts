@@ -16,7 +16,7 @@ export interface AdvancedNotificationPreferences {
   // Advanced matching criteria (NEW)
   minMatchScore: number; // Minimum similarity score to trigger (0-100, default: 70)
   routeMatchThreshold: number; // Minimum route similarity percentage (default: 60)
-  equipmentStrict: boolean; // Require exact equipment match
+  loadWeightStrict: boolean; // Require similar load weight (replaces equipment for dry van)
   distanceFlexibility: number; // Distance variance allowance (0-50%)
   timingRelevanceDays: number; // Days ahead to consider for timing matches
   prioritizeBackhaul: boolean; // Prefer return route matches
@@ -54,7 +54,7 @@ export const DEFAULT_ADVANCED_PREFERENCES: AdvancedNotificationPreferences = {
   // Advanced defaults
   minMatchScore: 70,
   routeMatchThreshold: 60,
-  equipmentStrict: false,
+  loadWeightStrict: false,
   distanceFlexibility: 25,
   timingRelevanceDays: 7,
   prioritizeBackhaul: true,
@@ -101,19 +101,20 @@ export function shouldTriggerNotification(
     return { shouldNotify: false, reason: 'All notifications disabled' };
   }
   
-  // 2. Equipment filtering
+  // 2. Load Weight filtering (for dry van loads)
+  // Since all loads are dry van, we check for similar freight types by state/tag
   if (preferences.equipmentPreferences.length > 0) {
     const loadTag = load.tag?.toUpperCase();
-    const matchesEquipment = preferences.equipmentPreferences.some(
+    const matchesWeight = preferences.equipmentPreferences.some(
       pref => loadTag?.includes(pref.toUpperCase())
     );
     
-    if (preferences.equipmentStrict && !matchesEquipment) {
-      return { shouldNotify: false, reason: 'Equipment does not match strict requirements' };
+    if (preferences.loadWeightStrict && !matchesWeight) {
+      return { shouldNotify: false, reason: 'Load weight/size does not match requirements' };
     }
     
-    if (!preferences.equipmentStrict && !matchesEquipment) {
-      // Partial match allowed
+    if (!preferences.loadWeightStrict && !matchesWeight) {
+      // Partial match allowed for dry van
     }
   }
   
