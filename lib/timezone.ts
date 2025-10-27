@@ -61,7 +61,7 @@ export function toLocalTimeOnly(utcTimestamp: string | Date, showSeconds = false
 
 /**
  * Formats archive date consistently
- * Shows archived_at in local timezone
+ * Shows archived_at in CDT (America/Chicago) timezone to match backend
  */
 export function formatArchiveDate(archivedAt: string | null | undefined): string {
   if (!archivedAt) return 'Not archived';
@@ -75,7 +75,7 @@ export function formatArchiveDate(archivedAt: string | null | undefined): string
     minute: '2-digit',
     second: '2-digit',
     hour12: false,
-    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+    timeZone: 'America/Chicago' // CDT to match backend filtering
   });
 }
 
