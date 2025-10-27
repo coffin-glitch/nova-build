@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
     if (date) {
       // Convert archived_at from UTC to CDT timezone for date comparison
       // The date filter expects CDT dates, so we need to convert UTC to CDT to match
-      whereConditions.push(`DATE(tb.archived_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Chicago') = '${date}'`);
+      whereConditions.push(`(tb.archived_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Chicago')::date = '${date}'::date`);
     }
     
     if (city) {
@@ -105,8 +105,8 @@ export async function GET(request: NextRequest) {
     // Convert UTC archived_at to CDT timezone for date range
     const dateRange = await sql`
       SELECT 
-        MIN(DATE(archived_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Chicago')) as earliest_date,
-        MAX(DATE(archived_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Chicago')) as latest_date
+        MIN((archived_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Chicago')::date) as earliest_date,
+        MAX((archived_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Chicago')::date) as latest_date
       FROM telegram_bids
       WHERE archived_at IS NOT NULL
     `;

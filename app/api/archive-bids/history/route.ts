@@ -29,13 +29,13 @@ export async function GET(request: NextRequest) {
     
     if (dateFrom) {
       // Convert archived_at from UTC to CDT timezone for date comparison
-      // The date picker selects CDT dates, so we need to convert UTC to CDT to match
-      whereConditionsList.push(`DATE(tb.archived_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Chicago') >= '${dateFrom}'`);
+      // archived_at is stored in UTC, convert to Chicago time for CDT comparison
+      whereConditionsList.push(`(tb.archived_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Chicago')::date >= '${dateFrom}'::date`);
     }
     
     if (dateTo) {
       // Convert archived_at from UTC to CDT timezone for date comparison
-      whereConditionsList.push(`DATE(tb.archived_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Chicago') <= '${dateTo}'`);
+      whereConditionsList.push(`(tb.archived_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Chicago')::date <= '${dateTo}'::date`);
     }
     
     if (city) {
@@ -145,9 +145,9 @@ export async function GET(request: NextRequest) {
     const stats = await sql`
       SELECT 
         COUNT(*) as total_bids,
-        COUNT(DISTINCT DATE(archived_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Chicago')) as archive_days,
-        MIN(DATE(archived_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Chicago')) as earliest_date,
-        MAX(DATE(archived_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Chicago')) as latest_date,
+        COUNT(DISTINCT (archived_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Chicago')::date) as archive_days,
+        MIN((archived_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Chicago')::date) as earliest_date,
+        MAX((archived_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Chicago')::date) as latest_date,
         AVG(distance_miles) as avg_distance,
         MIN(distance_miles) as min_distance,
         MAX(distance_miles) as max_distance,
@@ -161,13 +161,13 @@ export async function GET(request: NextRequest) {
     // Convert UTC archived_at to CDT timezone for grouping
     const dailyActivity = await sql`
       SELECT 
-        DATE(archived_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Chicago') as archive_date,
+        (archived_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Chicago')::date as archive_date,
         COUNT(*) as bids_archived,
         MIN(archived_at::time) as first_archive_time,
         MAX(archived_at::time) as last_archive_time
       FROM telegram_bids tb
       WHERE tb.archived_at IS NOT NULL ${sql.unsafe(wherePart)}
-      GROUP BY DATE(archived_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Chicago')
+      GROUP BY (archived_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Chicago')::date
       ORDER BY archive_date DESC
       LIMIT 30
     `;
