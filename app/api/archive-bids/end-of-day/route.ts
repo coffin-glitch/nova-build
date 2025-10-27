@@ -10,10 +10,15 @@ export async function POST(request: NextRequest) {
     let updatedCount = 0;
 
     if (targetDate) {
-      // Archive bids for a specific date - set archived_at to match received_at + 23:59:59
+      // Archive bids for a specific date
+      // Set archived_at to 04:59:59 UTC (23:59:59 CDT) on the next day
+      const nextDayUTC = new Date(targetDate + 'T04:59:59Z');
+      
       result = await sql`
         UPDATE telegram_bids
-        SET archived_at = received_at::date + INTERVAL '23 hours 59 minutes 59 seconds'
+        SET 
+          archived_at = ${nextDayUTC.toISOString()},
+          is_archived = true
         WHERE received_at::date = ${targetDate}::date
           AND archived_at IS NULL
         RETURNING id
