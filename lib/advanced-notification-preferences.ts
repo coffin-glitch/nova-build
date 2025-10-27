@@ -16,7 +16,7 @@ export interface AdvancedNotificationPreferences {
   // Advanced matching criteria (NEW)
   minMatchScore: number; // Minimum similarity score to trigger (0-100, default: 70)
   routeMatchThreshold: number; // Minimum route similarity percentage (default: 60)
-  loadWeightStrict: boolean; // Require similar load weight (replaces equipment for dry van)
+  urgencyStrict: boolean; // Require same pickup urgency level (very-urgent, urgent, soon, normal, flexible)
   distanceFlexibility: number; // Distance variance allowance (0-50%)
   timingRelevanceDays: number; // Days ahead to consider for timing matches
   prioritizeBackhaul: boolean; // Prefer return route matches
@@ -54,7 +54,7 @@ export const DEFAULT_ADVANCED_PREFERENCES: AdvancedNotificationPreferences = {
   // Advanced defaults
   minMatchScore: 70,
   routeMatchThreshold: 60,
-  loadWeightStrict: false,
+  urgencyStrict: false,
   distanceFlexibility: 25,
   timingRelevanceDays: 7,
   prioritizeBackhaul: true,
@@ -109,12 +109,12 @@ export function shouldTriggerNotification(
       pref => loadTag?.includes(pref.toUpperCase())
     );
     
-    if (preferences.loadWeightStrict && !matchesWeight) {
-      return { shouldNotify: false, reason: 'Load weight/size does not match requirements' };
+    if (preferences.urgencyStrict && !matchesWeight) {
+      return { shouldNotify: false, reason: 'Pickup urgency does not match requirements' };
     }
     
-    if (!preferences.loadWeightStrict && !matchesWeight) {
-      // Partial match allowed for dry van
+    if (!preferences.urgencyStrict && !matchesWeight) {
+      // Partial match allowed
     }
   }
   

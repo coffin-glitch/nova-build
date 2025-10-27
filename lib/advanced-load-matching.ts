@@ -21,7 +21,7 @@ export interface LoadMatch {
 
 export interface MatchBreakdown {
   routeSimilarity: number;
-  loadWeightMatch: number; // Changed from equipmentMatch
+  pickupUrgency: number; // How soon the pickup needs to happen (replaces equipment/weight)
   distanceMatch: number;
   timingRelevance: number;
   marketFit: number;
@@ -49,7 +49,7 @@ export async function calculateLoadSimilarity(
   
   const breakdown: MatchBreakdown = {
     routeSimilarity: 0,
-    loadWeightMatch: 0, // Changed from equipmentMatch
+    pickupUrgency: 0, // How soon pickup is needed
     distanceMatch: 0,
     timingRelevance: 0,
     marketFit: 0
@@ -63,11 +63,11 @@ export async function calculateLoadSimilarity(
     newBid.stops
   );
 
-  // 2. LOAD WEIGHT MATCH (Weight: 25%)
-  // Since all loads are dry van, we match by weight/tonnage instead
-  breakdown.equipmentMatch = calculateLoadWeightMatch(
-    favoriteBid.tag,
-    newBid.tag
+  // 2. PICKUP URGENCY MATCH (Weight: 25%)
+  // Match loads based on how soon they need to be picked up
+  breakdown.pickupUrgency = calculatePickupUrgency(
+    favoriteBid,
+    newBid
   );
 
   // 3. DISTANCE MATCH (Weight: 20%)
@@ -90,7 +90,7 @@ export async function calculateLoadSimilarity(
   // Weighted final score
   const similarityScore = Math.round(
     breakdown.routeSimilarity * 0.35 +
-    breakdown.loadWeightMatch * 0.25 + // Changed from equipmentMatch
+    breakdown.pickupUrgency * 0.25 + // Pickup timing similarity
     breakdown.distanceMatch * 0.20 +
     breakdown.timingRelevance * 0.15 +
     breakdown.marketFit * 0.05
@@ -103,8 +103,8 @@ export async function calculateLoadSimilarity(
     recommendations.push("Similar route with minor differences");
   }
 
-  if (breakdown.loadWeightMatch === 100) {
-    recommendations.push("Same weight class");
+  if (breakdown.pickupUrgency > 90) {
+    recommendations.push("Similar pickup urgency");
   }
 
   if (breakdown.distanceMatch < 70) {
@@ -179,27 +179,53 @@ function calculateRouteSimilarity(
 }
 
 /**
- * Load Weight Matching (replaces equipment matching since all loads are dry van)
- * Matches loads by weight class for similar freight handling requirements
+ * Pickup Urgency Matching - How soon does the load need to be picked up?
+ * This matches loads based on time sensitivity - urgent loads match urgent loads
  */
-function calculateLoadWeightMatch(
-  favoriteTag: string | null | undefined,
-  newTag: string | null | undefined
+function calculatePickupUrgency(
+  favoriteBid: any,
+  newBid: any
 ): number {
-  if (!favoriteTag || !newTag) return 80; // Default to 80 if no tag data (all assumed similar weight)
-  
-  // Since all loads are dry van, we check for similar cargo types
-  // which might indicate similar weight requirements
-  const normFav = favoriteTag.toUpperCase().trim();
-  const normNew = newTag.toUpperCase().trim();
-  
-  // Exact match = same state/region, likely similar freight patterns
-  if (normFav === normNew) return 100;
-  
-  // Similar regions = similar freight (e.g., both are East Coast routes)
-  if (normFav.length > 0 && normNew.length > 0) return 85; // Most loads are comparable in dry van
-  
-  return 70; // Default mid-range match for dry van loads
+  try {
+    const now = new Date().getTime();
+    
+    // Get pickup times
+    const favPickup = new Date(favoriteBid.pickupDate || favoriteBid.pickup_timestamp).getTime();
+    const newPickup = new Date(newBid.pickupDate || newBid.pickup_timestamp).getTime();
+    
+    // Calculate hours until pickup for each
+    const favHoursUntilPickup = (favPickup - now) / (1000 * 60 * 60);
+    const newHoursUntilPickup = (newPickup - now) / (1000 * 60 * 60);
+    
+    // Classify urgency
+    const classifyUrgency = (hours: number) => {
+      if (hours <= 6) return 'very-urgent';      // Pickup within 6 hours
+      if (hours <= 24) return 'urgent';          // Pickup today
+      if (hours <= 48) return 'soon';            // Pickup tomorrow
+      if (hours <= 72) return 'normal';          // Pickup in 3 days
+      return 'flexible';                          // Pickup > 3 days away
+    };
+    
+    const favUrgency = classifyUrgency(favHoursUntilPickup);
+    const newUrgency = classifyUrgency(newHoursUntilPickup);
+    
+    // Match urgency levels
+    if (favUrgency === newUrgency) return 100;   // Same urgency level
+    
+    // Similar urgency (one level off)
+    const urgencyLevels = ['very-urgent', 'urgent', 'soon', 'normal', 'flexible'];
+    const favLevel = urgencyLevels.indexOf(favUrgency);
+    const newLevel = urgencyLevels.indexOf(newUrgency);
+    const levelDiff = Math.abs(favLevel - newLevel);
+    
+    if (levelDiff === 1) return 80;  // One level off (e.g., urgent vs soon)
+    if (levelDiff === 2) return 60;  // Two levels off
+    if (levelDiff === 3) return 40;  // Three levels off
+    
+    return 20; // Very different urgency levels
+  } catch (e) {
+    return 50; // Neutral if time data unavailable
+  }
 }
 
 /**

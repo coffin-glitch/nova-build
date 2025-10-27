@@ -620,14 +620,15 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                         </p>
                       </div>
                       
-                      {/* Strict Weight Match */}
+                      {/* Strict Urgency Match */}
                       <div className="flex items-center justify-between mt-6">
                         <div>
-                          <label className="text-xs font-medium">Strict Weight Match
-                            <span className="ml-1 inline-flex items-center justify-center w-3 h-3 rounded-full bg-muted text-xs">?</span>
+                          <label className="text-xs font-medium flex items-center gap-1">
+                            Strict Urgency Match
+                            <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-muted text-[10px] cursor-help" title="Only match loads with same pickup urgency (urgent vs urgent, flexible vs flexible). Like matching 'pick up today' with 'pick up today' loads">?</span>
                           </label>
                           <p className="text-xs text-muted-foreground">
-                            Require similar load weight (replaces equipment matching for dry van)
+                            Only match loads with same pickup urgency timing
                           </p>
                         </div>
                         <Button variant="outline" size="sm" className="text-xs">
