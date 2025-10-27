@@ -15,13 +15,16 @@ CREATE OR REPLACE FUNCTION set_end_of_day_archived_timestamps()
 RETURNS INTEGER AS $$
 DECLARE
     updated_count INTEGER;
+    updated_count2 INTEGER;
     target_utc_timestamp TIMESTAMP;
 BEGIN
     -- For bids received on the previous day in CDT, set archived_at to end of day
-    -- Example: Bids received on Oct 26 (CDT) should get archived_at = Oct 27 04:59:59 UTC
-    -- This equals Oct 26 23:59:59 CDT (end of day)
+    -- Logic:
+    -- 1. Archive bids received yesterday in CDT timezone
+    -- 2. ALSO archive bids received today (UTC) between 00:00:00 and 04:59:59 UTC
+    --    These are still from yesterday in CDT (04:59:59 UTC = 23:59:59 CDT previous day)
     
-    -- Get bids that were received yesterday in CDT timezone
+    -- Part 1: Get bids that were received yesterday in CDT timezone
     UPDATE telegram_bids
     SET 
       archived_at = received_at::date + INTERVAL '1 day 4 hours 59 minutes 59 seconds',
@@ -31,6 +34,21 @@ BEGIN
       AND DATE(received_at AT TIME ZONE 'America/Chicago') = CURRENT_DATE - INTERVAL '1 day';
     
     GET DIAGNOSTICS updated_count = ROW_COUNT;
+    
+    -- Part 2: ALSO archive bids received today (UTC) between 00:00:00 and 04:59:59
+    -- These are from yesterday in CDT timezone
+    UPDATE telegram_bids
+    SET 
+      archived_at = received_at::date + INTERVAL '4 hours 59 minutes 59 seconds',
+      is_archived = true
+    WHERE archived_at IS NULL
+      AND is_archived = false
+      AND received_at::date = CURRENT_DATE
+      AND received_at::time < '05:00:00';
+    
+    GET DIAGNOSTICS updated_count2 = ROW_COUNT;
+    updated_count := updated_count + updated_count2;
+    
     RETURN updated_count;
 END;
 $$ LANGUAGE plpgsql;

@@ -11,11 +11,22 @@ export async function POST(request: NextRequest) {
 
     if (targetDate) {
       // Archive bids for a specific date using UTC best practices
-      // Logic: For bids received on targetDate, set archived_at to targetDate + 1 day at 04:59:59 UTC
-      // This represents the end of the day when the bid was received (in CDT timezone)
-      // Example: For Oct 26, 2025 bids, store archived_at = 2025-10-27T04:59:59Z
-      // This equals Oct 26 23:59:59 CDT (end of day)
+      // Logic: 
+      // 1. For bids received on targetDate (in any timezone), set archived_at to (targetDate + 1 day + 04:59:59 UTC)
+      // 2. ALSO archive bids received on (targetDate + 1 day) with time between 00:00:00 and 04:59:59 UTC
+      //    These are bids from the same day in CDT (since CDT is UTC-5, 04:59:59 UTC = 23:59:59 CDT previous day)
+      // 
+      // Example for archiving Oct 25, 2025:
+      //   - Archive bids with received_at::date = '2025-10-25' → archived_at = 2025-10-26 04:59:59 UTC
+      //   - Archive bids with received_at::date = '2025-10-26' AND received_at::time < 05:00:00 → archived_at = 2025-10-26 04:59:59 UTC
+      //   These are bids received between Oct 25 00:00:00 CDT and Oct 26 04:59:59 UTC (which is still Oct 25 in CDT)
       
+      const targetDateTime = new Date(targetDate);
+      const nextDate = new Date(targetDateTime);
+      nextDate.setDate(nextDate.getDate() + 1);
+      const nextDateStr = nextDate.toISOString().split('T')[0];
+      
+      // Part 1: Archive bids received on the target date
       result = await sql`
         UPDATE telegram_bids
         SET 
@@ -26,6 +37,22 @@ export async function POST(request: NextRequest) {
         RETURNING id
       `;
       updatedCount = result.length;
+      
+      // Part 2: ALSO archive bids received on the next day (targetDate + 1) if they were received 
+      // between 00:00:00 and 04:59:59 UTC (i.e., before 04:59:59)
+      // These bids are from the same day in CDT timezone
+      const result2 = await sql`
+        UPDATE telegram_bids
+        SET 
+          archived_at = ${targetDate}::date + INTERVAL '1 day' + INTERVAL '4 hours 59 minutes 59 seconds',
+          is_archived = true
+        WHERE received_at::date = ${nextDateStr}::date
+          AND archived_at IS NULL
+          AND is_archived = false
+          AND received_at::time < '05:00:00'
+        RETURNING id
+      `;
+      updatedCount += result2.length;
     } else {
       // Default behavior: call the end of day archiving function
       result = await sql`SELECT set_end_of_day_archived_timestamps() as updated_count`;
