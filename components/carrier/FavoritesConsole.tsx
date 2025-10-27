@@ -540,9 +540,19 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
           {showPreferences && (
             <Glass className="p-4">
               <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <Bell className="h-4 w-4 text-blue-400" />
-                  <h3 className="text-sm font-semibold">Notification Preferences</h3>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Bell className="h-4 w-4 text-blue-400" />
+                    <h3 className="text-sm font-semibold">Notification Preferences</h3>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs"
+                    title="Advanced Matching Settings"
+                  >
+                    Advanced
+                  </Button>
                 </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
