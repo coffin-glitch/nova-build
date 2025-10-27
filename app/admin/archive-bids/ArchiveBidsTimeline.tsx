@@ -287,7 +287,7 @@ export function ArchiveBidsTimeline() {
     return stops;
   };
 
-  // Group bids by local date for timeline view (using archived_at or received_at)
+  // Group bids by CDT date for timeline view (using archived_at or received_at)
   const bidsByDate = useMemo(() => {
     const grouped: { [key: string]: ArchiveBid[] } = {};
     archivedBids.forEach(bid => {
@@ -295,12 +295,12 @@ export function ArchiveBidsTimeline() {
       const dateToUse = bid.archived_at || bid.received_at;
       const date = new Date(dateToUse);
       
-      // Get date in user's local timezone
+      // Get date in CDT timezone (system timezone) to match backend filtering
       const localDate = date.toLocaleDateString('en-US', {
         year: 'numeric',
         month: '2-digit',
         day: '2-digit',
-        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+        timeZone: 'America/Chicago' // CDT
       });
       
       if (!grouped[localDate]) {
@@ -515,7 +515,7 @@ export function ArchiveBidsTimeline() {
                     year: 'numeric', 
                     month: 'long', 
                     day: 'numeric',
-                    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+                    timeZone: 'America/Chicago' // CDT
                   })}
                 </h3>
                 <Badge variant="secondary">{bids.length} bids</Badge>
