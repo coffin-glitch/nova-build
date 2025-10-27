@@ -77,6 +77,14 @@ interface NotificationPreferences {
   equipmentPreferences: string[];
   minDistance: number;
   maxDistance: number;
+  // Advanced matching criteria
+  minMatchScore: number; // Minimum similarity score to trigger notification (0-100)
+  routeMatchThreshold: number; // Minimum route similarity percentage
+  equipmentStrict: boolean; // Require exact equipment match vs partial
+  distanceFlexibility: number; // Percentage variance allowed for distance (0-50%)
+  timingRelevanceDays: number; // How many days ahead to consider for timing
+  prioritizeBackhaul: boolean; // Prefer loads that match return routes
+  marketPriceAlerts: boolean; // Alert when market price is favorable
 }
 
 interface FavoritesConsoleProps {
