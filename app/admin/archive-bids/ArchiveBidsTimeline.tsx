@@ -17,7 +17,7 @@ import {
     Navigation,
     RefreshCw
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
 
@@ -112,22 +112,74 @@ export function ArchiveBidsTimeline() {
     setOffset(0); // Reset pagination when refreshing
   };
 
+  const [showArchiveDialog, setShowArchiveDialog] = useState(false);
+  const [selectedDate, setSelectedDate] = useState("");
+  const [autoArchivingEnabled, setAutoArchivingEnabled] = useState(false);
+
   const handleEndOfDayArchive = async () => {
+    setShowArchiveDialog(true);
+  };
+
+  const handleArchiveForDate = async () => {
+    if (!selectedDate) {
+      toast.error('Please select a date');
+      return;
+    }
+    
     try {
       const response = await fetch('/api/archive-bids/end-of-day', {
-        method: 'POST'
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetDate: selectedDate })
       });
       const result = await response.json();
       if (result.ok) {
-        toast.success(`Archived ${result.updated} bids`);
+        toast.success(`Archived ${result.updated} bids for ${selectedDate}`);
         mutate(); // Refresh data
+        setShowArchiveDialog(false);
+        setSelectedDate("");
       } else {
-        toast.error('Failed to run end of day archiving');
+        toast.error('Failed to archive bids');
       }
     } catch (error) {
-      toast.error('Failed to run end of day archiving');
+      toast.error('Failed to archive bids');
     }
   };
+
+  const handleToggleAutoArchiving = async () => {
+    try {
+      const response = await fetch('/api/archive-bids/toggle-auto-archiving', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: !autoArchivingEnabled })
+      });
+      const result = await response.json();
+      if (result.ok) {
+        setAutoArchivingEnabled(!autoArchivingEnabled);
+        toast.success(`Auto-archiving ${!autoArchivingEnabled ? 'enabled' : 'disabled'}`);
+      } else {
+        toast.error('Failed to toggle auto-archiving');
+      }
+    } catch (error) {
+      toast.error('Failed to toggle auto-archiving');
+    }
+  };
+
+  // Fetch auto-archiving status on mount
+  useEffect(() => {
+    const fetchAutoArchivingStatus = async () => {
+      try {
+        const response = await fetch('/api/archive-bids/auto-archiving-status');
+        const result = await response.json();
+        if (result.ok) {
+          setAutoArchivingEnabled(result.enabled);
+        }
+      } catch (error) {
+        console.error('Failed to fetch auto-archiving status:', error);
+      }
+    };
+    fetchAutoArchivingStatus();
+  }, []);
 
   const handleClearFilters = () => {
     setBidNumber("");
@@ -652,6 +704,76 @@ export function ArchiveBidsTimeline() {
         isOpen={showBidHistory}
         onClose={handleCloseModal}
       />
+
+      {/* Archive End of Day Dialog */}
+      <Dialog open={showArchiveDialog} onOpenChange={setShowArchiveDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Archive className="h-5 w-5" />
+              Archive Bids for Date
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-6 py-4">
+            {/* Date Picker */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">
+                Select Date to Archive
+              </label>
+              <Input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                placeholder="Select a date"
+                className="w-full"
+              />
+              <p className="text-xs text-muted-foreground">
+                This will set archived_at to match received_at date for all bids from this date
+              </p>
+            </div>
+
+            {/* Auto-Archiving Toggle */}
+            <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg border">
+              <div>
+                <label className="text-sm font-medium">
+                  Automatic End-of-Day Archiving
+                </label>
+                <p className="text-xs text-muted-foreground">
+                  Runs automatically at 23:59:59 daily via cron job
+                </p>
+              </div>
+              <Button
+                variant={autoArchivingEnabled ? "default" : "outline"}
+                size="sm"
+                onClick={handleToggleAutoArchiving}
+              >
+                {autoArchivingEnabled ? "ON" : "OFF"}
+              </Button>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex justify-end gap-3">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowArchiveDialog(false);
+                  setSelectedDate("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleArchiveForDate}
+                disabled={!selectedDate}
+              >
+                <Archive className="w-4 h-4 mr-2" />
+                Archive Bids
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
