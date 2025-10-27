@@ -1,7 +1,7 @@
 import { getClerkUserRole } from "@/lib/auth-server";
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
-import sql from '@/lib/db';
+import { createClient } from '@supabase/supabase-js';
 
 // If Clerk env vars are missing during build, fail fast with a readable error.
 if (!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || !process.env.CLERK_SECRET_KEY) {
@@ -106,32 +106,48 @@ export default clerkMiddleware(async (auth, req) => {
     // Check carrier profile status for carrier users (skip for admins)
     if (userRole === "carrier" && pathname !== '/carrier/profile') {
       try {
-        const profileResult = await sql`
-          SELECT profile_status, is_first_login, profile_completed_at
-          FROM carrier_profiles 
-          WHERE clerk_user_id = ${userId}
-          LIMIT 1
-        `;
+        // Use Supabase client compatible with Edge runtime
+        const supabase = createClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.SUPABASE_SERVICE_ROLE_KEY!
+        );
 
-        const profile = profileResult[0];
+        const { data: profileResult, error } = await supabase
+          .from('carrier_profiles')
+          .select('profile_status, is_first_login, profile_completed_at')
+          .eq('clerk_user_id', userId)
+          .limit(1)
+          .single();
 
-        // If no profile exists or needs setup, redirect to profile
-        if (!profile || (profile.is_first_login && !profile.profile_completed_at)) {
+        if (error || !profileResult) {
+          // If no profile, allow access (will handle client-side)
+          return NextResponse.next();
+        }
+
+        const profile = profileResult;
+
+        // Check profile status and redirect accordingly
+        const profileStatus = profile.profile_status;
+        const isFirstLogin = profile.is_first_login;
+        const profileCompleted = profile.profile_completed_at;
+
+        // If profile needs setup
+        if (!profileCompleted || (isFirstLogin && !profileCompleted)) {
           return NextResponse.redirect(new URL('/carrier/profile?setup=true', req.url));
         }
 
         // If pending, redirect to profile status page
-        if (profile.profile_status === 'pending') {
+        if (profileStatus === 'pending') {
           return NextResponse.redirect(new URL('/carrier/profile?status=pending', req.url));
         }
 
         // If declined, redirect to profile declined page
-        if (profile.profile_status === 'declined') {
+        if (profileStatus === 'declined') {
           return NextResponse.redirect(new URL('/carrier/profile?status=declined', req.url));
         }
 
-        // If approved, allow access
-        if (profile.profile_status === 'approved') {
+        // If approved, allow access to all carrier pages
+        if (profileStatus === 'approved') {
           return NextResponse.next();
         }
       } catch (error) {
