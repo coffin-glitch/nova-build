@@ -160,7 +160,7 @@ export function ArchiveBidsTimeline() {
       });
       const result = await response.json();
       if (result.ok) {
-        toast.success(`Reset archived_at for ${result.updated} bids from ${selectedDate}`);
+        toast.success(`Reset archived_at and is_archived for ${result.updated} bids from ${selectedDate}`);
         mutate(); // Refresh data
         setSelectedDate(""); // Clear date picker
       } else {

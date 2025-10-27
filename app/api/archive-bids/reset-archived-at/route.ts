@@ -6,10 +6,12 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => ({}));
     const targetDate = body?.targetDate || '2025-10-26';
 
-    // Reset archived_at to NULL for bids from the specified date
+    // Reset archived_at to NULL and set is_archived = false for bids from the specified date
     const result = await sql`
       UPDATE telegram_bids
-      SET archived_at = NULL
+      SET 
+        archived_at = NULL,
+        is_archived = false
       WHERE received_at::date = ${targetDate}::date
       RETURNING id
     `;
@@ -19,7 +21,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       updated: updatedCount,
-      message: `Reset archived_at for ${updatedCount} bids from ${targetDate}`
+      message: `Reset archived_at and is_archived for ${updatedCount} bids from ${targetDate}`
     });
   } catch (error) {
     console.error("Error resetting archived_at:", error);
