@@ -65,24 +65,37 @@ export async function GET(request: NextRequest) {
 
     // For exact_match triggers, enrich with bid number and route
     const triggers = await Promise.all(triggersBase.map(async (trigger) => {
-      if (trigger.trigger_type === 'exact_match' && trigger.trigger_config?.favoriteBidNumbers?.length > 0) {
-        const bidNumber = trigger.trigger_config.favoriteBidNumbers[0];
+      if (trigger.trigger_type === 'exact_match') {
+        // Parse trigger_config if it's a string
+        let config = trigger.trigger_config;
+        if (typeof config === 'string') {
+          try {
+            config = JSON.parse(config);
+          } catch (e) {
+            console.error('Error parsing trigger_config:', e);
+            config = {};
+          }
+        }
         
-        // Get route for this bid
-        const routeResult = await sql`
-          SELECT tb.stops
-          FROM carrier_favorites cf
-          JOIN telegram_bids tb ON cf.bid_number = tb.bid_number
-          WHERE cf.carrier_user_id = ${trigger.carrier_user_id}
-            AND cf.bid_number = ${bidNumber}
-          LIMIT 1
-        `;
-        
-        return {
-          ...trigger,
-          bid_number: bidNumber,
-          route: routeResult[0]?.stops || null
-        };
+        if (config?.favoriteBidNumbers?.length > 0) {
+          const bidNumber = config.favoriteBidNumbers[0];
+          
+          // Get route for this bid
+          const routeResult = await sql`
+            SELECT tb.stops
+            FROM carrier_favorites cf
+            JOIN telegram_bids tb ON cf.bid_number = tb.bid_number
+            WHERE cf.carrier_user_id = ${trigger.carrier_user_id}
+              AND cf.bid_number = ${bidNumber}
+            LIMIT 1
+          `;
+          
+          return {
+            ...trigger,
+            bid_number: bidNumber,
+            route: routeResult[0]?.stops || null
+          };
+        }
       }
       return trigger;
     }));
