@@ -7,6 +7,17 @@ export async function POST(request: NextRequest) {
     const targetDate = body?.targetDate || '2025-10-26';
 
     // Reset archived_at to NULL and set is_archived = false for bids from the specified date
+    // This includes:
+    // 1. Bids with received_at::date = targetDate
+    // 2. Bids with received_at::date = (targetDate + 1 day) AND time < 05:00:00 UTC
+    //    (These are from the same day in CDT, before the timezone boundary)
+    
+    const dateObj = new Date(targetDate);
+    const nextDate = new Date(dateObj);
+    nextDate.setDate(nextDate.getDate() + 1);
+    const nextDateStr = nextDate.toISOString().split('T')[0];
+    
+    // Part 1: Reset bids with received_at date = targetDate
     const result = await sql`
       UPDATE telegram_bids
       SET 
@@ -15,8 +26,21 @@ export async function POST(request: NextRequest) {
       WHERE received_at::date = ${targetDate}::date
       RETURNING id
     `;
-
-    const updatedCount = result.length;
+    let updatedCount = result.length;
+    
+    // Part 2: ALSO reset bids from next day (UTC) with time < 05:00:00
+    // These are from the same day in CDT timezone
+    const result2 = await sql`
+      UPDATE telegram_bids
+      SET 
+        archived_at = NULL,
+        is_archived = false
+      WHERE received_at::date = ${nextDateStr}::date
+        AND received_at::time < '05:00:00'
+        AND archived_at IS NOT NULL
+      RETURNING id
+    `;
+    updatedCount += result2.length;
 
     return NextResponse.json({
       ok: true,
