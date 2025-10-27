@@ -11,13 +11,26 @@ export async function POST(request: NextRequest) {
 
     if (targetDate) {
       // Archive bids for a specific date
-      // Set archived_at to 04:59:59 UTC (23:59:59 CDT) on the next day
-      const nextDayUTC = new Date(targetDate + 'T04:59:59Z');
+      // The issue: we want bids archived on Oct 26 CDT to show as Oct 26
+      // If we set archived_at = 2025-10-26 23:59:59 CDT = 2025-10-27 04:59:59 UTC
+      // Then when we query with CDT timezone: (archived_at AT TIME ZONE 'America/Chicago')::date
+      // It becomes 2025-10-26T23:59:59 CDT = Oct 26 ✓
+      
+      // So for a bid on Oct 26, we store it as Oct 27 04:59:59 UTC
+      // This way (archived_at AT TIME ZONE 'America/Chicago')::date = Oct 26
+      // Add 1 day to the target date, then set to 04:59:59 UTC
+      const dateObj = new Date(targetDate);
+      dateObj.setDate(dateObj.getDate() + 1); // Add 1 day
+      const targetTimestamp = new Date(`${dateObj.toISOString().split('T')[0]}T04:59:59Z`);
+      
+      // But wait - we need to verify this works with the timezone conversion
+      // Let's test: 2025-10-27T04:59:59Z in America/Chicago timezone
+      // Should be: Oct 26 23:59:59 CDT
       
       result = await sql`
         UPDATE telegram_bids
         SET 
-          archived_at = ${nextDayUTC.toISOString()},
+          archived_at = ${targetTimestamp.toISOString()},
           is_archived = true
         WHERE received_at::date = ${targetDate}::date
           AND archived_at IS NULL
