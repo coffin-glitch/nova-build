@@ -1,6 +1,7 @@
-import { getClerkUserRole } from "@/lib/clerk-server";
+import { getClerkUserRole } from "@/lib/auth-server";
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
+import sql from '@/lib/db';
 
 // If Clerk env vars are missing during build, fail fast with a readable error.
 if (!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || !process.env.CLERK_SECRET_KEY) {
@@ -76,7 +77,7 @@ export default clerkMiddleware(async (auth, req) => {
   let userRole = (sessionClaims?.public_metadata as any)?.role?.toLowerCase() || "carrier";
   
   // If session claims don't have role, fetch from server
-  if (!sessionClaims?.public_metadata?.role) {
+  if (!(sessionClaims?.public_metadata as any)?.role) {
     try {
       userRole = await getClerkUserRole(userId);
       console.log("🔍 Server-side role check:", { userId, userRole });
@@ -95,11 +96,48 @@ export default clerkMiddleware(async (auth, req) => {
     }
   }
 
-  // Check carrier routes
+  // Check carrier routes and profile status
   if (isCarrierRoute(req)) {
     if (userRole !== "carrier" && userRole !== "admin") {
       const forbiddenUrl = new URL("/forbidden", req.url);
       return NextResponse.redirect(forbiddenUrl);
+    }
+
+    // Check carrier profile status for carrier users (skip for admins)
+    if (userRole === "carrier" && pathname !== '/carrier/profile') {
+      try {
+        const profileResult = await sql`
+          SELECT profile_status, is_first_login, profile_completed_at
+          FROM carrier_profiles 
+          WHERE clerk_user_id = ${userId}
+          LIMIT 1
+        `;
+
+        const profile = profileResult[0];
+
+        // If no profile exists or needs setup, redirect to profile
+        if (!profile || (profile.is_first_login && !profile.profile_completed_at)) {
+          return NextResponse.redirect(new URL('/carrier/profile?setup=true', req.url));
+        }
+
+        // If pending, redirect to profile status page
+        if (profile.profile_status === 'pending') {
+          return NextResponse.redirect(new URL('/carrier/profile?status=pending', req.url));
+        }
+
+        // If declined, redirect to profile declined page
+        if (profile.profile_status === 'declined') {
+          return NextResponse.redirect(new URL('/carrier/profile?status=declined', req.url));
+        }
+
+        // If approved, allow access
+        if (profile.profile_status === 'approved') {
+          return NextResponse.next();
+        }
+      } catch (error) {
+        console.error('Profile check error:', error);
+        // On error, allow access to prevent blocking users
+      }
     }
   }
 
