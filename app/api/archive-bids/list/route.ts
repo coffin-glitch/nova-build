@@ -18,7 +18,8 @@ export async function GET(request: NextRequest) {
     let queryParams = [];
 
     if (date) {
-      whereConditions.push(`archived_date = $${queryParams.length + 1}`);
+      // Convert archived_at from UTC to CDT timezone for date comparison
+      whereConditions.push(`DATE(archived_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Chicago') = $${queryParams.length + 1}`);
       queryParams.push(date);
     }
 
@@ -45,31 +46,31 @@ export async function GET(request: NextRequest) {
     const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
     
     // Build ORDER BY clause
-    let orderBy = 'ORDER BY archived_date DESC, received_at DESC';
+    let orderBy = 'ORDER BY archived_at DESC, received_at DESC';
     if (sortBy === 'bids') {
-      orderBy = 'ORDER BY archived_date DESC, distance_miles ASC';
+      orderBy = 'ORDER BY archived_at DESC, distance_miles ASC';
     }
 
-    // Get archived bids with carrier bid counts
+    // Get archived bids with carrier bid counts (archived_at IS NOT NULL means fully archived)
     const query = `
       SELECT 
-        ab.*,
+        tb.*,
         CASE 
-          WHEN ab.stops IS NOT NULL AND ab.stops != '' 
+          WHEN tb.stops IS NOT NULL AND tb.stops != '' 
           THEN 0
           ELSE 0 
         END as stops_count,
         COALESCE(bid_counts.bids_count, 0) as bids_count,
         COALESCE(lowest_bid.amount_cents, 0) as lowest_amount_cents,
         lowest_bid.clerk_user_id as lowest_user_id
-      FROM archive_bids ab
+      FROM telegram_bids tb
       LEFT JOIN (
         SELECT 
           bid_number,
           COUNT(*) as bids_count
         FROM carrier_bids
         GROUP BY bid_number
-      ) bid_counts ON ab.bid_number = bid_counts.bid_number
+      ) bid_counts ON tb.bid_number = bid_counts.bid_number
       LEFT JOIN (
         SELECT 
           cb1.bid_number,
@@ -83,7 +84,8 @@ export async function GET(request: NextRequest) {
           ORDER BY cb2.amount_cents ASC
           LIMIT 1
         )
-      ) lowest_bid ON ab.bid_number = lowest_bid.bid_number
+      ) lowest_bid ON tb.bid_number = lowest_bid.bid_number
+      WHERE tb.archived_at IS NOT NULL
       ${whereClause}
       ${orderBy}
       LIMIT $${queryParams.length + 1} OFFSET $${queryParams.length + 2}
@@ -94,22 +96,25 @@ export async function GET(request: NextRequest) {
     // Get total count for pagination
     const countQuery = `
       SELECT COUNT(*) as total
-      FROM archive_bids ab
+      FROM telegram_bids tb
+      WHERE tb.archived_at IS NOT NULL
       ${whereClause}
     `;
     const countResult = await sql(countQuery, ...queryParams);
     const total = parseInt(countResult[0]?.total || '0');
 
     // Get archive statistics by date
+    // Convert UTC archived_at to CDT timezone for grouping
     const statsQuery = `
       SELECT 
-        archived_date,
+        DATE(archived_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Chicago') as archived_date,
         COUNT(*) as bid_count,
         AVG(distance_miles) as avg_distance,
         MIN(distance_miles) as min_distance,
         MAX(distance_miles) as max_distance
-      FROM archive_bids
-      GROUP BY archived_date
+      FROM telegram_bids
+      WHERE archived_at IS NOT NULL
+      GROUP BY DATE(archived_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Chicago')
       ORDER BY archived_date DESC
       LIMIT 30
     `;
