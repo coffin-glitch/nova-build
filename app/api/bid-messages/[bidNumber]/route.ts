@@ -50,7 +50,7 @@ export async function GET(
             LIMIT 1
           )
           ELSE (
-            SELECT legal_name 
+            SELECT COALESCE(contact_name, company_name, 'Carrier') 
             FROM carrier_profiles 
             WHERE clerk_user_id = bm.sender_id
             LIMIT 1
@@ -139,11 +139,15 @@ export async function POST(
     }
 
     // Insert the message
+    console.log('[Bid Messages] Inserting message:', { bidNumber, userId, userRole, messageLength: message.trim().length, is_internal });
+    
     const result = await sql`
       INSERT INTO bid_messages (bid_number, sender_id, sender_role, message, is_internal)
       VALUES (${bidNumber}, ${userId}, ${userRole}, ${message.trim()}, ${is_internal})
       RETURNING *
     `;
+
+    console.log('[Bid Messages] Message inserted successfully:', result[0]?.id);
 
     return NextResponse.json({
       ok: true,
