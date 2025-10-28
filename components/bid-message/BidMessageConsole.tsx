@@ -26,8 +26,10 @@ export function BidMessageConsole({ bidNumber, userRole, userId, onClose }: BidM
   const [isInternal, setIsInternal] = useState(false);
   const [sending, setSending] = useState(false);
   const [displayLimit, setDisplayLimit] = useState(50); // Show last N messages
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const { accentColor } = useAccentColor();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const isLoadingRef = useRef(false);
 
   const { data, mutate } = useSWR(
     `/api/bid-messages/${bidNumber}`,
@@ -42,15 +44,36 @@ export function BidMessageConsole({ bidNumber, userRole, userId, onClose }: BidM
   const messages = allMessages.slice(-displayLimit);
   const hasMoreMessages = allMessages.length > displayLimit;
   
-  // Auto-scroll to bottom when new messages arrive (only if viewing most recent messages)
+  // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
-    if (scrollRef.current && !hasMoreMessages) {
+    if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, hasMoreMessages]);
+  }, [allMessages.length]); // Only scroll when total count changes (new messages)
   
-  const loadMoreMessages = () => {
-    setDisplayLimit(prev => prev + 25); // Load 25 more
+  // Infinite scroll handler
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const element = e.currentTarget;
+    const scrollTop = element.scrollTop;
+    
+    // Load more when scrolled to near the top (within 300px)
+    if (scrollTop < 300 && hasMoreMessages && !isLoadingRef.current) {
+      isLoadingRef.current = true;
+      setIsLoadingMore(true);
+      
+      setTimeout(() => {
+        const prevScrollHeight = element.scrollHeight;
+        setDisplayLimit(prev => prev + 25);
+        
+        // Maintain scroll position after loading more
+        setTimeout(() => {
+          const newScrollHeight = element.scrollHeight;
+          element.scrollTop = newScrollHeight - prevScrollHeight + scrollTop;
+          isLoadingRef.current = false;
+          setIsLoadingMore(false);
+        }, 50);
+      }, 100);
+    }
   };
 
   const handleSend = async () => {
@@ -112,9 +135,9 @@ export function BidMessageConsole({ bidNumber, userRole, userId, onClose }: BidM
 
   return (
     <Dialog open={!!bidNumber} onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl max-h-[85vh] p-0 overflow-hidden">
+      <DialogContent className="max-w-3xl h-[85vh] p-0 overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="px-6 py-4 border-b bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
+        <div className="px-6 py-4 border-b bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg">
@@ -141,7 +164,16 @@ export function BidMessageConsole({ bidNumber, userRole, userId, onClose }: BidM
         </div>
 
         {/* Messages Container */}
-        <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-6 bg-slate-50 dark:bg-slate-950">
+        <div 
+          ref={scrollRef} 
+          onScroll={handleScroll}
+          className="flex-1 overflow-y-auto px-6 py-6 bg-slate-50 dark:bg-slate-950 min-h-0"
+        >
+          {isLoadingMore && (
+            <div className="flex justify-center py-4">
+              <div className="text-sm text-muted-foreground">Loading more messages...</div>
+            </div>
+          )}
           {messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16">
               <div className="w-20 h-20 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center mb-4">
@@ -156,19 +188,6 @@ export function BidMessageConsole({ bidNumber, userRole, userId, onClose }: BidM
             </div>
           ) : (
             <div className="space-y-6">
-              {/* Load More Messages Button */}
-              {hasMoreMessages && (
-                <div className="flex justify-center pb-4">
-                  <Button
-                    variant="outline"
-                    onClick={loadMoreMessages}
-                    className="border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800"
-                  >
-                    Load More Messages ({allMessages.length - displayLimit} remaining)
-                  </Button>
-                </div>
-              )}
-              
               {messages.map((msg: any, index: number) => {
                 const isOwn = msg.sender_id === userId;
                 const isAdmin = msg.sender_role === 'admin';
@@ -241,7 +260,7 @@ export function BidMessageConsole({ bidNumber, userRole, userId, onClose }: BidM
         </div>
 
         {/* Input Area */}
-        <div className="px-6 py-4 border-t bg-white dark:bg-slate-900">
+        <div className="px-6 py-4 border-t bg-white dark:bg-slate-900 shrink-0">
           {/* Internal Note Checkbox - Only for Admins */}
           {userRole === 'admin' && (
             <div className="mb-3">
