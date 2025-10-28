@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useAccentColor } from "@/hooks/useAccentColor";
-import { Eye, EyeOff, MessageSquare, Send, Shield, Truck, X } from "lucide-react";
+import { EyeOff, MessageSquare, Send, Shield, Truck, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
