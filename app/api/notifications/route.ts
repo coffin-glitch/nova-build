@@ -73,8 +73,8 @@ export async function POST(request: Request) {
 
     // Create notification
     const notification = await sql`
-      INSERT INTO notifications (user_id, type, title, message, data, read, created_at)
-      VALUES (${userId}, ${type}, ${title}, ${message}, ${JSON.stringify(data || {})}, false, NOW())
+      INSERT INTO notifications (recipient_user_id, type, title, body)
+      VALUES (${userId}, ${type}, ${title}, ${message})
       RETURNING *
     `;
 
@@ -124,8 +124,8 @@ async function handleBidAwardNotifications(body: any) {
       
       // Create notification for this carrier
       const result = await sql`
-        INSERT INTO notifications (user_id, type, title, message, data, read, created_at)
-        VALUES (${carrier.clerk_user_id}, ${notification.type}, ${notification.title}, ${notification.message}, ${JSON.stringify(notification.data)}, false, NOW())
+        INSERT INTO notifications (recipient_user_id, type, title, body)
+        VALUES (${carrier.clerk_user_id}, ${notification.type}, ${notification.title}, ${notification.message})
         RETURNING *
       `;
       
