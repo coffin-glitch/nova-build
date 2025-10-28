@@ -444,7 +444,7 @@ export async function awardAuction({
 
     // Create notification for winner
     await sql`
-      INSERT INTO public.notifications (recipient_user_id, type, title, body)
+      INSERT INTO public.notifications (user_id, type, title, message)
       VALUES (${winner_user_id}, 'success', 'Auction Won!', 
               'Congratulations! You won Bid #${bid_number} for ${formatMoney(winnerBid[0].amount_cents)}. Check your My Loads for next steps.')
     `;
@@ -458,17 +458,18 @@ export async function awardAuction({
 
     for (const bidder of otherBidders) {
       await sql`
-        INSERT INTO public.notifications (recipient_user_id, type, title, body)
+        INSERT INTO public.notifications (user_id, type, title, message)
         VALUES (${bidder.clerk_user_id}, 'info', 'Auction Awarded', 
                 'Bid #${bid_number} was awarded to another carrier.')
       `;
     }
 
     // Create a load assignment for the winner
+    // Note: loads table doesn't have carrier_user_id or meta columns
+    // Just store in status_code for now
     await sql`
-      INSERT INTO public.loads (rr_number, carrier_user_id, status, meta)
-      VALUES (${bid_number}, ${winner_user_id}, 'awarded', 
-              jsonb_build_object('bid_number', ${bid_number}, 'awarded_at', NOW()))
+      INSERT INTO public.loads (rr_number, status_code)
+      VALUES (${bid_number}, 'awarded')
       ON CONFLICT (rr_number) DO NOTHING
     `;
 

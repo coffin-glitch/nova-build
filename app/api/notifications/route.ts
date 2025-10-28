@@ -124,8 +124,8 @@ async function handleBidAwardNotifications(body: any) {
       
       // Create notification for this carrier
       const result = await sql`
-        INSERT INTO notifications (recipient_user_id, type, title, body)
-        VALUES (${carrier.clerk_user_id}, ${notification.type}, ${notification.title}, ${notification.message})
+        INSERT INTO notifications (user_id, type, title, message, data, read)
+        VALUES (${carrier.clerk_user_id}, ${notification.type}, ${notification.title}, ${notification.message}, ${JSON.stringify(notification.data)}, false)
         RETURNING *
       `;
       
