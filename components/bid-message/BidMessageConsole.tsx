@@ -50,6 +50,8 @@ export function BidMessageConsole({ bidNumber, userRole, userId, onClose }: BidM
 
     setSending(true);
     try {
+      console.log('[Message Console] Sending message:', { bidNumber, message: message.trim().substring(0, 50), isInternal, userRole });
+      
       const response = await fetch(`/api/bid-messages/${bidNumber}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -59,7 +61,10 @@ export function BidMessageConsole({ bidNumber, userRole, userId, onClose }: BidM
         })
       });
 
+      console.log('[Message Console] Response status:', response.status);
+      
       const result = await response.json();
+      console.log('[Message Console] Response data:', result);
 
       if (result.ok) {
         setMessage("");
@@ -67,12 +72,16 @@ export function BidMessageConsole({ bidNumber, userRole, userId, onClose }: BidM
         mutate();
         if (isInternal) {
           toast.success('Internal note sent');
+        } else {
+          toast.success('Message sent');
         }
       } else {
-        toast.error(result.error || 'Failed to send message');
+        console.error('[Message Console] Error response:', result);
+        toast.error(result.error || result.details || 'Failed to send message');
       }
     } catch (error) {
-      toast.error('Failed to send message');
+      console.error('[Message Console] Exception caught:', error);
+      toast.error('Failed to send message: ' + (error instanceof Error ? error.message : 'Unknown error'));
     } finally {
       setSending(false);
     }
