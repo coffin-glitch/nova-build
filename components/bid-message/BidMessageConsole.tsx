@@ -162,9 +162,6 @@ export function BidMessageConsole({ bidNumber, userRole, userId, onClose }: BidM
                 </div>
               </div>
             </div>
-            <Button variant="ghost" size="icon" onClick={onClose} className="hover:bg-slate-200 dark:hover:bg-slate-700">
-              <X className="h-5 w-5" />
-            </Button>
           </div>
         </div>
 
