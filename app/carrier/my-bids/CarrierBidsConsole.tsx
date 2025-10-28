@@ -30,6 +30,7 @@ import useSWR from "swr";
 import { BidAnalytics } from "./BidAnalytics";
 import { BidDetailsDialog } from "./BidDetailsDialog";
 import { BidLifecycleManager } from "./BidLifecycleManager";
+import { BidMessageConsole } from "@/components/bid-message/BidMessageConsole";
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
@@ -115,6 +116,7 @@ export function CarrierBidsConsole() {
   const [dateFilter, setDateFilter] = useState("all");
   const [selectedTab, setSelectedTab] = useState("overview");
   const [acceptingBid, setAcceptingBid] = useState<string | null>(null);
+  const [selectedMessageBid, setSelectedMessageBid] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'card'>('list');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedBidForDialog, setSelectedBidForDialog] = useState<AwardedBid | null>(null);
@@ -478,10 +480,7 @@ export function CarrierBidsConsole() {
                       <Button 
                         variant="outline" 
                         size="sm"
-                        onClick={() => {
-                          // TODO: Connect to bid message console
-                          console.log('Open message console');
-                        }}
+                        onClick={() => setSelectedMessageBid(bid.bid_number)}
                       >
                         <MessageSquare className="w-4 h-4 mr-2" />
                         Message
@@ -499,8 +498,8 @@ export function CarrierBidsConsole() {
                                   'Content-Type': 'application/json',
                                 },
                                 body: JSON.stringify({
-                                  status: 'load_assigned',
-                                  notes: 'Bid accepted by carrier - load assigned'
+                                  status: 'bid_awarded',
+                                  notes: 'Bid accepted by carrier'
                                 }),
                               });
 
@@ -707,6 +706,14 @@ export function CarrierBidsConsole() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Bid Message Console */}
+      <BidMessageConsole
+        bidNumber={selectedMessageBid || ""}
+        userRole="carrier"
+        userId={user?.id || ""}
+        onClose={() => setSelectedMessageBid(null)}
+      />
     </div>
   );
 }
