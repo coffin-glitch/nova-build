@@ -435,6 +435,7 @@ export async function awardAuction({
     }
 
     // Create the award with admin notes if provided
+    // Note: admin_notes column must exist (migration 048_add_admin_notes_to_auction_awards.sql)
     const award = await sql`
       INSERT INTO public.auction_awards (bid_number, winner_user_id, winner_amount_cents, awarded_by, admin_notes)
       VALUES (${bid_number}, ${winner_user_id}, ${winnerBid[0].amount_cents}, ${awarded_by}, ${admin_notes || null})
