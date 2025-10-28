@@ -40,16 +40,21 @@ export function BidMessageConsole({ bidNumber, userRole, userId, onClose }: BidM
   const allMessages = data?.data?.messages || [];
   const unreadCount = data?.data?.unreadCount || 0;
   
+  // Double-check: Filter out internal messages for carriers (should be done server-side but extra safety)
+  const filteredMessages = userRole === 'carrier' 
+    ? allMessages.filter((m: any) => !m.is_internal)
+    : allMessages;
+  
   // Pagination: Show last N messages (most recent)
-  const messages = allMessages.slice(-displayLimit);
-  const hasMoreMessages = allMessages.length > displayLimit;
+  const messages = filteredMessages.slice(-displayLimit);
+  const hasMoreMessages = filteredMessages.length > displayLimit;
   
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [allMessages.length]); // Only scroll when total count changes (new messages)
+  }, [filteredMessages.length]); // Only scroll when total count changes (new messages)
   
   // Infinite scroll handler
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
