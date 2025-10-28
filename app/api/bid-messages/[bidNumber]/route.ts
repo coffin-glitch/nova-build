@@ -42,6 +42,7 @@ export async function GET(
     const messages = await sql`
       SELECT 
         bm.*,
+        COALESCE(bm.is_internal, false) as is_internal,
         CASE 
           WHEN bm.sender_role = 'admin' THEN (
             SELECT (first_name || ' ' || last_name)::text 
@@ -58,6 +59,7 @@ export async function GET(
         END as sender_name
       FROM bid_messages bm
       WHERE bm.bid_number = ${bidNumber}
+        ${userRole === 'carrier' ? sql`AND COALESCE(bm.is_internal, false) = false` : sql``}
       ORDER BY bm.created_at ASC
     `;
 
@@ -137,15 +139,33 @@ export async function POST(
       }
     }
 
-    // Insert the message  
-    // Note: Omitting is_internal temporarily since column doesn't exist yet
-    console.log('[Bid Messages] Inserting message:', { bidNumber, userId, userRole, messageLength: message.trim().length });
+    // Insert the message with is_internal column
+    console.log('[Bid Messages] Inserting message:', { bidNumber, userId, userRole, messageLength: message.trim().length, is_internal });
     
-    const result = await sql`
-      INSERT INTO bid_messages (bid_number, sender_id, sender_role, message)
-      VALUES (${bidNumber}, ${userId}, ${userRole}, ${message.trim()})
-      RETURNING *
-    `;
+    let result;
+    try {
+      // Try with is_internal column
+      result = await sql`
+        INSERT INTO bid_messages (bid_number, sender_id, sender_role, message, is_internal)
+        VALUES (${bidNumber}, ${userId}, ${userRole}, ${message.trim()}, ${is_internal})
+        RETURNING *
+      `;
+    } catch (error: any) {
+      // If is_internal column doesn't exist, add it and try again
+      if (error?.code === '42703' || error?.message?.includes('is_internal')) {
+        console.log('[Bid Messages] Adding is_internal column...');
+        await sql`ALTER TABLE bid_messages ADD COLUMN IF NOT EXISTS is_internal BOOLEAN DEFAULT false`;
+        
+        // Try again
+        result = await sql`
+          INSERT INTO bid_messages (bid_number, sender_id, sender_role, message, is_internal)
+          VALUES (${bidNumber}, ${userId}, ${userRole}, ${message.trim()}, ${is_internal})
+          RETURNING *
+        `;
+      } else {
+        throw error;
+      }
+    }
 
     console.log('[Bid Messages] Message inserted successfully:', result[0]?.id);
 

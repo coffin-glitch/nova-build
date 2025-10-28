@@ -3,10 +3,9 @@
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { useAccentColor } from "@/hooks/useAccentColor";
 import { EyeOff, MessageSquare, Send, Shield, Truck, X } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
@@ -221,23 +220,33 @@ export function BidMessageConsole({ bidNumber, userRole, userId, onClose }: BidM
 
         {/* Input Area */}
         <div className="px-6 py-4 border-t bg-white dark:bg-slate-900">
-          {/* Internal Message Toggle - Only for Admins */}
+          {/* Internal Note Checkbox - Only for Admins */}
           {userRole === 'admin' && (
-            <div className="mb-3 flex items-center justify-between p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
-              <div className="flex items-center gap-2">
-                <EyeOff className="w-4 h-4 text-amber-700 dark:text-amber-400" />
-                <Label htmlFor="internal-toggle" className="text-sm font-medium text-amber-900 dark:text-amber-300 cursor-pointer">
-                  Internal Note
-                </Label>
-              </div>
-              <Switch
-                id="internal-toggle"
-                checked={isInternal}
-                onCheckedChange={setIsInternal}
-              />
-              <p className="text-xs text-amber-700 dark:text-amber-400 ml-2">
-                Only visible to admins
-              </p>
+            <div className="mb-3">
+              <label className="flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 border-slate-300 dark:border-slate-700 hover:border-amber-400 dark:hover:border-amber-600">
+                <Checkbox
+                  checked={isInternal}
+                  onCheckedChange={setIsInternal}
+                  className="data-[state=checked]:bg-amber-500 data-[state=checked]:border-amber-500"
+                />
+                <div className="flex-1 flex items-center gap-2">
+                  <EyeOff className={`w-4 h-4 ${isInternal ? 'text-amber-600 dark:text-amber-400' : 'text-slate-400'}`} />
+                  <span className={`text-sm font-medium ${isInternal ? 'text-amber-900 dark:text-amber-300' : 'text-slate-700 dark:text-slate-300'}`}>
+                    Send as internal note
+                  </span>
+                </div>
+                {isInternal && (
+                  <Badge variant="outline" className="text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700">
+                    Admin Only
+                  </Badge>
+                )}
+              </label>
+              {isInternal && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 ml-1 flex items-center gap-1">
+                  <EyeOff className="w-3 h-3" />
+                  This note will only be visible to other admins
+                </p>
+              )}
             </div>
           )}
           
