@@ -174,12 +174,12 @@ export function BidMessageConsole({ bidNumber, userRole, userId, onClose }: BidM
                         <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
                           {msg.sender_name || (isAdmin ? 'Admin' : 'Carrier')}
                         </span>
-                        {msg.is_internal && (
-                          <Badge variant="outline" className="text-xs bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700">
-                            <EyeOff className="w-3 h-3 mr-1" />
-                            Internal
-                          </Badge>
-                        )}
+                      {msg.is_internal && userRole === 'admin' && (
+                        <Badge variant="outline" className="text-xs bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700">
+                          <EyeOff className="w-3 h-3 mr-1" />
+                          Internal
+                        </Badge>
+                      )}
                         <span className="text-xs text-muted-foreground">
                           {new Date(msg.created_at).toLocaleTimeString([], { 
                             hour: '2-digit', 
@@ -188,9 +188,7 @@ export function BidMessageConsole({ bidNumber, userRole, userId, onClose }: BidM
                         </span>
                       </div>
                       <div className={`rounded-2xl px-4 py-3 shadow-sm ${
-                        msg.is_internal
-                          ? 'bg-gradient-to-br from-amber-500/90 to-orange-600/90 text-white border-2 border-amber-400 dark:border-amber-600'
-                          : isAdmin
+                        isAdmin
                           ? 'bg-gradient-to-br from-violet-500/90 to-purple-600/90 text-white'
                           : isOwn
                           ? 'bg-gradient-to-br from-blue-500/90 to-indigo-600/90 text-white'
