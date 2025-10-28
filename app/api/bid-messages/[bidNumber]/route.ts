@@ -182,7 +182,7 @@ export async function POST(
     return NextResponse.json({
       ok: true,
       data: {
-        message: result[0],
+        messageData: result[0],
         message: "Message sent successfully"
       }
     });
