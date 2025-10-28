@@ -44,17 +44,11 @@ export async function POST(
     const award = await awardAuction({
       bid_number: bidNumber,
       winner_user_id: winnerUserId,
-      awarded_by: userId
+      awarded_by: userId,
+      admin_notes: adminNotes // Pass notes directly to awardAuction function
     });
 
-    // Add admin notes if provided
-    if (adminNotes) {
-      await sql`
-        UPDATE auction_awards 
-        SET admin_notes = ${adminNotes}
-        WHERE id = ${award.id}
-      `;
-    }
+    // Admin notes are now handled in awardAuction function
 
         // Get comprehensive award details for response
         const awardDetails = await sql`

@@ -406,10 +406,12 @@ export async function awardAuction({
   bid_number,
   winner_user_id,
   awarded_by,
+  admin_notes,
 }: {
   bid_number: string;
   winner_user_id: string;
   awarded_by: string;
+  admin_notes?: string;
 }): Promise<AuctionAward> {
   try {
     // Verify the winner has a bid for this auction
@@ -432,10 +434,10 @@ export async function awardAuction({
       throw new Error('Auction already awarded');
     }
 
-    // Create the award
+    // Create the award with admin notes if provided
     const award = await sql`
-      INSERT INTO public.auction_awards (bid_number, winner_user_id, winner_amount_cents, awarded_by)
-      VALUES (${bid_number}, ${winner_user_id}, ${winnerBid[0].amount_cents}, ${awarded_by})
+      INSERT INTO public.auction_awards (bid_number, winner_user_id, winner_amount_cents, awarded_by, admin_notes)
+      VALUES (${bid_number}, ${winner_user_id}, ${winnerBid[0].amount_cents}, ${awarded_by}, ${admin_notes || null})
       RETURNING *
     `;
 
