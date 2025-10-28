@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useAccentColor } from "@/hooks/useAccentColor";
 import { EyeOff, MessageSquare, Send, Shield, Truck, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
 
@@ -153,7 +153,7 @@ export function BidMessageConsole({ bidNumber, userRole, userId, onClose }: BidM
                 const isAdmin = msg.sender_role === 'admin';
                 
                 return (
-                  <>
+                  <React.Fragment key={msg.id || `msg-${index}`}>
                     {/* Internal Message Banner */}
                     {msg.is_internal && userRole === 'admin' && index === 0 && (
                       <div className="flex items-center justify-center mb-4">
@@ -167,7 +167,6 @@ export function BidMessageConsole({ bidNumber, userRole, userId, onClose }: BidM
                     )}
                     
                     <div
-                      key={msg.id}
                       className={`flex gap-3 ${isOwn ? 'flex-row-reverse' : ''}`}
                     >
                       {/* Avatar */}
@@ -213,7 +212,7 @@ export function BidMessageConsole({ bidNumber, userRole, userId, onClose }: BidM
                         </div>
                       </div>
                     </div>
-                  </>
+                  </React.Fragment>
                 );
               })}
             </div>
