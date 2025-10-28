@@ -63,6 +63,14 @@ export function BidMessageConsole({ bidNumber, userRole, userId, onClose }: BidM
 
       console.log('[Message Console] Response status:', response.status);
       
+      if (!response.ok) {
+        console.error('[Message Console] HTTP Error:', response.status, response.statusText);
+        const errorText = await response.text();
+        console.error('[Message Console] Error response body:', errorText);
+        toast.error(`Failed to send message (${response.status})`);
+        return;
+      }
+      
       const result = await response.json();
       console.log('[Message Console] Response data:', result);
 

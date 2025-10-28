@@ -159,8 +159,21 @@ export async function POST(
 
   } catch (error) {
     console.error("Error sending bid message:", error);
+    console.error("Error stack:", error instanceof Error ? error.stack : 'No stack trace');
+    console.error("Error details:", {
+      bidNumber,
+      userId,
+      userRole,
+      is_internal
+    });
+    
     return NextResponse.json(
-      { error: "Failed to send message", details: error instanceof Error ? error.message : 'Unknown error' },
+      { 
+        ok: false,
+        error: "Failed to send message", 
+        details: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
+      },
       { status: 500 }
     );
   }
