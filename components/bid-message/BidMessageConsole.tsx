@@ -1,14 +1,15 @@
 "use client";
 
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { useAccentColor } from "@/hooks/useAccentColor";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { MessageSquare, Send, Shield, Truck, X } from "lucide-react";
-import { useState, useEffect, useRef } from "react";
+import { Eye, EyeOff, MessageSquare, Send, Shield, Truck, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
 
@@ -23,6 +24,7 @@ interface BidMessageConsoleProps {
 
 export function BidMessageConsole({ bidNumber, userRole, userId, onClose }: BidMessageConsoleProps) {
   const [message, setMessage] = useState("");
+  const [isInternal, setIsInternal] = useState(false);
   const [sending, setSending] = useState(false);
   const { accentColor } = useAccentColor();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -51,14 +53,21 @@ export function BidMessageConsole({ bidNumber, userRole, userId, onClose }: BidM
       const response = await fetch(`/api/bid-messages/${bidNumber}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: message.trim() })
+        body: JSON.stringify({ 
+          message: message.trim(),
+          is_internal: userRole === 'admin' ? isInternal : false
+        })
       });
 
       const result = await response.json();
 
       if (result.ok) {
         setMessage("");
+        setIsInternal(false);
         mutate();
+        if (isInternal) {
+          toast.success('Internal note sent');
+        }
       } else {
         toast.error(result.error || 'Failed to send message');
       }
@@ -148,6 +157,12 @@ export function BidMessageConsole({ bidNumber, userRole, userId, onClose }: BidM
                         <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
                           {msg.sender_name || (isAdmin ? 'Admin' : 'Carrier')}
                         </span>
+                        {msg.is_internal && (
+                          <Badge variant="outline" className="text-xs bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700">
+                            <EyeOff className="w-3 h-3 mr-1" />
+                            Internal
+                          </Badge>
+                        )}
                         <span className="text-xs text-muted-foreground">
                           {new Date(msg.created_at).toLocaleTimeString([], { 
                             hour: '2-digit', 
@@ -156,7 +171,9 @@ export function BidMessageConsole({ bidNumber, userRole, userId, onClose }: BidM
                         </span>
                       </div>
                       <div className={`rounded-2xl px-4 py-3 shadow-sm ${
-                        isAdmin
+                        msg.is_internal
+                          ? 'bg-gradient-to-br from-amber-500/90 to-orange-600/90 text-white border-2 border-amber-400 dark:border-amber-600'
+                          : isAdmin
                           ? 'bg-gradient-to-br from-violet-500/90 to-purple-600/90 text-white'
                           : isOwn
                           ? 'bg-gradient-to-br from-blue-500/90 to-indigo-600/90 text-white'
@@ -174,13 +191,33 @@ export function BidMessageConsole({ bidNumber, userRole, userId, onClose }: BidM
 
         {/* Input Area */}
         <div className="px-6 py-4 border-t bg-white dark:bg-slate-900">
+          {/* Internal Message Toggle - Only for Admins */}
+          {userRole === 'admin' && (
+            <div className="mb-3 flex items-center justify-between p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+              <div className="flex items-center gap-2">
+                <EyeOff className="w-4 h-4 text-amber-700 dark:text-amber-400" />
+                <Label htmlFor="internal-toggle" className="text-sm font-medium text-amber-900 dark:text-amber-300 cursor-pointer">
+                  Internal Note
+                </Label>
+              </div>
+              <Switch
+                id="internal-toggle"
+                checked={isInternal}
+                onCheckedChange={setIsInternal}
+              />
+              <p className="text-xs text-amber-700 dark:text-amber-400 ml-2">
+                Only visible to admins
+              </p>
+            </div>
+          )}
+          
           <div className="flex items-end gap-3">
             <div className="flex-1 relative">
               <Input
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Type your message..."
+                placeholder={isInternal ? "Type internal note..." : "Type your message..."}
                 className="pr-12 bg-slate-50 dark:bg-slate-800 border-slate-300 dark:border-slate-700 focus-visible:ring-2 focus-visible:ring-violet-500"
               />
             </div>

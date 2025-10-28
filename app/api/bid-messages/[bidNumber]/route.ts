@@ -36,7 +36,9 @@ export async function GET(
       }
     }
 
-    // Get all messages for this bid
+    // Get messages for this bid
+    // For carriers: exclude internal messages
+    // For admins: show all messages including internal
     const messages = await sql`
       SELECT 
         bm.*,
@@ -56,6 +58,7 @@ export async function GET(
         END as sender_name
       FROM bid_messages bm
       WHERE bm.bid_number = ${bidNumber}
+        ${userRole === 'carrier' ? sql`AND (bm.is_internal = false OR bm.is_internal IS NULL)` : sql``}
       ORDER BY bm.created_at ASC
     `;
 
@@ -102,12 +105,20 @@ export async function POST(
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
-    const { message } = await request.json();
+    const { message, is_internal = false } = await request.json();
 
     if (!message || !message.trim()) {
       return NextResponse.json(
         { error: "Message is required" },
         { status: 400 }
+      );
+    }
+
+    // Only admins can send internal messages
+    if (is_internal && userRole !== "admin") {
+      return NextResponse.json(
+        { error: "Only admins can send internal messages" },
+        { status: 403 }
       );
     }
 
@@ -129,8 +140,8 @@ export async function POST(
 
     // Insert the message
     const result = await sql`
-      INSERT INTO bid_messages (bid_number, sender_id, sender_role, message)
-      VALUES (${bidNumber}, ${userId}, ${userRole}, ${message.trim()})
+      INSERT INTO bid_messages (bid_number, sender_id, sender_role, message, is_internal)
+      VALUES (${bidNumber}, ${userId}, ${userRole}, ${message.trim()}, ${is_internal})
       RETURNING *
     `;
 
