@@ -601,7 +601,7 @@ export function CarrierBidsClient() {
                   <p className="text-lg font-semibold">{formatPickupDateTime(viewDetailsBid.createdAt)}</p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-muted-foreground">Equipment Tag</label>
+                  <label className="text-sm font-medium text-muted-foreground">State Tag</label>
                   <p className="text-lg font-semibold">{viewDetailsBid.tag || 'N/A'}</p>
                 </div>
               </div>

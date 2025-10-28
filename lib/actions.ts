@@ -73,7 +73,7 @@ export async function getAdminStats() {
       sql`
         SELECT 
           COUNT(*) as total_bids,
-          COUNT(*) FILTER (WHERE expires_at > NOW()) as active_bids
+          COUNT(*) FILTER (WHERE expires_at::timestamp > NOW()) as active_bids
         FROM telegram_bids
       `,
       sql`

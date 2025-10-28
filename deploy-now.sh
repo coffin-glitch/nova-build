@@ -43,3 +43,4 @@ echo ""
 echo "🔧 Test locally first:"
 echo "   cd railway-service && npm start"
 echo "   curl http://localhost:3001/health"
+

@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 
 export async function GET(
   req: Request,
-  { params }: { params: { conversationId: string } }
+  { params }: { params: Promise<{ conversationId: string }> }
 ) {
   try {
     const { userId } = await auth();
@@ -20,7 +20,7 @@ export async function GET(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const { conversationId } = params;
+    const { conversationId } = await params;
 
     // Verify the user has access to this conversation
     const conversation = await sql`
@@ -63,7 +63,7 @@ export async function GET(
 
 export async function POST(
   req: Request,
-  { params }: { params: { conversationId: string } }
+  { params }: { params: Promise<{ conversationId: string }> }
 ) {
   try {
     const { userId } = await auth();
@@ -78,7 +78,7 @@ export async function POST(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const { conversationId } = params;
+    const { conversationId } = await params;
     const body = await req.json();
     const { message } = body;
 

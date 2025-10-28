@@ -252,28 +252,51 @@ export default function FloatingCarrierMessagesButton() {
     setIsTyping(false);
 
     try {
-      const response = await fetch('/api/carrier/messages/responses', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message_id: selectedMessage.id,
-          response: newMessage.trim()
-        })
-      });
+      // Check if this is a placeholder message (new conversation)
+      if (selectedMessage.id.startsWith('placeholder-')) {
+        // Start a new chat with the admin
+        const response = await fetch('/api/carrier/start-chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            admin_user_id: selectedMessage.admin_user_id,
+            message: newMessage.trim(),
+          }),
+        });
 
-      if (response.ok) {
-        setNewMessage("");
-        mutateResponses();
-        setTimeout(scrollToBottom, 100);
+        if (response.ok) {
+          setNewMessage("");
+          mutateMessages();
+          mutateResponses();
+          setTimeout(scrollToBottom, 100);
+        } else {
+          throw new Error('Failed to start new chat');
+        }
       } else {
-        throw new Error('Failed to send message');
+        // Regular message response
+        const response = await fetch('/api/carrier/messages/responses', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message_id: selectedMessage.id,
+            response: newMessage.trim()
+          })
+        });
+
+        if (response.ok) {
+          setNewMessage("");
+          mutateResponses();
+          setTimeout(scrollToBottom, 100);
+        } else {
+          throw new Error('Failed to send message');
+        }
       }
     } catch (error) {
       console.error('Error sending message:', error);
     } finally {
       setIsSendingMessage(false);
     }
-  }, [selectedMessage, newMessage, isSendingMessage, mutateResponses, scrollToBottom]);
+  }, [selectedMessage, newMessage, isSendingMessage, mutateMessages, mutateResponses, scrollToBottom]);
 
   // Handle key press
   const handleKeyPress = useCallback((e: React.KeyboardEvent) => {
@@ -319,8 +342,21 @@ export default function FloatingCarrierMessagesButton() {
           markMessageAsRead(latestMessage.id);
         }
       }
+    } else {
+      // If no messages found, create a placeholder message for the conversation
+      const placeholderMessage: AdminMessage = {
+        id: `placeholder-${adminId}`,
+        carrier_user_id: user?.id || '',
+        admin_user_id: adminId,
+        subject: 'New Conversation',
+        message: 'Start a new conversation with this admin.',
+        is_read: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+      setSelectedMessage(placeholderMessage);
     }
-  }, [messageGroups, markMessageAsRead]);
+  }, [messageGroups, markMessageAsRead, user?.id]);
 
   // Helper functions
   const formatTime = (timestamp: string) => {

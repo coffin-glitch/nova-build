@@ -17,6 +17,20 @@ export async function GET(request: NextRequest) {
     // Fetch user info for each ID
     for (const userId of userIds) {
       if (userId.trim()) {
+        // Handle special case for admin_system
+        if (userId.trim() === 'admin_system') {
+          userInfos[userId.trim()] = {
+            id: 'admin_system',
+            firstName: 'Admin',
+            lastName: 'System',
+            fullName: 'Admin System',
+            emailAddresses: [],
+            username: 'admin_system',
+            role: "admin"
+          };
+          continue;
+        }
+        
         try {
           // First try to get user info from Clerk
           const userInfo = await getClerkUserInfo(userId.trim());

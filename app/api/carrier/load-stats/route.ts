@@ -27,7 +27,7 @@ export async function GET() {
           COUNT(*) as total_booked,
           COUNT(CASE WHEN lo.status IN ('accepted', 'assigned', 'checked_in', 'picked_up', 'departed', 'in_transit', 'checked_in_delivery') THEN 1 END) as active_loads,
           COUNT(CASE WHEN lo.status = 'completed' THEN 1 END) as completed_loads,
-          SUM(l.revenue) as total_revenue
+          SUM(lo.offer_amount) as total_revenue
         FROM loads l
         INNER JOIN load_offers lo ON l.rr_number = lo.load_rr_number
         WHERE lo.carrier_user_id = ${userId}

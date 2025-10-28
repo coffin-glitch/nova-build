@@ -114,3 +114,4 @@ The service provides health checks and status endpoints for monitoring:
 - Status endpoint: `/status`
 - WebSocket client count tracking
 - Process monitoring
+

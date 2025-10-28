@@ -155,8 +155,12 @@ export function TelegramForwarderConsole() {
 
   const handleStart = async () => {
     try {
-      const response = await fetch('/api/telegram-forwarder/start', {
-        method: 'POST'
+      const response = await fetch('/api/telegram-forwarder', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ action: 'start' })
       });
       
       if (response.ok) {
@@ -172,8 +176,12 @@ export function TelegramForwarderConsole() {
 
   const handleStop = async () => {
     try {
-      const response = await fetch('/api/telegram-forwarder/stop', {
-        method: 'POST'
+      const response = await fetch('/api/telegram-forwarder', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ action: 'stop' })
       });
       
       if (response.ok) {

@@ -14,21 +14,12 @@ export async function getUserRole(userId: string): Promise<"admin" | "carrier"> 
   try {
     console.log("🔍 getUserRole: Checking role for user:", userId);
     
-    // Try with 'user_id' first (newer schema)
+    // Use clerk_user_id (actual database schema)
     let result = await sql`
-      SELECT role FROM user_roles WHERE user_id = ${userId}
+      SELECT role FROM user_roles WHERE clerk_user_id = ${userId}
     `;
     
-    console.log("📊 getUserRole: user_id query result:", result);
-    
-    if (result.length === 0) {
-      console.log("🔄 getUserRole: No result with user_id, trying clerk_user_id...");
-      // Fallback to 'clerk_user_id' (older schema)
-      result = await sql`
-        SELECT role FROM user_roles WHERE clerk_user_id = ${userId}
-      `;
-      console.log("📊 getUserRole: clerk_user_id query result:", result);
-    }
+    console.log("📊 getUserRole: clerk_user_id query result:", result);
     
     const role = result[0]?.role || "carrier";
     console.log("🎯 getUserRole: Final role:", role);
@@ -68,23 +59,13 @@ export async function requireCarrier() {
 /** Create or update user role in database. */
 export async function setUserRole(userId: string, role: "admin" | "carrier") {
   try {
-    // Try with 'user_id' first (newer schema)
-    try {
-      await sql`
-        INSERT INTO user_roles (user_id, role, created_at) 
-        VALUES (${userId}, ${role}, NOW())
-        ON CONFLICT (user_id) 
-        DO UPDATE SET role = ${role}
-      `;
-    } catch (error) {
-      // Fallback to 'clerk_user_id' (older schema)
-      await sql`
-        INSERT INTO user_roles (clerk_user_id, role, created_at) 
-        VALUES (${userId}, ${role}, NOW())
-        ON CONFLICT (clerk_user_id) 
-        DO UPDATE SET role = ${role}
-      `;
-    }
+    // Use clerk_user_id (actual database schema)
+    await sql`
+      INSERT INTO user_roles (clerk_user_id, role, created_at) 
+      VALUES (${userId}, ${role}, NOW())
+      ON CONFLICT (clerk_user_id) 
+      DO UPDATE SET role = ${role}
+    `;
   } catch (error) {
     console.error("Error setting user role:", error);
     throw new Error("Failed to set user role");

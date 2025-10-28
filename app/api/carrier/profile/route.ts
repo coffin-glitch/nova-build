@@ -1,3 +1,4 @@
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
 import sql from "@/lib/db";
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
@@ -10,38 +11,52 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get carrier profile from database
-    const profiles = await sql`
-      SELECT 
-        id,
-        clerk_user_id,
-        COALESCE(company_name, legal_name) as legal_name,
-        mc_number,
-        dot_number,
-        contact_name,
-        phone,
-        is_locked,
-        locked_at,
-        locked_by,
-        lock_reason,
-        created_at,
-        updated_at
-      FROM carrier_profiles 
-      WHERE clerk_user_id = ${userId}
-    `;
+          // Get carrier profile from database with correct column names
+          const profiles = await sql`
+            SELECT 
+              clerk_user_id as id,
+              clerk_user_id,
+              legal_name,
+              mc_number,
+              dot_number,
+              contact_name,
+              phone,
+              profile_status,
+              submitted_at,
+              reviewed_at,
+              reviewed_by,
+              review_notes,
+              decline_reason,
+              is_first_login,
+              profile_completed_at,
+              edits_enabled,
+              edits_enabled_by,
+              edits_enabled_at,
+              created_at
+            FROM carrier_profiles 
+            WHERE clerk_user_id = ${userId}
+          `;
 
     const profile = profiles[0] || null;
 
-    return NextResponse.json({ 
+    logSecurityEvent('carrier_profile_accessed', userId);
+    
+    const response = NextResponse.json({ 
       ok: true, 
       data: profile 
     });
+    
+    return addSecurityHeaders(response);
 
   } catch (error) {
     console.error("Error fetching carrier profile:", error);
-    return NextResponse.json({ 
+    logSecurityEvent('carrier_profile_error', undefined, { error: error instanceof Error ? error.message : String(error) });
+    
+    const response = NextResponse.json({ 
       error: "Failed to fetch profile" 
     }, { status: 500 });
+    
+    return addSecurityHeaders(response);
   }
 }
 
@@ -59,33 +74,51 @@ export async function POST(req: Request) {
       mc_number: mcNumber,
       dot_number: dotNumber,
       contact_name: contactName,
-      phone
+      phone,
+      submit_for_approval = false
     } = body;
 
-    // Check if profile exists and is locked
+    // Input validation
+    const validation = validateInput({ 
+      companyName, 
+      mcNumber, 
+      contactName, 
+      phone, 
+      submit_for_approval 
+    }, {
+      companyName: { required: true, type: 'string', minLength: 2, maxLength: 100 },
+      mcNumber: { required: true, type: 'string', pattern: /^\d+$/ },
+      contactName: { required: true, type: 'string', minLength: 2, maxLength: 50 },
+      phone: { required: true, type: 'string', pattern: /^[\+]?[1-9][\d]{0,15}$/ },
+      submit_for_approval: { type: 'boolean' }
+    });
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_profile_input', userId, { errors: validation.errors });
+      return NextResponse.json({ 
+        error: `Invalid input: ${validation.errors.join(', ')}` 
+      }, { status: 400 });
+    }
+
+    // Check if profile exists
     const existingProfiles = await sql`
-      SELECT clerk_user_id, is_locked FROM carrier_profiles WHERE clerk_user_id = ${userId}
+      SELECT 
+        clerk_user_id
+      FROM carrier_profiles 
+      WHERE clerk_user_id = ${userId}
     `;
 
     const existingProfile = existingProfiles[0];
-
-    if (existingProfile && existingProfile.is_locked) {
-      return NextResponse.json({ 
-        error: "Profile is locked and cannot be modified. Contact an administrator for changes." 
-      }, { status: 403 });
-    }
 
     if (existingProfile) {
       // Update existing profile
       await sql`
         UPDATE carrier_profiles SET
-          company_name = ${companyName},
           legal_name = ${companyName},
           mc_number = ${mcNumber},
           dot_number = ${dotNumber},
           contact_name = ${contactName},
-          phone = ${phone},
-          updated_at = CURRENT_TIMESTAMP
+          phone = ${phone}
         WHERE clerk_user_id = ${userId}
       `;
     } else {
@@ -93,27 +126,47 @@ export async function POST(req: Request) {
       await sql`
         INSERT INTO carrier_profiles (
           clerk_user_id,
-          company_name,
           legal_name,
           mc_number,
           dot_number,
           contact_name,
-          phone,
-          created_at,
-          updated_at
-        ) VALUES (${userId}, ${companyName}, ${companyName}, ${mcNumber}, ${dotNumber}, ${contactName}, ${phone}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+          phone
+        ) VALUES (
+          ${userId}, 
+          ${companyName}, 
+          ${mcNumber}, 
+          ${dotNumber}, 
+          ${contactName}, 
+          ${phone}
+        )
       `;
     }
 
-    return NextResponse.json({ 
-      ok: true, 
-      message: "Profile updated successfully" 
+    const message = existingProfile 
+      ? "Profile updated successfully!" 
+      : "Profile created successfully!";
+
+    logSecurityEvent('carrier_profile_updated', userId, { 
+      action: existingProfile ? 'update' : 'create',
+      submit_for_approval 
     });
+    
+    const response = NextResponse.json({ 
+      ok: true, 
+      message: message,
+      submitted_for_approval: submit_for_approval
+    });
+    
+    return addSecurityHeaders(response);
 
   } catch (error) {
     console.error("Error updating carrier profile:", error);
-    return NextResponse.json({ 
+    logSecurityEvent('carrier_profile_update_error', undefined, { error: error instanceof Error ? error.message : String(error) });
+    
+    const response = NextResponse.json({ 
       error: "Failed to update profile" 
     }, { status: 500 });
+    
+    return addSecurityHeaders(response);
   }
 }

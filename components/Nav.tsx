@@ -1,34 +1,28 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
+import { getUserRoleAction } from "@/lib/actions";
+import { SignInButton, SignOutButton, useUser } from "@clerk/nextjs";
+import {
+    Book,
+    Compass,
+    DollarSign,
+    FileText,
+    Gavel,
+    HandCoins,
+    Home,
+    Package,
+    Settings,
+    Shield,
+    Star,
+    Trophy,
+    Truck,
+    Upload,
+    User
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useUser, SignInButton, SignOutButton } from "@clerk/nextjs";
-import { useState, useEffect } from "react";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { getUserRoleAction } from "@/lib/actions";
-import { 
-  Home, 
-  ClipboardList, 
-  Truck, 
-  Package, 
-  FileText, 
-  Settings, 
-  Shield,
-  Menu,
-  X,
-  Route,
-  HandCoins,
-  Upload,
-  Sparkles,
-  User,
-  Compass,
-  Book,
-  DollarSign,
-  Star,
-  Gavel,
-  Bell
-} from "lucide-react";
+import { useEffect, useState } from "react";
 import NotificationsMenu from "./NotificationsMenu";
 
 interface NavItem {
@@ -43,6 +37,7 @@ const navItems: NavItem[] = [
   { href: "/find-loads", label: "Find Loads", icon: Compass, roles: ["public"] },
   { href: "/bid-board", label: "Live Auctions", icon: Gavel, roles: ["public"] },
   { href: "/my-loads", label: "My Loads", icon: Book, roles: ["carrier"] },
+  { href: "/my-bids", label: "My Bids", icon: Trophy, roles: ["carrier"] },
   { href: "/current-offers", label: "My Offers", icon: DollarSign, roles: ["carrier"] },
   { href: "/dedicated-lanes", label: "Dedicated", icon: Star, roles: ["carrier"] },
   { href: "/profile", label: "Profile", icon: Settings, roles: ["carrier"] },
@@ -51,6 +46,7 @@ const navItems: NavItem[] = [
   { href: "/admin/manage-loads", label: "Manage Loads", icon: Package, roles: ["admin"] },
   { href: "/admin/bids", label: "Manage Bids", icon: FileText, roles: ["admin"] },
   { href: "/admin/offers", label: "Manage Offers", icon: HandCoins, roles: ["admin"] },
+  { href: "/admin/offers-bids", label: "Manage Offers-Bids", icon: Trophy, roles: ["admin"] },
   { href: "/admin/eax", label: "EAX Updater", icon: Upload, roles: ["admin"] },
 ];
 

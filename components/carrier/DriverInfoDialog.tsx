@@ -53,6 +53,7 @@ interface DriverInfoDialogProps {
   onOpenChange: (open: boolean) => void;
   loadId: string;
   onSuccess?: () => void;
+  isBid?: boolean; // New prop to indicate if this is for a bid
 }
 
 // Format phone number for display (add dashes)
@@ -68,7 +69,8 @@ export function DriverInfoDialog({
   isOpen,
   onOpenChange,
   loadId,
-  onSuccess
+  onSuccess,
+  isBid = false
 }: DriverInfoDialogProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -84,9 +86,23 @@ export function DriverInfoDialog({
   const [truckNumber, setTruckNumber] = useState("");
   const [trailerNumber, setTrailerNumber] = useState("");
 
+  // Secondary driver information
+  const [secondDriverName, setSecondDriverName] = useState("");
+  const [secondDriverPhone, setSecondDriverPhone] = useState("");
+  const [secondDriverEmail, setSecondDriverEmail] = useState("");
+  const [secondDriverLicenseNumber, setSecondDriverLicenseNumber] = useState("");
+  const [secondDriverLicenseState, setSecondDriverLicenseState] = useState("");
+  const [secondTruckNumber, setSecondTruckNumber] = useState("");
+  const [secondTrailerNumber, setSecondTrailerNumber] = useState("");
+
   // Additional information
   const [location, setLocation] = useState("");
   const [notes, setNotes] = useState("");
+  const [showSecondDriver, setShowSecondDriver] = useState(false);
+
+  // Profile selection state
+  const [selectedProfile, setSelectedProfile] = useState<string | null>(null);
+  const [selectedSecondProfile, setSelectedSecondProfile] = useState<string | null>(null);
 
   // Fetch driver profiles
   const { data: profilesData, mutate: mutateProfiles } = useSWR(
@@ -113,8 +129,18 @@ export function DriverInfoDialog({
       setDriverLicenseState("");
       setTruckNumber("");
       setTrailerNumber("");
+      setSecondDriverName("");
+      setSecondDriverPhone("");
+      setSecondDriverEmail("");
+      setSecondDriverLicenseNumber("");
+      setSecondDriverLicenseState("");
+      setSecondTruckNumber("");
+      setSecondTrailerNumber("");
       setLocation("");
       setNotes("");
+      setShowSecondDriver(false);
+      setSelectedProfile(null);
+      setSelectedSecondProfile(null);
       setShowProfileManager(false);
       setNewProfileName("");
     }
@@ -123,11 +149,15 @@ export function DriverInfoDialog({
   const loadDriverInfo = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch(`/api/carrier/loads/${loadId}/driver-info`);
+      const endpoint = isBid 
+        ? `/api/carrier/bids/${loadId}/driver-info`
+        : `/api/carrier/loads/${loadId}/driver-info`;
+      
+      const response = await fetch(endpoint);
       if (response.ok) {
         const data = await response.json();
-        if (data.ok && data.driver_info) {
-          const info = data.driver_info;
+        if (data.ok && data.data) {
+          const info = data.data;
           setDriverName(info.driver_name || "");
           setDriverPhone(info.driver_phone ? formatPhoneDisplay(info.driver_phone) : "");
           setDriverEmail(info.driver_email || "");
@@ -154,6 +184,17 @@ export function DriverInfoDialog({
     setTrailerNumber(profile.trailer_number || "");
     setShowProfileManager(false);
     toast.success(`Loaded profile: ${profile.profile_name}`);
+  };
+
+  const loadSecondProfile = (profile: DriverProfile) => {
+    setSecondDriverName(profile.driver_name);
+    setSecondDriverPhone(formatPhoneDisplay(profile.driver_phone));
+    setSecondDriverEmail(profile.driver_email || "");
+    setSecondDriverLicenseNumber(profile.driver_license_number || "");
+    setSecondDriverLicenseState(profile.driver_license_state || "");
+    setSecondTruckNumber(profile.truck_number || "");
+    setSecondTrailerNumber(profile.trailer_number || "");
+    toast.success(`Loaded second driver profile: ${profile.profile_name}`);
   };
 
   const saveProfile = async () => {
@@ -275,7 +316,11 @@ export function DriverInfoDialog({
     setIsSubmitting(true);
 
     try {
-      const response = await fetch(`/api/carrier/loads/${loadId}/driver-info`, {
+      const endpoint = isBid 
+        ? `/api/carrier/bids/${loadId}/driver-info`
+        : `/api/carrier/loads/${loadId}/driver-info`;
+      
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -288,6 +333,13 @@ export function DriverInfoDialog({
           driver_license_state: driverLicenseState || null,
           truck_number: truckNumber,
           trailer_number: trailerNumber,
+          second_driver_name: secondDriverName || null,
+          second_driver_phone: secondDriverPhone || null,
+          second_driver_email: secondDriverEmail || null,
+          second_driver_license_number: secondDriverLicenseNumber || null,
+          second_driver_license_state: secondDriverLicenseState || null,
+          second_truck_number: secondTruckNumber || null,
+          second_trailer_number: secondTrailerNumber || null,
           location: location || null,
           notes: notes || null
         }),
@@ -300,7 +352,47 @@ export function DriverInfoDialog({
 
       const result = await response.json();
       
-      toast.success("Driver information updated successfully!");
+      // If this is a bid, create a driver info update timeline event
+      if (isBid) {
+        try {
+          const statusResponse = await fetch(`/api/carrier/bid-lifecycle/${loadId}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              status: 'driver_info_update',
+              notes: notes || 'Driver information updated',
+              location: location || null,
+              driver_name: driverName,
+              driver_phone: driverPhone,
+              driver_email: driverEmail || null,
+              driver_license_number: driverLicenseNumber || null,
+              driver_license_state: driverLicenseState || null,
+              truck_number: truckNumber,
+              trailer_number: trailerNumber,
+              second_driver_name: secondDriverName || null,
+              second_driver_phone: secondDriverPhone || null,
+              second_driver_email: secondDriverEmail || null,
+              second_driver_license_number: secondDriverLicenseNumber || null,
+              second_driver_license_state: secondDriverLicenseState || null,
+              second_truck_number: secondTruckNumber || null,
+              second_trailer_number: secondTrailerNumber || null
+            }),
+          });
+
+          if (statusResponse.ok) {
+            toast.success("Driver information updated successfully!");
+          } else {
+            toast.success("Driver information updated successfully!");
+          }
+        } catch (statusError) {
+          console.error('Error updating timeline:', statusError);
+          toast.success("Driver information updated successfully!");
+        }
+      } else {
+        toast.success("Driver information updated successfully!");
+      }
       
       onOpenChange(false);
       onSuccess?.();
@@ -424,6 +516,27 @@ export function DriverInfoDialog({
                   <h3 className="text-lg font-semibold">Driver Information</h3>
                   <span className="text-sm font-normal text-muted-foreground">Required</span>
                 </div>
+
+                {/* Primary Driver Profile Selection */}
+                <div className="space-y-2">
+                  <Label htmlFor="primary-profile">Driver Profile</Label>
+                  <Select onValueChange={(value) => {
+                    setSelectedProfile(value);
+                    const profile = profiles.find(p => p.id === value);
+                    if (profile) loadProfile(profile);
+                  }} value={selectedProfile || ""}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a driver profile (optional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {profiles.map((profile) => (
+                        <SelectItem key={profile.id} value={profile.id}>
+                          {profile.profile_name} ({profile.driver_name})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
@@ -508,6 +621,169 @@ export function DriverInfoDialog({
                     />
                   </div>
                 </div>
+              </div>
+
+              {/* Secondary Driver Information */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-medium">Secondary Driver Information (Optional)</h3>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowSecondDriver(!showSecondDriver)}
+                    className="flex items-center gap-2"
+                  >
+                    <User className="h-4 w-4" />
+                    {showSecondDriver ? 'Hide' : 'Add'} Second Driver
+                  </Button>
+                </div>
+                
+                {showSecondDriver && (
+                  <>
+                    {/* Second Driver Profile Selection */}
+                    <div className="space-y-2">
+                      <Label htmlFor="second-profile">Second Driver Profile</Label>
+                      <Select onValueChange={(value) => {
+                        setSelectedSecondProfile(value);
+                        const profile = profiles.find(p => p.id === value);
+                        if (profile) loadSecondProfile(profile);
+                      }} value={selectedSecondProfile || ""}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a driver profile (optional)" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {profiles.map((profile) => (
+                            <SelectItem key={profile.id} value={profile.id}>
+                              {profile.profile_name} ({profile.driver_name})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="secondDriverName">Second Driver Name</Label>
+                      <Input
+                        id="secondDriverName"
+                        value={secondDriverName}
+                        onChange={(e) => setSecondDriverName(e.target.value)}
+                        placeholder="Enter second driver name"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="secondDriverPhone">Second Driver Phone</Label>
+                      <Input
+                        id="secondDriverPhone"
+                        value={secondDriverPhone}
+                        onChange={(e) => setSecondDriverPhone(e.target.value)}
+                        placeholder="(555) 123-4567"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="secondDriverEmail">Second Driver Email</Label>
+                      <Input
+                        id="secondDriverEmail"
+                        type="email"
+                        value={secondDriverEmail}
+                        onChange={(e) => setSecondDriverEmail(e.target.value)}
+                        placeholder="driver@example.com"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="secondDriverLicenseNumber">Second Driver License Number</Label>
+                      <Input
+                        id="secondDriverLicenseNumber"
+                        value={secondDriverLicenseNumber}
+                        onChange={(e) => setSecondDriverLicenseNumber(e.target.value)}
+                        placeholder="Enter license number"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="secondDriverLicenseState">Second Driver License State</Label>
+                      <Select
+                        value={secondDriverLicenseState}
+                        onValueChange={setSecondDriverLicenseState}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select state" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="AL">Alabama</SelectItem>
+                          <SelectItem value="AK">Alaska</SelectItem>
+                          <SelectItem value="AZ">Arizona</SelectItem>
+                          <SelectItem value="AR">Arkansas</SelectItem>
+                          <SelectItem value="CA">California</SelectItem>
+                          <SelectItem value="CO">Colorado</SelectItem>
+                          <SelectItem value="CT">Connecticut</SelectItem>
+                          <SelectItem value="DE">Delaware</SelectItem>
+                          <SelectItem value="FL">Florida</SelectItem>
+                          <SelectItem value="GA">Georgia</SelectItem>
+                          <SelectItem value="HI">Hawaii</SelectItem>
+                          <SelectItem value="ID">Idaho</SelectItem>
+                          <SelectItem value="IL">Illinois</SelectItem>
+                          <SelectItem value="IN">Indiana</SelectItem>
+                          <SelectItem value="IA">Iowa</SelectItem>
+                          <SelectItem value="KS">Kansas</SelectItem>
+                          <SelectItem value="KY">Kentucky</SelectItem>
+                          <SelectItem value="LA">Louisiana</SelectItem>
+                          <SelectItem value="ME">Maine</SelectItem>
+                          <SelectItem value="MD">Maryland</SelectItem>
+                          <SelectItem value="MA">Massachusetts</SelectItem>
+                          <SelectItem value="MI">Michigan</SelectItem>
+                          <SelectItem value="MN">Minnesota</SelectItem>
+                          <SelectItem value="MS">Mississippi</SelectItem>
+                          <SelectItem value="MO">Missouri</SelectItem>
+                          <SelectItem value="MT">Montana</SelectItem>
+                          <SelectItem value="NE">Nebraska</SelectItem>
+                          <SelectItem value="NV">Nevada</SelectItem>
+                          <SelectItem value="NH">New Hampshire</SelectItem>
+                          <SelectItem value="NJ">New Jersey</SelectItem>
+                          <SelectItem value="NM">New Mexico</SelectItem>
+                          <SelectItem value="NY">New York</SelectItem>
+                          <SelectItem value="NC">North Carolina</SelectItem>
+                          <SelectItem value="ND">North Dakota</SelectItem>
+                          <SelectItem value="OH">Ohio</SelectItem>
+                          <SelectItem value="OK">Oklahoma</SelectItem>
+                          <SelectItem value="OR">Oregon</SelectItem>
+                          <SelectItem value="PA">Pennsylvania</SelectItem>
+                          <SelectItem value="RI">Rhode Island</SelectItem>
+                          <SelectItem value="SC">South Carolina</SelectItem>
+                          <SelectItem value="SD">South Dakota</SelectItem>
+                          <SelectItem value="TN">Tennessee</SelectItem>
+                          <SelectItem value="TX">Texas</SelectItem>
+                          <SelectItem value="UT">Utah</SelectItem>
+                          <SelectItem value="VT">Vermont</SelectItem>
+                          <SelectItem value="VA">Virginia</SelectItem>
+                          <SelectItem value="WA">Washington</SelectItem>
+                          <SelectItem value="WV">West Virginia</SelectItem>
+                          <SelectItem value="WI">Wisconsin</SelectItem>
+                          <SelectItem value="WY">Wyoming</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="secondTruckNumber">Second Truck Number</Label>
+                      <Input
+                        id="secondTruckNumber"
+                        value={secondTruckNumber}
+                        onChange={(e) => setSecondTruckNumber(e.target.value)}
+                        placeholder="Enter truck number"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="secondTrailerNumber">Second Trailer Number</Label>
+                      <Input
+                        id="secondTrailerNumber"
+                        value={secondTrailerNumber}
+                        onChange={(e) => setSecondTrailerNumber(e.target.value)}
+                        placeholder="Enter trailer number"
+                      />
+                    </div>
+                  </div>
+                  </>
+                )}
               </div>
 
               {/* Additional Information */}

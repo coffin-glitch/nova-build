@@ -1,6 +1,6 @@
-import { auth } from "@clerk/nextjs/server";
 import { getClerkUserRole } from "@/lib/clerk-server";
 import sql from "@/lib/db";
+import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
         delivery_time,
         COALESCE(target_buy, 0) as target_buy,
         COALESCE(max_buy, 0) as max_buy,
-        COALESCE(spot_bid, 0) as spot_bid,
+        COALESCE(spot_bid, '') as spot_bid,
         equipment,
         COALESCE(weight, 0) as weight,
         COALESCE(miles, 0) as miles,
@@ -210,18 +210,28 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { action, rrNumbers } = body;
 
-    if (!action || !rrNumbers || !Array.isArray(rrNumbers)) {
+    if (!action) {
       return NextResponse.json(
-        { error: "Action and rrNumbers array are required" },
+        { error: "Action is required" },
         { status: 400 }
       );
     }
 
-    if (rrNumbers.length === 0) {
-      return NextResponse.json(
-        { error: "At least one load must be selected" },
-        { status: 400 }
-      );
+    // For unpublish_all, we don't need rrNumbers
+    if (action !== 'unpublish_all') {
+      if (!rrNumbers || !Array.isArray(rrNumbers)) {
+        return NextResponse.json(
+          { error: "rrNumbers array is required for this action" },
+          { status: 400 }
+        );
+      }
+
+      if (rrNumbers.length === 0) {
+        return NextResponse.json(
+          { error: "At least one load must be selected" },
+          { status: 400 }
+        );
+      }
     }
 
     let result;
@@ -271,9 +281,19 @@ export async function POST(request: NextRequest) {
         message = `Unpublished ${(result as any).count || 0} load(s)`;
         break;
 
+      case "unpublish_all":
+        result = await sql`
+          UPDATE loads 
+          SET 
+            published = false,
+            updated_at = CURRENT_TIMESTAMP
+        `;
+        message = `Unpublished all loads - removed from find-loads page`;
+        break;
+
       default:
         return NextResponse.json(
-          { error: "Invalid action. Must be one of: archive, delete, publish, unpublish" },
+          { error: "Invalid action. Must be one of: archive, delete, publish, unpublish, unpublish_all" },
           { status: 400 }
         );
     }
@@ -282,7 +302,7 @@ export async function POST(request: NextRequest) {
       success: true,
       message,
       affectedCount: (result as any).count || 0,
-      affectedLoads: rrNumbers
+      affectedLoads: action === 'unpublish_all' ? 'all' : rrNumbers
     });
 
   } catch (error) {

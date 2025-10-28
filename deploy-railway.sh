@@ -39,3 +39,4 @@ echo "   - TELEGRAM_BOT_TOKEN"
 echo "   - TELEGRAM_SOURCE_CHAT_ID" 
 echo "   - TELEGRAM_TARGET_GROUP_ID"
 echo "   - DATABASE_URL"
+

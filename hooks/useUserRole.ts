@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import { useUser } from "@clerk/nextjs";
+import { useMemo } from "react";
 
 export type UserRole = "admin" | "carrier" | "none";
 
@@ -13,68 +13,65 @@ interface RoleState {
   error: string | null;
 }
 
+/**
+ * Secure and efficient user role hook that prevents infinite loops
+ * Uses Clerk's built-in metadata and server-side validation
+ */
 export function useUserRole(): RoleState {
   const { user, isLoaded } = useUser();
-  const [roleState, setRoleState] = useState<RoleState>({
-    role: "none",
-    isAdmin: false,
-    isCarrier: false,
-    isLoading: true,
-    error: null,
-  });
 
-  useEffect(() => {
-    const checkRole = async () => {
-      if (!user || !isLoaded) {
-        setRoleState({
-          role: "none",
-          isAdmin: false,
-          isCarrier: false,
-          isLoading: false,
-          error: null,
-        });
-        return;
-      }
+  // Memoize the role state to prevent unnecessary re-renders
+  const roleState = useMemo((): RoleState => {
+    // Still loading Clerk
+    if (!isLoaded) {
+      return {
+        role: "none",
+        isAdmin: false,
+        isCarrier: false,
+        isLoading: true,
+        error: null,
+      };
+    }
 
-      try {
-        console.log("🔍 useUserRole: Checking role for user:", user.id);
-        setRoleState(prev => ({ ...prev, isLoading: true, error: null }));
+    // No user authenticated
+    if (!user) {
+      return {
+        role: "none",
+        isAdmin: false,
+        isCarrier: false,
+        isLoading: false,
+        error: null,
+      };
+    }
 
-        const response = await fetch(`/api/roles?userId=${user.id}&action=check`);
-        
-        if (!response.ok) {
-          throw new Error(`Role check failed: ${response.status}`);
-        }
+    // Get role from Clerk metadata (most secure and efficient)
+    const metadataRole = (user.publicMetadata as any)?.role?.toLowerCase();
+    
+    // Validate role and provide secure defaults
+    let role: UserRole = "carrier"; // Default to least privileged role
+    
+    if (metadataRole === "admin") {
+      role = "admin";
+    } else if (metadataRole === "carrier") {
+      role = "carrier";
+    }
+    // Any other value defaults to "carrier" for security
 
-        const data = await response.json();
-        console.log("🎯 useUserRole: Role result:", data);
-
-        setRoleState({
-          role: data.role,
-          isAdmin: data.isAdmin,
-          isCarrier: data.isCarrier,
-          isLoading: false,
-          error: null,
-        });
-      } catch (error) {
-        console.error("❌ useUserRole: Error checking role:", error);
-        setRoleState({
-          role: "none",
-          isAdmin: false,
-          isCarrier: false,
-          isLoading: false,
-          error: error instanceof Error ? error.message : "Unknown error",
-        });
-      }
+    return {
+      role,
+      isAdmin: role === "admin",
+      isCarrier: role === "carrier",
+      isLoading: false,
+      error: null,
     };
-
-    checkRole();
-  }, [user, isLoaded]);
+  }, [user?.id, user?.publicMetadata, isLoaded]);
 
   return roleState;
 }
 
-// Convenience hooks
+/**
+ * Optimized convenience hooks that don't cause re-renders
+ */
 export function useIsAdmin(): boolean {
   const { isAdmin } = useUserRole();
   return isAdmin;
@@ -88,4 +85,33 @@ export function useIsCarrier(): boolean {
 export function useRole(): UserRole {
   const { role } = useUserRole();
   return role;
+}
+
+/**
+ * Hook for server-side role validation
+ * This should be used for sensitive operations
+ */
+export function useServerRoleValidation() {
+  const { user } = useUser();
+  
+  const validateRole = async (requiredRole: UserRole): Promise<boolean> => {
+    if (!user) return false;
+    
+    try {
+      const response = await fetch(`/api/auth/validate-role?role=${requiredRole}`, {
+        method: 'GET',
+        credentials: 'include',
+      });
+      
+      if (!response.ok) return false;
+      
+      const result = await response.json();
+      return result.valid;
+    } catch (error) {
+      console.error('Role validation failed:', error);
+      return false;
+    }
+  };
+
+  return { validateRole };
 }

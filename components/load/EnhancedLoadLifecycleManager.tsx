@@ -171,19 +171,21 @@ export function EnhancedLoadLifecycleManager({ loadId, loadData }: EnhancedLoadL
   const nextStatus = getNextStatus(actualCurrentStatus);
 
   const getStatusFields = (status: string) => {
+    const baseFields = ['notes']; // Always include notes
+    
     switch (status) {
       case 'checked_in':
-        return ['check_in_time'];
+        return [...baseFields, 'check_in_time'];
       case 'picked_up':
-        return ['pickup_time'];
+        return [...baseFields, 'pickup_time'];
       case 'departed':
-        return ['departure_time'];
+        return [...baseFields, 'departure_time'];
       case 'checked_in_delivery':
-        return ['check_in_delivery_time'];
+        return [...baseFields, 'check_in_delivery_time'];
       case 'delivered':
-        return ['delivery_time', 'location'];
+        return [...baseFields, 'delivery_time', 'location'];
       default:
-        return ['notes', 'location'];
+        return [...baseFields, 'location'];
     }
   };
 

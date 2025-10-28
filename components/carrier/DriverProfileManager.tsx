@@ -52,6 +52,15 @@ export function DriverProfileManager({
   onProfileSelect, 
   onProfilesUpdate 
 }: DriverProfileManagerProps) {
+  // Early return if profiles is undefined or not loaded yet
+  if (!profiles) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <div className="text-muted-foreground">Loading profiles...</div>
+      </div>
+    );
+  }
+
   const [editingProfile, setEditingProfile] = useState<DriverProfile | null>(null);
   const [editName, setEditName] = useState("");
   const [isUpdatingOrder, setIsUpdatingOrder] = useState(false);

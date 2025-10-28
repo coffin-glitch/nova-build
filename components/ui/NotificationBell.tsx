@@ -5,8 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { AlertTriangle, Bell, CheckCircle, Info, XCircle, X } from "lucide-react";
-import { useState, useRef, useEffect } from "react";
+import { AlertTriangle, Bell, CheckCircle, Info, XCircle } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import useSWR from "swr";
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());

@@ -1,3 +1,4 @@
+import { TelegramForwarderConsole } from "@/components/admin/TelegramForwarderConsole";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { getAdminStats } from "@/lib/actions";
@@ -145,6 +146,9 @@ export default async function AdminDashboard() {
           </Card>
         </div>
       </div>
+
+      {/* Telegram Forwarder Console */}
+      <TelegramForwarderConsole />
     </div>
   );
 }

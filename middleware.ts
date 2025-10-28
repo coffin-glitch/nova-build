@@ -1,7 +1,7 @@
 import { getClerkUserRole } from "@/lib/auth-server";
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
 import { createClient } from '@supabase/supabase-js';
+import { NextResponse } from "next/server";
 
 // If Clerk env vars are missing during build, fail fast with a readable error.
 if (!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || !process.env.CLERK_SECRET_KEY) {

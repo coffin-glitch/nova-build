@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 
 export async function GET(
   req: Request,
-  { params }: { params: { carrierUserId: string } }
+  { params }: { params: Promise<{ carrierUserId: string }> }
 ) {
   try {
     const { userId: adminUserId } = await auth();
@@ -15,7 +15,7 @@ export async function GET(
 
     // TODO: Add admin role check here
 
-    const carrierUserId = params.carrierUserId;
+    const { carrierUserId } = await params;
 
     // Get chat messages for specific carrier
     const chatMessages = await sql`

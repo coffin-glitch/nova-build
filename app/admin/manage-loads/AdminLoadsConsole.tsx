@@ -5,7 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -34,6 +36,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { AdminLoadDetailsDialog } from "./AdminLoadDetailsDialog";
 
 interface Load {
   rr_number: string;
@@ -82,6 +85,8 @@ interface LoadStats {
   active: number;
   published: number;
   completed: number;
+  archived: number;
+  unpublished: number;
   totalRevenue: number;
   totalMargin: number;
   avgMargin: number;
@@ -97,6 +102,196 @@ interface FilterState {
   revenueRange: string;
 }
 
+interface EditLoadDialogProps {
+  load: Load;
+  isOpen: boolean;
+  onClose: () => void;
+  onSave: (updatedLoad: Load) => Promise<void>;
+}
+
+function EditLoadDialog({ load, isOpen, onClose, onSave }: EditLoadDialogProps) {
+  const [formData, setFormData] = useState({
+    customer_name: load.customer_name || '',
+    customer_ref: load.customer_ref || '',
+    driver_name: load.driver_name || '',
+    dispatcher_name: load.dispatcher_name || '',
+    vendor_name: load.vendor_name || '',
+    vendor_dispatch: load.vendor_dispatch || '',
+    revenue: load.revenue || 0,
+    target_buy: load.target_buy || 0,
+    max_buy: load.max_buy || 0,
+    spot_bid: load.spot_bid || '',
+    fuel_surcharge: load.fuel_surcharge || 0,
+    status_code: load.status_code || 'active',
+    published: load.published || false
+  });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const updatedLoad = { ...load, ...formData };
+    await onSave(updatedLoad);
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Edit Load #{load.rr_number}</DialogTitle>
+        </DialogHeader>
+        
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="customer_name">Customer Name</Label>
+              <Input
+                id="customer_name"
+                value={formData.customer_name}
+                onChange={(e) => setFormData(prev => ({ ...prev, customer_name: e.target.value }))}
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="customer_ref">Customer Reference</Label>
+              <Input
+                id="customer_ref"
+                value={formData.customer_ref}
+                onChange={(e) => setFormData(prev => ({ ...prev, customer_ref: e.target.value }))}
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="driver_name">Driver Name</Label>
+              <Input
+                id="driver_name"
+                value={formData.driver_name}
+                onChange={(e) => setFormData(prev => ({ ...prev, driver_name: e.target.value }))}
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="dispatcher_name">Dispatcher Name</Label>
+              <Input
+                id="dispatcher_name"
+                value={formData.dispatcher_name}
+                onChange={(e) => setFormData(prev => ({ ...prev, dispatcher_name: e.target.value }))}
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="vendor_name">Vendor Name</Label>
+              <Input
+                id="vendor_name"
+                value={formData.vendor_name}
+                onChange={(e) => setFormData(prev => ({ ...prev, vendor_name: e.target.value }))}
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="vendor_dispatch">Vendor Dispatch</Label>
+              <Input
+                id="vendor_dispatch"
+                value={formData.vendor_dispatch}
+                onChange={(e) => setFormData(prev => ({ ...prev, vendor_dispatch: e.target.value }))}
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="revenue">Revenue</Label>
+              <Input
+                id="revenue"
+                type="number"
+                step="0.01"
+                value={formData.revenue}
+                onChange={(e) => setFormData(prev => ({ ...prev, revenue: parseFloat(e.target.value) || 0 }))}
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="target_buy">Target Buy</Label>
+              <Input
+                id="target_buy"
+                type="number"
+                step="0.01"
+                value={formData.target_buy}
+                onChange={(e) => setFormData(prev => ({ ...prev, target_buy: parseFloat(e.target.value) || 0 }))}
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="max_buy">Max Buy</Label>
+              <Input
+                id="max_buy"
+                type="number"
+                step="0.01"
+                value={formData.max_buy}
+                onChange={(e) => setFormData(prev => ({ ...prev, max_buy: parseFloat(e.target.value) || 0 }))}
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="spot_bid">Spot Bid</Label>
+              <Input
+                id="spot_bid"
+                value={formData.spot_bid}
+                onChange={(e) => setFormData(prev => ({ ...prev, spot_bid: e.target.value }))}
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="fuel_surcharge">Fuel Surcharge</Label>
+              <Input
+                id="fuel_surcharge"
+                type="number"
+                step="0.01"
+                value={formData.fuel_surcharge}
+                onChange={(e) => setFormData(prev => ({ ...prev, fuel_surcharge: parseFloat(e.target.value) || 0 }))}
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="status_code">Status</Label>
+              <Select value={formData.status_code} onValueChange={(value) => setFormData(prev => ({ ...prev, status_code: value }))}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="published">Published</SelectItem>
+                  <SelectItem value="completed">Completed</SelectItem>
+                  <SelectItem value="cancelled">Cancelled</SelectItem>
+                  <SelectItem value="archived">Archived</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="published">Published</Label>
+              <Select value={formData.published.toString()} onValueChange={(value) => setFormData(prev => ({ ...prev, published: value === 'true' }))}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="true">Yes</SelectItem>
+                  <SelectItem value="false">No</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          
+          <div className="flex justify-end gap-2 pt-4">
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit">
+              Save Changes
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function AdminLoadsConsole() {
   const [loads, setLoads] = useState<Load[]>([]);
   const [stats, setStats] = useState<LoadStats>({
@@ -104,6 +299,8 @@ export function AdminLoadsConsole() {
     active: 0,
     published: 0,
     completed: 0,
+    archived: 0,
+    unpublished: 0,
     totalRevenue: 0,
     totalMargin: 0,
     avgMargin: 0
@@ -116,6 +313,11 @@ export function AdminLoadsConsole() {
   const [totalPages, setTotalPages] = useState(1);
   const [showDebug, setShowDebug] = useState(false);
   const [debugLogs, setDebugLogs] = useState<any[]>([]);
+  const [selectedLoad, setSelectedLoad] = useState<Load | null>(null);
+  const [showLoadDetails, setShowLoadDetails] = useState(false);
+  const [editingLoad, setEditingLoad] = useState<Load | null>(null);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
   const [filters, setFilters] = useState<FilterState>({
     search: '',
     status: 'all',
@@ -152,7 +354,7 @@ export function AdminLoadsConsole() {
         ...(filters.destination && { destination: filters.destination })
       });
 
-      const response = await fetch(`/api/loads?${params}`);
+      const response = await fetch(`/api/admin/loads?${params}`);
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -171,8 +373,19 @@ export function AdminLoadsConsole() {
       // Calculate stats
       const totalLoads = result.pagination?.total || 0;
       const publishedLoads = result.loads?.filter((load: Load) => load.published).length || 0;
-      const activeLoads = result.loads?.filter((load: Load) => load.status_code === 'active').length || 0;
-      const completedLoads = result.loads?.filter((load: Load) => load.status_code === 'completed').length || 0;
+      const unpublishedLoads = result.loads?.filter((load: Load) => !load.published).length || 0;
+      const activeLoads = result.loads?.filter((load: Load) => {
+        const normalizedStatus = normalizeStatus(load.status_code || '');
+        return normalizedStatus === 'active' && load.published;
+      }).length || 0;
+      const completedLoads = result.loads?.filter((load: Load) => {
+        const normalizedStatus = normalizeStatus(load.status_code || '');
+        return normalizedStatus === 'completed' && load.published;
+      }).length || 0;
+      const archivedLoads = result.loads?.filter((load: Load) => {
+        const normalizedStatus = normalizeStatus(load.status_code || '');
+        return normalizedStatus === 'archived';
+      }).length || 0;
       
       const totalRevenue = result.loads?.reduce((sum: number, load: Load) => sum + (load.revenue || 0), 0) || 0;
       const totalMargin = result.loads?.reduce((sum: number, load: Load) => sum + (load.margin || 0), 0) || 0;
@@ -183,6 +396,8 @@ export function AdminLoadsConsole() {
         active: activeLoads,
         published: publishedLoads,
         completed: completedLoads,
+        archived: archivedLoads,
+        unpublished: unpublishedLoads,
         totalRevenue,
         totalMargin,
         avgMargin
@@ -207,7 +422,7 @@ export function AdminLoadsConsole() {
     try {
       addDebugLog('info', `Performing bulk ${action}`, { selectedLoads });
       
-      const response = await fetch('/api/loads', {
+      const response = await fetch('/api/admin/loads', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -276,6 +491,12 @@ export function AdminLoadsConsole() {
     }
   }, [fetchLoads, addDebugLog]);
 
+  // Normalize status code - convert ASSG to active
+  const normalizeStatus = useCallback((status: string) => {
+    if (status === 'ASSG') return 'active';
+    return status.toLowerCase();
+  }, []);
+
   // Load data on mount and when filters change
   useEffect(() => {
     fetchLoads();
@@ -284,30 +505,56 @@ export function AdminLoadsConsole() {
   // Filtered loads for display
   const filteredLoads = useMemo(() => {
     return loads.filter(load => {
+      const normalizedLoadStatus = normalizeStatus(load.status_code || '');
+      
+      // If showing archived, only show archived loads
+      if (showArchived) {
+        return normalizedLoadStatus === 'archived';
+      }
+      
+      // Otherwise, exclude archived loads from main view
+      if (normalizedLoadStatus === 'archived') {
+        return false;
+      }
+      
       const matchesSearch = !filters.search || 
         load.rr_number.toLowerCase().includes(filters.search.toLowerCase()) ||
         load.customer_name.toLowerCase().includes(filters.search.toLowerCase()) ||
         load.origin_city.toLowerCase().includes(filters.search.toLowerCase()) ||
         load.destination_city.toLowerCase().includes(filters.search.toLowerCase());
       
-      const matchesStatus = filters.status === 'all' || load.status_code === filters.status;
+      let matchesStatus = false;
+      
+      if (filters.status === 'all') {
+        matchesStatus = true;
+      } else if (filters.status === 'unpublished') {
+        matchesStatus = !load.published;
+      } else {
+        matchesStatus = normalizedLoadStatus === filters.status && load.published;
+      }
       const matchesEquipment = filters.equipment === 'all' || load.equipment.toLowerCase().includes(filters.equipment.toLowerCase());
       
       return matchesSearch && matchesStatus && matchesEquipment;
     });
-  }, [loads, filters]);
+  }, [loads, filters, normalizeStatus, showArchived]);
 
   // Get status badge variant
   const getStatusBadge = (status: string, published: boolean) => {
-    if (!published) return { variant: 'secondary' as const, label: 'Draft' };
+    const normalizedStatus = normalizeStatus(status || '');
     
-    switch (status) {
+    // Handle unpublished loads
+    if (!published) {
+      return { variant: 'secondary' as const, label: 'Unpublished' };
+    }
+    
+    switch (normalizedStatus) {
       case 'active': return { variant: 'default' as const, label: 'Active' };
       case 'published': return { variant: 'default' as const, label: 'Published' };
       case 'completed': return { variant: 'secondary' as const, label: 'Completed' };
       case 'cancelled': return { variant: 'destructive' as const, label: 'Cancelled' };
       case 'archived': return { variant: 'outline' as const, label: 'Archived' };
-      default: return { variant: 'secondary' as const, label: status };
+      case 'draft': return { variant: 'secondary' as const, label: 'Draft' };
+      default: return { variant: 'secondary' as const, label: normalizedStatus || 'No Status' };
     }
   };
 
@@ -319,6 +566,42 @@ export function AdminLoadsConsole() {
     if (eq.includes('container')) return '📦';
     return '🚚'; // Default to dry van
   };
+
+  // Action button handlers
+  const handleViewLoad = useCallback((load: Load) => {
+    setSelectedLoad(load);
+    setShowLoadDetails(true);
+    addDebugLog('info', 'Opening load details', { rrNumber: load.rr_number });
+  }, [addDebugLog]);
+
+  const handleEditLoad = useCallback((load: Load) => {
+    setEditingLoad(load);
+    setShowEditDialog(true);
+    addDebugLog('info', 'Opening edit dialog', { rrNumber: load.rr_number });
+  }, [addDebugLog]);
+
+  const handleMoreOptions = useCallback((load: Load, action: string) => {
+    addDebugLog('info', `More options action: ${action}`, { rrNumber: load.rr_number });
+    
+    switch (action) {
+      case 'duplicate':
+        toast.info(`Duplicate functionality for load ${load.rr_number} - Coming soon!`);
+        break;
+      case 'export':
+        toast.info(`Export functionality for load ${load.rr_number} - Coming soon!`);
+        break;
+      case 'history':
+        toast.info(`History functionality for load ${load.rr_number} - Coming soon!`);
+        break;
+      case 'delete':
+        if (confirm(`Are you sure you want to delete load ${load.rr_number}?`)) {
+          handleBulkOperation('delete');
+        }
+        break;
+      default:
+        toast.info(`Action ${action} for load ${load.rr_number} - Coming soon!`);
+    }
+  }, [addDebugLog]);
 
   return (
     <div className="space-y-6">
@@ -336,9 +619,51 @@ export function AdminLoadsConsole() {
           >
             {showDebug ? 'Hide Debug' : 'Show Debug'}
           </Button>
-          <Button variant="outline" size="sm">
+          <Button 
+            variant={showArchived ? "default" : "outline"} 
+            size="sm"
+            onClick={() => setShowArchived(!showArchived)}
+          >
             <Archive className="h-4 w-4 mr-2" />
-            Archived Loads
+            {showArchived ? 'Hide Archived' : 'Show Archived'}
+          </Button>
+          <Button 
+            variant="destructive" 
+            size="sm"
+            onClick={async () => {
+              if (confirm('Are you sure you want to unpublish ALL loads? This will remove them from the find-loads page immediately.')) {
+                try {
+                  addDebugLog('info', 'Unpublishing all loads');
+                  
+                  const response = await fetch('/api/admin/loads', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      action: 'unpublish_all'
+                    })
+                  });
+
+                  if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                  }
+
+                  const result = await response.json();
+                  
+                  addDebugLog('info', 'Successfully unpublished all loads', { result });
+                  toast.success('All loads have been unpublished and removed from find-loads page');
+                  
+                  await fetchLoads();
+                  
+                } catch (error) {
+                  const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+                  addDebugLog('error', 'Failed to unpublish all loads', { error: errorMessage });
+                  toast.error(`Failed to unpublish all loads: ${errorMessage}`);
+                }
+              }
+            }}
+          >
+            <Eye className="h-4 w-4 mr-2" />
+            Unpublish All
           </Button>
           <Dialog>
             <DialogTrigger asChild>
@@ -371,7 +696,7 @@ export function AdminLoadsConsole() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Loads</CardTitle>
@@ -413,6 +738,28 @@ export function AdminLoadsConsole() {
           <CardContent>
             <div className="text-2xl font-bold">{stats.completed}</div>
             <p className="text-xs text-muted-foreground">Successfully delivered</p>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Archived</CardTitle>
+            <Archive className="h-4 w-4 text-gray-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.archived}</div>
+            <p className="text-xs text-muted-foreground">Archived loads</p>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Unpublished</CardTitle>
+            <Eye className="h-4 w-4 text-orange-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.unpublished}</div>
+            <p className="text-xs text-muted-foreground">Not visible to carriers</p>
           </CardContent>
         </Card>
       </div>
@@ -484,9 +831,11 @@ export function AdminLoadsConsole() {
                 <SelectItem value="all">All Statuses</SelectItem>
                 <SelectItem value="active">Active</SelectItem>
                 <SelectItem value="published">Published</SelectItem>
+                <SelectItem value="unpublished">Unpublished</SelectItem>
                 <SelectItem value="completed">Completed</SelectItem>
                 <SelectItem value="cancelled">Cancelled</SelectItem>
                 <SelectItem value="archived">Archived</SelectItem>
+                <SelectItem value="draft">Draft</SelectItem>
               </SelectContent>
             </Select>
             
@@ -567,7 +916,7 @@ export function AdminLoadsConsole() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Truck className="h-5 w-5" />
-              <CardTitle>Loads Management</CardTitle>
+              <CardTitle>{showArchived ? 'Archived Loads Management' : 'Loads Management'}</CardTitle>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground">
@@ -621,8 +970,8 @@ export function AdminLoadsConsole() {
           {/* Table View */}
           {viewMode === 'table' && (
             <div className="space-y-4">
-              <div className="rounded-md border">
-                <Table>
+              <div className="rounded-md border overflow-x-auto">
+                <Table className="min-w-full">
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-12">
@@ -637,21 +986,21 @@ export function AdminLoadsConsole() {
                           }}
                         />
                       </TableHead>
-                      <TableHead>RR#</TableHead>
-                      <TableHead>Load#</TableHead>
-                      <TableHead>TM#</TableHead>
-                      <TableHead>Dispatcher</TableHead>
-                      <TableHead>Revenue</TableHead>
-                      <TableHead>Target Buy</TableHead>
-                      <TableHead>Max Buy</TableHead>
-                      <TableHead>Cust Ref#</TableHead>
-                      <TableHead>Spot Bid</TableHead>
-                      <TableHead>Driver</TableHead>
-                      <TableHead>Vendor Dispatch</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Route</TableHead>
-                      <TableHead>Equipment</TableHead>
-                      <TableHead>Actions</TableHead>
+                      <TableHead className="min-w-[100px]">RR#</TableHead>
+                      <TableHead className="min-w-[80px]">Load#</TableHead>
+                      <TableHead className="min-w-[80px]">TM#</TableHead>
+                      <TableHead className="min-w-[120px]">Dispatcher</TableHead>
+                      <TableHead className="min-w-[100px]">Revenue</TableHead>
+                      <TableHead className="min-w-[100px]">Target Buy</TableHead>
+                      <TableHead className="min-w-[100px]">Max Buy</TableHead>
+                      <TableHead className="min-w-[100px]">Cust Ref#</TableHead>
+                      <TableHead className="min-w-[80px]">Spot Bid</TableHead>
+                      <TableHead className="min-w-[120px]">Driver</TableHead>
+                      <TableHead className="min-w-[120px]">Vendor Dispatch</TableHead>
+                      <TableHead className="min-w-[100px]">Status</TableHead>
+                      <TableHead className="min-w-[200px]">Route</TableHead>
+                      <TableHead className="min-w-[120px]">Equipment</TableHead>
+                      <TableHead className="min-w-[120px]">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -671,46 +1020,81 @@ export function AdminLoadsConsole() {
                               }}
                             />
                           </TableCell>
-                          <TableCell className="font-medium">{load.rr_number}</TableCell>
-                          <TableCell>{load.load_number || '-'}</TableCell>
-                          <TableCell>{load.tm_number || '-'}</TableCell>
-                          <TableCell>{load.dispatcher_name || '-'}</TableCell>
-                          <TableCell>{formatCurrency(load.revenue || 0)}</TableCell>
-                          <TableCell>{formatCurrency(load.target_buy)}</TableCell>
-                          <TableCell>{formatCurrency(load.max_buy || 0)}</TableCell>
-                          <TableCell>{load.customer_ref || '-'}</TableCell>
-                          <TableCell>{load.spot_bid || '-'}</TableCell>
-                          <TableCell>{load.driver_name || '-'}</TableCell>
-                          <TableCell>{load.vendor_dispatch || '-'}</TableCell>
-                          <TableCell>
+                          <TableCell className="font-medium whitespace-nowrap">{load.rr_number}</TableCell>
+                          <TableCell className="whitespace-nowrap">{load.load_number || '-'}</TableCell>
+                          <TableCell className="whitespace-nowrap">{load.tm_number || '-'}</TableCell>
+                          <TableCell className="whitespace-nowrap">{load.dispatcher_name || '-'}</TableCell>
+                          <TableCell className="whitespace-nowrap">{formatCurrency(load.revenue || 0)}</TableCell>
+                          <TableCell className="whitespace-nowrap">{formatCurrency(load.target_buy)}</TableCell>
+                          <TableCell className="whitespace-nowrap">{formatCurrency(load.max_buy || 0)}</TableCell>
+                          <TableCell className="whitespace-nowrap">{load.customer_ref || '-'}</TableCell>
+                          <TableCell className="whitespace-nowrap">{load.spot_bid || '-'}</TableCell>
+                          <TableCell className="whitespace-nowrap">{load.driver_name || '-'}</TableCell>
+                          <TableCell className="whitespace-nowrap">{load.vendor_dispatch || '-'}</TableCell>
+                          <TableCell className="whitespace-nowrap">
                             <Badge variant={statusBadge.variant}>
                               {statusBadge.label}
                             </Badge>
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="whitespace-nowrap">
                             <div className="flex items-center gap-1 text-sm">
                               <span>{load.origin_city}, {load.origin_state}</span>
                               <span className="text-muted-foreground">to</span>
                               <span>{load.destination_city}, {load.destination_state}</span>
                             </div>
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="whitespace-nowrap">
                             <div className="flex items-center gap-2">
                               <span>{getEquipmentIcon(load.equipment)}</span>
                               <span>{load.equipment}</span>
                             </div>
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="whitespace-nowrap">
                             <div className="flex items-center gap-1">
-                              <Button size="sm" variant="ghost">
+                              <Button 
+                                size="sm" 
+                                variant="ghost"
+                                onClick={() => handleViewLoad(load)}
+                                title="View Details"
+                              >
                                 <Eye className="h-4 w-4" />
                               </Button>
-                              <Button size="sm" variant="ghost">
+                              <Button 
+                                size="sm" 
+                                variant="ghost"
+                                onClick={() => handleEditLoad(load)}
+                                title="Edit Load"
+                              >
                                 <Edit className="h-4 w-4" />
                               </Button>
-                              <Button size="sm" variant="ghost">
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button 
+                                    size="sm" 
+                                    variant="ghost"
+                                    title="More Options"
+                                  >
+                                    <MoreHorizontal className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onClick={() => handleMoreOptions(load, 'duplicate')}>
+                                    Duplicate Load
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => handleMoreOptions(load, 'export')}>
+                                    Export Data
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => handleMoreOptions(load, 'history')}>
+                                    View History
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem 
+                                    onClick={() => handleMoreOptions(load, 'delete')}
+                                    className="text-red-600"
+                                  >
+                                    Delete Load
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
                             </div>
                           </TableCell>
                         </TableRow>
@@ -736,19 +1120,77 @@ export function AdminLoadsConsole() {
                     Previous
                   </Button>
                   <div className="flex items-center gap-1">
-                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                      const page = i + 1;
-                      return (
-                        <Button
-                          key={page}
-                          variant={currentPage === page ? 'default' : 'outline'}
-                          size="sm"
-                          onClick={() => setCurrentPage(page)}
-                        >
-                          {page}
-                        </Button>
-                      );
-                    })}
+                    {(() => {
+                      const pages = [];
+                      const maxVisiblePages = 7;
+                      const halfVisible = Math.floor(maxVisiblePages / 2);
+                      
+                      let startPage = Math.max(1, currentPage - halfVisible);
+                      let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+                      
+                      // Adjust start page if we're near the end
+                      if (endPage - startPage < maxVisiblePages - 1) {
+                        startPage = Math.max(1, endPage - maxVisiblePages + 1);
+                      }
+                      
+                      // Add first page and ellipsis if needed
+                      if (startPage > 1) {
+                        pages.push(
+                          <Button
+                            key={1}
+                            variant={currentPage === 1 ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => setCurrentPage(1)}
+                          >
+                            1
+                          </Button>
+                        );
+                        if (startPage > 2) {
+                          pages.push(
+                            <span key="ellipsis-start" className="px-2 text-muted-foreground">
+                              ...
+                            </span>
+                          );
+                        }
+                      }
+                      
+                      // Add visible pages
+                      for (let i = startPage; i <= endPage; i++) {
+                        pages.push(
+                          <Button
+                            key={i}
+                            variant={currentPage === i ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => setCurrentPage(i)}
+                          >
+                            {i}
+                          </Button>
+                        );
+                      }
+                      
+                      // Add ellipsis and last page if needed
+                      if (endPage < totalPages) {
+                        if (endPage < totalPages - 1) {
+                          pages.push(
+                            <span key="ellipsis-end" className="px-2 text-muted-foreground">
+                              ...
+                            </span>
+                          );
+                        }
+                        pages.push(
+                          <Button
+                            key={totalPages}
+                            variant={currentPage === totalPages ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => setCurrentPage(totalPages)}
+                          >
+                            {totalPages}
+                          </Button>
+                        );
+                      }
+                      
+                      return pages;
+                    })()}
                   </div>
                   <Button
                     variant="outline"
@@ -882,6 +1324,59 @@ export function AdminLoadsConsole() {
             </ScrollArea>
           </CardContent>
         </Card>
+      )}
+
+      {/* Load Details Dialog */}
+      {selectedLoad && (
+        <AdminLoadDetailsDialog
+          load={selectedLoad}
+          isOpen={showLoadDetails}
+          onClose={() => {
+            setShowLoadDetails(false);
+            setSelectedLoad(null);
+          }}
+        />
+      )}
+
+      {/* Edit Load Dialog */}
+      {editingLoad && (
+        <EditLoadDialog
+          load={editingLoad}
+          isOpen={showEditDialog}
+          onClose={() => {
+            setShowEditDialog(false);
+            setEditingLoad(null);
+          }}
+          onSave={async (updatedLoad) => {
+            try {
+              addDebugLog('info', 'Saving load changes', { rrNumber: updatedLoad.rr_number });
+              
+              const response = await fetch(`/api/admin/loads/${updatedLoad.rr_number}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(updatedLoad)
+              });
+
+              if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+              }
+
+              const result = await response.json();
+              
+              addDebugLog('info', 'Successfully saved load changes', { result });
+              toast.success('Load updated successfully');
+              
+              setShowEditDialog(false);
+              setEditingLoad(null);
+              await fetchLoads();
+              
+            } catch (error) {
+              const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+              addDebugLog('error', 'Failed to save load changes', { error: errorMessage });
+              toast.error(`Failed to update load: ${errorMessage}`);
+            }
+          }}
+        />
       )}
     </div>
   );

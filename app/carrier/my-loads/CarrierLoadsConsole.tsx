@@ -546,9 +546,9 @@ export function CarrierLoadsConsole() {
                       <div className="flex items-center gap-3">
                         {getStatusIcon(offer.status)}
                         <div>
-                          <p className="font-medium">#{offer.tm_number}</p>
+                          <p className="font-medium">#{offer.load?.tm_number || offer.load_rr_number}</p>
                           <p className="text-sm text-muted-foreground">
-                            {offer.origin_city}, {offer.origin_state} → {offer.destination_city}, {offer.destination_state}
+                            {offer.load?.origin_city || 'N/A'}, {offer.load?.origin_state || 'N/A'} → {offer.load?.destination_city || 'N/A'}, {offer.load?.destination_state || 'N/A'}
                           </p>
                         </div>
                       </div>

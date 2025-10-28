@@ -21,7 +21,7 @@ export async function GET() {
         l.origin_state,
         l.destination_city,
         l.destination_state,
-        l.revenue,
+        lo.offer_amount as revenue,
         l.total_miles as miles,
         l.equipment,
         l.customer_name,

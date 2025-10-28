@@ -5,10 +5,18 @@ import { useUserPreferences } from "@/components/providers/UserPreferencesProvid
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ColorPalette } from "@/components/ui/ColorPalette";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useAccentColor } from "@/hooks/useAccentColor";
+import { useIsAdmin } from "@/hooks/useUserRole";
+import { cn } from "@/lib/utils";
 import { UserButton, useUser } from "@clerk/nextjs";
-import { Bell, BookOpen, DollarSign, FileText, Gavel, HandCoins, Menu, Package, Search, Shield, Truck, X } from "lucide-react";
+import { Bell, BookOpen, ChevronDown, DollarSign, FileText, Gavel, HandCoins, Menu, Package, Search, Shield, Truck, X } from "lucide-react";
 import { useTheme } from "next-themes";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -114,42 +122,96 @@ export default function SiteHeader() {
                   <Shield className="h-4 w-4" />
                   <span>Admin</span>
                 </Link>
-                <Link
-                  href="/admin/bids"
-                  className={cn(
-                    "flex items-center space-x-1 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200",
-                    pathname === "/admin/bids"
-                      ? "bg-purple-500/20 dark:bg-purple-500/30 backdrop-blur-sm border border-purple-500/30 text-purple-200 shadow-sm"
-                      : "text-muted-foreground hover:bg-purple-500/20 hover:text-purple-200 dark:hover:bg-purple-500/30 hover:backdrop-blur-sm hover:border hover:border-purple-500/20"
-                  )}
-                >
-                  <FileText className="h-4 w-4" />
-                  <span>Bids</span>
-                </Link>
-                <Link
-                  href="/admin/manage-loads"
-                  className={cn(
-                    "flex items-center space-x-1 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200",
-                    pathname === "/admin/manage-loads"
-                      ? "bg-purple-500/20 dark:bg-purple-500/30 backdrop-blur-sm border border-purple-500/30 text-purple-200 shadow-sm"
-                      : "text-muted-foreground hover:bg-purple-500/20 hover:text-purple-200 dark:hover:bg-purple-500/30 hover:backdrop-blur-sm hover:border hover:border-purple-500/20"
-                  )}
-                >
-                  <Package className="h-4 w-4" />
-                  <span>Loads</span>
-                </Link>
-                <Link
-                  href="/admin/offers"
-                  className={cn(
-                    "flex items-center space-x-1 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200",
-                    pathname === "/admin/offers"
-                      ? "bg-purple-500/20 dark:bg-purple-500/30 backdrop-blur-sm border border-purple-500/30 text-purple-200 shadow-sm"
-                      : "text-muted-foreground hover:bg-purple-500/20 hover:text-purple-200 dark:hover:bg-purple-500/30 hover:backdrop-blur-sm hover:border hover:border-purple-500/20"
-                  )}
-                >
-                  <HandCoins className="h-4 w-4" />
-                  <span>Offers</span>
-                </Link>
+                
+                {/* Bids Dropdown */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      className={cn(
+                        "flex items-center space-x-1 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200",
+                        pathname === "/admin/bids" || pathname === "/admin/offers-bids"
+                          ? "bg-purple-500/20 dark:bg-purple-500/30 backdrop-blur-sm border border-purple-500/30 text-purple-200 shadow-sm"
+                          : "text-muted-foreground hover:bg-purple-500/20 hover:text-purple-200 dark:hover:bg-purple-500/30 hover:backdrop-blur-sm hover:border hover:border-purple-500/20"
+                      )}
+                    >
+                      <FileText className="h-4 w-4" />
+                      <span>Bids</span>
+                      <ChevronDown className="h-3 w-3 ml-1" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-56">
+                    <DropdownMenuItem asChild>
+                      <Link 
+                        href="/admin/bids" 
+                        className={cn(
+                          "flex items-center space-x-2 w-full",
+                          pathname === "/admin/bids" && "bg-purple-500/10"
+                        )}
+                      >
+                        <FileText className="h-4 w-4" />
+                        <span>Manage Bids</span>
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link 
+                        href="/admin/offers-bids" 
+                        className={cn(
+                          "flex items-center space-x-2 w-full",
+                          pathname === "/admin/offers-bids" && "bg-purple-500/10"
+                        )}
+                      >
+                        <HandCoins className="h-4 w-4" />
+                        <span>Offers-Bids</span>
+                      </Link>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                {/* Loads Dropdown */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      className={cn(
+                        "flex items-center space-x-1 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200",
+                        pathname === "/admin/manage-loads" || pathname === "/admin/offers"
+                          ? "bg-purple-500/20 dark:bg-purple-500/30 backdrop-blur-sm border border-purple-500/30 text-purple-200 shadow-sm"
+                          : "text-muted-foreground hover:bg-purple-500/20 hover:text-purple-200 dark:hover:bg-purple-500/30 hover:backdrop-blur-sm hover:border hover:border-purple-500/20"
+                      )}
+                    >
+                      <Package className="h-4 w-4" />
+                      <span>Loads</span>
+                      <ChevronDown className="h-3 w-3 ml-1" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-56">
+                    <DropdownMenuItem asChild>
+                      <Link 
+                        href="/admin/manage-loads" 
+                        className={cn(
+                          "flex items-center space-x-2 w-full",
+                          pathname === "/admin/manage-loads" && "bg-purple-500/10"
+                        )}
+                      >
+                        <Package className="h-4 w-4" />
+                        <span>Manage Loads</span>
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link 
+                        href="/admin/offers" 
+                        className={cn(
+                          "flex items-center space-x-2 w-full",
+                          pathname === "/admin/offers" && "bg-purple-500/10"
+                        )}
+                      >
+                        <HandCoins className="h-4 w-4" />
+                        <span>Manage Offers</span>
+                      </Link>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </>
             )}
           </nav>
@@ -301,6 +363,19 @@ export default function SiteHeader() {
                       >
                         <HandCoins className="h-5 w-5" />
                         <span>Manage Offers</span>
+                      </Link>
+                      <Link
+                        href="/admin/offers-bids"
+                        onClick={() => setMobileMenuOpen(false)}
+                        className={cn(
+                          "flex items-center space-x-3 rounded-lg px-3 py-3 text-sm font-medium transition-all duration-200",
+                          pathname === "/admin/offers-bids"
+                            ? "bg-purple-500/20 dark:bg-purple-500/30 backdrop-blur-sm border border-purple-500/30 text-purple-200 shadow-sm"
+                            : "text-muted-foreground hover:bg-purple-500/20 hover:text-purple-200 dark:hover:bg-purple-500/30 hover:backdrop-blur-sm hover:border hover:border-purple-500/20"
+                        )}
+                      >
+                        <FileText className="h-5 w-5" />
+                        <span>Manage Offers-Bids</span>
                       </Link>
                     </>
                   )}

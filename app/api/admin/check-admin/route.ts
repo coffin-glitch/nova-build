@@ -1,8 +1,12 @@
-import { NextRequest, NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/auth-server";
 import sql from "@/lib/db.server";
+import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
+    // SECURITY FIX: Require admin authentication
+    await requireAdmin();
+    
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get("userId");
     
@@ -16,16 +20,10 @@ export async function GET(request: NextRequest) {
     
     console.log("📡 Checking admin status directly...");
     
-    // Direct database query without requiring authentication
-    let result = await sql`
+    // Direct database query with proper authentication
+    const result = await sql`
       SELECT role FROM user_roles WHERE clerk_user_id = ${userId}
     `;
-    
-    if (result.length === 0) {
-      result = await sql`
-        SELECT role FROM user_roles WHERE user_id = ${userId}
-      `;
-    }
     
     console.log("🔍 Direct DB query result:", result);
     

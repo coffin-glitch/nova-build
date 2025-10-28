@@ -10,8 +10,9 @@ interface DriverInfoDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   offer: {
-    id: number;
-    load_rr_number: string;
+    id: number | string;
+    load_rr_number?: string;
+    bid_number?: string;
     driver_name?: string;
     driver_phone?: string;
     driver_email?: string;
@@ -26,13 +27,24 @@ interface DriverInfoDialogProps {
     destination_state?: string;
     pickup_date?: string;
     delivery_date?: string;
+    pickup_timestamp?: string;
+    delivery_timestamp?: string;
     equipment?: string;
+    equipment_type?: string;
     carrier_email?: string;
+    stops?: any;
+    miles?: number;
   } | null;
+  isBid?: boolean;
 }
 
-export function DriverInfoDialog({ open, onOpenChange, offer }: DriverInfoDialogProps) {
+export function DriverInfoDialog({ open, onOpenChange, offer, isBid = false }: DriverInfoDialogProps) {
   if (!offer) return null;
+
+  // Debug logging to see what data we're receiving
+  console.log('DriverInfoDialog - offer data:', offer);
+  console.log('DriverInfoDialog - isBid:', isBid);
+  console.log('DriverInfoDialog - stops:', offer.stops);
 
   const formatDate = (dateString?: string) => {
     if (!dateString) return 'N/A';
@@ -54,26 +66,40 @@ export function DriverInfoDialog({ open, onOpenChange, offer }: DriverInfoDialog
     });
   };
 
+  // Check if driver information is complete
+  const isDriverInfoComplete = () => {
+    const requiredFields = [
+      offer.driver_name,
+      offer.driver_phone,
+      offer.truck_number,
+      offer.trailer_number
+    ];
+    
+    // Check if at least 3 out of 4 required fields are filled
+    const filledFields = requiredFields.filter(field => field && field.trim() !== '').length;
+    return filledFields >= 3;
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Truck className="h-5 w-5" />
-            Driver Information - Load #{offer.load_rr_number}
+            Driver Information - {isBid ? 'Bid' : 'Load'} #{isBid ? offer.bid_number : offer.load_rr_number}
           </DialogTitle>
           <DialogDescription>
-            Driver details submitted by carrier for this accepted offer
+            Driver details submitted by carrier for this {isBid ? 'awarded bid' : 'accepted offer'}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6">
-          {/* Load Information */}
+          {/* Load/Bid Information */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <MapPin className="h-4 w-4" />
-                Load Details
+                {isBid ? 'Bid' : 'Load'} Details
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -81,21 +107,33 @@ export function DriverInfoDialog({ open, onOpenChange, offer }: DriverInfoDialog
                 <div>
                   <p className="text-sm text-muted-foreground">Route</p>
                   <p className="font-medium">
-                    {offer.origin_city}, {offer.origin_state} → {offer.destination_city}, {offer.destination_state}
+                    {isBid ? (
+                      offer.stops && Array.isArray(offer.stops) && offer.stops.length > 0 ? (
+                        `${offer.stops[0]} → ${offer.stops[offer.stops.length - 1]}`
+                      ) : 'Route not available'
+                    ) : (
+                      `${offer.origin_city}, ${offer.origin_state} → ${offer.destination_city}, ${offer.destination_state}`
+                    )}
                   </p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Equipment</p>
-                  <p className="font-medium">{offer.equipment || 'N/A'}</p>
+                  <p className="text-sm text-muted-foreground">State Tag</p>
+                  <p className="font-medium">{offer.equipment_type || offer.equipment || 'N/A'}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Pickup Date</p>
-                  <p className="font-medium">{formatDate(offer.pickup_date)}</p>
+                  <p className="font-medium">{formatDate(isBid ? offer.pickup_timestamp : offer.pickup_date)}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Delivery Date</p>
-                  <p className="font-medium">{formatDate(offer.delivery_date)}</p>
+                  <p className="font-medium">{formatDate(isBid ? offer.delivery_timestamp : offer.delivery_date)}</p>
                 </div>
+                {isBid && offer.miles && (
+                  <div>
+                    <p className="text-sm text-muted-foreground">Miles</p>
+                    <p className="font-medium">{offer.miles.toLocaleString()}</p>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -174,8 +212,14 @@ export function DriverInfoDialog({ open, onOpenChange, offer }: DriverInfoDialog
                   <p className="text-sm text-muted-foreground">Submitted At</p>
                   <p className="font-medium">{formatDateTime(offer.driver_info_submitted_at)}</p>
                 </div>
-                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                  Information Complete
+                <Badge 
+                  variant="outline" 
+                  className={isDriverInfoComplete() 
+                    ? "bg-green-50 text-green-700 border-green-200" 
+                    : "bg-yellow-50 text-yellow-700 border-yellow-200"
+                  }
+                >
+                  {isDriverInfoComplete() ? 'Information Complete' : 'Information Incomplete'}
                 </Badge>
               </div>
             </CardContent>

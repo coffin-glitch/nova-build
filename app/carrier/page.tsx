@@ -1,13 +1,69 @@
+"use client";
+
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { BookOpen, DollarSign, Gavel, Search, TrendingUp, Truck } from "lucide-react";
+import { AlertCircle, BookOpen, DollarSign, Gavel, Search, TrendingUp, Truck, User } from "lucide-react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import useSWR from "swr";
+
+const fetcher = (url: string) => fetch(url).then(r => r.json());
 
 export default function CarrierDashboard() {
+  const searchParams = useSearchParams();
+  const setupMode = searchParams.get('setup') === 'true';
+  const status = searchParams.get('status');
+
+  const { data: profileData, isLoading: profileLoading } = useSWR(
+    `/api/carrier/profile`,
+    fetcher,
+    {
+      fallbackData: { ok: true, data: null }
+    }
+  );
+
+  const profile = profileData?.data;
+
+  // Show status banner for unapproved users
+  const renderStatusBanner = () => {
+    if (profileLoading) return null;
+    
+    if (!profile || profile.profile_status !== 'approved') {
+      return (
+        <Card className="border-l-4 border-l-red-500 dark:border-l-red-400 mb-6">
+          <CardContent className="p-6">
+            <div className="flex items-center gap-3">
+              <AlertCircle className="h-6 w-6 text-red-500 dark:text-red-400" />
+              <div className="flex-1">
+                <h3 className="font-semibold text-red-700 dark:text-red-400">Access Restricted</h3>
+                <p className="text-sm text-muted-foreground">
+                  <strong>Access to website features are restricted until you setup your profile and it has been reviewed by an admin.</strong>
+                </p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Complete your profile to gain access to all features and start bidding on loads.
+                </p>
+              </div>
+              <Button asChild>
+                <Link href="/carrier/profile">
+                  <User className="h-4 w-4 mr-2" />
+                  Complete Profile
+                </Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      );
+    }
+    return null;
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto p-6 space-y-6">
+        {/* Status Banner */}
+        {renderStatusBanner()}
+        
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -78,7 +134,7 @@ export default function CarrierDashboard() {
 
         {/* Quick Actions */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <Card className="hover:shadow-lg transition-shadow">
+          <Card className={`hover:shadow-lg transition-shadow ${(!profile || profile.profile_status !== 'approved') ? 'opacity-50' : ''}`}>
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
                 <Search className="h-5 w-5 text-blue-500" />
@@ -89,13 +145,19 @@ export default function CarrierDashboard() {
               <p className="text-muted-foreground mb-4">
                 Browse available loads and find the perfect match for your equipment.
               </p>
-              <Button asChild className="w-full">
-                <Link href="/find-loads">Browse Loads</Link>
-              </Button>
+              {(!profile || profile.profile_status !== 'approved') ? (
+                <Button disabled className="w-full">
+                  Complete Profile First
+                </Button>
+              ) : (
+                <Button asChild className="w-full">
+                  <Link href="/find-loads">Browse Loads</Link>
+                </Button>
+              )}
             </CardContent>
           </Card>
 
-          <Card className="hover:shadow-lg transition-shadow">
+          <Card className={`hover:shadow-lg transition-shadow ${(!profile || profile.profile_status !== 'approved') ? 'opacity-50' : ''}`}>
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
                 <Gavel className="h-5 w-5 text-purple-500" />
@@ -106,13 +168,19 @@ export default function CarrierDashboard() {
               <p className="text-muted-foreground mb-4">
                 Participate in real-time bidding for premium freight opportunities.
               </p>
-              <Button asChild className="w-full">
-                <Link href="/bid-board">View Auctions</Link>
-              </Button>
+              {(!profile || profile.profile_status !== 'approved') ? (
+                <Button disabled className="w-full">
+                  Complete Profile First
+                </Button>
+              ) : (
+                <Button asChild className="w-full">
+                  <Link href="/bid-board">View Auctions</Link>
+                </Button>
+              )}
             </CardContent>
           </Card>
 
-          <Card className="hover:shadow-lg transition-shadow">
+          <Card className={`hover:shadow-lg transition-shadow ${(!profile || profile.profile_status !== 'approved') ? 'opacity-50' : ''}`}>
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
                 <Truck className="h-5 w-5 text-green-500" />
@@ -123,9 +191,15 @@ export default function CarrierDashboard() {
               <p className="text-muted-foreground mb-4">
                 Manage your booked loads and track delivery progress.
               </p>
-              <Button asChild className="w-full">
-                <Link href="/carrier/my-loads">Manage My Loads</Link>
-              </Button>
+              {(!profile || profile.profile_status !== 'approved') ? (
+                <Button disabled className="w-full">
+                  Complete Profile First
+                </Button>
+              ) : (
+                <Button asChild className="w-full">
+                  <Link href="/carrier/my-loads">Manage My Loads</Link>
+                </Button>
+              )}
             </CardContent>
           </Card>
         </div>

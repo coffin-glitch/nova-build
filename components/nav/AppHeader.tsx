@@ -1,26 +1,22 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
+import { getUserRoleAction } from "@/lib/actions";
+import { SignInButton, SignOutButton, useUser } from "@clerk/nextjs";
+import {
+    Compass,
+    Gavel,
+    Home,
+    Menu,
+    Moon,
+    Package,
+    Sun,
+    Truck,
+    X
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useUser, SignInButton, SignOutButton } from "@clerk/nextjs";
-import { useState, useEffect } from "react";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { getUserRoleAction } from "@/lib/actions";
-import { 
-  Truck, 
-  Home, 
-  Compass, 
-  Gavel, 
-  Package, 
-  Settings, 
-  Shield,
-  Bell,
-  Menu,
-  X,
-  Sun,
-  Moon
-} from "lucide-react";
+import { useEffect, useState } from "react";
 import NotificationsMenu from "../NotificationsMenu";
 
 interface NavItem {

@@ -1,37 +1,37 @@
 "use client";
 
-import { useState } from "react";
-import useSWR from "swr";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Glass } from "@/components/ui/glass";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Countdown } from "@/components/ui/Countdown";
-import { 
-  Search, 
-  RefreshCw, 
-  MapPin, 
-  Clock, 
-  Truck, 
-  DollarSign,
-  Gavel,
-  Award,
-  Users
-} from "lucide-react";
-import { formatMoney, formatDistance, formatStops, formatTimeOnly } from "@/lib/format";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Glass } from "@/components/ui/glass";
+import { Input } from "@/components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { TelegramBid } from "@/lib/auctions";
+import { formatDistance, formatMoney, formatStops, formatTimeOnly } from "@/lib/format";
+import {
+    Award,
+    Clock,
+    DollarSign,
+    Gavel,
+    MapPin,
+    RefreshCw,
+    Search,
+    Truck,
+    Users
+} from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
+import useSWR from "swr";
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
 interface AdminAuctionsClientProps {
-  initialBids: TelegramBid[];
+  // Remove initialBids prop since we're not using server-side data fetching
 }
 
-export default function AdminAuctionsClient({ initialBids }: AdminAuctionsClientProps) {
+export default function AdminAuctionsClient({}: AdminAuctionsClientProps) {
   const [q, setQ] = useState("");
   const [tag, setTag] = useState("");
   const [selectedBid, setSelectedBid] = useState<TelegramBid | null>(null);
@@ -47,11 +47,10 @@ export default function AdminAuctionsClient({ initialBids }: AdminAuctionsClient
   const [loadingDetails, setLoadingDetails] = useState(false);
 
   const { data, mutate, isLoading } = useSWR(
-    `/api/telegram-bids?q=${encodeURIComponent(q)}&tag=${encodeURIComponent(tag)}&limit=100`,
+    `/api/telegram-bids?q=${encodeURIComponent(q)}&tag=${encodeURIComponent(tag)}&limit=100&isAdmin=true`,
     fetcher,
     { 
-      refreshInterval: 10000,
-      fallbackData: { ok: true, data: initialBids }
+      refreshInterval: 10000
     }
   );
 

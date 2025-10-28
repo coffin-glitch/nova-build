@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/lib/auth";
+import { requireAdmin } from "@/lib/auth-server";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -54,8 +54,14 @@ async function getBidOverview(startDate: Date) {
         COUNT(CASE WHEN tb.is_expired = true THEN 1 END) as expired_auctions,
         COUNT(CASE WHEN tb.received_at >= ${startDate.toISOString()} THEN 1 END) as recent_auctions,
         
+        -- Today's specific counts
+        COUNT(CASE WHEN tb.received_at::date = CURRENT_DATE THEN 1 END) as total_auctions_today,
+        COUNT(CASE WHEN tb.received_at::date = CURRENT_DATE AND tb.is_expired = false THEN 1 END) as active_auctions_today,
+        COUNT(CASE WHEN tb.received_at::date = CURRENT_DATE AND tb.is_expired = true THEN 1 END) as expired_auctions_today,
+        
         COUNT(cb.id) as total_carrier_bids,
         COUNT(CASE WHEN cb.created_at >= ${startDate.toISOString()} THEN 1 END) as recent_carrier_bids,
+        COUNT(CASE WHEN cb.created_at::date = CURRENT_DATE THEN 1 END) as total_carrier_bids_today,
         
         COUNT(DISTINCT cb.clerk_user_id) as unique_carriers_bid,
         COUNT(DISTINCT CASE WHEN cb.created_at >= ${startDate.toISOString()} THEN cb.clerk_user_id END) as recent_carriers_bid,

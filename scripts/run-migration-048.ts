@@ -1,6 +1,6 @@
 import 'dotenv/config';
-import postgres from 'postgres';
 import { readFileSync } from 'fs';
+import postgres from 'postgres';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 

@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+import { addSecurityHeaders, validateInput } from "@/lib/api-security";
 import { requireAdmin } from "@/lib/auth";
 import sql from "@/lib/db.server";
+import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,9 +11,22 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get("limit") || "50");
     const offset = parseInt(searchParams.get("offset") || "0");
 
+    // Input validation
+    const validation = validateInput({ limit, offset }, {
+      limit: { type: 'number', min: 1, max: 100 },
+      offset: { type: 'number', min: 0 }
+    });
+
+    if (!validation.valid) {
+      return NextResponse.json(
+        { ok: false, error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+    }
+
     const users = await sql`
       SELECT 
-        ur.user_id,
+        ur.clerk_user_id as user_id,
         ur.role,
         ur.created_at as role_created_at,
         cp.legal_name,
@@ -22,7 +36,7 @@ export async function GET(request: NextRequest) {
         cp.contact_name,
         cp.created_at as profile_created_at
       FROM public.user_roles ur
-      LEFT JOIN public.carrier_profiles cp ON ur.user_id = cp.clerk_user_id
+      LEFT JOIN public.carrier_profiles cp ON ur.clerk_user_id = cp.clerk_user_id
       ORDER BY ur.created_at DESC
       LIMIT ${limit} OFFSET ${offset}
     `;
@@ -31,7 +45,7 @@ export async function GET(request: NextRequest) {
       SELECT COUNT(*) as count FROM public.user_roles
     `;
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       ok: true,
       data: users,
       pagination: {
@@ -41,12 +55,15 @@ export async function GET(request: NextRequest) {
         hasMore: users.length === limit,
       },
     });
+    
+    return addSecurityHeaders(response);
   } catch (error: any) {
     console.error("Admin users API error:", error);
-    return NextResponse.json(
+    const response = NextResponse.json(
       { ok: false, error: error.message },
       { status: 500 }
     );
+    return addSecurityHeaders(response);
   }
 }
 
@@ -57,35 +74,37 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json();
     const { user_id, role } = body;
 
-    if (!user_id || !role) {
-      return NextResponse.json(
-        { ok: false, error: "Missing user_id or role" },
-        { status: 400 }
-      );
-    }
+    // Input validation
+    const validation = validateInput({ user_id, role }, {
+      user_id: { required: true, type: 'string', minLength: 1 },
+      role: { required: true, type: 'string', pattern: /^(admin|carrier)$/ }
+    });
 
-    if (!["admin", "carrier"].includes(role)) {
+    if (!validation.valid) {
       return NextResponse.json(
-        { ok: false, error: "Invalid role. Must be 'admin' or 'carrier'" },
+        { ok: false, error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
     }
 
     await sql`
-      INSERT INTO public.user_roles (user_id, role)
+      INSERT INTO public.user_roles (clerk_user_id, role)
       VALUES (${user_id}, ${role})
-      ON CONFLICT (user_id) DO UPDATE SET role = ${role}
+      ON CONFLICT (clerk_user_id) DO UPDATE SET role = ${role}
     `;
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       ok: true,
       message: `User role updated to ${role}`,
     });
+    
+    return addSecurityHeaders(response);
   } catch (error: any) {
     console.error("Admin users PATCH API error:", error);
-    return NextResponse.json(
+    const response = NextResponse.json(
       { ok: false, error: error.message },
       { status: 500 }
     );
+    return addSecurityHeaders(response);
   }
 }

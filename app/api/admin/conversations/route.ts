@@ -60,3 +60,65 @@ export async function GET() {
     }, { status: 500 });
   }
 }
+
+export async function POST(req: Request) {
+  try {
+    const { userId } = await auth();
+    
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Check if user is admin
+    const userRole = await getClerkUserRole(userId);
+    if (userRole !== "admin") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const body = await req.json();
+    const { carrier_user_id } = body;
+
+    if (!carrier_user_id) {
+      return NextResponse.json({ 
+        error: "Missing required field: carrier_user_id" 
+      }, { status: 400 });
+    }
+
+    // Check if conversation already exists
+    const existingConversation = await sql`
+      SELECT id FROM conversations 
+      WHERE carrier_user_id = ${carrier_user_id} AND admin_user_id = ${userId}
+    `;
+
+    if (existingConversation.length > 0) {
+      return NextResponse.json({ 
+        ok: true, 
+        conversation_id: existingConversation[0].id,
+        message: "Conversation already exists"
+      });
+    }
+
+    // Create new conversation
+    const result = await sql`
+      INSERT INTO conversations (
+        carrier_user_id,
+        admin_user_id,
+        created_at,
+        updated_at
+      ) VALUES (${carrier_user_id}, ${userId}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      RETURNING id
+    `;
+
+    return NextResponse.json({ 
+      ok: true, 
+      conversation_id: result[0].id,
+      message: "Conversation created successfully"
+    });
+
+  } catch (error) {
+    console.error("Error creating admin conversation:", error);
+    return NextResponse.json({ 
+      error: "Failed to create conversation" 
+    }, { status: 500 });
+  }
+}

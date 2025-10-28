@@ -1,13 +1,18 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { RefreshCw } from "lucide-react";
+import { AlertCircle, RefreshCw, User } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import useSWR from "swr";
 import LoadCard from "./LoadCard";
 import MapPanel from "./MapPanel";
 import SearchPanel from "./SearchPanel";
+
+const fetcher = (url: string) => fetch(url).then(r => r.json());
 
 // Real data structure from EAX
 interface Load {
@@ -60,6 +65,17 @@ export default function FindLoadsClient() {
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
 
+  // Check profile status for access restriction
+  const { data: profileData, isLoading: profileLoading } = useSWR(
+    `/api/carrier/profile`,
+    fetcher,
+    {
+      fallbackData: { ok: true, data: null }
+    }
+  );
+
+  const profile = profileData?.data;
+
   // Load real data on mount
   useEffect(() => {
     loadLoads();
@@ -106,36 +122,70 @@ export default function FindLoadsClient() {
     loadLoads();
   };
 
+  // Show access restriction banner for unapproved users
+  const renderAccessBanner = () => {
+    if (profileLoading) return null;
+    
+    if (!profile || profile.profile_status !== 'approved') {
+      return (
+        <Card className="border-l-4 border-l-red-500 dark:border-l-red-400 mb-6">
+          <CardContent className="p-6">
+            <div className="flex items-center gap-3">
+              <AlertCircle className="h-6 w-6 text-red-500 dark:text-red-400" />
+              <div className="flex-1">
+                <h3 className="font-semibold text-red-700 dark:text-red-400">Access Restricted</h3>
+                <p className="text-sm text-muted-foreground">
+                  <strong>Access to website features are restricted until you setup your profile and it has been reviewed by an admin.</strong>
+                </p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Complete your profile to gain access to all features and start bidding on loads.
+                </p>
+              </div>
+              <Button asChild>
+                <Link href="/carrier/profile">
+                  <User className="h-4 w-4 mr-2" />
+                  Complete Profile
+                </Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      );
+    }
+    return null;
+  };
+
   return (
     <div className="space-y-6">
-      {/* Search Panel */}
-      <SearchPanel onSearch={handleSearch} loading={searching} />
+      {/* Access Restriction Banner */}
+      {renderAccessBanner()}
+      
+      {/* Search Panel - Only show for approved users */}
+      {profile?.profile_status === 'approved' && (
+        <SearchPanel onSearch={handleSearch} loading={searching} />
+      )}
 
-      {/* Results Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-semibold text-foreground">
-            {loading ? "Loading loads..." : `${filteredLoads.length} loads found`}
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            {loading ? "Please wait while we fetch available loads" : "Browse and book loads that match your criteria"}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleRefresh}
-            disabled={loading}
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+      {/* Results Header - Only show for approved users */}
+      {profile?.profile_status === 'approved' && (
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-semibold text-foreground">
+              {loading ? "Loading loads..." : `${filteredLoads.length} loads found`}
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              {loading ? "Please wait..." : "Browse available loads and start bidding"}
+            </p>
+          </div>
+          <Button onClick={handleRefresh} disabled={loading} variant="outline">
+            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
         </div>
-      </div>
+      )}
 
-      {/* Results Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Results Layout - Only show for approved users */}
+      {profile?.profile_status === 'approved' && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Loads List */}
         <div className="lg:col-span-2 space-y-4">
           {loading ? (
@@ -201,7 +251,8 @@ export default function FindLoadsClient() {
         <div className="lg:col-span-1">
           <MapPanel />
         </div>
-      </div>
+        </div>
+      )}
     </div>
   );
 }

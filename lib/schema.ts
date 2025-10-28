@@ -32,6 +32,8 @@ export const telegramBids = pgTable('telegram_bids', {
   receivedAt: timestamp('received_at', { withTimezone: true }).notNull().defaultNow(),
   expiresAt: timestamp('expires_at', { withTimezone: true }),
   published: boolean('published').notNull().default(true),
+  isArchived: boolean('is_archived').notNull().default(false),
+  archivedAt: timestamp('archived_at', { withTimezone: true }),
 });
 
 // Loads table
@@ -116,6 +118,8 @@ export const carrierBids = pgTable('carrier_bids', {
   bidAmount: integer('bid_amount').notNull(),
   notes: text('notes'),
   status: varchar('status', { length: 50 }).notNull().default('pending'),
+  bidOutcome: varchar('bid_outcome', { length: 20 }).default('pending'),
+  finalAmountCents: integer('final_amount_cents'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -153,4 +157,91 @@ export const dedicatedLanes = pgTable('dedicated_lanes', {
   isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Carrier favorites table
+export const carrierFavorites = pgTable('carrier_favorites', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  carrierUserId: varchar('carrier_user_id', { length: 255 }).notNull(),
+  bidNumber: varchar('bid_number', { length: 255 }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Carrier notification preferences table
+export const carrierNotificationPreferences = pgTable('carrier_notification_preferences', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  carrierUserId: varchar('carrier_user_id', { length: 255 }).notNull().unique(),
+  emailNotifications: boolean('email_notifications').notNull().default(true),
+  similarLoadNotifications: boolean('similar_load_notifications').notNull().default(true),
+  distanceThresholdMiles: integer('distance_threshold_miles').notNull().default(50),
+  statePreferences: text('state_preferences').array(),
+  equipmentPreferences: text('equipment_preferences').array(),
+  minDistance: integer('min_distance').notNull().default(0),
+  maxDistance: integer('max_distance').notNull().default(2000),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Carrier notifications table
+export const carrierNotifications = pgTable('carrier_notifications', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  carrierUserId: varchar('carrier_user_id', { length: 255 }).notNull(),
+  notificationType: varchar('notification_type', { length: 50 }).notNull(),
+  title: varchar('title', { length: 255 }).notNull(),
+  message: text('message').notNull(),
+  bidNumber: varchar('bid_number', { length: 255 }),
+  isRead: boolean('is_read').notNull().default(false),
+  sentAt: timestamp('sent_at', { withTimezone: true }).notNull().defaultNow(),
+  readAt: timestamp('read_at', { withTimezone: true }),
+});
+
+// Archived bids table
+export const archivedBids = pgTable('archived_bids', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  bidNumber: varchar('bid_number', { length: 50 }).notNull().unique(),
+  distanceMiles: integer('distance_miles').notNull(),
+  pickupTimestamp: timestamp('pickup_timestamp', { withTimezone: true }).notNull(),
+  deliveryTimestamp: timestamp('delivery_timestamp', { withTimezone: true }).notNull(),
+  stops: jsonb('stops').notNull(),
+  tag: varchar('tag', { length: 20 }),
+  sourceChannel: varchar('source_channel', { length: 50 }).notNull(),
+  forwardedTo: varchar('forwarded_to', { length: 50 }),
+  receivedAt: timestamp('received_at', { withTimezone: true }).notNull(),
+  archivedAt: timestamp('archived_at', { withTimezone: true }).notNull().defaultNow(),
+  originalId: integer('original_id'),
+});
+
+// Carrier bid history table
+export const carrierBidHistory = pgTable('carrier_bid_history', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  carrierUserId: varchar('carrier_user_id', { length: 255 }).notNull(),
+  bidNumber: varchar('bid_number', { length: 50 }).notNull(),
+  bidAmountCents: integer('bid_amount_cents').notNull(),
+  bidStatus: varchar('bid_status', { length: 20 }).notNull(),
+  bidNotes: text('bid_notes'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Notification triggers table
+export const notificationTriggers = pgTable('notification_triggers', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  carrierUserId: varchar('carrier_user_id', { length: 255 }).notNull(),
+  triggerType: varchar('trigger_type', { length: 50 }).notNull(),
+  triggerConfig: jsonb('trigger_config').notNull(),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Notification logs table
+export const notificationLogs = pgTable('notification_logs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  carrierUserId: varchar('carrier_user_id', { length: 255 }).notNull(),
+  triggerId: uuid('trigger_id'),
+  notificationType: varchar('notification_type', { length: 50 }).notNull(),
+  bidNumber: varchar('bid_number', { length: 50 }),
+  message: text('message').notNull(),
+  sentAt: timestamp('sent_at', { withTimezone: true }).notNull().defaultNow(),
+  deliveryStatus: varchar('delivery_status', { length: 20 }).notNull().default('sent'),
 });

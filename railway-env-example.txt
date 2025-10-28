@@ -16,3 +16,4 @@ PORT=3001
 
 # Next.js Configuration (for Vercel)
 NEXT_PUBLIC_RAILWAY_URL=your-railway-url.railway.app
+

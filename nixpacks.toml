@@ -11,3 +11,4 @@ cmds = ["cd railway-service && npm install"]
 
 [start]
 cmd = "cd railway-service && npm start"
+

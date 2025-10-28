@@ -1,6 +1,6 @@
+import { shouldTriggerNotification, type AdvancedNotificationPreferences } from '@/lib/advanced-notification-preferences';
 import sql from '@/lib/db';
 import { NextRequest, NextResponse } from "next/server";
-import { shouldTriggerNotification, type AdvancedNotificationPreferences } from '@/lib/advanced-notification-preferences';
 
 // This service processes notification triggers and sends notifications
 export async function POST(request: NextRequest) {

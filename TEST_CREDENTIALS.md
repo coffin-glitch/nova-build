@@ -1,10 +1,16 @@
 # Test Credentials for NOVA Build
 
-## Carrier Test Account
+## Carrier Test Account 1
 - **Username**: `testcarrier1`
 - **Password**: `testcarrier1!`
 - **Role**: Carrier
 - **Purpose**: Testing carrier-specific functionality, find-loads, bid-board, offers, pricing calculator
+
+## Carrier Test Account 2
+- **Username**: `testcarrier2`
+- **Password**: `testcarrier2!`
+- **Role**: Carrier
+- **Purpose**: Testing carrier-specific functionality, messaging, profile management
 
 ## Admin Test Account
 - **Email**: `dukeisaac12@gmail.com`
@@ -22,7 +28,7 @@
 7. You will be logged in successfully
 
 ## Usage Notes
-- Use carrier account to test: find-loads page, bid-board, offer submission, pricing calculator
+- Use carrier accounts to test: find-loads page, bid-board, offer submission, pricing calculator, messaging
 - Use admin account to test: admin dashboard, user management, offers management, carrier verification console
 - Both accounts are set up in Clerk with proper roles assigned
 - Use these credentials in browser mode for testing different user experiences

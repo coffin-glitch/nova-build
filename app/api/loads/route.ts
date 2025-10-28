@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
         equipment,
         COALESCE(weight, 0) as weight,
         COALESCE(miles, 0) as miles,
-        COALESCE(stops, 0) as stops,
+        COALESCE(number_of_stops, 0) as stops,
         COALESCE(customer_name, '') as customer_name,
         origin_city,
         origin_state,

@@ -1,15 +1,11 @@
-import { Suspense } from "react";
-import { requireAdmin } from "@/lib/auth";
-import { listActiveTelegramBids } from "@/lib/auctions";
 import { SectionHeader } from "@/components/ui/section";
-import AdminAuctionsClient from "./AdminAuctionsClient";
 import { AdminAuctionListSkeleton } from "@/components/ui/Skeletons";
+import { Suspense } from "react";
+import AdminAuctionsClient from "./AdminAuctionsClient";
 
 export default async function AdminAuctionsPage() {
-  await requireAdmin();
-
-  // Fetch initial data server-side
-  const initialBids = await listActiveTelegramBids({ limit: 100 });
+  // Remove server-side authentication to prevent redirect issues
+  // Authentication will be handled client-side in AdminAuctionsClient
 
   return (
     <div className="min-h-screen py-8">
@@ -20,7 +16,7 @@ export default async function AdminAuctionsPage() {
         />
 
         <Suspense fallback={<AdminAuctionListSkeleton />}>
-          <AdminAuctionsClient initialBids={initialBids} />
+          <AdminAuctionsClient />
         </Suspense>
       </div>
     </div>

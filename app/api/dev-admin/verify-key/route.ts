@@ -1,28 +1,24 @@
+import { requireAdmin } from "@/lib/auth-server";
 import { NextRequest, NextResponse } from "next/server";
 
-// You can change this dev key to whatever you want
+// SECURITY FIX: Remove key logging and add authentication
 const DEV_KEY = process.env.DEV_ADMIN_KEY || "nova-dev-2024-admin-key";
-
-console.log("🔑 Dev Key API: DEV_ADMIN_KEY env var:", process.env.DEV_ADMIN_KEY);
-console.log("🔑 Dev Key API: Final DEV_KEY:", DEV_KEY);
 
 export async function POST(request: NextRequest) {
   try {
+    // SECURITY FIX: Require admin authentication
+    await requireAdmin();
+    
     const { key } = await request.json();
     
-    console.log("🔑 Dev Key Verification: Received key:", key);
-    console.log("🔑 Dev Key Verification: Expected key:", DEV_KEY);
-    console.log("🔑 Dev Key Verification: Keys match:", key === DEV_KEY);
-    
+    // SECURITY FIX: Remove sensitive logging
     if (key === DEV_KEY) {
-      console.log("✅ Dev key verification successful");
       return NextResponse.json({ 
         success: true,
         valid: true, 
         message: "Dev key accepted" 
       });
     } else {
-      console.log("❌ Dev key verification failed");
       return NextResponse.json({ 
         success: false,
         valid: false, 

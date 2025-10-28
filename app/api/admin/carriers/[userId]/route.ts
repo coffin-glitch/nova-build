@@ -28,13 +28,11 @@ export async function PUT(
     // Update carrier profile
     await sql`
       UPDATE carrier_profiles SET
-        company_name = ${company_name},
         legal_name = ${company_name},
         mc_number = ${mc_number},
         dot_number = ${dot_number},
         contact_name = ${contact_name},
-        phone = ${phone},
-        updated_at = CURRENT_TIMESTAMP
+        phone = ${phone}
       WHERE clerk_user_id = ${carrierUserId}
     `;
 
