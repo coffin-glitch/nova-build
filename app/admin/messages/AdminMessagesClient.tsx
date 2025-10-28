@@ -65,13 +65,13 @@ export function AdminMessagesClient() {
   const { data: chatMessagesData, mutate: mutateChatMessages } = useSWR(
     "/api/admin/all-chat-messages",
     fetcher,
-    { refreshInterval: 5000 } // Increased from 2000 to reduce re-renders
+    { refreshInterval: 30000 } // Increased to prevent rate limiting // Increased from 2000 to reduce re-renders
   );
 
   const { data: adminMessagesData, mutate: mutateAdminMessages } = useSWR(
     "/api/admin/all-messages",
     fetcher,
-    { refreshInterval: 5000 } // Increased from 2000 to reduce re-renders
+    { refreshInterval: 30000 } // Increased to prevent rate limiting // Increased from 2000 to reduce re-renders
   );
 
   const chatMessages = chatMessagesData?.data || [];

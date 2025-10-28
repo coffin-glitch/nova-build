@@ -7,17 +7,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { useAccentColor } from "@/hooks/useAccentColor";
 import {
     Building2,
     CheckCircle,
     Edit3,
-    Lock,
+    History,
     MessageSquare,
     Search,
-    Send,
     Unlock,
-    Users
+    Users,
+    X
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -29,14 +28,23 @@ interface CarrierProfile {
   id: string;
   user_id: string;
   company_name: string;
+  legal_name?: string;
   mc_number: string;
   dot_number?: string;
   contact_name: string;
   phone: string;
-  is_locked: boolean;
-  locked_at?: string;
-  locked_by?: string;
-  lock_reason?: string;
+  email: string;
+  profile_status: 'pending' | 'approved' | 'declined';
+  submitted_at?: string;
+  reviewed_at?: string;
+  reviewed_by?: string;
+  review_notes?: string;
+  decline_reason?: string;
+  is_first_login: boolean;
+  profile_completed_at?: string;
+  edits_enabled: boolean;
+  edits_enabled_by?: string;
+  edits_enabled_at?: string;
   created_at: string;
   updated_at: string;
 }
@@ -61,23 +69,43 @@ interface CarrierChatMessage {
   updated_at: string;
 }
 
+interface ProfileHistory {
+  id: number;
+  carrier_user_id: string;
+  profile_data: CarrierProfile;
+  profile_status: string;
+  submitted_at: string;
+  reviewed_at?: string;
+  reviewed_by?: string;
+  review_notes?: string;
+  decline_reason?: string;
+  version_number: number;
+  created_at: string;
+}
+
 export function AdminUsersConsole() {
-  const { accentColor } = useAccentColor();
+  const accentColor = "hsl(221, 83%, 53%)"; // Default blue
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCarrier, setSelectedCarrier] = useState<CarrierProfile | null>(null);
   const [showProfileDialog, setShowProfileDialog] = useState(false);
-  const [showMessageDialog, setShowMessageDialog] = useState(false);
-  const [showChatDialog, setShowChatDialog] = useState(false);
+  const [showAppealDialog, setShowAppealDialog] = useState(false);
+  const [showApproveDialog, setShowApproveDialog] = useState(false);
+  const [showDeclineDialog, setShowDeclineDialog] = useState(false);
+  const [showHistoryDialog, setShowHistoryDialog] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
-  
-  // Message form state
-  const [messageSubject, setMessageSubject] = useState("");
-  const [messageContent, setMessageContent] = useState("");
+  const [isApproving, setIsApproving] = useState(false);
+  const [isDeclining, setIsDeclining] = useState(false);
+  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
+  const [newAppealMessage, setNewAppealMessage] = useState("");
+  const [isSendingAppealMessage, setIsSendingAppealMessage] = useState(false);
   
   // Profile edit state
   const [editFormData, setEditFormData] = useState<Partial<CarrierProfile>>({});
+  
+  // Approval workflow state
+  const [reviewNotes, setReviewNotes] = useState("");
+  const [declineReason, setDeclineReason] = useState("");
 
   const { data: carriersData, mutate: mutateCarriers } = useSWR(
     "/api/admin/carriers",
@@ -85,28 +113,53 @@ export function AdminUsersConsole() {
     { refreshInterval: 10000 }
   );
 
-  const { data: messagesData, mutate: mutateMessages } = useSWR(
-    selectedCarrier ? `/api/admin/messages/${selectedCarrier.user_id}` : null,
+  const { data: historyData } = useSWR(
+    showHistoryDialog && selectedCarrier ? `/api/admin/carriers/${selectedCarrier.user_id}/history` : null,
+    fetcher,
+    { fallbackData: { ok: true, data: [] } }
+  );
+
+  const { data: conversationData, mutate: mutateConversation } = useSWR(
+    `/api/admin/appeal-conversations`,
     fetcher,
     { refreshInterval: 5000 }
   );
 
-  const { data: chatMessagesData, mutate: mutateChatMessages } = useSWR(
-    selectedCarrier ? `/api/admin/chat-messages/${selectedCarrier.user_id}` : null,
+  const { data: conversationMessagesData, mutate: mutateConversationMessages } = useSWR(
+    currentConversationId ? `/api/admin/appeal-conversations/${currentConversationId}` : null,
     fetcher,
-    { refreshInterval: 5000 }
+    { refreshInterval: 10000 } // Reduced from 2s to 10s to prevent rate limiting
   );
 
   const carriers = carriersData?.data || [];
-  const messages = messagesData?.data || [];
-  const chatMessages = chatMessagesData?.data || [];
+  const conversations = conversationData?.data || [];
+  const conversationMessages = conversationMessagesData?.data || [];
+  const profileHistory: ProfileHistory[] = historyData?.data || [];
+
+  // Helper function to safely parse unread count
+  const parseUnreadCount = (count: any): number => {
+    if (count === null || count === undefined) return 0;
+    const parsed = parseInt(String(count), 10);
+    return isNaN(parsed) ? 0 : parsed;
+  };
+
+  // Helper function to get unread count for a carrier
+  const getUnreadCount = (carrierUserId: string) => {
+    if (!conversations || !Array.isArray(conversations)) {
+      return 0;
+    }
+    const conversation = conversations.find((conv: any) => 
+      conv.carrier_user_id === carrierUserId
+    );
+    return parseUnreadCount(conversation?.unread_count);
+  };
 
   // Filter carriers based on search term
   const filteredCarriers = carriers.filter((carrier: CarrierProfile) =>
-    carrier.company_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    carrier.mc_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    carrier.contact_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    carrier.user_id.toLowerCase().includes(searchTerm.toLowerCase())
+    (carrier.company_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (carrier.mc_number || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (carrier.contact_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (carrier.user_id || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const handleEditProfile = (carrier: CarrierProfile) => {
@@ -122,11 +175,103 @@ export function AdminUsersConsole() {
     setShowProfileDialog(true);
   };
 
-  const handleSendMessage = (carrier: CarrierProfile) => {
+  const handleOpenAppeal = async (carrier: CarrierProfile) => {
     setSelectedCarrier(carrier);
-    setMessageSubject("");
-    setMessageContent("");
-    setShowMessageDialog(true);
+    
+    // Find existing conversation with this carrier
+    const existingConversation = conversations.find((conv: any) => 
+      conv.carrier_user_id === carrier.user_id
+    );
+    
+    if (existingConversation) {
+      setCurrentConversationId(existingConversation.conversation_id);
+      
+      // Mark messages as read
+      try {
+        await fetch(`/api/admin/appeal-conversations/${existingConversation.conversation_id}/read`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        mutateConversation(); // Refresh conversations to update unread counts
+      } catch (error) {
+        console.error('Error marking appeal messages as read:', error);
+      }
+    } else {
+      // Create a new conversation if one doesn't exist
+      try {
+        const response = await fetch('/api/admin/appeal-conversations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            carrier_user_id: carrier.user_id
+          })
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          console.log('Appeal conversation created successfully:', data);
+          setCurrentConversationId(data.conversation_id);
+          mutateConversation(); // Refresh conversations
+        } else {
+          const errorData = await response.json();
+          console.error('Failed to create appeal conversation:', errorData);
+          setCurrentConversationId(null);
+        }
+      } catch (error) {
+        console.error('Error creating conversation:', error);
+        setCurrentConversationId(null);
+      }
+    }
+    
+    setNewAppealMessage("");
+    setShowAppealDialog(true);
+  };
+
+  const handleSendAppealMessage = async () => {
+    if (!newAppealMessage.trim() || !selectedCarrier) return;
+    
+    setIsSendingAppealMessage(true);
+    try {
+      let conversationId = currentConversationId;
+      
+      // If no conversation exists, create one
+      if (!conversationId) {
+        const response = await fetch('/api/admin/conversations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            carrier_user_id: selectedCarrier.user_id
+          })
+        });
+        
+        if (!response.ok) throw new Error('Failed to create conversation');
+        const data = await response.json();
+        conversationId = data.conversation_id;
+        setCurrentConversationId(conversationId);
+      }
+      
+      // Send message
+      const messageResponse = await fetch(`/api/admin/appeal-conversations/${conversationId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: newAppealMessage })
+      });
+      
+      if (!messageResponse.ok) throw new Error('Failed to send message');
+      
+      setNewAppealMessage("");
+      mutateConversationMessages();
+      mutateConversation();
+    } catch (error) {
+      console.error('Error sending chat message:', error);
+    } finally {
+      setIsSendingAppealMessage(false);
+    }
+  };
+
+  const handleViewHistory = (carrier: CarrierProfile) => {
+    setSelectedCarrier(carrier);
+    setShowHistoryDialog(true);
   };
 
   const handleLockProfile = async (carrier: CarrierProfile, reason: string) => {
@@ -194,46 +339,106 @@ export function AdminUsersConsole() {
     }
   };
 
-  const handleSendMessageSubmit = async () => {
-    if (!selectedCarrier || !messageSubject || !messageContent) {
-      toast.error("Please fill in all message fields");
+
+  const handleApproveProfile = async () => {
+    if (!selectedCarrier) return;
+    
+    setIsApproving(true);
+    try {
+      const response = await fetch(`/api/admin/carriers/${selectedCarrier.user_id}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ review_notes: reviewNotes })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        toast.success(data.message || "Carrier profile approved successfully");
+        setShowApproveDialog(false);
+        setReviewNotes("");
+        mutateCarriers();
+      } else {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to approve profile');
+      }
+    } catch (error) {
+      toast.error("Failed to approve profile");
+      console.error(error);
+    } finally {
+      setIsApproving(false);
+    }
+  };
+
+  const handleDeclineProfile = async () => {
+    if (!selectedCarrier || !declineReason) {
+      toast.error("Please provide a decline reason");
       return;
     }
 
-    setIsSendingMessage(true);
+    setIsDeclining(true);
     try {
-      const response = await fetch('/api/admin/messages', {
+      const response = await fetch(`/api/admin/carriers/${selectedCarrier.user_id}/decline`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          carrier_user_id: selectedCarrier.user_id,
-          subject: messageSubject,
-          message: messageContent
+          decline_reason: declineReason,
+          review_notes: reviewNotes 
         })
       });
 
       if (response.ok) {
-        toast.success("Message sent successfully");
-        setShowMessageDialog(false);
-        setMessageSubject("");
-        setMessageContent("");
-        mutateMessages();
+        const data = await response.json();
+        toast.success(data.message || "Carrier profile declined successfully");
+        setShowDeclineDialog(false);
+        setDeclineReason("");
+        setReviewNotes("");
+        mutateCarriers();
       } else {
-        throw new Error('Failed to send message');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to decline profile');
       }
     } catch (error) {
-      toast.error("Failed to send message");
+      toast.error("Failed to decline profile");
       console.error(error);
     } finally {
-      setIsSendingMessage(false);
+      setIsDeclining(false);
+    }
+  };
+
+  const handleUnlockEdits = async (carrier: CarrierProfile) => {
+    try {
+      const response = await fetch(`/api/admin/carriers/${carrier.user_id}/unlock-edits`, {
+        method: 'POST'
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        toast.success(data.message || "Profile edits unlocked successfully");
+        
+        // Force refresh the carriers data
+        mutateCarriers();
+      } else {
+        const errorData = await response.json();
+        console.error('Unlock edits API error:', errorData);
+        throw new Error(errorData.error || 'Failed to unlock edits');
+      }
+    } catch (error) {
+      toast.error("Failed to unlock edits");
+      console.error(error);
     }
   };
 
   const getStatusBadge = (carrier: CarrierProfile) => {
-    if (carrier.is_locked) {
-      return <Badge variant="destructive">Locked</Badge>;
+    switch (carrier.profile_status) {
+      case 'pending':
+        return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">Pending Review</Badge>;
+      case 'approved':
+        return <Badge variant="default" className="bg-green-100 text-green-800">Approved</Badge>;
+      case 'declined':
+        return <Badge variant="destructive">Declined</Badge>;
+      default:
+        return <Badge variant="outline">Unknown</Badge>;
     }
-    return <Badge variant="default" className="bg-green-100 text-green-800">Active</Badge>;
   };
 
   const CarrierCard = ({ carrier }: { carrier: CarrierProfile }) => (
@@ -246,9 +451,6 @@ export function AdminUsersConsole() {
           </div>
           <div className="flex items-center gap-2">
             {getStatusBadge(carrier)}
-            {carrier.is_locked && (
-              <Lock className="h-4 w-4 text-red-500" />
-            )}
           </div>
         </div>
       </CardHeader>
@@ -268,19 +470,45 @@ export function AdminUsersConsole() {
             <div className="font-medium">{carrier.phone}</div>
           </div>
           <div>
+            <span className="text-muted-foreground">Email:</span>
+            <div className="font-medium">{carrier.email}</div>
+          </div>
+          <div>
             <span className="text-muted-foreground">DOT #:</span>
             <div className="font-medium">{carrier.dot_number || 'N/A'}</div>
           </div>
         </div>
 
-        {/* Lock Info */}
-        {carrier.is_locked && carrier.lock_reason && (
+        {/* Profile Status Info */}
+        {carrier.profile_status === 'declined' && carrier.decline_reason && (
           <div className="p-3 bg-red-50 rounded-lg border border-red-200">
             <div className="text-sm text-red-800">
-              <strong>Lock Reason:</strong> {carrier.lock_reason}
+              <strong>Decline Reason:</strong> {carrier.decline_reason}
             </div>
             <div className="text-xs text-red-600 mt-1">
-              Locked: {new Date(carrier.locked_at!).toLocaleDateString()}
+              Declined: {carrier.reviewed_at ? new Date(carrier.reviewed_at).toLocaleDateString() : 'Unknown'}
+            </div>
+          </div>
+        )}
+
+        {carrier.profile_status === 'approved' && carrier.review_notes && (
+          <div className="p-3 bg-green-50 rounded-lg border border-green-200">
+            <div className="text-sm text-green-800">
+              <strong>Review Notes:</strong> {carrier.review_notes}
+            </div>
+            <div className="text-xs text-green-600 mt-1">
+              Approved: {carrier.reviewed_at ? new Date(carrier.reviewed_at).toLocaleDateString() : 'Unknown'}
+            </div>
+          </div>
+        )}
+
+        {carrier.profile_status === 'pending' && (
+          <div className="p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+            <div className="text-sm text-yellow-800">
+              <strong>Status:</strong> Awaiting admin review
+            </div>
+            <div className="text-xs text-yellow-600 mt-1">
+              Submitted: {carrier.submitted_at ? new Date(carrier.submitted_at).toLocaleDateString() : 'Unknown'}
             </div>
           </div>
         )}
@@ -294,20 +522,38 @@ export function AdminUsersConsole() {
             onClick={() => handleEditProfile(carrier)}
           >
             <Edit3 className="h-4 w-4 mr-2" />
-            Edit Profile
+            View Profile
           </Button>
           <Button 
+            variant="outline" 
             size="sm" 
             className="flex-1"
+            onClick={() => handleViewHistory(carrier)}
+          >
+            <History className="h-4 w-4 mr-2" />
+            History
+          </Button>
+          <Button
+            size="sm" 
+            className="flex-1 relative"
             style={{ backgroundColor: accentColor }}
-            onClick={() => handleSendMessage(carrier)}
+            onClick={() => handleOpenAppeal(carrier)}
           >
             <MessageSquare className="h-4 w-4 mr-2" />
-            Send Message
+            Appeal Decision
+            {getUnreadCount(carrier.user_id) > 0 && (
+              <Badge 
+                variant="destructive" 
+                className="absolute -top-2 -right-2 h-5 w-5 flex items-center justify-center text-xs p-0"
+              >
+                {getUnreadCount(carrier.user_id)}
+              </Badge>
+            )}
           </Button>
         </div>
 
-        {/* Chat Console Button */}
+        {/* Approval Workflow Buttons */}
+        {carrier.profile_status === 'pending' && (
         <div className="flex gap-2">
           <Button 
             variant="outline" 
@@ -315,41 +561,42 @@ export function AdminUsersConsole() {
             className="flex-1"
             onClick={() => {
               setSelectedCarrier(carrier);
-              setShowChatDialog(true);
-            }}
-          >
-            <MessageSquare className="h-4 w-4 mr-2" />
-            View Chat
+                setReviewNotes("");
+                setShowDeclineDialog(true);
+              }}
+            >
+              <X className="h-4 w-4 mr-2" />
+              Decline
+            </Button>
+            <Button 
+              size="sm" 
+              className="flex-1 bg-green-600 hover:bg-green-700"
+              onClick={() => {
+                setSelectedCarrier(carrier);
+                setReviewNotes("");
+                setShowApproveDialog(true);
+              }}
+            >
+              <CheckCircle className="h-4 w-4 mr-2" />
+              Approve
           </Button>
         </div>
+        )}
 
-        {/* Lock/Unlock Actions */}
-        <div className="flex gap-2">
-          {carrier.is_locked ? (
+        {/* Unlock Edits Button for Approved/Declined Profiles */}
+        {(carrier.profile_status === 'approved' || carrier.profile_status === 'declined') && !carrier.edits_enabled && (
+          <div className="flex gap-2">
             <Button 
               variant="outline" 
               size="sm" 
               className="flex-1"
-              onClick={() => handleUnlockProfile(carrier)}
+              onClick={() => handleUnlockEdits(carrier)}
             >
               <Unlock className="h-4 w-4 mr-2" />
-              Unlock Profile
+              {carrier.profile_status === 'declined' ? 'Reset Approval Process' : 'Unlock Edits'}
             </Button>
-          ) : (
-            <Button 
-              variant="destructive" 
-              size="sm" 
-              className="flex-1"
-              onClick={() => {
-                const reason = prompt("Enter lock reason:");
-                if (reason) handleLockProfile(carrier, reason);
-              }}
-            >
-              <Lock className="h-4 w-4 mr-2" />
-              Lock Profile
-            </Button>
-          )}
-        </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -396,9 +643,9 @@ export function AdminUsersConsole() {
               <CheckCircle className="h-5 w-5 text-green-500" />
               <div>
                 <div className="text-2xl font-bold">
-                  {carriers.filter((c: CarrierProfile) => !c.is_locked).length}
+                  {carriers.filter((c: CarrierProfile) => c.profile_status === 'approved').length}
                 </div>
-                <div className="text-sm text-muted-foreground">Active</div>
+                <div className="text-sm text-muted-foreground">Approved</div>
               </div>
             </div>
           </CardContent>
@@ -406,12 +653,12 @@ export function AdminUsersConsole() {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2">
-              <Lock className="h-5 w-5 text-red-500" />
+              <X className="h-5 w-5 text-red-500" />
               <div>
                 <div className="text-2xl font-bold">
-                  {carriers.filter((c: CarrierProfile) => c.is_locked).length}
+                  {carriers.filter((c: CarrierProfile) => c.profile_status === 'declined').length}
                 </div>
-                <div className="text-sm text-muted-foreground">Locked</div>
+                <div className="text-sm text-muted-foreground">Declined</div>
               </div>
             </div>
           </CardContent>
@@ -422,7 +669,10 @@ export function AdminUsersConsole() {
               <MessageSquare className="h-5 w-5 text-purple-500" />
               <div>
                 <div className="text-2xl font-bold">
-                  {messages.filter((m: AdminMessage) => !m.is_read).length}
+                  {conversations && Array.isArray(conversations) 
+                    ? conversations.reduce((total: number, conv: any) => total + parseUnreadCount(conv.unread_count), 0)
+                    : 0
+                  }
                 </div>
                 <div className="text-sm text-muted-foreground">Unread Messages</div>
               </div>
@@ -575,32 +825,138 @@ export function AdminUsersConsole() {
         </DialogContent>
       </Dialog>
 
-      {/* Send Message Dialog */}
-      <Dialog open={showMessageDialog} onOpenChange={setShowMessageDialog}>
+
+      {/* Appeal Decision Dialog */}
+      <Dialog open={showAppealDialog} onOpenChange={setShowAppealDialog}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden">
+          <DialogHeader>
+            <DialogTitle>Appeal Decision - {selectedCarrier?.company_name}</DialogTitle>
+          </DialogHeader>
+          
+          {selectedCarrier && (
+            <div className="flex flex-col h-[70vh]">
+              {/* Profile Status Info */}
+              <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg mb-4">
+                <h4 className="font-medium text-sm mb-2 text-gray-900 dark:text-gray-100">Profile Status:</h4>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                    selectedCarrier.profile_status === 'approved' 
+                      ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
+                      : selectedCarrier.profile_status === 'declined'
+                      ? 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
+                      : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400'
+                  }`}>
+                    {selectedCarrier.profile_status === 'approved' ? 'Approved' : 
+                     selectedCarrier.profile_status === 'declined' ? 'Declined' : 'Pending Review'}
+                  </span>
+                </div>
+                {selectedCarrier.profile_status === 'declined' && selectedCarrier.decline_reason && (
+                  <div className="mt-2 p-2 bg-red-50 dark:bg-red-900/20 rounded border-l-2 border-red-200 dark:border-red-700">
+                    <p className="text-xs text-red-700 dark:text-red-300">
+                      <strong>Decline Reason:</strong> {selectedCarrier.decline_reason}
+                    </p>
+                    {selectedCarrier.review_notes && (
+                      <p className="text-xs text-red-600 dark:text-red-400 mt-1">
+                        <strong>Admin Notes:</strong> {selectedCarrier.review_notes}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Appeal Messages Area */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-muted/30 rounded-lg">
+                {conversationMessages.length > 0 ? (
+                  conversationMessages.map((msg: any) => (
+                    <div key={msg.id} className={`flex ${msg.sender_type === 'admin' ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm ${
+                        msg.sender_type === 'admin' 
+                          ? 'bg-blue-500 text-white' 
+                          : 'bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200'
+                      }`}>
+                        <div className="font-semibold text-xs mb-1">
+                          {msg.sender_type === 'admin' ? 'You' : selectedCarrier.company_name}
+                        </div>
+                        <div>{msg.message}</div>
+                        <div className="text-xs opacity-70 mt-1">
+                          {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center text-muted-foreground py-8">
+                    <MessageSquare className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p>No appeal messages yet</p>
+                    <p className="text-sm">Waiting for {selectedCarrier.company_name} to send an appeal message</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Appeal Response Input */}
+              <div className="flex gap-2 pt-4">
+                <Input
+                  value={newAppealMessage}
+                  onChange={(e) => setNewAppealMessage(e.target.value)}
+                  placeholder="Type your response to the carrier's appeal..."
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSendAppealMessage();
+                    }
+                  }}
+                  disabled={isSendingAppealMessage}
+                />
+                <Button
+                  onClick={handleSendAppealMessage}
+                  disabled={!newAppealMessage.trim() || isSendingAppealMessage}
+                  style={{ backgroundColor: accentColor }}
+                >
+                  {isSendingAppealMessage ? "Sending..." : "Send Response"}
+                </Button>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 pt-4">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowAppealDialog(false)}
+                  className="flex-1"
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Approve Profile Dialog */}
+      <Dialog open={showApproveDialog} onOpenChange={setShowApproveDialog}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Send Message to {selectedCarrier?.company_name}</DialogTitle>
+            <DialogTitle>Approve Carrier Profile - {selectedCarrier?.company_name}</DialogTitle>
           </DialogHeader>
           
           <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="message_subject">Subject</Label>
-              <Input
-                id="message_subject"
-                value={messageSubject}
-                onChange={(e) => setMessageSubject(e.target.value)}
-                placeholder="Enter message subject"
-              />
+            <div className="p-4 bg-green-50 rounded-lg border border-green-200">
+              <div className="text-sm text-green-800">
+                <strong>Company:</strong> {selectedCarrier?.company_name}<br/>
+                <strong>MC Number:</strong> {selectedCarrier?.mc_number}<br/>
+                <strong>Contact:</strong> {selectedCarrier?.contact_name}<br/>
+                <strong>Phone:</strong> {selectedCarrier?.phone}<br/>
+                <strong>Email:</strong> {selectedCarrier?.email}
+              </div>
             </div>
             
             <div className="space-y-2">
-              <Label htmlFor="message_content">Message</Label>
+              <Label htmlFor="review_notes">Review Notes (Optional)</Label>
               <Textarea
-                id="message_content"
-                value={messageContent}
-                onChange={(e) => setMessageContent(e.target.value)}
-                placeholder="Enter your message to the carrier..."
-                rows={6}
+                id="review_notes"
+                value={reviewNotes}
+                onChange={(e) => setReviewNotes(e.target.value)}
+                placeholder="Add any notes about this approval..."
+                rows={4}
               />
             </div>
           </div>
@@ -608,26 +964,25 @@ export function AdminUsersConsole() {
           <div className="flex gap-3 pt-4">
             <Button
               variant="outline"
-              onClick={() => setShowMessageDialog(false)}
+              onClick={() => setShowApproveDialog(false)}
               className="flex-1"
             >
               Cancel
             </Button>
             <Button
-              onClick={handleSendMessageSubmit}
-              disabled={isSendingMessage || !messageSubject || !messageContent}
-              style={{ backgroundColor: accentColor }}
-              className="flex-1"
+              onClick={handleApproveProfile}
+              disabled={isApproving}
+              className="flex-1 bg-green-600 hover:bg-green-700"
             >
-              {isSendingMessage ? (
+              {isApproving ? (
                 <>
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  Sending...
+                  Approving...
                 </>
               ) : (
                 <>
-                  <Send className="h-4 w-4 mr-2" />
-                  Send Message
+                  <CheckCircle className="h-4 w-4 mr-2" />
+                  Approve Profile
                 </>
               )}
             </Button>
@@ -635,87 +990,175 @@ export function AdminUsersConsole() {
         </DialogContent>
       </Dialog>
 
-      {/* Chat Console Dialog */}
-      <Dialog open={showChatDialog} onOpenChange={setShowChatDialog}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden">
+      {/* Decline Profile Dialog */}
+      <Dialog open={showDeclineDialog} onOpenChange={setShowDeclineDialog}>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Chat Console - {selectedCarrier?.company_name}</DialogTitle>
+            <DialogTitle>Decline Carrier Profile - {selectedCarrier?.company_name}</DialogTitle>
           </DialogHeader>
           
-          {selectedCarrier && (
-            <div className="flex flex-col h-[70vh]">
-              {/* Chat Messages Area */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-muted/30 rounded-lg">
-                {/* Welcome Message */}
-                <div className="flex flex-col items-start">
-                  <div className="max-w-[80%] rounded-2xl px-3 py-2 text-sm bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-100">
-                    <div className="font-semibold text-xs mb-1">Admin</div>
-                    <div>Welcome to NOVA Build! How can we help you today?</div>
-                    <div className="text-xs opacity-70 mt-1">
-                      {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          <div className="space-y-4">
+            <div className="p-4 bg-red-50 rounded-lg border border-red-200">
+              <div className="text-sm text-red-800">
+                <strong>Company:</strong> {selectedCarrier?.company_name}<br/>
+                <strong>MC Number:</strong> {selectedCarrier?.mc_number}<br/>
+                <strong>Contact:</strong> {selectedCarrier?.contact_name}<br/>
+                <strong>Phone:</strong> {selectedCarrier?.phone}<br/>
+                <strong>Email:</strong> {selectedCarrier?.email}
+              </div>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="decline_reason">Decline Reason *</Label>
+              <Textarea
+                id="decline_reason"
+                value={declineReason}
+                onChange={(e) => setDeclineReason(e.target.value)}
+                placeholder="Please provide a reason for declining this profile..."
+                rows={3}
+                required
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="decline_review_notes">Additional Notes (Optional)</Label>
+              <Textarea
+                id="decline_review_notes"
+                value={reviewNotes}
+                onChange={(e) => setReviewNotes(e.target.value)}
+                placeholder="Add any additional notes..."
+                rows={3}
+              />
+            </div>
+          </div>
+
+          <div className="flex gap-3 pt-4">
+            <Button
+              variant="outline"
+              onClick={() => setShowDeclineDialog(false)}
+              className="flex-1"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleDeclineProfile}
+              disabled={isDeclining || !declineReason}
+              variant="destructive"
+              className="flex-1"
+            >
+              {isDeclining ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Declining...
+                </>
+              ) : (
+                <>
+                  <X className="h-4 w-4 mr-2" />
+                  Decline Profile
+                </>
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Profile History Dialog */}
+      <Dialog open={showHistoryDialog} onOpenChange={setShowHistoryDialog}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <History className="h-5 w-5" />
+              Profile History - {selectedCarrier?.company_name}
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            {profileHistory.length === 0 ? (
+              <div className="text-center py-8">
+                <History className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                <p className="text-muted-foreground">No profile history available.</p>
                     </div>
+            ) : (
+              profileHistory.map((history, index) => (
+                <Card key={history.id} className="border-l-4 border-l-blue-500">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline">
+                          Version {history.version_number}
+                        </Badge>
+                        <Badge 
+                          variant={history.profile_status === 'approved' ? 'default' : 
+                                  history.profile_status === 'declined' ? 'destructive' : 'secondary'}
+                          className={history.profile_status === 'approved' ? 'bg-green-500' : 
+                                    history.profile_status === 'declined' ? 'bg-red-500' : ''}
+                        >
+                          {history.profile_status.charAt(0).toUpperCase() + history.profile_status.slice(1)}
+                        </Badge>
                   </div>
+                      <span className="text-sm text-muted-foreground">
+                        {new Date(history.submitted_at).toLocaleString()}
+                      </span>
                 </div>
-
-                {/* Chat Messages */}
-                {chatMessages.map((msg: CarrierChatMessage) => (
-                  <div key={msg.id} className="space-y-2">
-                    {/* Carrier Message */}
-                    <div className="flex flex-col items-end">
-                      <div className="max-w-[80%] rounded-2xl px-3 py-2 text-sm bg-slate-500 text-white">
-                        <div className="font-semibold text-xs mb-1">You</div>
-                        <div>{msg.message}</div>
-                        <div className="text-xs opacity-70 mt-1">
-                          {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <strong>Company:</strong> {history.profile_data.legal_name || history.profile_data.company_name}
                       </div>
-                    </div>
-                    
-                    {/* Admin Response */}
-                    <div className="flex flex-col items-start">
-                      <div className="max-w-[80%] rounded-2xl px-3 py-2 text-sm bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-100">
-                        <div className="font-semibold text-xs mb-1">Admin</div>
-                        <div>Thank you for your message. We'll get back to you shortly!</div>
-                        <div className="text-xs opacity-70 mt-1">
-                          {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </div>
+                      <div>
+                        <strong>MC #:</strong> {history.profile_data.mc_number}
                       </div>
+                      <div>
+                        <strong>Contact:</strong> {history.profile_data.contact_name}
+                      </div>
+                      <div>
+                        <strong>Phone:</strong> {history.profile_data.phone}
+                      </div>
+                      {history.profile_data.dot_number && (
+                        <div>
+                          <strong>DOT #:</strong> {history.profile_data.dot_number}
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))}
 
-                {chatMessages.length === 0 && (
-                  <div className="text-center text-muted-foreground py-8">
-                    <MessageSquare className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                    <p>No chat messages yet</p>
-                    <p className="text-sm">Messages from the floating Nova chat will appear here</p>
+                    {history.review_notes && (
+                      <div className="mt-4 p-3 bg-gray-50 rounded-md">
+                        <strong className="text-sm">Review Notes:</strong>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {history.review_notes}
+                        </p>
                   </div>
+                    )}
+
+                    {history.decline_reason && (
+                      <div className="mt-4 p-3 bg-red-50 rounded-md">
+                        <strong className="text-sm text-red-700">Decline Reason:</strong>
+                        <p className="text-sm text-red-600 mt-1">
+                          {history.decline_reason}
+                        </p>
+                  </div>
+                    )}
+
+                    {history.reviewed_at && (
+                      <div className="mt-3 text-xs text-muted-foreground">
+                        Reviewed: {new Date(history.reviewed_at).toLocaleString()}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              ))
                 )}
               </div>
 
-              {/* Action Buttons */}
-              <div className="flex gap-3 pt-4">
+          <div className="flex justify-end pt-4">
                 <Button
                   variant="outline"
-                  onClick={() => setShowChatDialog(false)}
-                  className="flex-1"
+              onClick={() => setShowHistoryDialog(false)}
                 >
                   Close
                 </Button>
-                <Button
-                  onClick={() => {
-                    setShowChatDialog(false);
-                    handleSendMessage(selectedCarrier);
-                  }}
-                  style={{ backgroundColor: accentColor }}
-                  className="flex-1"
-                >
-                  <MessageSquare className="h-4 w-4 mr-2" />
-                  Send Formal Message
-                </Button>
               </div>
-            </div>
-          )}
         </DialogContent>
       </Dialog>
     </div>

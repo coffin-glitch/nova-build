@@ -1,5 +1,6 @@
 "use client";
 
+import { BidMessageConsole } from "@/components/bid-message/BidMessageConsole";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,7 +31,6 @@ import useSWR from "swr";
 import { BidAnalytics } from "./BidAnalytics";
 import { BidDetailsDialog } from "./BidDetailsDialog";
 import { BidLifecycleManager } from "./BidLifecycleManager";
-import { BidMessageConsole } from "@/components/bid-message/BidMessageConsole";
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
@@ -151,7 +151,7 @@ export function CarrierBidsConsole() {
   const { data: bidsData, mutate: mutateBids } = useSWR(
     user ? "/api/carrier/awarded-bids" : null,
     fetcher,
-    { refreshInterval: 30000 }
+    { refreshInterval: 60000 } // Increased to prevent rate limiting
   );
 
   // Fetch bid statistics

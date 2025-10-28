@@ -77,7 +77,7 @@ function BidAdjudicationConsole({ bid, accentColor, onClose, onAwarded }: {
   const { data: bidData, mutate: mutateBidData } = useSWR(
     bid ? `/api/admin/bids/${bid.bid_number}/award` : null,
     fetcher,
-    { refreshInterval: 5000 }
+    { refreshInterval: 30000 } // Reduced from 5s to 30s to prevent rate limiting
   );
 
   React.useEffect(() => {
@@ -1247,13 +1247,13 @@ export function AdminBiddingConsole() {
   const { data: activeData } = useSWR(
     `/api/telegram-bids?q=&tag=&limit=1000&showExpired=false&isAdmin=true`,
     fetcher,
-    { refreshInterval: 5000 }
+    { refreshInterval: 30000 } // Reduced from 5s to 30s to prevent rate limiting
   );
 
   const { data: expiredData } = useSWR(
     `/api/telegram-bids?q=&tag=&limit=1000&showExpired=true&isAdmin=true`,
     fetcher,
-    { refreshInterval: 5000 }
+    { refreshInterval: 30000 } // Reduced from 5s to 30s to prevent rate limiting
   );
 
   const bids = data?.data || [];
