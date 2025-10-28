@@ -95,10 +95,16 @@ export async function POST(
           awarded_by_name: adminName
         };
 
+    // Format winner amount for display
+    const winnerAmountDollars = (awardDetails[0]?.winner_amount_cents / 100).toFixed(2);
+    const winnerName = awardDetails[0]?.winner_legal_name || 'Unknown Carrier';
+
     return NextResponse.json({
       success: true,
       data: responseData,
-      message: `Auction ${bidNumber} awarded successfully to ${awardDetails[0]?.winner_legal_name || 'Unknown Carrier'}`
+      winnerName: winnerName,
+      winnerAmount: winnerAmountDollars,
+      message: `Auction ${bidNumber} awarded successfully to ${winnerName}`
     });
 
   } catch (error) {
