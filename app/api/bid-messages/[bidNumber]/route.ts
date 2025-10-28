@@ -39,6 +39,7 @@ export async function GET(
     // Get messages for this bid
     // For carriers: exclude internal messages
     // For admins: show all messages including internal
+    // Note: Load all messages for now (pagination will be handled on client)
     const messages = await sql`
       SELECT 
         bm.*,
@@ -76,7 +77,8 @@ export async function GET(
       ok: true,
       data: {
         messages: messages || [],
-        unreadCount: unreadCount[0]?.unread_count || 0
+        unreadCount: unreadCount[0]?.unread_count || 0,
+        totalCount: messages.length
       }
     });
 

@@ -25,6 +25,7 @@ export function BidMessageConsole({ bidNumber, userRole, userId, onClose }: BidM
   const [message, setMessage] = useState("");
   const [isInternal, setIsInternal] = useState(false);
   const [sending, setSending] = useState(false);
+  const [displayLimit, setDisplayLimit] = useState(50); // Show last N messages
   const { accentColor } = useAccentColor();
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -34,15 +35,23 @@ export function BidMessageConsole({ bidNumber, userRole, userId, onClose }: BidM
     { refreshInterval: 5000 }
   );
 
-  const messages = data?.data?.messages || [];
+  const allMessages = data?.data?.messages || [];
   const unreadCount = data?.data?.unreadCount || 0;
-
-  // Auto-scroll to bottom when new messages arrive
+  
+  // Pagination: Show last N messages (most recent)
+  const messages = allMessages.slice(-displayLimit);
+  const hasMoreMessages = allMessages.length > displayLimit;
+  
+  // Auto-scroll to bottom when new messages arrive (only if viewing most recent messages)
   useEffect(() => {
-    if (scrollRef.current) {
+    if (scrollRef.current && !hasMoreMessages) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages]);
+  }, [messages, hasMoreMessages]);
+  
+  const loadMoreMessages = () => {
+    setDisplayLimit(prev => prev + 25); // Load 25 more
+  };
 
   const handleSend = async () => {
     if (!message.trim()) return;
@@ -147,6 +156,19 @@ export function BidMessageConsole({ bidNumber, userRole, userId, onClose }: BidM
             </div>
           ) : (
             <div className="space-y-6">
+              {/* Load More Messages Button */}
+              {hasMoreMessages && (
+                <div className="flex justify-center pb-4">
+                  <Button
+                    variant="outline"
+                    onClick={loadMoreMessages}
+                    className="border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  >
+                    Load More Messages ({allMessages.length - displayLimit} remaining)
+                  </Button>
+                </div>
+              )}
+              
               {messages.map((msg: any, index: number) => {
                 const isOwn = msg.sender_id === userId;
                 const isAdmin = msg.sender_role === 'admin';
@@ -226,7 +248,7 @@ export function BidMessageConsole({ bidNumber, userRole, userId, onClose }: BidM
               <label className="flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 border-slate-300 dark:border-slate-700 hover:border-amber-400 dark:hover:border-amber-600">
                 <Checkbox
                   checked={isInternal}
-                  onCheckedChange={setIsInternal}
+                  onCheckedChange={(checked) => setIsInternal(checked === true)}
                   className="data-[state=checked]:bg-amber-500 data-[state=checked]:border-amber-500"
                 />
                 <div className="flex-1 flex items-center gap-2">
