@@ -1,4 +1,3 @@
-import { NextRequest } from "next/server";
 
 /**
  * Security Monitoring and Incident Response System
