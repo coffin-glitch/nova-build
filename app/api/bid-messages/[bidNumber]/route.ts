@@ -138,12 +138,11 @@ export async function POST(
     }
 
     // Insert the message
-    // Just use the basic columns for now - is_internal feature can be added later
-    console.log('[Bid Messages] Inserting message:', { bidNumber, userId, userRole, messageLength: message.trim().length });
+    console.log('[Bid Messages] Inserting message:', { bidNumber, userId, userRole, messageLength: message.trim().length, is_internal });
     
     const result = await sql`
-      INSERT INTO bid_messages (bid_number, sender_id, sender_role, message)
-      VALUES (${bidNumber}, ${userId}, ${userRole}, ${message.trim()})
+      INSERT INTO bid_messages (bid_number, sender_id, sender_role, message, is_internal)
+      VALUES (${bidNumber}, ${userId}, ${userRole}, ${message.trim()}, ${is_internal})
       RETURNING *
     `;
 

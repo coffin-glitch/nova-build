@@ -153,51 +153,67 @@ export function BidMessageConsole({ bidNumber, userRole, userId, onClose }: BidM
                 const isAdmin = msg.sender_role === 'admin';
                 
                 return (
-                  <div
-                    key={msg.id}
-                    className={`flex gap-3 ${isOwn ? 'flex-row-reverse' : ''}`}
-                  >
-                    {/* Avatar */}
-                    <Avatar className="w-10 h-10 shadow-md shrink-0">
-                      <AvatarFallback className={
-                        isAdmin
-                          ? 'bg-gradient-to-br from-violet-500 to-purple-600 text-white'
-                          : 'bg-gradient-to-br from-blue-500 to-indigo-600 text-white'
-                      }>
-                        {isAdmin ? <Shield className="w-5 h-5" /> : <Truck className="w-5 h-5" />}
-                      </AvatarFallback>
-                    </Avatar>
-
-                    {/* Message Content */}
-                    <div className={`flex-1 max-w-[70%] ${isOwn ? 'items-end' : 'items-start'} flex flex-col`}>
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                          {msg.sender_name || (isAdmin ? 'Admin' : 'Carrier')}
-                        </span>
-                      {msg.is_internal && userRole === 'admin' && (
-                        <Badge variant="outline" className="text-xs bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700">
-                          <EyeOff className="w-3 h-3 mr-1" />
-                          Internal
-                        </Badge>
-                      )}
-                        <span className="text-xs text-muted-foreground">
-                          {new Date(msg.created_at).toLocaleTimeString([], { 
-                            hour: '2-digit', 
-                            minute: '2-digit' 
-                          })}
-                        </span>
+                  <>
+                    {/* Internal Message Banner */}
+                    {msg.is_internal && userRole === 'admin' && index === 0 && (
+                      <div className="flex items-center justify-center mb-4">
+                        <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-amber-100 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700">
+                          <EyeOff className="w-4 h-4 text-amber-700 dark:text-amber-400" />
+                          <span className="text-sm font-semibold text-amber-900 dark:text-amber-300">
+                            Internal Admin Notes
+                          </span>
+                        </div>
                       </div>
-                      <div className={`rounded-2xl px-4 py-3 shadow-sm ${
-                        isAdmin
-                          ? 'bg-gradient-to-br from-violet-500/90 to-purple-600/90 text-white'
-                          : isOwn
-                          ? 'bg-gradient-to-br from-blue-500/90 to-indigo-600/90 text-white'
-                          : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100'
-                      }`}>
-                        <p className="text-sm whitespace-pre-wrap">{msg.message}</p>
+                    )}
+                    
+                    <div
+                      key={msg.id}
+                      className={`flex gap-3 ${isOwn ? 'flex-row-reverse' : ''}`}
+                    >
+                      {/* Avatar */}
+                      <Avatar className="w-10 h-10 shadow-md shrink-0">
+                        <AvatarFallback className={
+                          isAdmin
+                            ? 'bg-gradient-to-br from-violet-500 to-purple-600 text-white'
+                            : 'bg-gradient-to-br from-blue-500 to-indigo-600 text-white'
+                        }>
+                          {isAdmin ? <Shield className="w-5 h-5" /> : <Truck className="w-5 h-5" />}
+                        </AvatarFallback>
+                      </Avatar>
+
+                      {/* Message Content */}
+                      <div className={`flex-1 max-w-[70%] ${isOwn ? 'items-end' : 'items-start'} flex flex-col`}>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                            {msg.sender_name || (isAdmin ? 'Admin' : 'Carrier')}
+                          </span>
+                        {msg.is_internal && userRole === 'admin' && (
+                          <Badge variant="outline" className="text-xs bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700">
+                            <EyeOff className="w-3 h-3 mr-1" />
+                            Internal
+                          </Badge>
+                        )}
+                          <span className="text-xs text-muted-foreground">
+                            {new Date(msg.created_at).toLocaleTimeString([], { 
+                              hour: '2-digit', 
+                              minute: '2-digit' 
+                            })}
+                          </span>
+                        </div>
+                        <div className={`rounded-2xl px-4 py-3 shadow-sm ${
+                          msg.is_internal && userRole === 'admin'
+                            ? 'bg-gradient-to-br from-amber-500/90 to-orange-600/90 text-white border-2 border-amber-400 dark:border-amber-600'
+                            : isAdmin
+                            ? 'bg-gradient-to-br from-violet-500/90 to-purple-600/90 text-white'
+                            : isOwn
+                            ? 'bg-gradient-to-br from-blue-500/90 to-indigo-600/90 text-white'
+                            : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100'
+                        }`}>
+                          <p className="text-sm whitespace-pre-wrap">{msg.message}</p>
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  </>
                 );
               })}
             </div>
