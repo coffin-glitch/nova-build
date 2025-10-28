@@ -1,12 +1,14 @@
 "use client";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAccentColor } from "@/hooks/useAccentColor";
-import { Send, X } from "lucide-react";
-import { useState } from "react";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { MessageSquare, Send, Shield, Truck, X } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
 
@@ -23,6 +25,7 @@ export function BidMessageConsole({ bidNumber, userRole, userId, onClose }: BidM
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
   const { accentColor } = useAccentColor();
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const { data, mutate } = useSWR(
     `/api/bid-messages/${bidNumber}`,
@@ -32,6 +35,13 @@ export function BidMessageConsole({ bidNumber, userRole, userId, onClose }: BidM
 
   const messages = data?.data?.messages || [];
   const unreadCount = data?.data?.unreadCount || 0;
+
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages]);
 
   const handleSend = async () => {
     if (!message.trim()) return;
@@ -68,88 +78,131 @@ export function BidMessageConsole({ bidNumber, userRole, userId, onClose }: BidM
 
   return (
     <Dialog open={!!bidNumber} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden bg-gradient-to-br from-slate-950 via-violet-950 to-indigo-950 border-violet-500/30 backdrop-blur-xl">
-        <DialogHeader className="pb-4 border-b border-violet-500/20">
-          <DialogTitle className="flex items-center justify-between">
-            <div>
-              <span className="text-xl font-bold bg-gradient-to-r from-violet-200 to-purple-200 bg-clip-text text-transparent">
-                Bid Messages
-              </span>
-              <Badge className="ml-2 bg-violet-500/20 text-violet-300 border-violet-500/30">
-                #{bidNumber}
-              </Badge>
-            </div>
-            <Button variant="ghost" size="icon" onClick={onClose}>
-              <X className="h-4 w-4" />
-            </Button>
-          </DialogTitle>
-        </DialogHeader>
-
-        {/* Messages */}
-        <ScrollArea className="flex-1 min-h-[400px] max-h-[60vh] pr-4">
-          <div className="space-y-4">
-            {messages.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground">
-                No messages yet. Start the conversation!
+      <DialogContent className="max-w-3xl max-h-[85vh] p-0 overflow-hidden">
+        {/* Header */}
+        <div className="px-6 py-4 border-b bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg">
+                <MessageSquare className="w-5 h-5 text-white" />
               </div>
-            ) : (
-              messages.map((msg: any) => {
+              <div>
+                <DialogTitle className="text-xl font-bold text-slate-900 dark:text-slate-100">
+                  Bid Messages
+                </DialogTitle>
+                <div className="flex items-center gap-2 mt-1">
+                  <Badge variant="secondary" className="text-xs">
+                    #{bidNumber}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">
+                    {userRole === 'admin' ? 'Admin' : 'Carrier'} View
+                  </span>
+                </div>
+              </div>
+            </div>
+            <Button variant="ghost" size="icon" onClick={onClose} className="hover:bg-slate-200 dark:hover:bg-slate-700">
+              <X className="h-5 w-5" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Messages Container */}
+        <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-6 bg-slate-50 dark:bg-slate-950">
+          {messages.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16">
+              <div className="w-20 h-20 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center mb-4">
+                <MessageSquare className="w-10 h-10 text-slate-400" />
+              </div>
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2">
+                No messages yet
+              </h3>
+              <p className="text-sm text-muted-foreground text-center max-w-sm">
+                Start the conversation by sending your first message below.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {messages.map((msg: any, index: number) => {
                 const isOwn = msg.sender_id === userId;
                 const isAdmin = msg.sender_role === 'admin';
                 
                 return (
                   <div
                     key={msg.id}
-                    className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}
+                    className={`flex gap-3 ${isOwn ? 'flex-row-reverse' : ''}`}
                   >
-                    <div
-                      className={`max-w-[70%] rounded-lg p-3 ${
+                    {/* Avatar */}
+                    <Avatar className="w-10 h-10 shadow-md shrink-0">
+                      <AvatarFallback className={
                         isAdmin
-                          ? 'bg-violet-500/20 border border-violet-500/30'
-                          : isOwn
-                          ? 'bg-blue-500/20 border border-blue-500/30'
-                          : 'bg-slate-800/50 border border-slate-600/30'
-                      }`}
-                    >
-                      <div className="text-xs font-semibold mb-1">
-                        {msg.sender_name || (msg.sender_role === 'admin' ? 'Admin' : 'Carrier')}
+                          ? 'bg-gradient-to-br from-violet-500 to-purple-600 text-white'
+                          : 'bg-gradient-to-br from-blue-500 to-indigo-600 text-white'
+                      }>
+                        {isAdmin ? <Shield className="w-5 h-5" /> : <Truck className="w-5 h-5" />}
+                      </AvatarFallback>
+                    </Avatar>
+
+                    {/* Message Content */}
+                    <div className={`flex-1 max-w-[70%] ${isOwn ? 'items-end' : 'items-start'} flex flex-col`}>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                          {msg.sender_name || (isAdmin ? 'Admin' : 'Carrier')}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(msg.created_at).toLocaleTimeString([], { 
+                            hour: '2-digit', 
+                            minute: '2-digit' 
+                          })}
+                        </span>
                       </div>
-                      <div className="text-sm">{msg.message}</div>
-                      <div className="text-xs text-muted-foreground mt-1">
-                        {new Date(msg.created_at).toLocaleTimeString()}
+                      <div className={`rounded-2xl px-4 py-3 shadow-sm ${
+                        isAdmin
+                          ? 'bg-gradient-to-br from-violet-500/90 to-purple-600/90 text-white'
+                          : isOwn
+                          ? 'bg-gradient-to-br from-blue-500/90 to-indigo-600/90 text-white'
+                          : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100'
+                      }`}>
+                        <p className="text-sm whitespace-pre-wrap">{msg.message}</p>
                       </div>
                     </div>
                   </div>
                 );
-              })
-            )}
-          </div>
-        </ScrollArea>
+              })}
+            </div>
+          )}
+        </div>
 
-        {/* Input */}
-        <div className="border-t border-violet-500/20 pt-4">
-          <div className="flex gap-2">
-            <Input
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Type your message..."
-              className="flex-1"
-            />
+        {/* Input Area */}
+        <div className="px-6 py-4 border-t bg-white dark:bg-slate-900">
+          <div className="flex items-end gap-3">
+            <div className="flex-1 relative">
+              <Input
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Type your message..."
+                className="pr-12 bg-slate-50 dark:bg-slate-800 border-slate-300 dark:border-slate-700 focus-visible:ring-2 focus-visible:ring-violet-500"
+              />
+            </div>
             <Button
               onClick={handleSend}
               disabled={!message.trim() || sending}
               size="icon"
-              style={{ backgroundColor: accentColor }}
+              className="w-11 h-11 bg-gradient-to-br from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
             >
-              <Send className="h-4 w-4" />
+              {sending ? (
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Send className="h-5 w-5 text-white" />
+              )}
             </Button>
           </div>
+          <p className="text-xs text-muted-foreground mt-2 ml-1">
+            Press Enter to send, Shift+Enter for new line
+          </p>
         </div>
       </DialogContent>
     </Dialog>
   );
 }
-
-import { Badge } from "@/components/ui/badge";
 
