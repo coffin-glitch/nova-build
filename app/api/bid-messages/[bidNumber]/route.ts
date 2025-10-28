@@ -16,6 +16,8 @@ export async function GET(
     }
 
     const userRole = await getClerkUserRole(userId);
+    console.log('[Bid Messages API] User:', userId, 'Role:', userRole);
+    
     if (userRole !== "admin" && userRole !== "carrier") {
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
@@ -40,6 +42,8 @@ export async function GET(
     // For carriers: exclude internal messages
     // For admins: show all messages including internal
     // Note: Load all messages for now (pagination will be handled on client)
+    console.log('[Bid Messages API] Fetching messages for bid:', bidNumber, 'Role:', userRole, 'Filter internal:', userRole === 'carrier');
+    
     const messages = await sql`
       SELECT 
         bm.*,
@@ -63,6 +67,10 @@ export async function GET(
         ${userRole === 'carrier' ? sql`AND COALESCE(bm.is_internal, false) = false` : sql``}
       ORDER BY bm.created_at ASC
     `;
+
+    console.log('[Bid Messages API] Total messages retrieved:', messages.length);
+    const internalCount = messages.filter((m: any) => m.is_internal).length;
+    console.log('[Bid Messages API] Internal messages in result:', internalCount);
 
     // Get unread count for current user
     const unreadCount = await sql`
