@@ -2,6 +2,7 @@
 
 import AdminBidLifecycleViewer from "@/components/admin/AdminBidLifecycleViewer";
 import { DriverInfoDialog } from "@/components/admin/DriverInfoDialog";
+import { BidMessageConsole } from "@/components/bid-message/BidMessageConsole";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -18,6 +19,7 @@ import {
     DollarSign,
     Filter,
     History,
+    MessageSquare,
     RefreshCw,
     Search,
     Shield,
@@ -25,6 +27,7 @@ import {
     XCircle,
     Zap
 } from "lucide-react";
+import { useUser } from "@clerk/nextjs";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -61,12 +64,14 @@ interface BidStats {
 }
 
 export default function AdminBidsClient() {
+  const { user } = useUser();
   const [bids, setBids] = useState<AwardedBid[]>([]);
   const [stats, setStats] = useState<BidStats>({ total: 0, active: 0, completed: 0, revenue: 0 });
   const [loading, setLoading] = useState(true);
   const [selectedBid, setSelectedBid] = useState<AwardedBid | null>(null);
   const [showDriverInfoDialog, setShowDriverInfoDialog] = useState(false);
   const [showLifecycleDialog, setShowLifecycleDialog] = useState(false);
+  const [messageBidNumber, setMessageBidNumber] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [equipmentFilter, setEquipmentFilter] = useState("all");
@@ -273,6 +278,14 @@ export default function AdminBidsClient() {
   const handleViewLifecycle = (bid: AwardedBid) => {
     setSelectedBid(bid);
     setShowLifecycleDialog(true);
+  };
+
+  const handleOpenMessage = (bid: AwardedBid) => {
+    setMessageBidNumber(bid.bid_number);
+  };
+
+  const handleCloseMessage = () => {
+    setMessageBidNumber(null);
   };
 
   if (loading) {
@@ -582,6 +595,14 @@ export default function AdminBidsClient() {
                         <Button
                           variant="outline"
                           size="sm"
+                          onClick={() => handleOpenMessage(bid)}
+                        >
+                          <MessageSquare className="h-4 w-4 mr-2" />
+                          Message
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
                           onClick={() => handleViewLifecycle(bid)}
                         >
                           View Lifecycle
@@ -668,6 +689,14 @@ export default function AdminBidsClient() {
                         <Button
                           variant="outline"
                           size="sm"
+                          onClick={() => handleOpenMessage(bid)}
+                        >
+                          <MessageSquare className="h-4 w-4 mr-2" />
+                          Message
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
                           onClick={() => handleViewLifecycle(bid)}
                         >
                           View Lifecycle
@@ -751,6 +780,14 @@ export default function AdminBidsClient() {
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleOpenMessage(bid)}
+                        >
+                          <MessageSquare className="h-4 w-4 mr-2" />
+                          Message
+                        </Button>
                         <Button
                           variant="outline"
                           size="sm"
@@ -859,6 +896,16 @@ export default function AdminBidsClient() {
           />
         </DialogContent>
       </Dialog>
+
+      {/* Bid Message Console */}
+      {messageBidNumber && user?.id && (
+        <BidMessageConsole
+          bidNumber={messageBidNumber}
+          userRole="admin"
+          userId={user.id}
+          onClose={handleCloseMessage}
+        />
+      )}
     </div>
   );
 }
