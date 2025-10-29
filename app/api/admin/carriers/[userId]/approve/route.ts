@@ -5,9 +5,12 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { userId: string } }
+  { params }: { params: Promise<{ userId: string }> }
 ) {
   try {
+    // Await params in Next.js 15
+    const { userId } = await params;
+    
     const { userId: adminUserId } = await auth();
     
     if (!adminUserId) {
@@ -20,7 +23,6 @@ export async function POST(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const { userId } = params;
     const { review_notes } = await request.json();
 
     // Get current profile data before updating for history

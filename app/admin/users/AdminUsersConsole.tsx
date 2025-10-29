@@ -34,7 +34,7 @@ interface CarrierProfile {
   contact_name: string;
   phone: string;
   email: string;
-  profile_status: 'pending' | 'approved' | 'declined';
+  profile_status: 'pending' | 'approved' | 'declined' | 'open';
   submitted_at?: string;
   reviewed_at?: string;
   reviewed_by?: string;
@@ -428,6 +428,56 @@ export function AdminUsersConsole() {
     }
   };
 
+  const handleLockEdits = async (carrier: CarrierProfile, restoreStatus: 'approved' | 'declined') => {
+    try {
+      const response = await fetch(`/api/admin/carriers/${carrier.user_id}/lock-edits`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ restore_status: restoreStatus })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        toast.success(data.message || "Profile edits locked successfully");
+        mutateCarriers();
+      } else {
+        const errorData = await response.json();
+        console.error('Lock edits API error:', errorData);
+        throw new Error(errorData.error || 'Failed to lock edits');
+      }
+    } catch (error) {
+      toast.error("Failed to lock edits");
+      console.error(error);
+    }
+  };
+
+  const handleToggleStatus = async (carrier: CarrierProfile, newStatus: 'approved' | 'declined', reason?: string, reviewNotes?: string) => {
+    try {
+      const response = await fetch(`/api/admin/carriers/${carrier.user_id}/toggle-status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          new_status: newStatus,
+          reason: newStatus === 'declined' ? reason : undefined,
+          review_notes: reviewNotes
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        toast.success(data.message || `Profile status changed to ${newStatus}`);
+        mutateCarriers();
+      } else {
+        const errorData = await response.json();
+        console.error('Toggle status API error:', errorData);
+        throw new Error(errorData.error || 'Failed to toggle status');
+      }
+    } catch (error) {
+      toast.error("Failed to toggle status");
+      console.error(error);
+    }
+  };
+
   const getStatusBadge = (carrier: CarrierProfile) => {
     switch (carrier.profile_status) {
       case 'pending':
@@ -436,6 +486,8 @@ export function AdminUsersConsole() {
         return <Badge variant="default" className="bg-green-100 text-green-800">Approved</Badge>;
       case 'declined':
         return <Badge variant="destructive">Declined</Badge>;
+      case 'open':
+        return <Badge variant="outline" className="bg-blue-100 text-blue-800">Open</Badge>;
       default:
         return <Badge variant="outline">Unknown</Badge>;
     }
@@ -595,6 +647,87 @@ export function AdminUsersConsole() {
               <Unlock className="h-4 w-4 mr-2" />
               {carrier.profile_status === 'declined' ? 'Reset Approval Process' : 'Unlock Edits'}
             </Button>
+          </div>
+        )}
+
+        {/* Lock Edits and Status Management for Open Profiles */}
+        {carrier.profile_status === 'open' && carrier.edits_enabled && (
+          <div className="space-y-2">
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="flex-1"
+                onClick={() => handleLockEdits(carrier, 'approved')}
+              >
+                <Edit3 className="h-4 w-4 mr-2" />
+                Lock (Approved)
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="flex-1"
+                onClick={() => handleLockEdits(carrier, 'declined')}
+              >
+                <Edit3 className="h-4 w-4 mr-2" />
+                Lock (Declined)
+              </Button>
+            </div>
+            <div className="flex gap-2">
+              <Button 
+                size="sm" 
+                className="flex-1 bg-green-600 hover:bg-green-700"
+                onClick={() => handleToggleStatus(carrier, 'approved')}
+              >
+                <CheckCircle className="h-4 w-4 mr-2" />
+                Set Approved
+              </Button>
+              <Button 
+                size="sm" 
+                className="flex-1 bg-red-600 hover:bg-red-700"
+                onClick={() => {
+                  setSelectedCarrier(carrier);
+                  setReviewNotes("");
+                  setShowDeclineDialog(true);
+                }}
+              >
+                <X className="h-4 w-4 mr-2" />
+                Set Declined
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Status Toggle for Any Profile Status (Approved/Declined) */}
+        {(carrier.profile_status === 'approved' || carrier.profile_status === 'declined') && carrier.edits_enabled && (
+          <div className="flex gap-2">
+            {carrier.profile_status === 'approved' ? (
+              <Button 
+                size="sm" 
+                className="flex-1 bg-red-600 hover:bg-red-700"
+                onClick={() => {
+                  setSelectedCarrier(carrier);
+                  setReviewNotes("");
+                  setShowDeclineDialog(true);
+                }}
+              >
+                <X className="h-4 w-4 mr-2" />
+                Change to Declined
+              </Button>
+            ) : (
+              <Button 
+                size="sm" 
+                className="flex-1 bg-green-600 hover:bg-green-700"
+                onClick={() => {
+                  setSelectedCarrier(carrier);
+                  setReviewNotes("");
+                  setShowApproveDialog(true);
+                }}
+              >
+                <CheckCircle className="h-4 w-4 mr-2" />
+                Change to Approved
+              </Button>
+            )}
           </div>
         )}
       </CardContent>

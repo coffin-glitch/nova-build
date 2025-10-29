@@ -70,7 +70,7 @@ export async function POST(
     const currentStatus = currentProfile[0].profile_status;
     console.log("Current profile status:", currentStatus);
 
-    // Enable edits and reset approval process for declined carriers
+    // Enable edits and set status to 'open' for declined carriers
     if (currentStatus === 'declined') {
       console.log("Processing declined carrier - resetting approval process");
       
@@ -80,7 +80,7 @@ export async function POST(
           edits_enabled = true,
           edits_enabled_by = ${adminUserId},
           edits_enabled_at = ${new Date()},
-          profile_status = 'declined',
+          profile_status = 'open',
           submitted_at = NULL,
           reviewed_at = NULL,
           reviewed_by = NULL,
@@ -120,13 +120,14 @@ export async function POST(
     } else if (currentStatus === 'approved') {
       console.log("Processing approved carrier - enabling edits");
       
-      // For approved carriers, just enable edits if not already enabled
+      // For approved carriers, enable edits and set status to 'open'
       await sql`
         UPDATE carrier_profiles 
         SET 
           edits_enabled = true,
           edits_enabled_by = ${adminUserId},
-          edits_enabled_at = ${new Date()}
+          edits_enabled_at = ${new Date()},
+          profile_status = 'open'
         WHERE clerk_user_id = ${userId}
       `;
 
