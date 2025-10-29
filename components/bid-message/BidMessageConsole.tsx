@@ -7,7 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useAccentColor } from "@/hooks/useAccentColor";
-import { EyeOff, MessageSquare, Send, Shield, Truck, X } from "lucide-react";
+import { EyeOff, MessageSquare, Send, Shield, Truck } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";

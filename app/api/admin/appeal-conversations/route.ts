@@ -120,9 +120,11 @@ export async function POST(req: Request) {
         carrier_user_id,
         admin_user_id,
         conversation_type,
+        subject,
+        status,
         created_at,
         updated_at
-      ) VALUES (${carrier_user_id}, ${userId}, 'appeal', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      ) VALUES (${carrier_user_id}, ${userId}, 'appeal', 'Appeal Conversation', 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
       RETURNING id
     `;
     console.log('Appeal conversation created:', result);

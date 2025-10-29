@@ -23,7 +23,7 @@ export async function GET() {
         c.closed_at,
         COUNT(CASE WHEN mr.id IS NULL AND cm.sender_type = 'admin' THEN 1 END) as unread_count,
         (
-          SELECT cm2.message_text 
+          SELECT cm2.message 
           FROM conversation_messages cm2 
           WHERE cm2.conversation_id = c.id 
           ORDER BY cm2.created_at DESC 
@@ -128,10 +128,12 @@ export async function POST(req: Request) {
         INSERT INTO conversations (
           carrier_user_id,
           admin_user_id,
+          subject,
           status,
+          conversation_type,
           created_at,
           updated_at
-        ) VALUES (${userId}, ${targetAdminId}, 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        ) VALUES (${userId}, ${targetAdminId}, 'Chat with Admin', 'active', 'regular', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         RETURNING id
       `;
       conversationId = conversationResult[0].id;
@@ -141,9 +143,9 @@ export async function POST(req: Request) {
     const messageResult = await sql`
       INSERT INTO conversation_messages (
         conversation_id,
-        sender_user_id,
+        sender_id,
         sender_type,
-        message_text
+        message
       ) VALUES (${conversationId}, ${userId}, 'carrier', ${message})
       RETURNING id, created_at
     `;

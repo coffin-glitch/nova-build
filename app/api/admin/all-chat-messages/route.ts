@@ -24,13 +24,10 @@ export async function GET() {
       SELECT 
         id,
         carrier_user_id,
-        message_text as message,
-        message_type,
-        status,
-        admin_response,
+        message,
         admin_user_id,
-        created_at,
-        responded_at
+        is_from_admin,
+        created_at
       FROM carrier_chat_messages 
       ORDER BY created_at DESC
     `;

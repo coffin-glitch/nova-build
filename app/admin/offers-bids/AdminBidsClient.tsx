@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAccentColor } from "@/hooks/useAccentColor";
+import { useUser } from "@clerk/nextjs";
 import {
     BarChart3,
     CheckCircle2,
@@ -27,7 +28,6 @@ import {
     XCircle,
     Zap
 } from "lucide-react";
-import { useUser } from "@clerk/nextjs";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";

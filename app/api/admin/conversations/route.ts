@@ -103,9 +103,12 @@ export async function POST(req: Request) {
       INSERT INTO conversations (
         carrier_user_id,
         admin_user_id,
+        subject,
+        status,
+        conversation_type,
         created_at,
         updated_at
-      ) VALUES (${carrier_user_id}, ${userId}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      ) VALUES (${carrier_user_id}, ${userId}, 'Admin Chat', 'active', 'regular', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
       RETURNING id
     `;
 
