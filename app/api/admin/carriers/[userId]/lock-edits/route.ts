@@ -40,10 +40,9 @@ export async function POST(
     // Get current profile data before updating for history
     const currentProfile = await sql`
       SELECT 
-        id,
         clerk_user_id,
-        company_name,
         legal_name,
+        company_name,
         mc_number,
         dot_number,
         contact_name,
