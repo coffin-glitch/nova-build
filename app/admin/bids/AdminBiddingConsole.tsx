@@ -985,6 +985,8 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
       case 'total_value': return 'Total Value';
       case 'recent_activity': return 'Recent Activity';
       case 'wins': return 'Total Wins';
+      case 'revenue': return 'Total Revenue';
+      case 'competitiveness': return 'Competitiveness';
       default: return 'Total Bids';
     }
   };
@@ -1027,6 +1029,8 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
                 <SelectItem value="total_value">Total Value</SelectItem>
                 <SelectItem value="recent_activity">Recent Activity</SelectItem>
                 <SelectItem value="wins">Total Wins</SelectItem>
+                <SelectItem value="revenue">Total Revenue</SelectItem>
+                <SelectItem value="competitiveness">Competitiveness</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -1062,8 +1066,7 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
 
       {/* Summary Stats */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
+        <Glass className="p-4">
             <div className="flex items-center gap-3">
               <Users className="w-5 h-5 text-blue-500" />
               <div>
@@ -1071,11 +1074,9 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
                 <p className="text-2xl font-bold">{summary.total_carriers || 0}</p>
               </div>
             </div>
-          </CardContent>
-        </Card>
+        </Glass>
         
-        <Card>
-          <CardContent className="p-4">
+        <Glass className="p-4">
             <div className="flex items-center gap-3">
               <Zap className="w-5 h-5 text-green-500" />
               <div>
@@ -1083,11 +1084,9 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
                 <p className="text-2xl font-bold">{summary.active_carriers || 0}</p>
               </div>
             </div>
-          </CardContent>
-        </Card>
+        </Glass>
         
-        <Card>
-          <CardContent className="p-4">
+        <Glass className="p-4">
             <div className="flex items-center gap-3">
               <TrendingUp className="w-5 h-5 text-purple-500" />
               <div>
@@ -1095,11 +1094,9 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
                 <p className="text-2xl font-bold">{summary.total_bids_placed || 0}</p>
               </div>
             </div>
-          </CardContent>
-        </Card>
+        </Glass>
         
-        <Card>
-          <CardContent className="p-4">
+        <Glass className="p-4">
             <div className="flex items-center gap-3">
               <BarChart3 className="w-5 h-5 text-orange-500" />
               <div>
@@ -1107,8 +1104,7 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
                 <p className="text-2xl font-bold">{formatMoney(summary.platform_avg_bid_cents || 0)}</p>
               </div>
             </div>
-          </CardContent>
-        </Card>
+        </Glass>
       </div>
 
       {/* Top Performers */}
@@ -1117,8 +1113,7 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
           <h3 className="text-lg font-semibold mb-4">Top Performers</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {topPerformers.map((performer: any, index: number) => (
-              <Card key={index}>
-                <CardContent className="p-4">
+              <Glass key={index} className="p-4">
                   <div className="flex items-center gap-2 mb-2">
                     <Star className="w-4 h-4 text-yellow-500" />
                     <span className="text-sm font-medium capitalize">{performer.metric.replace('_', ' ')}</span>
@@ -1127,8 +1122,7 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
                   <p className="text-2xl font-bold" style={{ color: accentColor }}>
                     {performer.value} {performer.unit}
                   </p>
-                </CardContent>
-              </Card>
+              </Glass>
             ))}
           </div>
         </Glass>
@@ -1155,8 +1149,7 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
         ) : (
           <div className="space-y-3">
             {leaderboard.map((carrier: any, index: number) => (
-              <Card key={carrier.clerk_user_id} className="hover:shadow-md transition-shadow">
-                <CardContent className="p-4">
+              <Glass key={carrier.clerk_user_id} className="p-4 hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
                       <div className="flex items-center justify-center w-8 h-8">
@@ -1191,6 +1184,8 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
                           {sortBy === 'total_value' && formatMoney(carrier.total_bid_value_cents)}
                           {sortBy === 'recent_activity' && carrier.bids_last_7_days}
                           {sortBy === 'wins' && carrier.total_wins}
+                          {sortBy === 'revenue' && formatMoney(carrier.total_revenue_cents || 0)}
+                          {sortBy === 'competitiveness' && `${carrier.competitiveness_score || 0}%`}
                         </p>
                         <p className="text-xs text-muted-foreground">{getSortLabel(sortBy)}</p>
                       </div>
@@ -1209,10 +1204,16 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
                         <p className="font-semibold">{formatMoney(carrier.avg_bid_amount_cents)}</p>
                         <p className="text-xs text-muted-foreground">Avg Bid</p>
                       </div>
+                      
+                      {carrier.total_revenue_cents > 0 && (
+                        <div className="text-center">
+                          <p className="font-semibold text-green-600">{formatMoney(carrier.total_revenue_cents)}</p>
+                          <p className="text-xs text-muted-foreground">Revenue</p>
+                        </div>
+                      )}
                     </div>
                   </div>
-                </CardContent>
-              </Card>
+              </Glass>
             ))}
           </div>
         )}
@@ -1381,49 +1382,41 @@ export function AdminBiddingConsole() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container mx-auto px-4 py-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold tracking-tight">Admin Bidding Console</h1>
-              <p className="text-muted-foreground mt-2">
-                Comprehensive bid management, carrier analytics, and leaderboard dashboard
-              </p>
-            </div>
-            <div className="flex items-center gap-3">
-              <Button
-                variant="outline"
-                onClick={() => setShowAnalytics(!showAnalytics)}
-                className="flex items-center gap-2"
-              >
-                <BarChart3 className="w-4 h-4" />
-                Analytics
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => window.open('/admin/archive-bids', '_blank')}
-                className="flex items-center gap-2"
-              >
-                <Archive className="w-4 h-4" />
-                Archive Bids
-              </Button>
-              <Button
-                onClick={() => mutate()}
-                disabled={isLoading}
-                variant="outline"
-                className="flex items-center gap-2"
-              >
-                <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-                Refresh
-              </Button>
-            </div>
+    <div className="space-y-6">
+      {/* Header Actions */}
+      <Glass className="p-6">
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              onClick={() => setShowAnalytics(!showAnalytics)}
+              className="flex items-center gap-2"
+            >
+              <BarChart3 className="w-4 h-4" />
+              Analytics
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => window.open('/admin/archive-bids', '_blank')}
+              className="flex items-center gap-2"
+            >
+              <Archive className="w-4 h-4" />
+              Archive Bids
+            </Button>
+            <Button
+              onClick={() => mutate()}
+              disabled={isLoading}
+              variant="outline"
+              className="flex items-center gap-2"
+            >
+              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
           </div>
         </div>
-      </div>
+      </Glass>
 
-      <div className="container mx-auto px-4 py-6 space-y-6">
+      <div className="space-y-6">
         {/* Analytics Dashboard */}
         {showAnalytics && (
           <Glass className="p-6">
@@ -1433,53 +1426,45 @@ export function AdminBiddingConsole() {
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-5 h-5 bg-blue-500 rounded"></div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Total Auctions</p>
-                      <p className="text-2xl font-bold">{analytics.totalBids}</p>
-                    </div>
+              <Glass className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-5 h-5 bg-blue-500 rounded"></div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Total Auctions</p>
+                    <p className="text-2xl font-bold">{analytics.totalBids}</p>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </Glass>
               
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-5 h-5 bg-green-500 rounded"></div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Active</p>
-                      <p className="text-2xl font-bold">{analytics.activeBids}</p>
-                    </div>
+              <Glass className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-5 h-5 bg-green-500 rounded"></div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Active</p>
+                    <p className="text-2xl font-bold">{analytics.activeBids}</p>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </Glass>
               
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-5 h-5 bg-purple-500 rounded"></div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Total Bids</p>
-                      <p className="text-2xl font-bold">{analytics.totalCarrierBids}</p>
-                    </div>
+              <Glass className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-5 h-5 bg-purple-500 rounded"></div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Total Bids</p>
+                    <p className="text-2xl font-bold">{analytics.totalCarrierBids}</p>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </Glass>
               
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-5 h-5 bg-red-500 rounded"></div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Expired</p>
-                      <p className="text-2xl font-bold">{analytics.expiredBids}</p>
-                    </div>
+              <Glass className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-5 h-5 bg-red-500 rounded"></div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Expired</p>
+                    <p className="text-2xl font-bold">{analytics.expiredBids}</p>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </Glass>
             </div>
           </Glass>
         )}

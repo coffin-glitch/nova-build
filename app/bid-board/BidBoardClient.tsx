@@ -52,8 +52,10 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
   const [showManageBidsConsole, setShowManageBidsConsole] = useState(false);
   const [showFavoritesConsole, setShowFavoritesConsole] = useState(false);
   
-  // New state for filtering
+  // New state for filtering and sorting
   const [showExpired, setShowExpired] = useState(false);
+  const [sortBy, setSortBy] = useState("time-remaining");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const isAdmin = useIsAdmin();
   const [showArchived, setShowArchived] = useState(false);
   const [archivedBids, setArchivedBids] = useState<any[]>([]);
@@ -244,14 +246,58 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
     }
   };
 
-  // Filter bids based on current settings - use useMemo to prevent hydration mismatch
+  // Filter and sort bids based on current settings - use useMemo to prevent hydration mismatch
   const filteredBids = useMemo(() => {
-    return bids.filter((bid: TelegramBid) => {
+    let filtered = bids.filter((bid: TelegramBid) => {
       // Apply showExpired filter
       if (!showExpired && bid.is_expired) return false;
       return true;
     });
-  }, [bids, showExpired]);
+
+    // Apply sorting
+    filtered.sort((a: TelegramBid, b: TelegramBid) => {
+      let comparison = 0;
+      
+      switch (sortBy) {
+        case "time-remaining":
+          comparison = a.time_left_seconds - b.time_left_seconds;
+          break;
+        case "bid-count":
+          comparison = (a.bids_count || 0) - (b.bids_count || 0);
+          break;
+        case "distance":
+          comparison = (a.distance_miles || 0) - (b.distance_miles || 0);
+          break;
+        case "pickup-time":
+          comparison = new Date(a.pickup_timestamp || 0).getTime() - new Date(b.pickup_timestamp || 0).getTime();
+          break;
+        case "delivery-time":
+          comparison = new Date(a.delivery_timestamp || 0).getTime() - new Date(b.delivery_timestamp || 0).getTime();
+          break;
+        case "bid-number":
+          comparison = a.bid_number.localeCompare(b.bid_number);
+          break;
+        case "received-time":
+          comparison = new Date(a.received_at).getTime() - new Date(b.received_at).getTime();
+          break;
+        case "stops-count":
+          const aStops = Array.isArray(a.stops) ? a.stops.length : 0;
+          const bStops = Array.isArray(b.stops) ? b.stops.length : 0;
+          comparison = aStops - bStops;
+          break;
+        case "state":
+          comparison = (a.tag || "").localeCompare(b.tag || "");
+          break;
+        default:
+          comparison = a.time_left_seconds - b.time_left_seconds;
+      }
+      
+      // Apply sort direction
+      return sortDirection === "desc" ? -comparison : comparison;
+    });
+
+    return filtered;
+  }, [bids, showExpired, sortBy, sortDirection]);
 
   // Calculate stats with useMemo to prevent hydration mismatch
   const stats = useMemo(() => {
@@ -311,7 +357,7 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
       {/* Filters - Only show for approved users */}
       {profile?.profile_status === 'approved' && (
         <Glass className="p-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
           {/* Search */}
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground">Search</label>
@@ -341,30 +387,74 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
             <label className="text-sm font-medium text-foreground">Sort By</label>
             <select 
               className="w-full h-10 px-3 py-2 text-sm border border-input bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-              onChange={(e) => {
-                // TODO: Implement sorting logic
-                console.log("Sort by:", e.target.value);
-              }}
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
             >
               <option value="time-remaining">Time Remaining</option>
-              <option value="lowest-bid">Lowest Bid</option>
-              <option value="distance">Distance</option>
+              <option value="bid-count">Bid Count</option>
+              <option value="distance">Distance (Miles)</option>
+              <option value="pickup-time">Pickup Time</option>
+              <option value="delivery-time">Delivery Time</option>
               <option value="bid-number">Bid Number</option>
+              <option value="received-time">Received Time</option>
+              <option value="stops-count">Number of Stops</option>
+              <option value="state">State/Tag</option>
             </select>
           </div>
 
-          {/* Refresh */}
+          {/* Sort Direction */}
           <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground opacity-0">Refresh</label>
-            <Button
-              onClick={() => mutate()}
-              disabled={isLoading}
-              variant="outline"
-              className="w-full"
+            <label className="text-sm font-medium text-foreground">Direction</label>
+            <select 
+              className="w-full h-10 px-3 py-2 text-sm border border-input bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+              value={sortDirection}
+              onChange={(e) => setSortDirection(e.target.value as "asc" | "desc")}
             >
-              <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-              Refresh
-            </Button>
+              <option value="asc">Ascending</option>
+              <option value="desc">Descending</option>
+            </select>
+          </div>
+
+          {/* Quick Sort Actions */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">Quick Sort</label>
+            <div className="space-y-2">
+              <div className="flex gap-3">
+                <Button
+                  onClick={() => {
+                    setSortBy("time-remaining");
+                    setSortDirection("asc");
+                  }}
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 text-xs border-orange-200 hover:border-orange-300 hover:bg-orange-50 dark:border-orange-800 dark:hover:border-orange-700 dark:hover:bg-orange-950"
+                >
+                  <Clock className="w-3 h-3 mr-1 text-orange-600 dark:text-orange-400" />
+                  Urgent
+                </Button>
+                <Button
+                  onClick={() => {
+                    setSortBy("bid-count");
+                    setSortDirection("desc");
+                  }}
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 text-xs border-blue-200 hover:border-blue-300 hover:bg-blue-50 dark:border-blue-800 dark:hover:border-blue-700 dark:hover:bg-blue-950"
+                >
+                  <Gavel className="w-3 h-3 mr-1 text-blue-600 dark:text-blue-400" />
+                  Popular
+                </Button>
+              </div>
+              <Button
+                onClick={() => mutate()}
+                disabled={isLoading}
+                variant="outline"
+                className="w-full border-green-200 hover:border-green-300 hover:bg-green-50 dark:border-green-800 dark:hover:border-green-700 dark:hover:bg-green-950"
+              >
+                <RefreshCw className={`w-4 h-4 mr-2 text-green-600 dark:text-green-400 ${isLoading ? 'animate-spin' : ''}`} />
+                Refresh
+              </Button>
+            </div>
           </div>
         </div>
         </Glass>
@@ -419,6 +509,9 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
           <div className="text-sm text-muted-foreground">
             Showing {showExpired ? "all" : "live"} bids
             {!isAdmin && !showExpired && " (today only)"}
+            <span className="ml-2 px-2 py-1 bg-muted rounded text-xs">
+              Sorted by: {sortBy.replace("-", " ")} ({sortDirection})
+            </span>
           </div>
         </div>
         </Glass>

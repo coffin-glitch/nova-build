@@ -211,6 +211,17 @@ export const archivedBids = pgTable('archived_bids', {
   originalId: integer('original_id'),
 });
 
+// Auction awards table (admin adjudication results)
+export const auctionAwards = pgTable('auction_awards', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  bidNumber: varchar('bid_number', { length: 255 }).notNull().unique(),
+  winnerUserId: varchar('winner_user_id', { length: 255 }).notNull(),
+  winnerAmountCents: integer('winner_amount_cents').notNull(),
+  awardedBy: varchar('awarded_by', { length: 255 }).notNull(),
+  adminNotes: text('admin_notes'),
+  awardedAt: timestamp('awarded_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 // Carrier bid history table
 export const carrierBidHistory = pgTable('carrier_bid_history', {
   id: uuid('id').primaryKey().defaultRandom(),

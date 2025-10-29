@@ -19,6 +19,7 @@ import {
     Eye,
     EyeOff,
     Heart,
+    LayoutGrid,
     MapPin,
     Navigation,
     RefreshCw,
@@ -27,13 +28,14 @@ import {
     SortAsc,
     SortDesc,
     Star,
+    Table as TableIcon,
     Target,
     Truck,
     X,
     Zap
 } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
 
@@ -85,6 +87,8 @@ interface NotificationPreferences {
   timingRelevanceDays: number; // How many days ahead to consider for timing
   prioritizeBackhaul: boolean; // Prefer loads that match return routes
   marketPriceAlerts: boolean; // Alert when market price is favorable
+  avoidHighCompetition: boolean; // Filter out loads with too many bids
+  maxCompetitionBids: number; // Maximum number of bids before filtering (if avoidHighCompetition is true)
 }
 
 interface FavoritesConsoleProps {
@@ -97,7 +101,7 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
   const [viewDetailsBid, setViewDetailsBid] = useState<FavoriteBid | null>(null);
   const [isRemoving, setIsRemoving] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'all' | 'active' | 'expired'>('all');
-  const [sortBy, setSortBy] = useState<'date' | 'distance' | 'bid_amount'>('date');
+  const [sortBy, setSortBy] = useState<'date' | 'distance' | 'bid_amount' | 'match_score'>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [showPreferences, setShowPreferences] = useState(false);
   const [isSavingPreferences, setIsSavingPreferences] = useState(false);
@@ -105,6 +109,12 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
   const [showNotificationTriggers, setShowNotificationTriggers] = useState(false);
   const [isCreatingTrigger, setIsCreatingTrigger] = useState(false);
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
+  const [viewMode, setViewMode] = useState<'card' | 'table'>('card');
+  const [maxCompetitionBids, setMaxCompetitionBids] = useState<number>(10);
+  const [avoidHighCompetition, setAvoidHighCompetition] = useState<boolean>(false);
+  
+  // Local state to track string input values (allows empty strings during editing)
+  const [inputValues, setInputValues] = useState<Record<string, string>>({});
   
   const { accentColor, accentBgStyle } = useAccentColor();
 
@@ -119,7 +129,7 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
   );
 
   // Fetch notification preferences
-  const { data: preferencesData } = useSWR(
+  const { data: preferencesData, mutate: mutatePreferences } = useSWR(
     isOpen ? `/api/carrier/notification-preferences` : null,
     fetcher,
     { 
@@ -150,9 +160,41 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
     equipmentPreferences: [],
     minDistance: 0,
     maxDistance: 2000,
+    minMatchScore: 70,
+    routeMatchThreshold: 60,
+    equipmentStrict: false,
+    distanceFlexibility: 25,
+    timingRelevanceDays: 7,
+    prioritizeBackhaul: true,
+    marketPriceAlerts: false,
+    avoidHighCompetition: false,
+    maxCompetitionBids: 10,
   };
   
+  // Initialize editingPreferences when preferences data loads, but only if we're not already editing
+  useEffect(() => {
+    if (preferencesData?.data && !editingPreferences) {
+      // Only initialize if editingPreferences is null (first load)
+      setEditingPreferences(preferencesData.data);
+      // Clear input values to use the loaded preferences
+      setInputValues({});
+    }
+  }, [preferencesData?.data]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const preferences = editingPreferences || preferencesData?.data || defaultPreferences;
+
+  // Sync avoidHighCompetition and maxCompetitionBids with preferences
+  useEffect(() => {
+    if (preferencesData?.data) {
+      const prefs = preferencesData.data;
+      if (prefs.avoidHighCompetition !== undefined) {
+        setAvoidHighCompetition(prefs.avoidHighCompetition);
+      }
+      if (prefs.maxCompetitionBids !== undefined) {
+        setMaxCompetitionBids(prefs.maxCompetitionBids);
+      }
+    }
+  }, [preferencesData]);
 
   // Separate favorites by status
   const activeFavorites = favorites.filter(fav => !fav.isExpired);
@@ -181,6 +223,11 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
         );
       });
     }
+
+    // Apply competition filter when enabled
+    if (avoidHighCompetition) {
+      filtered = filtered.filter((f) => (f.bidCount || 0) <= maxCompetitionBids);
+    }
     
     // Apply sorting
     filtered.sort((a, b) => {
@@ -188,12 +235,16 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
       
       switch (sortBy) {
         case 'distance':
-          aValue = a.distance;
-          bValue = b.distance;
+          aValue = a.distance || 0;
+          bValue = b.distance || 0;
           break;
         case 'bid_amount':
-          aValue = a.currentBid || 0;
-          bValue = b.currentBid || 0;
+          aValue = a.bidCount || 0;
+          bValue = b.bidCount || 0;
+          break;
+        case 'match_score':
+          aValue = getSimilarityScoreSync(a);
+          bValue = getSimilarityScoreSync(b);
           break;
         case 'date':
         default:
@@ -239,17 +290,29 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
   const handleSavePreferences = async () => {
     setIsSavingPreferences(true);
     try {
+      // Include avoidHighCompetition and maxCompetitionBids in saved preferences
+      const preferencesToSave = {
+        ...preferences,
+        avoidHighCompetition,
+        maxCompetitionBids,
+      };
+      
       const response = await fetch('/api/carrier/notification-preferences', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(preferences),
+        body: JSON.stringify(preferencesToSave),
       });
 
       const result = await response.json();
 
       if (result.ok) {
         toast.success("Notification preferences saved!");
-        setEditingPreferences(null); // Clear editing state
+        // Update editingPreferences with the saved values (so inputs retain their state)
+        setEditingPreferences(preferencesToSave);
+        // Clear input values so they sync with saved preferences
+        setInputValues({});
+        // Re-fetch from server to ensure consistency
+        await mutatePreferences();
       } else {
         toast.error(result.error || "Failed to save preferences");
       }
@@ -273,45 +336,169 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
   };
 
   /**
-   * Calculate similarity score using industry-leading algorithm
-   * This score represents how relevant this favorited bid is to your preferences
-   * Based on route similarity, equipment match, distance, timing, and market fit
+   * Extract city name from stop string (helper for route matching)
    */
-  const getSimilarityScore = async (favoriteBid: FavoriteBid): Promise<number> => {
-    // For now, return a placeholder score based on bid characteristics
-    // This will be enhanced with real-time matching data in a future update
-    
-    let score = 75; // Base relevance score
-    
-    // Equipment match (tag)
-    if (favoriteBid.tag) score += 10;
-    
-    // Distance scoring
-    if (favoriteBid.distance > 50 && favoriteBid.distance < 500) score += 5;
-    if (favoriteBid.distance > 500 && favoriteBid.distance < 1500) score += 10;
-    
-    // Expiry status
-    if (!favoriteBid.isExpired) score += 5;
-    
-    // Bid activity
-    if (favoriteBid.bidCount > 0) score += 5;
-    
-    return Math.min(100, score);
+  const extractCityName = (stop: string): string => {
+    const parts = stop.split(',');
+    return parts[0]?.trim() || stop;
   };
-  
-  // Synchronous wrapper for immediate display
-  const getSimilarityScoreSync = (bid: FavoriteBid) => {
+
+  /**
+   * Calculate sophisticated similarity score for a favorite bid
+   * Uses weighted composite scoring based on preferences, route patterns, timing, and market fit
+   */
+  const getSimilarityScoreSync = (bid: FavoriteBid): number => {
+    let preferenceScore = 0;
+    let routeConsistencyScore = 0;
+    let timingScore = 0;
+    let marketFitScore = 0;
+
+    const prefs = preferences;
+    const allFavorites = favorites.filter(f => f.bid_number !== bid.bid_number);
+
+    // 1. PREFERENCE ALIGNMENT (40% weight)
+    // Distance alignment
+    if (bid.distance >= prefs.minDistance && bid.distance <= prefs.maxDistance) {
+      const distanceRange = prefs.maxDistance - prefs.minDistance;
+      if (distanceRange > 0) {
+        const distanceFromMin = bid.distance - prefs.minDistance;
+        const normalizedDistance = distanceFromMin / distanceRange;
+        // Prefer distances in the middle-upper range (50-80% of range)
+        if (normalizedDistance >= 0.5 && normalizedDistance <= 0.8) {
+          preferenceScore += 40;
+        } else if (normalizedDistance >= 0.3 && normalizedDistance <= 0.9) {
+          preferenceScore += 30;
+        } else {
+          preferenceScore += 20;
+        }
+      } else {
+        preferenceScore += 30; // Default if range is 0
+      }
+    } else {
+      // Penalty for out-of-range distances
+      if (bid.distance < prefs.minDistance) {
+        const percentShort = ((prefs.minDistance - bid.distance) / prefs.minDistance) * 100;
+        preferenceScore += Math.max(0, 20 - percentShort / 5);
+      } else {
+        const percentOver = ((bid.distance - prefs.maxDistance) / prefs.maxDistance) * 100;
+        preferenceScore += Math.max(0, 20 - percentOver / 10);
+      }
+    }
+
+    // Equipment/Tag matching
+    if (bid.tag && prefs.statePreferences.length > 0) {
+      if (prefs.statePreferences.includes(bid.tag)) {
+        preferenceScore += 40;
+      } else {
+        preferenceScore += 10; // Tag exists but doesn't match preferences
+      }
+    } else if (bid.tag) {
+      preferenceScore += 20; // Tag exists but no preferences set
+    } else {
+      preferenceScore += 15; // No tag, neutral
+    }
+
+    // Equipment preferences (if we had equipment data, would check here)
+    preferenceScore = Math.min(100, preferenceScore);
+
+    // 2. ROUTE CONSISTENCY (30% weight) - Compare with other favorites
+    if (allFavorites.length > 0 && bid.stops && Array.isArray(bid.stops) && bid.stops.length > 0) {
+      const bidOrigin = extractCityName(bid.stops[0]).toUpperCase().trim();
+      const bidDest = extractCityName(bid.stops[bid.stops.length - 1]).toUpperCase().trim();
+      
+      let routeMatches = 0;
+      let partialMatches = 0;
+      
+      for (const fav of allFavorites) {
+        if (fav.stops && Array.isArray(fav.stops) && fav.stops.length > 0) {
+          const favOrigin = extractCityName(fav.stops[0]).toUpperCase().trim();
+          const favDest = extractCityName(fav.stops[fav.stops.length - 1]).toUpperCase().trim();
+          
+          if (bidOrigin === favOrigin && bidDest === favDest) {
+            routeMatches++;
+          } else if (bidOrigin === favOrigin || bidDest === favDest) {
+            partialMatches++;
+          }
+        }
+      }
+      
+      const totalMatches = routeMatches + partialMatches;
+      if (totalMatches > 0) {
+        // Strong pattern if multiple exact matches
+        if (routeMatches >= 3) {
+          routeConsistencyScore = 100;
+        } else if (routeMatches >= 1) {
+          routeConsistencyScore = 70 + (routeMatches * 10);
+        } else if (partialMatches >= 2) {
+          routeConsistencyScore = 50 + (partialMatches * 5);
+        } else {
+          routeConsistencyScore = 40;
+        }
+      } else {
+        // No route matches - this is a unique route (neutral score)
+        routeConsistencyScore = 50;
+      }
+    } else {
+      routeConsistencyScore = 50; // Neutral if no route data
+    }
+
+    // 3. TIMING RELEVANCE (20% weight)
     const now = new Date();
     const pickupTime = new Date(bid.pickupDate);
-    const timeDiff = Math.abs(now.getTime() - pickupTime.getTime()) / (1000 * 60 * 60 * 24);
-    
-    let score = 100;
-    if (timeDiff > 7) score -= 20;
-    if (timeDiff > 14) score -= 30;
-    if (bid.distance < 100) score -= 10;
-    if (bid.distance > 1000) score -= 15;
-    
-    return Math.max(0, Math.min(100, score));
+    const daysUntilPickup = (pickupTime.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+    const relevanceWindow = prefs.timingRelevanceDays || 7;
+
+    if (bid.isExpired) {
+      timingScore = 10; // Expired loads get low score
+    } else if (daysUntilPickup < 0) {
+      timingScore = 80; // Past pickup but not expired (still relevant)
+    } else if (daysUntilPickup >= 0 && daysUntilPickup <= relevanceWindow) {
+      if (daysUntilPickup <= 1) {
+        timingScore = 100; // Urgent - within 24 hours
+      } else if (daysUntilPickup <= 2) {
+        timingScore = 90; // Very soon
+      } else if (daysUntilPickup <= 3) {
+        timingScore = 80; // Soon
+      } else {
+        // Decay score based on remaining window
+        const remainingDays = Math.max(1, relevanceWindow - 3);
+        const decayPercent = Math.max(0, (relevanceWindow - daysUntilPickup) / remainingDays);
+        timingScore = 70 * decayPercent + 30; // Scale between 30-100
+      }
+    } else if (daysUntilPickup > relevanceWindow) {
+      // Beyond relevance window
+      const excessDays = daysUntilPickup - relevanceWindow;
+      timingScore = Math.max(20, 50 - (excessDays * 5));
+    }
+
+    // 4. MARKET FIT (10% weight) - Competition and activity
+    if (prefs.avoidHighCompetition && bid.bidCount > prefs.maxCompetitionBids) {
+      // High competition penalty
+      const excessBids = bid.bidCount - prefs.maxCompetitionBids;
+      marketFitScore = Math.max(0, 30 - (excessBids * 2));
+    } else {
+      // Moderate competition is good (shows demand)
+      if (bid.bidCount === 0) {
+        marketFitScore = 60; // No competition but also no validation
+      } else if (bid.bidCount <= 3) {
+        marketFitScore = 90; // Low competition - good opportunity
+      } else if (bid.bidCount <= prefs.maxCompetitionBids) {
+        marketFitScore = 70; // Moderate competition - still viable
+      } else {
+        marketFitScore = 40; // Higher competition
+      }
+    }
+
+    // Calculate weighted composite score
+    const compositeScore = (
+      preferenceScore * 0.40 +
+      routeConsistencyScore * 0.30 +
+      timingScore * 0.20 +
+      marketFitScore * 0.10
+    );
+
+    // Return score as percentage (0-100)
+    return Math.round(Math.max(0, Math.min(100, compositeScore)));
   };
 
   // Notification trigger functions
@@ -474,9 +661,17 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                 <div className="p-2 bg-purple-500/20 rounded-lg">
                   <BarChart3 className="h-5 w-5 text-purple-400" />
                 </div>
-                <div>
-                  <div className="text-xl font-bold">
-                    {favorites.length > 0 ? Math.round(favorites.reduce((sum, fav) => sum + getSimilarityScoreSync(fav), 0) / favorites.length) : 0}%
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <div className="text-xl font-bold">
+                      {favorites.length > 0 ? Math.round(favorites.reduce((sum, fav) => sum + getSimilarityScoreSync(fav), 0) / favorites.length) : 0}%
+                    </div>
+                    <span 
+                      className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-muted text-[10px] cursor-help" 
+                      title="Average Match Score: Calculated using a weighted algorithm that considers (1) Distance & Equipment preferences (40%), (2) Route consistency with your other favorites (30%), (3) Timing relevance within your window (20%), and (4) Market competition level (10%). Each bid's score is averaged across all your favorites."
+                    >
+                      ?
+                    </span>
                   </div>
                   <div className="text-xs text-muted-foreground">Avg Match</div>
                 </div>
@@ -505,7 +700,8 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                 >
                   <option value="date">Date</option>
                   <option value="distance">Distance</option>
-                  <option value="bid_amount">Bid Amount</option>
+                  <option value="bid_amount">Bid Count</option>
+                  <option value="match_score">Match Score</option>
                 </select>
                 
                 <Button
@@ -520,6 +716,28 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
             </div>
             
             <div className="flex items-center gap-2">
+              {/* View Toggle */}
+              <div className="flex items-center gap-1 border border-border rounded p-0.5">
+                <Button
+                  variant={viewMode === 'card' ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setViewMode('card')}
+                  className={`text-xs px-2 py-1 h-7 ${viewMode === 'card' ? 'bg-primary text-primary-foreground' : ''}`}
+                  title="Card View"
+                >
+                  <LayoutGrid className="h-3 w-3" />
+                </Button>
+                <Button
+                  variant={viewMode === 'table' ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setViewMode('table')}
+                  className={`text-xs px-2 py-1 h-7 ${viewMode === 'table' ? 'bg-primary text-primary-foreground' : ''}`}
+                  title="Table View"
+                >
+                  <TableIcon className="h-3 w-3" />
+                </Button>
+              </div>
+              
               <Button
                 variant="outline"
                 onClick={() => setShowPreferences(!showPreferences)}
@@ -560,50 +778,101 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                 {/* Advanced Settings Panel */}
                 {showAdvancedSettings && (
                   <div className="mt-4 p-4 bg-muted/20 rounded-lg border border-primary/20">
-                    <div className="flex items-center gap-2 mb-4">
-                      <Target className="h-4 w-4 text-purple-400" />
-                      <h4 className="text-sm font-semibold">Advanced Matching Criteria</h4>
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-2">
+                        <Target className="h-4 w-4 text-purple-400" />
+                        <h4 className="text-sm font-semibold">Advanced Matching Criteria</h4>
+                      </div>
+                      {/* Presets */}
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-xs"
+                          title="More Alerts"
+                          onClick={() => setEditingPreferences(prev => ({ ...(prev || preferences), minMatchScore: 50, distanceFlexibility: 30 }))}
+                        >
+                          More Alerts
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-xs"
+                          title="Balanced"
+                          onClick={() => setEditingPreferences(prev => ({ ...(prev || preferences), minMatchScore: 70, distanceFlexibility: 25 }))}
+                        >
+                          Balanced
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-xs"
+                          title="Selective"
+                          onClick={() => setEditingPreferences(prev => ({ ...(prev || preferences), minMatchScore: 85, distanceFlexibility: 15 }))}
+                        >
+                          Selective
+                        </Button>
+                      </div>
                     </div>
-                    
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {/* Min Match Score */}
                       <div>
                         <label className="text-xs font-medium flex items-center gap-1">
                           Min Match Score (0-100)
-                          <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-muted text-[10px] cursor-help" title="Like getting a test score - only notify you if the match is REALLY good! Higher = pickier">?</span>
+                          <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-muted text-[10px] cursor-help" title="Only alert when similarity is above this threshold (0–100). Higher = fewer but better alerts.">?</span>
                         </label>
                         <Input
                           type="number"
                           min="0"
                           max="100"
-                          defaultValue={70}
+                          value={inputValues.minMatchScore !== undefined ? inputValues.minMatchScore : preferences.minMatchScore}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setInputValues((prev: Record<string, string>) => ({ ...prev, minMatchScore: val }));
+                            if (val === '') return; // Allow empty during editing
+                            const numVal = Math.max(0, Math.min(100, parseInt(val) || 0));
+                            setEditingPreferences(prev => ({ ...(prev || preferences), minMatchScore: numVal }));
+                          }}
+                          onBlur={(e) => {
+                            // On blur, ensure we have a valid number
+                            const val = e.target.value;
+                            if (val === '') {
+                              setInputValues(prev => ({ ...prev, minMatchScore: String(preferences.minMatchScore) }));
+                            }
+                          }}
                           className="mt-1 text-xs"
-                          placeholder="70"
                         />
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Only notify on matches above this score (like a grade - higher is pickier!)
-                        </p>
                       </div>
-                      
+
                       {/* Route Match Threshold */}
                       <div>
                         <label className="text-xs font-medium flex items-center gap-1">
                           Route Match Threshold (%)
-                          <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-muted text-[10px] cursor-help" title="How similar the pickup/delivery cities need to be. Higher = need almost exact same cities">?</span>
+                          <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-muted text-[10px] cursor-help" title="How similar pickup/delivery cities must be. Higher = closer to the same cities.">?</span>
                         </label>
                         <Input
                           type="number"
                           min="0"
                           max="100"
-                          defaultValue={60}
+                          value={inputValues.routeMatchThreshold !== undefined ? inputValues.routeMatchThreshold : preferences.routeMatchThreshold}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setInputValues(prev => ({ ...prev, routeMatchThreshold: val }));
+                            if (val === '') return; // Allow empty during editing
+                            const numVal = Math.max(0, Math.min(100, parseInt(val) || 0));
+                            setEditingPreferences(prev => ({ ...(prev || preferences), routeMatchThreshold: numVal }));
+                          }}
+                          onBlur={(e) => {
+                            const val = e.target.value;
+                            if (val === '') {
+                              setInputValues(prev => ({ ...prev, routeMatchThreshold: String(preferences.routeMatchThreshold) }));
+                            }
+                          }}
                           className="mt-1 text-xs"
-                          placeholder="60"
                         />
-                        <p className="text-xs text-muted-foreground mt-1">
-                          How similar pickup/delivery cities must be (higher = same exact cities)
-                        </p>
                       </div>
-                      
+
                       {/* Distance Flexibility */}
                       <div>
                         <label className="text-xs font-medium">Distance Flexibility (%)</label>
@@ -611,71 +880,110 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                           type="number"
                           min="0"
                           max="50"
-                          defaultValue={25}
+                          value={inputValues.distanceFlexibility !== undefined ? inputValues.distanceFlexibility : preferences.distanceFlexibility}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setInputValues(prev => ({ ...prev, distanceFlexibility: val }));
+                            if (val === '') return; // Allow empty during editing
+                            const numVal = Math.max(0, Math.min(50, parseInt(val) || 0));
+                            setEditingPreferences(prev => ({ ...(prev || preferences), distanceFlexibility: numVal }));
+                          }}
+                          onBlur={(e) => {
+                            const val = e.target.value;
+                            if (val === '') {
+                              setInputValues(prev => ({ ...prev, distanceFlexibility: String(preferences.distanceFlexibility) }));
+                            }
+                          }}
                           className="mt-1 text-xs"
-                          placeholder="25"
                         />
                         <p className="text-xs text-muted-foreground mt-1">
-                          Allowed distance variance percentage
+                          Allowed variance in miles compared to similar routes.
                         </p>
                       </div>
-                      
-                      {/* Strict Urgency Match */}
-                      <div className="flex items-center justify-between mt-6">
-                        <div>
-                          <label className="text-xs font-medium flex items-center gap-1">
-                            Strict Urgency Match
-                            <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-muted text-[10px] cursor-help" title="Only match loads with same pickup urgency (urgent vs urgent, flexible vs flexible). Like matching 'pick up today' with 'pick up today' loads">?</span>
-                          </label>
-                          <p className="text-xs text-muted-foreground">
-                            Only match loads with same pickup urgency timing
-                          </p>
-                        </div>
-                        <Button variant="outline" size="sm" className="text-xs">
-                          OFF
-                        </Button>
+
+                      {/* Timing Relevance Window */}
+                      <div>
+                        <label className="text-xs font-medium">Timing Relevance Window (days)</label>
+                        <Input
+                          type="number"
+                          min="0"
+                          max="30"
+                          value={inputValues.timingRelevanceDays !== undefined ? inputValues.timingRelevanceDays : preferences.timingRelevanceDays}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setInputValues(prev => ({ ...prev, timingRelevanceDays: val }));
+                            if (val === '') return; // Allow empty during editing
+                            const numVal = Math.max(0, Math.min(30, parseInt(val) || 0));
+                            setEditingPreferences(prev => ({ ...(prev || preferences), timingRelevanceDays: numVal }));
+                          }}
+                          onBlur={(e) => {
+                            const val = e.target.value;
+                            if (val === '') {
+                              setInputValues(prev => ({ ...prev, timingRelevanceDays: String(preferences.timingRelevanceDays) }));
+                            }
+                          }}
+                          className="mt-1 text-xs"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          How far ahead pickups can be and still be relevant.
+                        </p>
                       </div>
-                      
+
                       {/* Prioritize Backhaul */}
                       <div className="flex items-center justify-between mt-6">
                         <div>
                           <label className="text-xs font-medium">Prioritize Backhaul</label>
-                          <p className="text-xs text-muted-foreground">
-                            Prefer return route matches
-                          </p>
+                          <p className="text-xs text-muted-foreground">Prefer return route matches</p>
                         </div>
-                        <Button variant="default" size="sm" className="text-xs">
-                          ON
+                        <Button
+                          variant={preferences.prioritizeBackhaul ? "default" : "outline"}
+                          size="sm"
+                          className="text-xs"
+                          onClick={() => setEditingPreferences(prev => ({ ...(prev || preferences), prioritizeBackhaul: !(prev || preferences).prioritizeBackhaul }))}
+                        >
+                          {preferences.prioritizeBackhaul ? 'ON' : 'OFF'}
                         </Button>
                       </div>
-                      
-                      {/* Avoid High Competition */}
+
+                      {/* Avoid High Competition (local filter) */}
                       <div className="flex items-center justify-between mt-6">
                         <div>
                           <label className="text-xs font-medium">Avoid High Competition</label>
-                          <p className="text-xs text-muted-foreground">
-                            Skip loads with many bids
-                          </p>
+                          <p className="text-xs text-muted-foreground">Hide favorites with more than N bids</p>
                         </div>
-                        <Button variant="outline" size="sm" className="text-xs">
-                          OFF
+                        <Button
+                          variant={avoidHighCompetition ? "default" : "outline"}
+                          size="sm"
+                          className="text-xs"
+                          onClick={() => setAvoidHighCompetition(!avoidHighCompetition)}
+                        >
+                          {avoidHighCompetition ? 'ON' : 'OFF'}
                         </Button>
                       </div>
-                      
-                      {/* Max Competition Bids */}
+
+                      {/* Max Competition Bids (local filter) */}
                       <div>
                         <label className="text-xs font-medium">Max Competition Bids</label>
                         <Input
                           type="number"
                           min="0"
                           max="50"
-                          defaultValue={10}
+                          value={inputValues.maxCompetitionBids !== undefined ? inputValues.maxCompetitionBids : maxCompetitionBids}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setInputValues(prev => ({ ...prev, maxCompetitionBids: val }));
+                            if (val === '') return; // Allow empty during editing
+                            const numVal = Math.max(0, Math.min(50, parseInt(val) || 0));
+                            setMaxCompetitionBids(numVal);
+                          }}
+                          onBlur={(e) => {
+                            const val = e.target.value;
+                            if (val === '') {
+                              setInputValues(prev => ({ ...prev, maxCompetitionBids: String(maxCompetitionBids) }));
+                            }
+                          }}
                           className="mt-1 text-xs"
-                          placeholder="10"
                         />
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Maximum acceptable competition level
-                        </p>
                       </div>
                     </div>
                   </div>
@@ -691,7 +999,7 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                       <Button
                         variant={preferences.emailNotifications ? "default" : "outline"}
                         size="sm"
-                        onClick={() => setEditingPreferences(prev => ({ ...(prev || defaultPreferences), emailNotifications: !(prev || defaultPreferences).emailNotifications }))}
+                        onClick={() => setEditingPreferences(prev => ({ ...(prev || preferences), emailNotifications: !(prev || preferences).emailNotifications }))}
                         className={preferences.emailNotifications ? "bg-primary text-primary-foreground" : ""}
                       >
                         {preferences.emailNotifications ? "ON" : "OFF"}
@@ -706,7 +1014,7 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                       <Button
                         variant={preferences.similarLoadNotifications ? "default" : "outline"}
                         size="sm"
-                        onClick={() => setEditingPreferences(prev => ({ ...(prev || defaultPreferences), similarLoadNotifications: !(prev || defaultPreferences).similarLoadNotifications }))}
+                        onClick={() => setEditingPreferences(prev => ({ ...(prev || preferences), similarLoadNotifications: !(prev || preferences).similarLoadNotifications }))}
                         className={preferences.similarLoadNotifications ? "bg-primary text-primary-foreground" : ""}
                       >
                         {preferences.similarLoadNotifications ? "ON" : "OFF"}
@@ -721,8 +1029,20 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                         type="number"
                         min="0"
                         max="500"
-                        value={preferences.distanceThresholdMiles}
-                        onChange={(e) => setEditingPreferences(prev => ({ ...(prev || defaultPreferences), distanceThresholdMiles: parseInt(e.target.value) || 50 }))}
+                        value={inputValues.distanceThresholdMiles !== undefined ? inputValues.distanceThresholdMiles : preferences.distanceThresholdMiles}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setInputValues(prev => ({ ...prev, distanceThresholdMiles: val }));
+                          if (val === '') return; // Allow empty during editing
+                          const numVal = parseInt(val) || 50;
+                          setEditingPreferences(prev => ({ ...(prev || preferences), distanceThresholdMiles: numVal }));
+                        }}
+                        onBlur={(e) => {
+                          const val = e.target.value;
+                          if (val === '') {
+                            setInputValues(prev => ({ ...prev, distanceThresholdMiles: String(preferences.distanceThresholdMiles) }));
+                          }
+                        }}
                         className="mt-1 text-xs"
                       />
                     </div>
@@ -733,8 +1053,20 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                         <Input
                           type="number"
                           min="0"
-                          value={preferences.minDistance}
-                          onChange={(e) => setEditingPreferences(prev => ({ ...(prev || defaultPreferences), minDistance: parseInt(e.target.value) || 0 }))}
+                          value={inputValues.minDistance !== undefined ? inputValues.minDistance : preferences.minDistance}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setInputValues(prev => ({ ...prev, minDistance: val }));
+                            if (val === '') return; // Allow empty during editing
+                            const numVal = parseInt(val) || 0;
+                            setEditingPreferences(prev => ({ ...(prev || preferences), minDistance: numVal }));
+                          }}
+                          onBlur={(e) => {
+                            const val = e.target.value;
+                            if (val === '') {
+                              setInputValues(prev => ({ ...prev, minDistance: String(preferences.minDistance) }));
+                            }
+                          }}
                           className="mt-1 text-xs"
                         />
                       </div>
@@ -743,8 +1075,20 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                         <Input
                           type="number"
                           min="0"
-                          value={preferences.maxDistance}
-                          onChange={(e) => setEditingPreferences(prev => ({ ...(prev || defaultPreferences), maxDistance: parseInt(e.target.value) || 2000 }))}
+                          value={inputValues.maxDistance !== undefined ? inputValues.maxDistance : preferences.maxDistance}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setInputValues(prev => ({ ...prev, maxDistance: val }));
+                            if (val === '') return; // Allow empty during editing
+                            const numVal = parseInt(val) || 2000;
+                            setEditingPreferences(prev => ({ ...(prev || preferences), maxDistance: numVal }));
+                          }}
+                          onBlur={(e) => {
+                            const val = e.target.value;
+                            if (val === '') {
+                              setInputValues(prev => ({ ...prev, maxDistance: String(preferences.maxDistance) }));
+                            }
+                          }}
                           className="mt-1 text-xs"
                         />
                       </div>
@@ -910,8 +1254,9 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                     </Link>
                   )}
                 </div>
-              ) : (
-                <div className="space-y-3">
+              ) : viewMode === 'card' ? (
+                /* Card View - 3 Column Grid */
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {filteredFavorites.map((favorite) => {
                     const similarityScore = getSimilarityScoreSync(favorite);
                     return (
@@ -981,19 +1326,36 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                             </div>
                           </div>
 
-                          {/* Route Info */}
-                          <div className="grid grid-cols-3 gap-2 text-xs">
-                            <div className="flex items-center gap-1">
-                              <MapPin className="h-3 w-3 text-muted-foreground" />
-                              <span className="truncate">{formatStops(favorite.stops)}</span>
+                          {/* Route Info - Full Lane Display */}
+                          <div className="space-y-2">
+                            <div className="flex items-start gap-2 text-xs">
+                              <MapPin className="h-3 w-3 text-muted-foreground mt-0.5 flex-shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                {favorite.stops && Array.isArray(favorite.stops) && favorite.stops.length > 0 ? (
+                                  <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5">
+                                    {favorite.stops.map((stop, idx) => (
+                                      <span key={idx} className="inline-flex items-center">
+                                        <span className="text-foreground">{stop}</span>
+                                        {idx < favorite.stops.length - 1 && (
+                                          <span className="mx-1 text-muted-foreground">→</span>
+                                        )}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <span className="text-muted-foreground">No route information</span>
+                                )}
+                              </div>
                             </div>
-                            <div className="flex items-center gap-1">
-                              <Navigation className="h-3 w-3 text-muted-foreground" />
-                              <span>{formatDistance(favorite.distance)}</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <Truck className="h-3 w-3 text-muted-foreground" />
-                              <span>{formatStopCount(favorite.stops)}</span>
+                            <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                              <div className="flex items-center gap-1">
+                                <Navigation className="h-3 w-3" />
+                                <span>{formatDistance(favorite.distance)}</span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <Truck className="h-3 w-3" />
+                                <span>{formatStopCount(favorite.stops)}</span>
+                              </div>
                             </div>
                           </div>
 
@@ -1043,19 +1405,155 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                     );
                   })}
                 </div>
+              ) : (
+                /* Table View */
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border">
+                        <th className="text-left p-3 font-medium">Bid #</th>
+                        <th className="text-left p-3 font-medium">Route</th>
+                        <th className="text-left p-3 font-medium">Distance</th>
+                        <th className="text-left p-3 font-medium">Tag</th>
+                        <th className="text-left p-3 font-medium">Bids</th>
+                        <th className="text-left p-3 font-medium">Status</th>
+                        <th className="text-left p-3 font-medium">Match</th>
+                        <th className="text-left p-3 font-medium">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredFavorites.map((favorite) => {
+                        const similarityScore = getSimilarityScoreSync(favorite);
+                        return (
+                          <tr key={favorite.favorite_id} className="border-b border-border/40 hover:bg-muted/30 transition-colors">
+                            <td className="p-3">
+                              <div className="font-medium">{favorite.bid_number}</div>
+                              {!favorite.isExpired && (
+                                <div className="text-xs text-muted-foreground mt-1">
+                                  <Countdown 
+                                    expiresAt={favorite.expiresAt} 
+                                    className="font-mono"
+                                  />
+                                </div>
+                              )}
+                            </td>
+                            <td className="p-3">
+                              <div className="flex items-center gap-1">
+                                <MapPin className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                                <span className="truncate max-w-[200px]" title={formatStops(favorite.stops)}>
+                                  {formatStops(favorite.stops)}
+                                </span>
+                              </div>
+                              <div className="text-xs text-muted-foreground mt-1">
+                                <Truck className="h-3 w-3 inline mr-1" />
+                                {formatStopCount(favorite.stops)}
+                              </div>
+                            </td>
+                            <td className="p-3">
+                              <Navigation className="h-3 w-3 inline mr-1 text-muted-foreground" />
+                              {formatDistance(favorite.distance)}
+                            </td>
+                            <td className="p-3">
+                              {favorite.tag ? (
+                                <Badge variant="secondary" className="text-xs">
+                                  {favorite.tag}
+                                </Badge>
+                              ) : (
+                                <span className="text-muted-foreground text-xs">—</span>
+                              )}
+                            </td>
+                            <td className="p-3">
+                              <Badge className={favorite.bidCount === 0 ? "bg-green-500/20 text-green-400 border-green-500/30" : "bg-blue-500/20 text-blue-400 border-blue-500/30"}>
+                                {favorite.bidCount}
+                              </Badge>
+                            </td>
+                            <td className="p-3">
+                              <Badge className={getStatusColor(favorite)}>
+                                {getStatusText(favorite)}
+                              </Badge>
+                            </td>
+                            <td className="p-3">
+                              <Badge variant="outline" className="text-xs">
+                                <Target className="h-3 w-3 inline mr-1" />
+                                {similarityScore}%
+                              </Badge>
+                            </td>
+                            <td className="p-3">
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleCreateExactMatchTrigger(favorite.bid_number)}
+                                  disabled={isCreatingTrigger}
+                                  className="h-7 w-7 p-0 text-blue-400 hover:text-blue-300 hover:bg-blue-500/20"
+                                  title="Notify on exact match"
+                                >
+                                  <Bell className="h-3 w-3" />
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setViewDetailsBid(favorite)}
+                                  className="h-7 px-2 text-xs"
+                                >
+                                  Details
+                                </Button>
+                                {!favorite.isExpired && (
+                                  <Link href="/bid-board">
+                                    <Button
+                                      variant="default"
+                                      size="sm"
+                                      className="h-7 px-2 text-xs"
+                                    >
+                                      Bid
+                                    </Button>
+                                  </Link>
+                                )}
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleRemoveFavorite(favorite.bid_number)}
+                                  disabled={isRemoving === favorite.bid_number}
+                                  className="h-7 w-7 p-0 text-red-400 hover:text-red-300 hover:bg-red-500/20"
+                                  title="Remove"
+                                >
+                                  {isRemoving === favorite.bid_number ? (
+                                    <RefreshCw className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <X className="h-3 w-3" />
+                                  )}
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </TabsContent>
           </Tabs>
         </div>
 
         {/* Details Dialog */}
-        <Dialog open={!!viewDetailsBid} onOpenChange={() => setViewDetailsBid(null)}>
+        <Dialog open={!!viewDetailsBid} onOpenChange={(open) => { if (!open) setViewDetailsBid(null); }}>
           <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Star className="h-5 w-5" />
-                Bid Details - {viewDetailsBid?.bid_number}
-              </DialogTitle>
+              <div className="flex items-center justify-between">
+                <DialogTitle className="flex items-center gap-2">
+                  <Star className="h-5 w-5" />
+                  Bid Details - {viewDetailsBid?.bid_number}
+                </DialogTitle>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setViewDetailsBid(null)}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
             </DialogHeader>
             
             {viewDetailsBid && (
@@ -1094,7 +1592,7 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                   </div>
                   <div>
                     <span className="text-muted-foreground">Match Score:</span>
-                    <span className="ml-2 font-medium">{getSimilarityScore(viewDetailsBid)}%</span>
+                    <span className="ml-2 font-medium">{getSimilarityScoreSync(viewDetailsBid)}%</span>
                   </div>
                   {viewDetailsBid.myBid && (
                     <div>
@@ -1102,6 +1600,15 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                       <span className="ml-2 font-medium text-blue-400">${Number(viewDetailsBid.myBid || 0).toFixed(2)}</span>
                     </div>
                   )}
+                </div>
+                
+                <div className="flex justify-end gap-2 pt-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => setViewDetailsBid(null)}
+                  >
+                    Close
+                  </Button>
                 </div>
               </div>
             )}

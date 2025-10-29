@@ -26,18 +26,31 @@ export function ProfileGuard({ children }: ProfileGuardProps) {
   const profile = profileData?.data;
 
   useEffect(() => {
-    if (!isLoaded || !user || profileLoading) return;
+    if (!isLoaded || !user) return;
 
     const currentPath = window.location.pathname;
     
-    // Always allow profile page access
-    if (currentPath === '/carrier/profile') {
+    // Always allow profile page access - never redirect away from profile page
+    if (currentPath === '/carrier/profile' || currentPath.startsWith('/carrier/profile')) {
+      setShouldRedirect(false);
+      return;
+    }
+
+    // Don't redirect while profile is still loading - wait for data
+    // This prevents flickering and false redirects during SWR re-fetches
+    if (profileLoading) {
       setShouldRedirect(false);
       return;
     }
 
     // If no profile exists or there was an error fetching profile, redirect to profile creation
+    // But only if we're not already on an allowed page
     if (!profile || profileError) {
+      // Allow dashboard access even if profile is missing (will show prompt there)
+      if (currentPath === '/carrier' || currentPath === '/dashboard') {
+        setShouldRedirect(false);
+        return;
+      }
       setRedirectUrl("/carrier/profile?setup=true");
       setShouldRedirect(true);
       return;
@@ -69,7 +82,7 @@ export function ProfileGuard({ children }: ProfileGuardProps) {
     // If profile is approved, allow access to all pages
     setShouldRedirect(false);
 
-  }, [isLoaded, user, profile, profileLoading]);
+  }, [isLoaded, user, profile, profileLoading, profileError, router]);
 
   useEffect(() => {
     if (shouldRedirect && redirectUrl) {
@@ -77,8 +90,9 @@ export function ProfileGuard({ children }: ProfileGuardProps) {
     }
   }, [shouldRedirect, redirectUrl, router]);
 
-  // Show loading while checking profile status
-  if (!isLoaded || profileLoading) {
+  // Show loading ONLY on initial load (when user or profile data is not yet loaded)
+  // Don't block rendering during SWR re-fetches to prevent flickering
+  if (!isLoaded || (profileLoading && !profile && !profileError)) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary"></div>
@@ -86,7 +100,8 @@ export function ProfileGuard({ children }: ProfileGuardProps) {
     );
   }
 
-  // If we need to redirect, don't render children
+  // If we need to redirect, show loading but don't block for too long
+  // This prevents flickering when redirect happens during profile re-fetch
   if (shouldRedirect) {
     return (
       <div className="min-h-screen flex items-center justify-center">

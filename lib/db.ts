@@ -18,8 +18,10 @@ if (!process.env.DATABASE_URL) {
 }
 
 // Use the PostgreSQL database with improved connection pooling
-const sql = postgres(process.env.DATABASE_URL, { 
-  ssl: process.env.DATABASE_URL.includes('localhost') ? false : 'require',
+// Add search_path to ensure we use the public schema
+const dbUrl = process.env.DATABASE_URL || '';
+const sql = postgres(dbUrl.includes('?') ? `${dbUrl}&options=-csearch_path%3Dpublic` : `${dbUrl}?options=-csearch_path%3Dpublic`, { 
+  ssl: dbUrl.includes('localhost') ? false : 'require',
   max: 5, // Allow multiple connections for better performance
   idle_timeout: 60, // Keep connections alive longer
   connect_timeout: 30, // Longer connection timeout

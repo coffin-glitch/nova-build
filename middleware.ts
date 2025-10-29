@@ -104,13 +104,33 @@ export default clerkMiddleware(async (auth, req) => {
     }
 
     // Check carrier profile status for carrier users (skip for admins)
+    // Skip profile check if Supabase env vars are not set - client-side ProfileGuard will handle it
     if (userRole === "carrier" && pathname !== '/carrier/profile') {
       try {
+        // Extract Supabase URL from DATABASE_URL if NEXT_PUBLIC_SUPABASE_URL is not set
+        let supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        let supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+        // If Supabase URL not set, try to extract from DATABASE_URL
+        if (!supabaseUrl && process.env.DATABASE_URL) {
+          const dbUrl = process.env.DATABASE_URL;
+          // Extract project ref from Supabase pooler URL format:
+          // postgresql://postgres.PROJECT_REF:password@...
+          const match = dbUrl.match(/postgres\.([^.]+)\./);
+          if (match && match[1]) {
+            supabaseUrl = `https://${match[1]}.supabase.co`;
+          }
+        }
+
+        // If we still don't have Supabase credentials, skip server-side check
+        // Client-side ProfileGuard will handle profile validation
+        if (!supabaseUrl || !supabaseKey) {
+          console.warn('[middleware] Supabase env vars not set, skipping server-side profile check. Client-side ProfileGuard will handle.');
+          return NextResponse.next();
+        }
+
         // Use Supabase client compatible with Edge runtime
-        const supabase = createClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.SUPABASE_SERVICE_ROLE_KEY!
-        );
+        const supabase = createClient(supabaseUrl, supabaseKey);
 
         const { data: profileResult, error } = await supabase
           .from('carrier_profiles')
@@ -157,7 +177,8 @@ export default clerkMiddleware(async (auth, req) => {
         }
       } catch (error) {
         console.error('Profile check error:', error);
-        // On error, allow access to prevent blocking users
+        // On error, allow access to prevent blocking users - client-side ProfileGuard will handle
+        return NextResponse.next();
       }
     }
   }

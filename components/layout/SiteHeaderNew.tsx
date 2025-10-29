@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { ColorPalette } from "@/components/ui/ColorPalette";
 import FloatingBubbleLanding from "@/components/ui/FloatingBubbleLanding";
 import { NotificationBell } from "@/components/ui/NotificationBell";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useAccentColor } from "@/hooks/useAccentColor";
 import { useUnreadMessageCount } from "@/hooks/useUnreadMessageCount";
 import { useClerkRole } from "@/lib/clerk-roles";
@@ -210,6 +210,7 @@ export default function SiteHeader() {
                 </Button>
               </SheetTrigger>
               <SheetContent side="right" className="w-80">
+                <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
                 <div className="flex items-center justify-between px-2 py-4">
                   <div className="flex items-center space-x-2">
                     <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ backgroundColor: getLogoBackgroundColor() }}>

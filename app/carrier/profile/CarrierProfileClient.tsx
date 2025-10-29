@@ -247,8 +247,9 @@ export function CarrierProfileClient() {
   // Status-specific rendering
   const renderStatusCard = () => {
     
-    // Show loading state while profile is being fetched
-    if (profileLoading) {
+    // Show loading state ONLY if we have no profile data at all (initial load)
+    // Don't show it during re-fetches to prevent flickering
+    if (profileLoading && !profile) {
       return (
         <Card className="border-l-4 border-l-gray-500">
           <CardContent className="p-6">
@@ -266,9 +267,10 @@ export function CarrierProfileClient() {
       );
     }
 
-    // Only show setup banner if profile is not approved
+    // Only show setup banner if profile is not approved AND we have profile data
     // Don't show it if profile is approved, even if setupMode is in URL
-    if (setupMode && profile?.profile_status !== 'approved' && profile?.profile_status !== 'pending') {
+    // Don't show it while loading to prevent flickering
+    if (setupMode && profile && profile?.profile_status !== 'approved' && profile?.profile_status !== 'pending') {
       return (
         <Card className="border-l-4 border-l-red-500 dark:border-l-red-400">
           <CardContent className="p-6">
