@@ -50,7 +50,8 @@ export async function GET(request: NextRequest) {
         cp.edits_enabled,
         cp.edits_enabled_by,
         cp.edits_enabled_at,
-        cp.created_at
+        cp.created_at,
+        cp.updated_at
       FROM carrier_profiles cp
       ORDER BY cp.created_at DESC
     `;
