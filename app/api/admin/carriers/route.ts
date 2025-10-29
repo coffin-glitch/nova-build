@@ -31,9 +31,9 @@ export async function GET(request: NextRequest) {
     // Fetch carrier profiles with approval workflow data
     const carriers = await sql`
       SELECT 
-        cp.clerk_user_id as id,
-        cp.clerk_user_id as user_id,
-        cp.legal_name as company_name,
+        cp.user_id as id,
+        cp.user_id,
+        cp.company_name,
         cp.legal_name,
         cp.mc_number,
         cp.dot_number,
