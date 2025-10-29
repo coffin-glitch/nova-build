@@ -212,8 +212,9 @@ export const archivedBids = pgTable('archived_bids', {
 });
 
 // Auction awards table (admin adjudication results)
+// Note: Database uses INTEGER/BIGSERIAL, matching actual schema
 export const auctionAwards = pgTable('auction_awards', {
-  id: uuid('id').primaryKey().defaultRandom(),
+  id: integer('id').primaryKey(),
   bidNumber: varchar('bid_number', { length: 255 }).notNull().unique(),
   winnerUserId: varchar('winner_user_id', { length: 255 }).notNull(),
   winnerAmountCents: integer('winner_amount_cents').notNull(),
