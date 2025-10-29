@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
     // Check if user is admin using database
     console.log("🔍 Checking user role in database...");
     const userRole = await sql`
-      SELECT role FROM user_roles WHERE clerk_user_id = ${userId}
+      SELECT role FROM user_roles_cache WHERE clerk_user_id = ${userId}
     `;
     console.log("📊 User role query result:", userRole);
     
@@ -31,8 +31,8 @@ export async function GET(request: NextRequest) {
     // Fetch carrier profiles with approval workflow data
     const carriers = await sql`
       SELECT 
-        cp.user_id as id,
-        cp.user_id,
+        cp.clerk_user_id as id,
+        cp.clerk_user_id as user_id,
         cp.company_name,
         cp.legal_name,
         cp.mc_number,
