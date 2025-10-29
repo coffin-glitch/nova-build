@@ -131,18 +131,18 @@ export default clerkMiddleware(async (auth, req) => {
         const isFirstLogin = profile.is_first_login;
         const profileCompleted = profile.profile_completed_at;
 
-        // If profile is open (edits enabled), allow access
-        if (profileStatus === 'open') {
-          return NextResponse.next();
-        }
-
         // If approved, allow access to all carrier pages
         if (profileStatus === 'approved') {
           return NextResponse.next();
         }
 
-        // If profile needs setup
+        // If profile needs setup (no completion or first login)
         if (!profileCompleted || (isFirstLogin && !profileCompleted)) {
+          return NextResponse.redirect(new URL('/carrier/profile?setup=true', req.url));
+        }
+
+        // If profile is open (setup required), redirect to profile page
+        if (profileStatus === 'open') {
           return NextResponse.redirect(new URL('/carrier/profile?setup=true', req.url));
         }
 
