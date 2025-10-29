@@ -122,15 +122,32 @@ export async function POST(req: Request) {
 
     if (existingProfile) {
       // Update existing profile
-      await sql`
-        UPDATE carrier_profiles SET
-          legal_name = ${companyName},
-          mc_number = ${mcNumber},
-          dot_number = ${dotNumber},
-          contact_name = ${contactName},
-          phone = ${formattedPhone}
-        WHERE clerk_user_id = ${userId}
-      `;
+      if (submit_for_approval) {
+        // If submitting for approval, lock edits and set status to pending
+        await sql`
+          UPDATE carrier_profiles SET
+            legal_name = ${companyName},
+            mc_number = ${mcNumber},
+            dot_number = ${dotNumber},
+            contact_name = ${contactName},
+            phone = ${formattedPhone},
+            profile_status = 'pending',
+            submitted_at = NOW(),
+            edits_enabled = false
+          WHERE clerk_user_id = ${userId}
+        `;
+      } else {
+        // Regular update - only update if edits are enabled
+        await sql`
+          UPDATE carrier_profiles SET
+            legal_name = ${companyName},
+            mc_number = ${mcNumber},
+            dot_number = ${dotNumber},
+            contact_name = ${contactName},
+            phone = ${formattedPhone}
+          WHERE clerk_user_id = ${userId} AND edits_enabled = true
+        `;
+      }
     } else {
       // Create new profile
       await sql`
@@ -140,21 +157,27 @@ export async function POST(req: Request) {
           mc_number,
           dot_number,
           contact_name,
-          phone
+          phone,
+          profile_status,
+          submitted_at,
+          edits_enabled
         ) VALUES (
           ${userId}, 
           ${companyName}, 
           ${mcNumber}, 
           ${dotNumber}, 
           ${contactName}, 
-          ${formattedPhone}
+          ${formattedPhone},
+          'pending',
+          ${submit_for_approval ? new Date() : null},
+          ${submit_for_approval ? false : true}
         )
       `;
     }
 
-    const message = existingProfile 
-      ? "Profile updated successfully!" 
-      : "Profile created successfully!";
+    const message = submit_for_approval
+      ? (existingProfile ? "Profile submitted for approval!" : "Profile created and submitted for approval!")
+      : (existingProfile ? "Profile updated successfully!" : "Profile created successfully!");
 
     logSecurityEvent('carrier_profile_updated', userId, { 
       action: existingProfile ? 'update' : 'create',
