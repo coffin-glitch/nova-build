@@ -78,6 +78,10 @@ export async function POST(req: Request) {
       submit_for_approval = false
     } = body;
 
+    // Format phone number - remove all non-numeric characters and ensure it's a valid US phone number
+    const formattedPhone = phone?.replace(/\D/g, '') || '';
+    const isValidPhone = formattedPhone.length >= 10 && formattedPhone.length <= 11;
+
     // Input validation
     const validation = validateInput({ 
       companyName, 
@@ -89,9 +93,15 @@ export async function POST(req: Request) {
       companyName: { required: true, type: 'string', minLength: 2, maxLength: 100 },
       mcNumber: { required: true, type: 'string', pattern: /^\d+$/ },
       contactName: { required: true, type: 'string', minLength: 2, maxLength: 50 },
-      phone: { required: true, type: 'string', pattern: /^[\+]?[1-9][\d]{0,15}$/ },
+      phone: { required: true, type: 'string', minLength: 10 },
       submit_for_approval: { type: 'boolean' }
     });
+
+    // Add custom phone validation error
+    if (!isValidPhone) {
+      validation.valid = false;
+      validation.errors.push('phone format is invalid');
+    }
 
     if (!validation.valid) {
       logSecurityEvent('invalid_profile_input', userId, { errors: validation.errors });
@@ -118,7 +128,7 @@ export async function POST(req: Request) {
           mc_number = ${mcNumber},
           dot_number = ${dotNumber},
           contact_name = ${contactName},
-          phone = ${phone}
+          phone = ${formattedPhone}
         WHERE clerk_user_id = ${userId}
       `;
     } else {
@@ -137,7 +147,7 @@ export async function POST(req: Request) {
           ${mcNumber}, 
           ${dotNumber}, 
           ${contactName}, 
-          ${phone}
+          ${formattedPhone}
         )
       `;
     }
