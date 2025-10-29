@@ -5,10 +5,13 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { userId: string } }
+  { params }: { params: Promise<{ userId: string }> }
 ) {
   try {
-    console.log("Unlock edits API called for userId:", params?.userId);
+    // Await params in Next.js 15
+    const { userId } = await params;
+    
+    console.log("Unlock edits API called for userId:", userId);
     
     const { userId: adminUserId } = await auth();
     
@@ -27,8 +30,6 @@ export async function POST(
       console.log("User is not admin");
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
-
-    const { userId } = params;
     console.log("Processing unlock edits for userId:", userId);
 
     // Get current profile data before updating for history
@@ -90,7 +91,7 @@ export async function POST(
 
       console.log("Profile updated successfully");
 
-      // Create history record for reset
+      // Create history record for reset (don't specify id, let it auto-increment)
       await sql`
         INSERT INTO carrier_profile_history (
           carrier_user_id,
@@ -104,7 +105,7 @@ export async function POST(
           version_number
         ) VALUES (
           ${userId},
-          ${JSON.stringify(currentProfile[0])},
+          ${JSON.stringify(currentProfile[0])}::jsonb,
           'declined',
           ${currentProfile[0].submitted_at || new Date()},
           ${currentProfile[0].reviewed_at},
@@ -131,7 +132,7 @@ export async function POST(
 
       console.log("Profile updated successfully");
 
-      // Create history record for edit unlock
+      // Create history record for edit unlock (don't specify id, let it auto-increment)
       await sql`
         INSERT INTO carrier_profile_history (
           carrier_user_id,
@@ -144,7 +145,7 @@ export async function POST(
           version_number
         ) VALUES (
           ${userId},
-          ${JSON.stringify(currentProfile[0])},
+          ${JSON.stringify(currentProfile[0])}::jsonb,
           'approved',
           ${currentProfile[0].submitted_at || new Date()},
           ${currentProfile[0].reviewed_at},
@@ -170,8 +171,7 @@ export async function POST(
     console.error("Error enabling carrier profile edits:", error);
     console.error("Error details:", {
       message: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined,
-      userId: params?.userId
+      stack: error instanceof Error ? error.stack : undefined
     });
     return NextResponse.json(
       { error: "Failed to enable carrier profile edits" },
