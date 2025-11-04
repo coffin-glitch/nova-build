@@ -171,17 +171,25 @@ function stopTelegramForwarder() {
 
 // REST API endpoints
 app.get('/health', (req, res) => {
+  console.log(`[HEALTH] Health check requested from ${req.ip} at ${new Date().toISOString()}`);
   res.json({ 
     status: 'healthy',
     telegram_running: telegramProcess ? true : false,
-    connected_clients: clients.size
+    connected_clients: clients.size,
+    port: process.env.PORT || 3001,
+    host: process.env.HOST || '0.0.0.0',
+    timestamp: new Date().toISOString()
   });
 });
 
 app.get('/status', (req, res) => {
+  console.log(`[STATUS] Status check requested from ${req.ip}`);
   res.json({ 
     status: telegramProcess ? 'running' : 'stopped',
-    connected_clients: clients.size
+    connected_clients: clients.size,
+    port: process.env.PORT || 3001,
+    host: process.env.HOST || '0.0.0.0',
+    timestamp: new Date().toISOString()
   });
 });
 
@@ -222,17 +230,37 @@ const PORT = process.env.PORT || 3001;
 const HOST = process.env.HOST || '0.0.0.0'; // Bind to all interfaces for Railway
 
 server.listen(PORT, HOST, () => {
-  console.log(`Telegram forwarder service running on ${HOST}:${PORT}`);
-  console.log(`HTTP server available at http://${HOST}:${PORT}`);
-  console.log(`WebSocket server available at ws://${HOST}:${PORT}/telegram-forwarder`);
-  console.log(`Health check: http://${HOST}:${PORT}/health`);
-  console.log(`Status: http://${HOST}:${PORT}/status`);
+  console.log(`✅ Telegram forwarder service running on ${HOST}:${PORT}`);
+  console.log(`✅ HTTP server available at http://${HOST}:${PORT}`);
+  console.log(`✅ WebSocket server available at ws://${HOST}:${PORT}/telegram-forwarder`);
+  console.log(`✅ Health check: http://${HOST}:${PORT}/health`);
+  console.log(`✅ Status: http://${HOST}:${PORT}/status`);
+  console.log(`✅ Environment: PORT=${PORT}, HOST=${HOST}, NODE_ENV=${process.env.NODE_ENV || 'development'}`);
   
   // Auto-start telegram forwarder on Railway
   if (process.env.RAILWAY_ENVIRONMENT || process.env.PORT) {
-    console.log('Railway environment detected, auto-starting telegram forwarder...');
+    console.log('✅ Railway environment detected, auto-starting telegram forwarder...');
     setTimeout(startTelegramForwarder, 2000); // Wait 2 seconds for startup
   }
+});
+
+// Handle server errors
+server.on('error', (error) => {
+  console.error('❌ Server error:', error);
+  if (error.code === 'EADDRINUSE') {
+    console.error(`❌ Port ${PORT} is already in use`);
+  } else if (error.code === 'EACCES') {
+    console.error(`❌ Permission denied to bind to port ${PORT}`);
+  } else {
+    console.error(`❌ Unknown server error: ${error.message}`);
+  }
+  process.exit(1);
+});
+
+// Verify server is actually listening
+server.on('listening', () => {
+  const addr = server.address();
+  console.log(`✅ Server is listening on ${typeof addr === 'string' ? addr : `${addr.address}:${addr.port}`}`);
 });
 
 // Graceful shutdown
