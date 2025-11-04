@@ -76,64 +76,125 @@ export function TelegramForwarderConsole() {
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [logs]);
 
-  // WebSocket connection for real-time updates
+  // Connect to Railway service via Server-Sent Events (SSE)
+  // This proxies the WebSocket connection from Railway through Next.js
   useEffect(() => {
-    const connectWebSocket = () => {
+    let eventSource: EventSource | null = null;
+
+    const connectSSE = () => {
       try {
-        // Use Railway WebSocket URL in production, local in development
-        const wsUrl = process.env.NEXT_PUBLIC_RAILWAY_URL
-          ? `wss://${process.env.NEXT_PUBLIC_RAILWAY_URL}/telegram-forwarder`
-          : `ws://localhost:3001/telegram-forwarder`;
+        // Use the SSE endpoint which proxies to Railway
+        eventSource = new EventSource('/api/telegram-forwarder/stream');
         
-        const ws = new WebSocket(wsUrl);
-        
-        ws.onopen = () => {
-          console.log('Connected to telegram forwarder WebSocket');
-          addLog('Connected to telegram forwarder', 'success');
+        eventSource.onopen = () => {
+          console.log('Connected to telegram forwarder stream');
+          addLog('Connected to Railway telegram forwarder service', 'success');
         };
         
-        ws.onmessage = (event) => {
+        eventSource.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data);
             
             if (data.type === 'status') {
               setStatus(prev => ({ ...prev, ...data.data }));
             } else if (data.type === 'log') {
-              addLog(data.message, data.level);
+              addLog(data.message, data.level || 'info');
             } else if (data.type === 'error') {
               addLog(data.message, 'error');
             }
           } catch (error) {
-            console.error('Error parsing WebSocket message:', error);
+            console.error('Error parsing SSE message:', error);
+            // Try to parse as plain message
+            if (event.data) {
+              addLog(event.data, 'info');
+            }
           }
         };
         
-        ws.onclose = () => {
-          console.log('WebSocket connection closed');
-          addLog('Disconnected from telegram forwarder', 'warning');
-          // Reconnect after 5 seconds
-          setTimeout(connectWebSocket, 5000);
+        eventSource.onerror = (error) => {
+          console.error('SSE connection error:', error);
+          addLog('Connection error. Reconnecting...', 'warning');
+          
+          // Close and reconnect
+          if (eventSource) {
+            eventSource.close();
+          }
+          
+          setTimeout(() => {
+            connectSSE();
+          }, 5000);
         };
         
-        ws.onerror = (error) => {
-          console.error('WebSocket error:', error);
-          addLog('WebSocket connection error', 'error');
-        };
-        
-        wsRef.current = ws;
       } catch (error) {
-        console.error('Failed to connect to WebSocket:', error);
-        addLog('Failed to connect to telegram forwarder', 'error');
+        console.error('Failed to connect to SSE:', error);
+        addLog('Failed to connect to telegram forwarder service', 'error');
+        
+        // Retry connection
+        setTimeout(() => {
+          connectSSE();
+        }, 5000);
       }
     };
 
-    connectWebSocket();
+    connectSSE();
     
     return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
+      if (eventSource) {
+        eventSource.close();
       }
     };
+  }, []);
+
+  // Poll for status updates every 5 seconds as a fallback
+  useEffect(() => {
+    const fetchStatus = async () => {
+      try {
+        const response = await fetch('/api/telegram-forwarder');
+        if (response.ok) {
+          const data = await response.json();
+          if (data.status) {
+            setStatus(prev => ({
+              ...prev,
+              ...data,
+              status: data.status === 'running' ? 'running' : 'stopped',
+              connected: data.status === 'running'
+            }));
+          }
+        } else {
+          // Handle error responses
+          const errorData = await response.json().catch(() => ({}));
+          if (errorData.error) {
+            setStatus(prev => ({
+              ...prev,
+              status: 'error',
+              connected: false,
+              last_error: errorData.message || errorData.error
+            }));
+            
+            // Log the error
+            if (errorData.status === 'offline' || errorData.status === 'timeout') {
+              addLog(`Railway service unavailable: ${errorData.message}`, 'error');
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching status:', error);
+        setStatus(prev => ({
+          ...prev,
+          status: 'error',
+          connected: false,
+          last_error: 'Failed to connect to Railway service'
+        }));
+      }
+    };
+
+    // Fetch initial status
+    fetchStatus();
+
+    // Poll every 5 seconds
+    const interval = setInterval(fetchStatus, 5000);
+
+    return () => clearInterval(interval);
   }, []);
 
   const addLog = (message: string, level: LogEntry['level'] = 'info') => {
@@ -323,8 +384,26 @@ export function TelegramForwarderConsole() {
 
             {/* Error Display */}
             {status.last_error && (
-              <div className="p-2 bg-red-900/20 border border-red-500/30 rounded text-xs text-red-400">
-                <strong>Error:</strong> {status.last_error}
+              <div className="p-2 bg-red-900/20 border border-red-500/30 rounded text-xs text-red-400 space-y-2">
+                <div>
+                  <strong>Error:</strong> {status.last_error}
+                </div>
+                {status.last_error.includes('502') || status.last_error.includes('connection refused') ? (
+                  <div className="mt-2 p-2 bg-yellow-900/20 border border-yellow-500/30 rounded">
+                    <strong className="text-yellow-400">⚠️ Service Not Running</strong>
+                    <p className="text-yellow-300 mt-1">
+                      The Railway service appears to be down. Check Railway dashboard logs for details.
+                    </p>
+                    <a 
+                      href="https://railway.app" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-blue-400 hover:text-blue-300 underline mt-1 inline-block"
+                    >
+                      → Open Railway Dashboard
+                    </a>
+                  </div>
+                ) : null}
               </div>
             )}
 

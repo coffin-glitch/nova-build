@@ -216,13 +216,20 @@ app.post('/telegram-forwarder', (req, res) => {
 });
 
 // Start the server
+// Railway sets PORT env var automatically, but we need to bind to 0.0.0.0
+// so Railway's reverse proxy can reach us
 const PORT = process.env.PORT || 3001;
-server.listen(PORT, () => {
-  console.log(`Telegram forwarder service running on port ${PORT}`);
-  console.log(`WebSocket server available at ws://localhost:${PORT}/telegram-forwarder`);
+const HOST = process.env.HOST || '0.0.0.0'; // Bind to all interfaces for Railway
+
+server.listen(PORT, HOST, () => {
+  console.log(`Telegram forwarder service running on ${HOST}:${PORT}`);
+  console.log(`HTTP server available at http://${HOST}:${PORT}`);
+  console.log(`WebSocket server available at ws://${HOST}:${PORT}/telegram-forwarder`);
+  console.log(`Health check: http://${HOST}:${PORT}/health`);
+  console.log(`Status: http://${HOST}:${PORT}/status`);
   
   // Auto-start telegram forwarder on Railway
-  if (process.env.RAILWAY_ENVIRONMENT) {
+  if (process.env.RAILWAY_ENVIRONMENT || process.env.PORT) {
     console.log('Railway environment detected, auto-starting telegram forwarder...');
     setTimeout(startTelegramForwarder, 2000); // Wait 2 seconds for startup
   }
