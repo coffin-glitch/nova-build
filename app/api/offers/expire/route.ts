@@ -10,14 +10,17 @@ export async function POST() {
       WHERE expires_at < NOW() 
       AND status = 'pending' 
       AND is_expired = false
-      RETURNING id, load_rr_number, carrier_user_id
+      RETURNING id, load_rr_number, supabase_carrier_user_id, carrier_user_id
     `;
 
-    // Create notifications for expired offers
+    // Create notifications for expired offers (Supabase-only)
     if (result && result.length > 0) {
       for (const offer of result) {
+        const carrierSupabaseUserId = offer.supabase_carrier_user_id || offer.carrier_user_id;
+        
         await sql`
           INSERT INTO carrier_notifications (
+            supabase_user_id,
             carrier_user_id,
             type,
             title,
@@ -25,6 +28,7 @@ export async function POST() {
             is_read,
             created_at
           ) VALUES (
+            ${carrierSupabaseUserId},
             ${offer.carrier_user_id},
             'offer_expired',
             'Offer Expired',

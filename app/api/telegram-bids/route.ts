@@ -16,7 +16,8 @@ export async function GET(request: NextRequest) {
     const isAdmin = searchParams.get("isAdmin") === "true";
 
     // Create cache key
-    const cacheKey = `telegram-bids-${q}-${tag}-${limit}-${offset}-${showExpired}-${isAdmin}`;
+    // Note: isAdmin doesn't affect query results, so we exclude it from cache key to share cache between admin and carriers
+    const cacheKey = `telegram-bids-${q}-${tag}-${limit}-${offset}-${showExpired}`;
 
     // Check cache first
     const cached = cache.get(cacheKey);
@@ -93,14 +94,14 @@ export async function GET(request: NextRequest) {
         NOW() > (tb.received_at::timestamp + INTERVAL '25 minutes') as is_expired,
         0 as stops_count,
         COALESCE(lowest_bid.amount_cents, 0) as lowest_amount_cents,
-        lowest_bid.clerk_user_id as lowest_user_id,
+        lowest_bid.supabase_user_id as lowest_user_id,
         COALESCE(bid_counts.bids_count, 0) as bids_count
       FROM telegram_bids tb
       LEFT JOIN (
         SELECT 
           cb1.bid_number,
           cb1.amount_cents,
-          cb1.clerk_user_id
+          cb1.supabase_user_id
         FROM carrier_bids cb1
         WHERE cb1.id = (
           SELECT cb2.id 
@@ -118,11 +119,14 @@ export async function GET(request: NextRequest) {
         GROUP BY bid_number
       ) bid_counts ON tb.bid_number = bid_counts.bid_number
       ${sql.unsafe(whereClause)}
-      ORDER BY tb.received_at DESC 
+      ORDER BY ${showExpired 
+        ? `(tb.received_at::timestamp + INTERVAL '25 minutes') DESC` // Sort expired bids by when they expired (most recent expired first)
+        : `tb.received_at DESC` // Sort active bids by when they were received (most recent first)
+      }
       LIMIT ${limit} OFFSET ${offset}
     `;
 
-    // Add time_left_seconds to each row
+    // Add time_left_seconds to each row and normalize stops field
     const bids = rows.map(row => {
       // Calculate time left from received_at + 25 minutes
       const receivedAt = new Date(row.received_at);
@@ -131,8 +135,29 @@ export async function GET(request: NextRequest) {
       const timeLeftMs = Math.max(0, expiresAt.getTime() - now.getTime());
       const timeLeftSeconds = Math.floor(timeLeftMs / 1000);
       
+      // Normalize stops field - ensure it's always an array or null
+      // postgres.js returns JSONB as parsed object/array, but handle edge cases
+      let normalizedStops = null;
+      if (row.stops) {
+        if (Array.isArray(row.stops)) {
+          normalizedStops = row.stops;
+        } else if (typeof row.stops === 'string') {
+          try {
+            const parsed = JSON.parse(row.stops);
+            normalizedStops = Array.isArray(parsed) ? parsed : [parsed];
+          } catch {
+            // If parsing fails, treat as single location
+            normalizedStops = [row.stops];
+          }
+        } else {
+          // If it's an object or other type, try to convert
+          normalizedStops = [row.stops];
+        }
+      }
+      
       return {
         ...row,
+        stops: normalizedStops, // Ensure stops is always an array or null
         time_left_seconds: timeLeftSeconds,
         expires_at_25: expiresAt.toISOString(), // Override with correct calculation
       };

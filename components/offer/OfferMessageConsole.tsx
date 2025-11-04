@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useUser } from "@clerk/nextjs";
+import { useUnifiedUser } from "@/hooks/useUnifiedUser";
 import { MessageSquare, Send } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -33,7 +33,7 @@ interface OfferMessageConsoleProps {
 }
 
 export function OfferMessageConsole({ offerId, isOpen, onClose }: OfferMessageConsoleProps) {
-  const { user } = useUser();
+  const { user } = useUnifiedUser();
   const [newMessage, setNewMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);

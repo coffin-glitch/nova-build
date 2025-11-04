@@ -1,5 +1,5 @@
 import sql from "@/lib/db";
-import { auth } from "@clerk/nextjs/server";
+import { requireApiCarrier } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 // Format phone number to 10 digits only
@@ -14,11 +14,8 @@ function formatPhoneNumber(phone: string): string | null {
 // Handle profile name suggestions
 async function handleGetSuggestions(request: NextRequest, searchParams: URLSearchParams) {
   try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireApiCarrier(request);
+    const userId = auth.userId;
 
     const driverName = searchParams.get('driverName');
     const driverPhone = searchParams.get('driverPhone');
@@ -70,11 +67,8 @@ export async function GET(request: NextRequest) {
     return handleGetSuggestions(request, searchParams);
   }
   try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireApiCarrier(request);
+    const userId = auth.userId;
 
     const profiles = await sql`
       SELECT 
@@ -100,7 +94,7 @@ export async function GET(request: NextRequest) {
         created_at,
         updated_at
       FROM driver_profiles 
-      WHERE carrier_user_id = ${userId} 
+      WHERE carrier_user_id = ${userId}
         AND is_active = true
       ORDER BY display_order ASC, last_used_at DESC NULLS LAST, profile_name ASC
     `;
@@ -143,11 +137,8 @@ export async function GET(request: NextRequest) {
 // PATCH - Update profile order, name, or mark as used
 export async function PATCH(request: NextRequest) {
   try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireApiCarrier(request);
+    const userId = auth.userId;
 
     const { action, profileId, newName, profileOrders } = await request.json();
 
@@ -229,11 +220,8 @@ export async function PATCH(request: NextRequest) {
 // POST - Create a new driver profile
 export async function POST(request: NextRequest) {
   try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireApiCarrier(request);
+    const userId = auth.userId;
 
     const {
       profile_name,
@@ -288,7 +276,7 @@ export async function POST(request: NextRequest) {
     // Check if this exact driver combination already exists (composite unique constraint)
     const existingDriver = await sql`
       SELECT id, profile_name FROM driver_profiles 
-      WHERE carrier_user_id = ${userId} 
+      WHERE carrier_user_id = ${userId}
         AND driver_name = ${driver_name.trim()}
         AND driver_phone = ${formattedPhone}
         AND driver_license_number = ${driver_license_number?.trim() || null}
@@ -306,7 +294,7 @@ export async function POST(request: NextRequest) {
     let finalProfileName = profile_name.trim();
     const existingProfileName = await sql`
       SELECT id FROM driver_profiles 
-      WHERE carrier_user_id = ${userId} 
+      WHERE carrier_user_id = ${userId}
         AND profile_name = ${finalProfileName}
         AND is_active = true
     `;
@@ -411,11 +399,8 @@ export async function POST(request: NextRequest) {
 // PUT - Update an existing driver profile
 export async function PUT(request: NextRequest) {
   try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireApiCarrier(request);
+    const userId = auth.userId;
 
     const {
       id,
@@ -491,7 +476,7 @@ export async function PUT(request: NextRequest) {
     // Check if profile name already exists for this carrier (excluding current profile)
     const duplicateProfile = await sql`
       SELECT id FROM driver_profiles 
-      WHERE carrier_user_id = ${userId} 
+      WHERE carrier_user_id = ${userId}
         AND profile_name = ${profile_name.trim()}
         AND id != ${id}
         AND is_active = true
@@ -545,11 +530,8 @@ export async function PUT(request: NextRequest) {
 // DELETE - Soft delete a driver profile
 export async function DELETE(request: NextRequest) {
   try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireApiCarrier(request);
+    const userId = auth.userId;
 
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');

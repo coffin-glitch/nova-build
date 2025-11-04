@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { useUser } from "@clerk/nextjs";
+import { useUnifiedUser } from "@/hooks/useUnifiedUser";
 import {
     CheckCircle,
     Clock,
@@ -25,7 +25,7 @@ interface LoadStatusTrackerProps {
 }
 
 export function LoadStatusTracker({ loadId, currentStatus, onStatusUpdate }: LoadStatusTrackerProps) {
-  const { user } = useUser();
+  const { user } = useUnifiedUser();
   const [isUpdating, setIsUpdating] = useState(false);
 
   // Fetch real-time status updates

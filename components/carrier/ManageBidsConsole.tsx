@@ -23,8 +23,6 @@ import {
     Navigation,
     Search,
     Target,
-    TrendingDown,
-    TrendingUp,
     Truck,
     X,
     XCircle
@@ -199,17 +197,7 @@ export default function ManageBidsConsole({ isOpen, onClose }: ManageBidsConsole
     return "bg-blue-500/20 text-blue-400 border-blue-500/30";
   };
 
-  const getBidPosition = (bid: ActiveBid) => {
-    if (bid.isExpired) return null;
-    
-    if (bid.myBid < bid.currentBid) {
-      return { position: "Leading", trend: "up", color: "text-green-400" };
-    } else if (bid.myBid === bid.currentBid) {
-      return { position: "Tied", trend: "equal", color: "text-yellow-400" };
-    } else {
-      return { position: "Outbid", trend: "down", color: "text-red-400" };
-    }
-  };
+  // Removed getBidPosition - blind bid system, no position information shown
 
   const handleModifyBid = async () => {
     if (!modifyBidDialog || !bidAmount) return;
@@ -384,7 +372,6 @@ export default function ManageBidsConsole({ isOpen, onClose }: ManageBidsConsole
               ) : (
                 <div className="space-y-3">
                   {filteredActiveBids.map((bid) => {
-                    const position = getBidPosition(bid);
                     return (
                       <Glass key={bid.id} className="p-4">
                         <div className="space-y-3">
@@ -396,13 +383,6 @@ export default function ManageBidsConsole({ isOpen, onClose }: ManageBidsConsole
                                 {getStatusText(bid)}
                               </Badge>
                               {getStatusIcon(bid)}
-                              {position && (
-                                <Badge variant="outline" className={position.color}>
-                                  {position.trend === 'up' && <TrendingUp className="h-3 w-3 mr-1" />}
-                                  {position.trend === 'down' && <TrendingDown className="h-3 w-3 mr-1" />}
-                                  {position.position}
-                                </Badge>
-                              )}
                             </div>
                             
                             <div className="text-right">
@@ -435,9 +415,6 @@ export default function ManageBidsConsole({ isOpen, onClose }: ManageBidsConsole
                             <div className="flex items-center gap-3 text-xs">
                               <div className="flex items-center gap-1">
                                 <DollarSign className="h-3 w-3 text-muted-foreground" />
-                                <span>Current: ${Number(bid.currentBid || 0).toFixed(2)}</span>
-                              </div>
-                              <div className="flex items-center gap-1">
                                 <span>My Bid: <span className="font-semibold text-blue-400">${Number(bid.myBid || 0).toFixed(2)}</span></span>
                               </div>
                             </div>
@@ -531,9 +508,6 @@ export default function ManageBidsConsole({ isOpen, onClose }: ManageBidsConsole
                           <div className="flex items-center gap-3 text-xs">
                             <div className="flex items-center gap-1">
                               <DollarSign className="h-3 w-3 text-muted-foreground" />
-                              <span>Final: ${Number(bid.currentBid || 0).toFixed(2)}</span>
-                            </div>
-                            <div className="flex items-center gap-1">
                               <span>My Bid: <span className={`font-semibold ${
                                 bid.bidStatus === 'won' ? 'text-green-400' : 
                                 bid.bidStatus === 'lost' ? 'text-red-400' : 'text-blue-400'
@@ -789,10 +763,12 @@ export default function ManageBidsConsole({ isOpen, onClose }: ManageBidsConsole
                 </div>
                 
                 <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div>
-                    <span className="text-muted-foreground">Source:</span>
-                    <span className="ml-2 font-medium">{viewDetailsBid.sourceChannel}</span>
-                  </div>
+                  {viewDetailsBid.sourceChannel && viewDetailsBid.sourceChannel !== '-1002560784901' && (
+                    <div>
+                      <span className="text-muted-foreground">Source:</span>
+                      <span className="ml-2 font-medium">{viewDetailsBid.sourceChannel}</span>
+                    </div>
+                  )}
                   <div>
                     <span className="text-muted-foreground">Bid Placed:</span>
                     <span className="ml-2 font-medium">
@@ -802,10 +778,6 @@ export default function ManageBidsConsole({ isOpen, onClose }: ManageBidsConsole
                   <div>
                     <span className="text-muted-foreground">My Bid:</span>
                     <span className="ml-2 font-medium">${Number(viewDetailsBid.myBid || 0).toFixed(2)}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Current Lowest:</span>
-                    <span className="ml-2 font-medium">${Number(viewDetailsBid.currentBid || 0).toFixed(2)}</span>
                   </div>
                 </div>
               </div>

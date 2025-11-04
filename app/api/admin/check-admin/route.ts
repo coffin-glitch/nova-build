@@ -1,11 +1,11 @@
-import { requireAdmin } from "@/lib/auth-server";
-import sql from "@/lib/db.server";
+import { requireApiAdmin } from "@/lib/auth-api-helper";
+import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
-    // SECURITY FIX: Require admin authentication
-    await requireAdmin();
+    // SECURITY FIX: Require admin authentication (Supabase-only)
+    await requireApiAdmin(request);
     
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get("userId");
@@ -20,9 +20,9 @@ export async function GET(request: NextRequest) {
     
     console.log("📡 Checking admin status directly...");
     
-    // Direct database query with proper authentication
+    // Direct database query with proper authentication (Supabase-only)
     const result = await sql`
-      SELECT role FROM user_roles WHERE clerk_user_id = ${userId}
+      SELECT role FROM user_roles_cache WHERE supabase_user_id = ${userId}
     `;
     
     console.log("🔍 Direct DB query result:", result);

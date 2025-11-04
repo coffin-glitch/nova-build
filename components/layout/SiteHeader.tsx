@@ -14,9 +14,10 @@ import {
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useAccentColor } from "@/hooks/useAccentColor";
 import { useIsAdmin } from "@/hooks/useUserRole";
+import { useUnifiedUser } from "@/hooks/useUnifiedUser";
+import { useSupabase } from "@/components/providers/SupabaseProvider";
 import { cn } from "@/lib/utils";
-import { UserButton, useUser } from "@clerk/nextjs";
-import { Bell, BookOpen, ChevronDown, DollarSign, FileText, Gavel, HandCoins, Menu, Package, Search, Shield, Truck, X } from "lucide-react";
+import { Bell, BookOpen, ChevronDown, DollarSign, FileText, Gavel, HandCoins, Menu, Package, Search, Shield, Truck, X, LogOut, User } from "lucide-react";
 import { useTheme } from "next-themes";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -35,10 +36,18 @@ export default function SiteHeader() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const isAdmin = useIsAdmin();
   const pathname = usePathname();
-  const { user, isLoaded } = useUser();
+  const { user, isLoaded } = useUnifiedUser();
+  const { supabase } = useSupabase();
   const { preferences, updateAccentColor } = useUserPreferences();
   const { accentColor } = useAccentColor();
   const { theme } = useTheme();
+  
+  const handleSignOut = async () => {
+    if (supabase) {
+      await supabase.auth.signOut();
+      window.location.href = '/';
+    }
+  };
   
   // Smart color handling for white accent color
   const getIconColor = () => {
@@ -81,7 +90,7 @@ export default function SiteHeader() {
               <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ backgroundColor: getLogoBackgroundColor() }}>
                 <Truck className="h-5 w-5" style={{ color: getIconColor() }} />
               </div>
-              <span className="text-xl font-bold text-foreground">NOVA Build</span>
+              <span className="text-xl font-bold text-foreground">NOVA</span>
             </Link>
           </div>
 
@@ -241,16 +250,25 @@ export default function SiteHeader() {
                       currentColor={preferences.accentColor}
                       onColorChange={updateAccentColor}
                     />
-                    <UserButton
-                      afterSignOutUrl="/"
-                      appearance={{
-                        elements: {
-                          avatarBox: "h-8 w-8",
-                          userButtonPopoverCard: "shadow-card border-border",
-                          userButtonPopoverActionButton: "hover:bg-accent",
-                        },
-                      }}
-                    />
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full">
+                          <User className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem asChild>
+                          <Link href="/profile" className="flex items-center">
+                            <User className="mr-2 h-4 w-4" />
+                            Profile
+                          </Link>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={handleSignOut}>
+                          <LogOut className="mr-2 h-4 w-4" />
+                          Sign Out
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </>
                 ) : (
                   <Button asChild variant="default" size="sm">
@@ -274,7 +292,7 @@ export default function SiteHeader() {
                     <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ backgroundColor: getLogoBackgroundColor() }}>
                       <Truck className="h-5 w-5" style={{ color: getIconColor() }} />
                     </div>
-                    <span className="text-lg font-bold">NOVA Build</span>
+                    <span className="text-lg font-bold">NOVA</span>
                   </div>
                   <Button
                     variant="ghost"
@@ -395,14 +413,25 @@ export default function SiteHeader() {
                     </div>
                     {user ? (
                       <div className="flex items-center space-x-3">
-                        <UserButton
-                          afterSignOutUrl="/"
-                          appearance={{
-                            elements: {
-                              avatarBox: "h-8 w-8",
-                            },
-                          }}
-                        />
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full">
+                          <User className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem asChild>
+                          <Link href="/profile" className="flex items-center">
+                            <User className="mr-2 h-4 w-4" />
+                            Profile
+                          </Link>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={handleSignOut}>
+                          <LogOut className="mr-2 h-4 w-4" />
+                          Sign Out
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                         <span className="text-sm text-muted-foreground">
                           {user.firstName || user.emailAddresses[0]?.emailAddress}
                         </span>

@@ -36,12 +36,20 @@ export function generateCSP(config: CSPConfig = { mode: 'strict' }): string {
     ...trustedDomains
   ];
 
+  // Add Supabase domains
+  const supabaseDomains = [
+    'https://*.supabase.co',
+    'https://*.supabase.in',
+    process.env.NEXT_PUBLIC_SUPABASE_URL || ''
+  ].filter(Boolean);
+
   const directives: Record<string, string[]> = {
     'default-src': ["'self'"],
     'script-src': [
       "'self'",
       'https://clerk.com',
-      'https://*.clerk.com'
+      'https://*.clerk.com',
+      ...supabaseDomains
     ],
     'style-src': [
       "'self'",
@@ -63,12 +71,16 @@ export function generateCSP(config: CSPConfig = { mode: 'strict' }): string {
       "'self'",
       'https://api.clerk.com',
       'https://*.clerk.com',
-      'wss://*.clerk.com'
+      'wss://*.clerk.com',
+      ...supabaseDomains,
+      'wss://*.supabase.co',
+      'wss://*.supabase.in'
     ],
     'frame-src': [
       "'self'",
       'https://clerk.com',
-      'https://*.clerk.com'
+      'https://*.clerk.com',
+      ...supabaseDomains
     ],
     'object-src': ["'none'"],
     'base-uri': ["'self'"],
@@ -81,13 +93,17 @@ export function generateCSP(config: CSPConfig = { mode: 'strict' }): string {
   switch (mode) {
     case 'strict':
       // Most restrictive - no inline scripts/styles, no eval
+      // BUT: In development, allow eval for Supabase
+      if (process.env.NODE_ENV === 'development') {
+        directives['script-src'].push("'unsafe-eval'");
+      }
       break;
       
     case 'moderate':
       if (allowInlineScripts) {
         directives['script-src'].push("'unsafe-inline'");
       }
-      if (allowEval) {
+      if (allowEval || process.env.NODE_ENV === 'development') {
         directives['script-src'].push("'unsafe-eval'");
       }
       break;

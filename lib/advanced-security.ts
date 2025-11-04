@@ -1,6 +1,7 @@
-import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
-import { getClerkUserRole } from "./auth-server";
+import { getSupabaseServer } from "./supabase";
+import { headers } from "next/headers";
+import { getUserRole } from "./auth";
 
 /**
  * Advanced Security Middleware for Next.js API Routes
@@ -125,13 +126,27 @@ export async function secureApiEndpoint(
       }
     }
 
-    // 5. Authentication
+    // 5. Authentication (Supabase-only)
     let userId: string | undefined;
     let userRole: string | undefined;
     
     if (config.requireAuth || config.requireAdmin || config.requireCarrier) {
-      const authResult = await auth();
-      userId = authResult.userId;
+      // Try to get from headers first (set by middleware)
+      const headersList = request.headers;
+      userId = headersList.get('X-User-Id') || undefined;
+      userRole = headersList.get('X-User-Role') || undefined;
+      
+      // Fallback to direct Supabase auth if not in headers
+      if (!userId) {
+        try {
+          const supabaseHeaders = await headers();
+          const supabase = getSupabaseServer(supabaseHeaders);
+          const { data: { user } } = await supabase.auth.getUser();
+          userId = user?.id;
+        } catch (error) {
+          console.error('[advanced-security] Error getting user from Supabase:', error);
+        }
+      }
       
       if (!userId) {
         logSecurityEvent('unauthorized_access_attempt', undefined, { 
@@ -147,10 +162,10 @@ export async function secureApiEndpoint(
         };
       }
 
-      // 6. Authorization
-      if (config.requireAdmin || config.requireCarrier) {
+      // 6. Authorization (Supabase-only)
+      if ((config.requireAdmin || config.requireCarrier) && !userRole) {
         try {
-          userRole = await getClerkUserRole(userId);
+          userRole = await getUserRole(userId);
           
           if (config.requireAdmin && userRole !== 'admin') {
             logSecurityEvent('unauthorized_admin_access_attempt', userId, { 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useClerkRole } from '@/lib/clerk-roles';
+import { useUnifiedRole } from '@/hooks/useUnifiedRole';
 import React, { createContext, useContext, useEffect, useState } from 'react';
 
 type ViewMode = 'admin' | 'carrier';
@@ -16,7 +16,7 @@ interface AdminViewContextType {
 const AdminViewContext = createContext<AdminViewContextType | undefined>(undefined);
 
 export function AdminViewProvider({ children }: { children: React.ReactNode }) {
-  const { isAdmin } = useClerkRole();
+  const { isAdmin } = useUnifiedRole();
   const [viewMode, setViewMode] = useState<ViewMode>('admin');
 
   // Reset to admin view when user is not admin

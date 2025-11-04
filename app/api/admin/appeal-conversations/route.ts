@@ -1,21 +1,12 @@
-import { getClerkUserRole } from "@/lib/clerk-server";
+import { requireApiAdmin } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
-import { auth } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Check if user is admin
-    const userRole = await getClerkUserRole(userId);
-    if (userRole !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    // Ensure user is admin (Supabase-only)
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
 
     // Get appeal conversations for the current admin with unread counts
     const conversations = await sql`
@@ -61,23 +52,14 @@ export async function GET() {
   }
 }
 
-export async function POST(req: Request) {
+export async function POST(request: NextRequest) {
   try {
-    const { userId } = await auth();
+    // Ensure user is admin (Supabase-only)
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
     console.log('Admin appeal conversation POST - userId:', userId);
-    
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
 
-    // Check if user is admin
-    const userRole = await getClerkUserRole(userId);
-    console.log('Admin appeal conversation POST - userRole:', userRole);
-    if (userRole !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
-    const body = await req.json();
+    const body = await request.json();
     const { carrier_user_id } = body;
     console.log('Admin appeal conversation POST - carrier_user_id:', carrier_user_id);
 
@@ -90,7 +72,7 @@ export async function POST(req: Request) {
     // Check if appeal conversation already exists (either with current admin or admin_system)
     const existingConversation = await sql`
       SELECT id, admin_user_id FROM conversations 
-      WHERE carrier_user_id = ${carrier_user_id} 
+      WHERE supabase_carrier_user_id = ${carrier_user_id} 
       AND conversation_type = 'appeal'
       AND (admin_user_id = ${userId} OR admin_user_id = 'admin_system')
     `;
@@ -115,9 +97,10 @@ export async function POST(req: Request) {
 
     // Create new appeal conversation
     console.log('Creating new appeal conversation...');
+    // Create new appeal conversation (Supabase-only)
     const result = await sql`
       INSERT INTO conversations (
-        carrier_user_id,
+        supabase_carrier_user_id,
         admin_user_id,
         conversation_type,
         subject,

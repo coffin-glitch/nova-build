@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatMoney } from "@/lib/format";
-import { useUser } from "@clerk/nextjs";
+import { useUnifiedUser } from "@/hooks/useUnifiedUser";
 import { BarChart3, DollarSign, Package, TrendingUp, Truck } from "lucide-react";
 
 interface BidAnalyticsProps {
@@ -17,7 +17,7 @@ interface BidAnalyticsProps {
 }
 
 export function BidAnalytics({ stats, bids }: BidAnalyticsProps) {
-  const { user } = useUser();
+  const { user } = useUnifiedUser();
   
   // Calculate additional metrics from real-time data
   const acceptanceRate = stats.totalAwarded > 0 ? (stats.completedBids / stats.totalAwarded) * 100 : 0;

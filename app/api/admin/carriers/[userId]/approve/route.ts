@@ -1,6 +1,5 @@
-import { getClerkUserRole } from "@/lib/clerk-server";
 import sql from "@/lib/db";
-import { auth } from "@clerk/nextjs/server";
+import { requireApiAdmin, unauthorizedResponse, forbiddenResponse } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(
@@ -11,24 +10,16 @@ export async function POST(
     // Await params in Next.js 15
     const { userId } = await params;
     
-    const { userId: adminUserId } = await auth();
-    
-    if (!adminUserId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Check if user is admin
-    const userRole = await getClerkUserRole(adminUserId);
-    if (userRole !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    // Use unified auth (supports Supabase and Clerk)
+    const auth = await requireApiAdmin(request);
+    const adminUserId = auth.userId;
 
     const { review_notes } = await request.json();
 
-    // Get current profile data before updating for history
+    // Get current profile data before updating for history (Supabase-only)
     const currentProfile = await sql`
       SELECT 
-        clerk_user_id,
+        supabase_user_id,
         legal_name,
         mc_number,
         dot_number,
@@ -47,14 +38,16 @@ export async function POST(
         edits_enabled_at,
         created_at
       FROM carrier_profiles 
-      WHERE clerk_user_id = ${userId}
+      WHERE supabase_user_id = ${userId}
     `;
 
     if (currentProfile.length === 0) {
       return NextResponse.json({ error: "Carrier profile not found" }, { status: 404 });
     }
 
-    // Update carrier profile status to approved
+    const profileUserId = currentProfile[0].supabase_user_id || userId;
+    
+    // Update carrier profile status to approved (Supabase-only)
     await sql`
       UPDATE carrier_profiles 
       SET 
@@ -63,7 +56,7 @@ export async function POST(
         reviewed_by = ${adminUserId},
         review_notes = ${review_notes || null},
         edits_enabled = false
-      WHERE clerk_user_id = ${userId}
+      WHERE supabase_user_id = ${profileUserId}
     `;
 
     // Create history record for approval
@@ -78,23 +71,59 @@ export async function POST(
         review_notes,
         version_number
       ) VALUES (
-        ${userId},
+        ${profileUserId},
         ${JSON.stringify(currentProfile[0])},
         'approved',
         ${currentProfile[0].submitted_at || NOW()},
         NOW(),
         ${adminUserId},
         ${review_notes || null},
-        (SELECT COALESCE(MAX(version_number), 0) + 1 FROM carrier_profile_history WHERE carrier_user_id = ${userId})
+        (SELECT COALESCE(MAX(version_number), 0) + 1 FROM carrier_profile_history WHERE carrier_user_id = ${profileUserId})
       )
+    `;
+
+    // Get updated profile to return in response (for client cache update)
+    const updatedProfile = await sql`
+      SELECT 
+        cp.supabase_user_id as id,
+        cp.supabase_user_id,
+        cp.legal_name,
+        cp.mc_number,
+        cp.dot_number,
+        cp.contact_name,
+        cp.phone,
+        cp.profile_status,
+        cp.submitted_at,
+        cp.reviewed_at,
+        cp.reviewed_by,
+        cp.review_notes,
+        cp.decline_reason,
+        cp.is_first_login,
+        cp.profile_completed_at,
+        cp.edits_enabled,
+        cp.edits_enabled_by,
+        cp.edits_enabled_at,
+        cp.created_at
+      FROM carrier_profiles cp
+      WHERE cp.supabase_user_id = ${profileUserId}
     `;
 
     return NextResponse.json({ 
       success: true, 
-      message: "Carrier profile approved successfully" 
+      message: "Carrier profile approved successfully",
+      profile: updatedProfile[0] || null
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error approving carrier profile:", error);
+    
+    // Handle auth errors
+    if (error.message === "Unauthorized") {
+      return unauthorizedResponse();
+    }
+    if (error.message === "Admin access required" || error.message?.includes("Forbidden")) {
+      return forbiddenResponse(error.message || "Admin access required");
+    }
+    
     return NextResponse.json(
       { error: "Failed to approve carrier profile" },
       { status: 500 }

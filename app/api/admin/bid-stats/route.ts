@@ -1,14 +1,15 @@
-import { requireAdmin } from "@/lib/clerk-server";
+import { requireApiAdmin } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    // This will redirect if user is not admin
-    await requireAdmin();
+    // Ensure user is admin (Supabase-only)
+    await requireApiAdmin(request);
 
     // Get bid statistics
     // Use LEFT JOIN to include awarded bids even if carrier hasn't accepted yet
+    // Note: winner_user_id was removed in migration 078, only supabase_winner_user_id exists
     const stats = await sql`
       SELECT 
         COUNT(*) as total,
@@ -16,7 +17,7 @@ export async function GET() {
         COUNT(CASE WHEN COALESCE(cb.status, 'awarded') = 'completed' THEN 1 END) as completed,
         COALESCE(SUM(aa.winner_amount_cents), 0) as revenue
       FROM auction_awards aa
-      LEFT JOIN carrier_bids cb ON aa.bid_number = cb.bid_number AND aa.winner_user_id = cb.clerk_user_id
+      LEFT JOIN carrier_bids cb ON aa.bid_number = cb.bid_number AND aa.supabase_winner_user_id = cb.supabase_user_id
     `;
 
     const result = stats[0] || { total: 0, active: 0, completed: 0, revenue: 0 };

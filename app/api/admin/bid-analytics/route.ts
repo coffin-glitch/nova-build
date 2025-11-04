@@ -1,11 +1,11 @@
-import { requireAdmin } from "@/lib/auth-server";
+import { requireApiAdmin } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
-    // Ensure user is admin
-    await requireAdmin();
+    // Ensure user is admin (Supabase-only)
+    await requireApiAdmin(request);
 
     const { searchParams } = new URL(request.url);
     const timeframe = searchParams.get("timeframe") || "30"; // days
@@ -63,8 +63,8 @@ async function getBidOverview(startDate: Date) {
         COUNT(CASE WHEN cb.created_at >= ${startDate.toISOString()} THEN 1 END) as recent_carrier_bids,
         COUNT(CASE WHEN cb.created_at::date = CURRENT_DATE THEN 1 END) as total_carrier_bids_today,
         
-        COUNT(DISTINCT cb.clerk_user_id) as unique_carriers_bid,
-        COUNT(DISTINCT CASE WHEN cb.created_at >= ${startDate.toISOString()} THEN cb.clerk_user_id END) as recent_carriers_bid,
+        COUNT(DISTINCT cb.supabase_user_id) as unique_carriers_bid,
+        COUNT(DISTINCT CASE WHEN cb.created_at >= ${startDate.toISOString()} THEN cb.supabase_user_id END) as recent_carriers_bid,
         
         COALESCE(AVG(cb.amount_cents), 0) as avg_bid_amount,
         COALESCE(MIN(cb.amount_cents), 0) as min_bid_amount,
@@ -153,7 +153,7 @@ async function getBidTrends(startDate: Date) {
       DATE(tb.received_at) as date,
       COUNT(tb.id) as auctions_created,
       COUNT(cb.id) as bids_placed,
-      COUNT(DISTINCT cb.clerk_user_id) as unique_carriers,
+      COUNT(DISTINCT cb.supabase_user_id) as unique_carriers,
       COALESCE(AVG(cb.amount_cents), 0) as avg_bid_amount,
       COALESCE(AVG(tb.distance_miles), 0) as avg_distance
     FROM telegram_bids tb
@@ -203,7 +203,7 @@ async function getPerformanceMetrics(startDate: Date) {
       END as distance_category,
       COUNT(tb.id) as auction_count,
       COUNT(cb.id) as bid_count,
-      COUNT(DISTINCT cb.clerk_user_id) as unique_carriers,
+      COUNT(DISTINCT cb.supabase_user_id) as unique_carriers,
       COALESCE(AVG(cb.amount_cents), 0) as avg_bid_amount,
       COALESCE(AVG(tb.distance_miles), 0) as avg_distance
     FROM telegram_bids tb
@@ -218,7 +218,7 @@ async function getPerformanceMetrics(startDate: Date) {
       COALESCE(tb.tag, 'No Tag') as tag,
       COUNT(tb.id) as auction_count,
       COUNT(cb.id) as bid_count,
-      COUNT(DISTINCT cb.clerk_user_id) as unique_carriers,
+      COUNT(DISTINCT cb.supabase_user_id) as unique_carriers,
       COALESCE(AVG(cb.amount_cents), 0) as avg_bid_amount
     FROM telegram_bids tb
     LEFT JOIN carrier_bids cb ON tb.bid_number = cb.bid_number
@@ -238,7 +238,7 @@ async function getPerformanceMetrics(startDate: Date) {
       END as time_category,
       COUNT(tb.id) as auction_count,
       COUNT(cb.id) as bid_count,
-      COUNT(DISTINCT cb.clerk_user_id) as unique_carriers,
+      COUNT(DISTINCT cb.supabase_user_id) as unique_carriers,
       COALESCE(AVG(cb.amount_cents), 0) as avg_bid_amount
     FROM telegram_bids tb
     LEFT JOIN carrier_bids cb ON tb.bid_number = cb.bid_number
@@ -291,9 +291,9 @@ async function getCarrierActivity(startDate: Date) {
       COUNT(CASE WHEN EXTRACT(HOUR FROM cb.created_at) BETWEEN 0 AND 5 THEN 1 END) as night_bids
       
     FROM carrier_profiles cp
-    INNER JOIN carrier_bids cb ON cp.clerk_user_id = cb.clerk_user_id
+    INNER JOIN carrier_bids cb ON cp.supabase_user_id = cb.supabase_user_id
     WHERE cb.created_at >= ${startDate.toISOString()}
-    GROUP BY cp.clerk_user_id, cp.company_name, cp.legal_name, cp.mc_number
+    GROUP BY cp.supabase_user_id, cp.company_name, cp.legal_name, cp.mc_number
     ORDER BY recent_bids DESC
     LIMIT 50
   `;
@@ -324,7 +324,7 @@ async function getAuctionInsights(startDate: Date) {
         COALESCE(MIN(cb.amount_cents), 0) as winning_bid_amount,
         COALESCE(MAX(cb.amount_cents), 0) as highest_bid_amount,
         COALESCE(AVG(cb.amount_cents), 0) as avg_bid_amount,
-        COUNT(DISTINCT cb.clerk_user_id) as unique_carriers,
+        COUNT(DISTINCT cb.supabase_user_id) as unique_carriers,
         tb.is_expired
       FROM telegram_bids tb
       LEFT JOIN carrier_bids cb ON tb.bid_number = cb.bid_number
@@ -367,7 +367,7 @@ async function getAuctionInsights(startDate: Date) {
       COALESCE(MIN(cb.amount_cents), 0) as winning_bid_amount,
       COALESCE(MAX(cb.amount_cents), 0) as highest_bid_amount,
       COALESCE(AVG(cb.amount_cents), 0) as avg_bid_amount,
-      COUNT(DISTINCT cb.clerk_user_id) as unique_carriers
+      COUNT(DISTINCT cb.supabase_user_id) as unique_carriers
     FROM telegram_bids tb
     LEFT JOIN carrier_bids cb ON tb.bid_number = cb.bid_number
     WHERE tb.received_at >= ${startDate.toISOString()}

@@ -1,14 +1,11 @@
 import sql from "@/lib/db";
-import { auth } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { requireApiCarrier } from "@/lib/auth-api-helper";
+import { NextRequest, NextResponse } from "next/server";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireApiCarrier(request);
+    const userId = auth.userId;
 
     // Get comprehensive load statistics for the carrier
     const stats = await sql`
@@ -20,7 +17,7 @@ export async function GET() {
           COUNT(CASE WHEN status = 'rejected' THEN 1 END) as rejected_offers,
           COALESCE(AVG(offer_amount), 0) as average_offer_amount
         FROM load_offers 
-        WHERE carrier_user_id = ${userId}
+        WHERE supabase_user_id = ${userId}
       ),
       booked_stats AS (
         SELECT 
@@ -30,7 +27,7 @@ export async function GET() {
           SUM(lo.offer_amount) as total_revenue
         FROM loads l
         INNER JOIN load_offers lo ON l.rr_number = lo.load_rr_number
-        WHERE lo.carrier_user_id = ${userId}
+        WHERE lo.supabase_user_id = ${userId}
           AND lo.status IN ('accepted', 'assigned', 'checked_in', 'picked_up', 'departed', 'in_transit', 'checked_in_delivery', 'delivered', 'completed')
       )
       SELECT 

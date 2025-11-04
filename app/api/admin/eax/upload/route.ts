@@ -1,28 +1,13 @@
-import { getClerkUserRole } from "@/lib/clerk-server";
+import { requireApiAdmin } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { EAXLoadData, getLoadSummary, parseEAXCSV, parseEAXExcel, validateEAXLoad } from "@/lib/eax-parser";
-import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 
 export async function POST(request: NextRequest) {
   try {
-    // Check authentication and admin role
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json(
-        { error: "Authentication required" },
-        { status: 401 }
-      );
-    }
-
-    const userRole = await getClerkUserRole(userId);
-    if (userRole !== "admin") {
-      return NextResponse.json(
-        { error: "Admin access required" },
-        { status: 403 }
-      );
-    }
+    // Ensure user is admin (Supabase-only)
+    await requireApiAdmin(request);
 
     const formData = await request.formData();
     const file = formData.get("file") as File;

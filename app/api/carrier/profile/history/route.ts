@@ -1,14 +1,11 @@
 import sql from "@/lib/db";
-import { auth } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { requireApiCarrier } from "@/lib/auth-api-helper";
+import { NextRequest, NextResponse } from "next/server";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireApiCarrier(request);
+    const userId = auth.userId;
 
     // Fetch profile history for the current user
     const history = await sql`
@@ -25,7 +22,7 @@ export async function GET() {
         version_number,
         created_at
       FROM carrier_profile_history
-      WHERE carrier_user_id = ${userId}
+      WHERE supabase_user_id = ${userId}
       ORDER BY version_number DESC
     `;
 

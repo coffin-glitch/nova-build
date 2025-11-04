@@ -1,17 +1,14 @@
+import { requireApiAuth } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
 
 export async function GET(request: NextRequest) {
   try {
-    const { userId } = auth();
+    // Ensure user is authenticated (Supabase-only)
+    const auth = await requireApiAuth(request);
     
-    if (!userId) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-    }
-    
-    return NextResponse.json({ userId });
+    return NextResponse.json({ userId: auth.userId });
   } catch (error) {
     console.error("Error getting user ID:", error);
-    return NextResponse.json({ error: "Failed to get user ID" }, { status: 500 });
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 }

@@ -1,25 +1,17 @@
-import { getClerkUserRole } from "@/lib/clerk-server";
+import { requireApiAdmin } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
-import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function PUT(
-  req: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ rrNumber: string }> }
 ) {
   try {
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
-    }
-
-    const userRole = await getClerkUserRole(userId);
-    if (userRole !== "admin") {
-      return NextResponse.json({ error: "Only admins can edit load information" }, { status: 403 });
-    }
+    // Ensure user is admin (Supabase-only)
+    await requireApiAdmin(request);
 
     const { rrNumber } = await params;
-    const body = await req.json();
+    const body = await request.json();
     
     const {
       // Basic load information
@@ -129,16 +121,25 @@ export async function PUT(
 }
 
 export async function GET(
-  req: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ rrNumber: string }> }
 ) {
   try {
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    // Try to get auth - if admin, show all; if carrier, show limited; if none, show public
+    let userRole: 'admin' | 'carrier' | null = null;
+    try {
+      const auth = await requireApiAdmin(request);
+      userRole = 'admin';
+    } catch {
+      // Not admin, try carrier
+      try {
+        await requireApiCarrier(request);
+        userRole = 'carrier';
+      } catch {
+        // Public access
+      }
     }
 
-    const userRole = await getClerkUserRole(userId);
     const { rrNumber } = await params;
 
     // Get load details - admins see all fields, carriers see limited fields
@@ -158,7 +159,15 @@ export async function GET(
         WHERE rr_number = ${rrNumber} AND published = true
       `;
     } else {
-      return NextResponse.json({ error: "Access denied" }, { status: 403 });
+      // Public access - only published loads with limited fields
+      loadResult = await sql`
+        SELECT 
+          rr_number, tm_number, pickup_date, pickup_time, delivery_date, delivery_time,
+          equipment, weight, stops, total_miles, customer_name, origin_city, origin_state,
+          destination_city, destination_state, target_buy, published, created_at, updated_at
+        FROM loads 
+        WHERE rr_number = ${rrNumber} AND published = true
+      `;
     }
 
     if (loadResult.length === 0) {

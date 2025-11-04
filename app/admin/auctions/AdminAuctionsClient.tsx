@@ -40,7 +40,7 @@ export default function AdminAuctionsClient({}: AdminAuctionsClientProps) {
     amount_cents: number;
     notes: string | null;
     created_at: string;
-    clerk_user_id: string;
+    supabase_user_id: string;
     carrier_legal_name?: string;
     carrier_mc_number?: string;
   }>>([]);
@@ -349,7 +349,7 @@ export default function AdminAuctionsClient({}: AdminAuctionsClientProps) {
                           <TableCell>
                             <Button
                               size="sm"
-                              onClick={() => handleAwardBid(selectedBid.bid_number, bid.clerk_user_id)}
+                              onClick={() => handleAwardBid(selectedBid.bid_number, bid.supabase_user_id)}
                             >
                               <Award className="w-4 h-4 mr-1" />
                               Award

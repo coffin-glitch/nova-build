@@ -4,7 +4,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAccentColor } from "@/hooks/useAccentColor";
-import { useUser } from "@clerk/nextjs";
+import { useUnifiedUser } from "@/hooks/useUnifiedUser";
 import {
     ArrowLeft,
     MessageCircle,
@@ -48,7 +48,7 @@ interface UserInfo {
 }
 
 export function CarrierFloatingChatConsole() {
-  const { user, isLoaded } = useUser();
+  const { user, isLoaded } = useUnifiedUser();
   const { accentColor, accentBgStyle } = useAccentColor();
   const [isOpen, setIsOpen] = useState(false);
   const [selectedMessage, setSelectedMessage] = useState<AdminMessage | null>(null);

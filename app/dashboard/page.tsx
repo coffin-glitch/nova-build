@@ -1,12 +1,17 @@
 import { requireSignedIn } from "@/lib/auth";
-import { currentUser } from "@clerk/nextjs/server";
+import { createCookieAdapter, getSupabaseServer } from "@/lib/supabase";
+import { cookies, headers } from "next/headers";
 
 export const metadata = { title: "NOVA • Dashboard" };
 
 export default async function DashboardPage() {
   await requireSignedIn();
-  const user = await currentUser();
-  const name = user?.firstName || user?.username || "Carrier";
+  const headersList = await headers();
+  const cookieStore = await cookies();
+  const cookieAdapter = createCookieAdapter(cookieStore, true);
+  const supabase = getSupabaseServer(headersList, cookieAdapter);
+  const { data: { user } } = await supabase.auth.getUser();
+  const name = user?.user_metadata?.first_name || user?.user_metadata?.name || user?.email?.split('@')[0] || "Carrier";
 
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-4">

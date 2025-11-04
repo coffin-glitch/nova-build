@@ -1,41 +1,44 @@
 import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiCarrier, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
-import { auth } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    let auth;
+    try {
+      auth = await requireApiCarrier(request);
+    } catch (authError: any) {
+      console.error("[carrier/profile] Auth error:", authError);
+      return unauthorizedResponse();
     }
-
-          // Get carrier profile from database with correct column names
-          const profiles = await sql`
-            SELECT 
-              clerk_user_id as id,
-              clerk_user_id,
-              legal_name,
-              mc_number,
-              dot_number,
-              contact_name,
-              phone,
-              profile_status,
-              submitted_at,
-              reviewed_at,
-              reviewed_by,
-              review_notes,
-              decline_reason,
-              is_first_login,
-              profile_completed_at,
-              edits_enabled,
-              edits_enabled_by,
-              edits_enabled_at,
-              created_at
-            FROM carrier_profiles 
-            WHERE clerk_user_id = ${userId}
-          `;
+    const userId = auth.userId;
+    
+    // Get carrier profile from database (Supabase-only)
+    const profiles = await sql`
+      SELECT 
+        cp.supabase_user_id as id,
+        cp.supabase_user_id,
+        cp.legal_name,
+        cp.mc_number,
+        cp.dot_number,
+        cp.contact_name,
+        cp.phone,
+        cp.profile_status,
+        cp.submitted_at,
+        cp.reviewed_at,
+        cp.reviewed_by,
+        cp.review_notes,
+        cp.decline_reason,
+        cp.is_first_login,
+        cp.profile_completed_at,
+        cp.edits_enabled,
+        cp.edits_enabled_by,
+        cp.edits_enabled_at,
+        cp.created_at
+      FROM carrier_profiles cp
+      WHERE cp.supabase_user_id = ${userId}
+    `;
 
     const profile = profiles[0] || null;
 
@@ -48,27 +51,41 @@ export async function GET() {
     
     return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching carrier profile:", error);
     logSecurityEvent('carrier_profile_error', undefined, { error: error instanceof Error ? error.message : String(error) });
     
+    // Handle authentication errors properly - return JSON instead of HTML
+    if (error instanceof Error) {
+      if (error.message === "Unauthorized" || error.message.includes("Unauthorized")) {
+        const response = NextResponse.json({ 
+          error: "Authentication required" 
+        }, { status: 401 });
+        return addSecurityHeaders(response);
+      }
+      if (error.message === "Carrier access required" || error.message.includes("Carrier access")) {
+        const response = NextResponse.json({ 
+          error: "Carrier access required" 
+        }, { status: 403 });
+        return addSecurityHeaders(response);
+      }
+    }
+    
     const response = NextResponse.json({ 
-      error: "Failed to fetch profile" 
+      error: "Failed to fetch profile",
+      details: error?.message || String(error)
     }, { status: 500 });
     
     return addSecurityHeaders(response);
   }
 }
 
-export async function POST(req: Request) {
+export async function POST(request: NextRequest) {
   try {
-    const { userId } = await auth();
+    const auth = await requireApiCarrier(request);
+    const userId = auth.userId;
     
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const body = await req.json();
+    const body = await request.json();
     const {
       legal_name: companyName,
       mc_number: mcNumber,
@@ -110,12 +127,12 @@ export async function POST(req: Request) {
       }, { status: 400 });
     }
 
-    // Check if profile exists
+    // Check if profile exists (Supabase-only)
     const existingProfiles = await sql`
       SELECT 
-        clerk_user_id
-      FROM carrier_profiles 
-      WHERE clerk_user_id = ${userId}
+        cp.supabase_user_id
+      FROM carrier_profiles cp
+      WHERE cp.supabase_user_id = ${userId}
     `;
 
     const existingProfile = existingProfiles[0];
@@ -124,51 +141,62 @@ export async function POST(req: Request) {
       // Update existing profile
       if (submit_for_approval) {
         // If submitting for approval, lock edits and set status to pending
+        // Also set profile_completed_at and is_first_login=false for first-time submissions
         await sql`
           UPDATE carrier_profiles SET
             legal_name = ${companyName},
+            company_name = ${companyName},
             mc_number = ${mcNumber},
             dot_number = ${dotNumber},
             contact_name = ${contactName},
             phone = ${formattedPhone},
             profile_status = 'pending',
             submitted_at = NOW(),
-            edits_enabled = false
-          WHERE clerk_user_id = ${userId}
+            edits_enabled = false,
+            profile_completed_at = COALESCE(profile_completed_at, NOW()),
+            is_first_login = false
+          WHERE supabase_user_id = ${userId}
         `;
       } else {
         // Regular update - only update if edits are enabled
         await sql`
           UPDATE carrier_profiles SET
             legal_name = ${companyName},
+            company_name = ${companyName},
             mc_number = ${mcNumber},
             dot_number = ${dotNumber},
             contact_name = ${contactName},
             phone = ${formattedPhone}
-          WHERE clerk_user_id = ${userId} AND edits_enabled = true
+          WHERE supabase_user_id = ${userId} AND edits_enabled = true
         `;
       }
     } else {
-      // Create new profile
+      // Create new profile (Supabase-only)
       await sql`
         INSERT INTO carrier_profiles (
-          clerk_user_id,
+          supabase_user_id,
           legal_name,
+          company_name,
           mc_number,
           dot_number,
           contact_name,
           phone,
           profile_status,
           submitted_at,
-          edits_enabled
+          edits_enabled,
+          profile_completed_at,
+          is_first_login
         ) VALUES (
-          ${userId}, 
+          ${userId},
+          ${companyName},
           ${companyName}, 
           ${mcNumber}, 
-          ${dotNumber}, 
+          ${dotNumber || null}, 
           ${contactName}, 
           ${formattedPhone},
-          'pending',
+          ${submit_for_approval ? 'pending' : 'open'},
+          ${submit_for_approval ? new Date() : null},
+          ${submit_for_approval ? false : true},
           ${submit_for_approval ? new Date() : null},
           ${submit_for_approval ? false : true}
         )
@@ -194,10 +222,22 @@ export async function POST(req: Request) {
 
   } catch (error) {
     console.error("Error updating carrier profile:", error);
+    console.error("Error details:", {
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      name: error instanceof Error ? error.name : undefined
+    });
     logSecurityEvent('carrier_profile_update_error', undefined, { error: error instanceof Error ? error.message : String(error) });
     
+    const errorMessage = error instanceof Error 
+      ? (error.message || "Failed to update profile")
+      : "Failed to update profile";
+    
     const response = NextResponse.json({ 
-      error: "Failed to update profile" 
+      error: errorMessage,
+      details: process.env.NODE_ENV === 'development' 
+        ? (error instanceof Error ? error.stack : String(error))
+        : undefined
     }, { status: 500 });
     
     return addSecurityHeaders(response);

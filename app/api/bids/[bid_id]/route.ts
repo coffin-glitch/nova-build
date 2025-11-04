@@ -1,5 +1,5 @@
+import { requireApiAuth } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
 import { getBidSummary } from "@/lib/auctions";
 
 export async function GET(
@@ -7,7 +7,9 @@ export async function GET(
   { params }: { params: { bid_number: string } }
 ) {
   try {
-    const { userId } = await auth();
+    // Ensure user is authenticated (Supabase-only)
+    const auth = await requireApiAuth(request);
+    const userId = auth.userId;
     const { bid_number } = params;
 
     const summary = await getBidSummary(bid_number, userId);

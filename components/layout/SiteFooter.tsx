@@ -50,7 +50,7 @@ export default function SiteFooter() {
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
                 <Truck className="h-5 w-5 text-primary-foreground" />
               </div>
-              <span className="text-xl font-bold text-foreground">NOVA Build</span>
+              <span className="text-xl font-bold text-foreground">NOVA</span>
             </div>
             <p className="mt-4 text-sm text-muted-foreground">
               The modern logistics platform connecting carriers with quality loads through our premium freight marketplace.
@@ -156,7 +156,7 @@ export default function SiteFooter() {
         <div className="mt-12 border-t border-border pt-8">
           <div className="flex flex-col items-center justify-between space-y-4 md:flex-row md:space-y-0">
             <p className="text-sm text-muted-foreground">
-              © {currentYear} NOVA Build. All rights reserved.
+              © {currentYear} NOVA. All rights reserved.
             </p>
             <div className="flex items-center space-x-6 text-sm text-muted-foreground">
               <span>Made with ❤️ for the logistics industry</span>

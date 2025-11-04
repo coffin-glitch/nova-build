@@ -1,22 +1,14 @@
-import { getClerkUserRole, isClerkCarrier } from "@/lib/clerk-server";
+import { requireApiCarrier, requireApiAdmin } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
-import { auth } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
-export async function POST(req: Request) {
+export async function POST(request: NextRequest) {
   try {
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    // Ensure user is carrier (Supabase-only)
+    const auth = await requireApiCarrier(request);
+    const userId = auth.userId;
 
-    // Check if user is a carrier
-    const isCarrier = await isClerkCarrier(userId);
-    if (!isCarrier) {
-      return NextResponse.json({ error: "Only carriers can make offers" }, { status: 403 });
-    }
-
-    const body = await req.json();
+    const body = await request.json();
     const { loadRrNumber, offerAmount, notes } = body;
 
     if (!loadRrNumber || !offerAmount) {
@@ -33,22 +25,22 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Load not found or not published" }, { status: 404 });
     }
 
-    // Check if carrier already has an offer for this load
+    // Check if carrier already has an offer for this load (Supabase-only)
     const existingOffer = await sql`
       SELECT id FROM load_offers 
-      WHERE load_rr_number = ${loadRrNumber} AND carrier_user_id = ${userId}
+      WHERE load_rr_number = ${loadRrNumber} AND supabase_user_id = ${userId}
     `;
 
     if (existingOffer && existingOffer.length > 0) {
       return NextResponse.json({ error: "You already have an offer for this load" }, { status: 409 });
     }
 
-    // Create the offer with 24-hour expiration
+    // Create the offer with 24-hour expiration (Supabase-only)
     const expiresAt = new Date();
     expiresAt.setHours(expiresAt.getHours() + 24); // 24 hours from now
 
     const result = await sql`
-      INSERT INTO load_offers (load_rr_number, carrier_user_id, offer_amount, notes, status, expires_at, is_expired)
+      INSERT INTO load_offers (load_rr_number, supabase_user_id, offer_amount, notes, status, expires_at, is_expired)
       VALUES (${loadRrNumber}, ${userId}, ${offerAmount}, ${notes || ''}, 'pending', ${expiresAt.toISOString()}, false)
       RETURNING id
     `;
@@ -65,17 +57,25 @@ export async function POST(req: Request) {
   }
 }
 
-export async function GET(req: Request) {
+export async function GET(request: NextRequest) {
   try {
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    // Check if user is admin or carrier (Supabase-only)
+    let userId: string;
+    let userRole: 'admin' | 'carrier';
+    
+    try {
+      const adminAuth = await requireApiAdmin(request);
+      userId = adminAuth.userId;
+      userRole = 'admin';
+    } catch {
+      // Not admin, try carrier
+      const carrierAuth = await requireApiCarrier(request);
+      userId = carrierAuth.userId;
+      userRole = 'carrier';
     }
 
-    const userRole = await getClerkUserRole(userId);
-
     if (userRole === 'admin') {
-      // Admin can see all offers (including expired ones)
+      // Admin can see all offers (including expired ones) - Supabase-only
       const offers = await sql`
         SELECT 
           lo.*,
@@ -92,12 +92,12 @@ export async function GET(req: Request) {
           END as effective_status
         FROM load_offers lo
         JOIN loads l ON lo.load_rr_number = l.rr_number
-        LEFT JOIN user_roles_cache urc ON lo.carrier_user_id = urc.clerk_user_id
+        LEFT JOIN user_roles_cache urc ON lo.supabase_user_id = urc.supabase_user_id
         ORDER BY lo.created_at DESC
       `;
       return NextResponse.json({ offers });
     } else if (userRole === 'carrier') {
-      // Carrier can only see their own non-expired offers
+      // Carrier can only see their own non-expired offers - Supabase-only
       const offers = await sql`
         SELECT 
           lo.*,
@@ -113,7 +113,7 @@ export async function GET(req: Request) {
           END as effective_status
         FROM load_offers lo
         JOIN loads l ON lo.load_rr_number = l.rr_number
-        WHERE lo.carrier_user_id = ${userId}
+        WHERE lo.supabase_user_id = ${userId}
         AND (lo.expires_at IS NULL OR lo.expires_at > NOW() OR lo.status != 'pending')
         ORDER BY lo.created_at DESC
       `;

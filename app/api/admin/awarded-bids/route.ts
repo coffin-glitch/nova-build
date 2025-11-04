@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/lib/clerk-server";
+import { requireApiAdmin } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -6,8 +6,8 @@ export async function GET(request: NextRequest) {
   try {
     console.log("🔍 Starting awarded bids API call");
     
-    // This will redirect if user is not admin
-    await requireAdmin();
+    // Ensure user is admin (Supabase-only)
+    await requireApiAdmin(request);
     console.log("✅ Admin authentication passed");
 
     // Parse query parameters
@@ -88,8 +88,9 @@ export async function GET(request: NextRequest) {
           aa.bid_number,
           ROW_NUMBER() OVER (PARTITION BY aa.bid_number ORDER BY aa.awarded_at DESC, aa.id DESC) as rn
         FROM auction_awards aa
-        LEFT JOIN carrier_bids cb ON aa.bid_number = cb.bid_number AND aa.winner_user_id = cb.clerk_user_id
-        LEFT JOIN carrier_profiles cp ON aa.winner_user_id = cp.clerk_user_id
+        LEFT JOIN carrier_bids cb ON aa.bid_number = cb.bid_number AND aa.supabase_winner_user_id = cb.supabase_user_id
+        LEFT JOIN carrier_profiles cp ON aa.supabase_winner_user_id = cp.supabase_user_id
+        LEFT JOIN user_roles_cache urc ON aa.supabase_winner_user_id = urc.supabase_user_id
         LEFT JOIN telegram_bids tb ON aa.bid_number = tb.bid_number
         ${whereClause}
       ) ranked_bids
@@ -108,19 +109,23 @@ export async function GET(request: NextRequest) {
 
     // Get paginated results using ROW_NUMBER() to ensure uniqueness
     // Use LEFT JOIN on carrier_bids to include awarded bids even if not accepted yet
-    // COALESCE to handle null values from LEFT JOIN
+    // Note: winner_user_id was removed in migration 078, only supabase_winner_user_id exists
     const dataQuery = `
       SELECT 
         bid_number,
         id,
         carrier_id,
         carrier_name,
+        carrier_email,
         carrier_phone,
         bid_amount,
         status,
         lifecycle_notes,
         driver_name,
         driver_phone,
+        driver_email,
+        driver_license_number,
+        driver_license_state,
         truck_number,
         trailer_number,
         driver_info_submitted_at,
@@ -135,14 +140,18 @@ export async function GET(request: NextRequest) {
         SELECT 
           aa.bid_number,
           aa.id,
-          aa.winner_user_id as carrier_id,
-          COALESCE(cp.contact_name, 'Carrier (' || aa.winner_user_id || ')') as carrier_name,
+          aa.supabase_winner_user_id as carrier_id,
+          COALESCE(cp.contact_name, 'Carrier (' || aa.supabase_winner_user_id || ')') as carrier_name,
+          COALESCE(urc.email, 'No email available') as carrier_email,
           COALESCE(cp.phone, 'No phone available') as carrier_phone,
           aa.winner_amount_cents as bid_amount,
           COALESCE(cb.status, 'awarded') as status,
           cb.lifecycle_notes,
           cb.driver_name,
           cb.driver_phone,
+          cb.driver_email,
+          cb.driver_license_number,
+          cb.driver_license_state,
           cb.truck_number,
           cb.trailer_number,
           cb.driver_info_submitted_at,
@@ -155,8 +164,9 @@ export async function GET(request: NextRequest) {
           tb.delivery_timestamp,
           ROW_NUMBER() OVER (PARTITION BY aa.bid_number ORDER BY aa.awarded_at DESC, aa.id DESC) as rn
         FROM auction_awards aa
-        LEFT JOIN carrier_bids cb ON aa.bid_number = cb.bid_number AND aa.winner_user_id = cb.clerk_user_id
-        LEFT JOIN carrier_profiles cp ON aa.winner_user_id = cp.clerk_user_id
+        LEFT JOIN carrier_bids cb ON aa.bid_number = cb.bid_number AND aa.supabase_winner_user_id = cb.supabase_user_id
+        LEFT JOIN carrier_profiles cp ON aa.supabase_winner_user_id = cp.supabase_user_id
+        LEFT JOIN user_roles_cache urc ON aa.supabase_winner_user_id = urc.supabase_user_id
         LEFT JOIN telegram_bids tb ON aa.bid_number = tb.bid_number
         ${whereClause}
       ) ranked_bids
@@ -175,6 +185,12 @@ export async function GET(request: NextRequest) {
       console.log("✅ SQL query executed successfully, found", bids.length, "bids");
     } catch (error) {
       console.error("❌ SQL query failed:", error);
+      console.error("❌ Query:", dataQuery);
+      console.error("❌ Params:", [...queryParams, limit, offset]);
+      if (error instanceof Error) {
+        console.error("❌ Error message:", error.message);
+        console.error("❌ Error stack:", error.stack);
+      }
       throw error;
     }
 
@@ -190,9 +206,18 @@ export async function GET(request: NextRequest) {
       }
     });
   } catch (error) {
-    console.error("Error fetching awarded bids:", error);
+    console.error("❌ Error fetching awarded bids:", error);
+    if (error instanceof Error) {
+      console.error("❌ Error name:", error.name);
+      console.error("❌ Error message:", error.message);
+      console.error("❌ Error stack:", error.stack);
+    }
     return NextResponse.json(
-      { error: "Failed to fetch awarded bids", details: error instanceof Error ? error.message : "Unknown error" },
+      { 
+        error: "Failed to fetch awarded bids", 
+        details: error instanceof Error ? error.message : "Unknown error",
+        stack: error instanceof Error ? error.stack : undefined
+      },
       { status: 500 }
     );
   }

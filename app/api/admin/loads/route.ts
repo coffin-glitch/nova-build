@@ -1,26 +1,11 @@
-import { getClerkUserRole } from "@/lib/clerk-server";
+import { requireApiAdmin } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
-import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
-    // Check authentication and admin role
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json(
-        { error: "Authentication required" },
-        { status: 401 }
-      );
-    }
-
-    const userRole = await getClerkUserRole(userId);
-    if (userRole !== "admin") {
-      return NextResponse.json(
-        { error: "Admin access required" },
-        { status: 403 }
-      );
-    }
+    // Ensure user is admin (Supabase-only)
+    await requireApiAdmin(request);
 
     const { searchParams } = new URL(request.url);
     const search = searchParams.get("search");
@@ -190,22 +175,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    // Check authentication and admin role
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json(
-        { error: "Authentication required" },
-        { status: 401 }
-      );
-    }
-
-    const userRole = await getClerkUserRole(userId);
-    if (userRole !== "admin") {
-      return NextResponse.json(
-        { error: "Admin access required" },
-        { status: 403 }
-      );
-    }
+    // Ensure user is admin (Supabase-only)
+    await requireApiAdmin(request);
 
     const body = await request.json();
     const { action, rrNumbers } = body;

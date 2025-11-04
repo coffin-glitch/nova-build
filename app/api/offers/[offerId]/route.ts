@@ -1,14 +1,14 @@
-import { requireAdmin } from "@/lib/clerk-server";
+import { requireApiAdmin } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 export async function PUT(
-  req: Request,
+  req: NextRequest,
   { params }: { params: Promise<{ offerId: string }> }
 ) {
   try {
-    // This will redirect if user is not admin
-    await requireAdmin();
+    // This will throw if user is not admin
+    await requireApiAdmin(req);
 
     const { offerId } = await params;
     const body = await req.json();
@@ -50,11 +50,15 @@ export async function PUT(
           RETURNING *
         `;
         
-        // Create notification for carrier
+        // Get supabase_user_id for notifications (Supabase-only)
+        const carrierSupabaseUserId = updateResult[0].supabase_carrier_user_id || updateResult[0].carrier_user_id;
+        
+        // Create notification for carrier (Supabase-only)
         await sql`
           INSERT INTO carrier_notifications (
-            carrier_user_id, type, title, message, priority, load_id, action_url
+            supabase_user_id, carrier_user_id, type, title, message, priority, load_id, action_url
           ) VALUES (
+            ${carrierSupabaseUserId},
             ${updateResult[0].carrier_user_id},
             'offer_accepted',
             'Offer Accepted!',
@@ -73,7 +77,7 @@ export async function PUT(
           ) VALUES (
             ${offerId}, 'accepted', 'pending', 'accepted', 
             ${updateResult[0].offer_amount}, ${updateResult[0].offer_amount},
-            ${adminNotes || null}, ${updateResult[0].carrier_user_id}, NOW()
+            ${adminNotes || null}, ${carrierSupabaseUserId}, NOW()
           )
         `;
         break;
@@ -87,11 +91,15 @@ export async function PUT(
           RETURNING *
         `;
         
-        // Create notification for carrier
+        // Get supabase_user_id for notifications (Supabase-only)
+        const carrierSupabaseUserId = updateResult[0].supabase_carrier_user_id || updateResult[0].carrier_user_id;
+        
+        // Create notification for carrier (Supabase-only)
         await sql`
           INSERT INTO carrier_notifications (
-            carrier_user_id, type, title, message, priority, load_id, action_url
+            supabase_user_id, carrier_user_id, type, title, message, priority, load_id, action_url
           ) VALUES (
+            ${carrierSupabaseUserId},
             ${updateResult[0].carrier_user_id},
             'offer_rejected',
             'Offer Rejected',
@@ -110,7 +118,7 @@ export async function PUT(
           ) VALUES (
             ${offerId}, 'rejected', 'pending', 'rejected', 
             ${updateResult[0].offer_amount}, ${updateResult[0].offer_amount},
-            ${adminNotes || null}, ${updateResult[0].carrier_user_id}, NOW()
+            ${adminNotes || null}, ${carrierSupabaseUserId}, NOW()
           )
         `;
         break;
@@ -124,11 +132,15 @@ export async function PUT(
           RETURNING *
         `;
         
-        // Create notification for carrier
+        // Get supabase_user_id for notifications (Supabase-only)
+        const carrierSupabaseUserId = updateResult[0].supabase_carrier_user_id || updateResult[0].carrier_user_id;
+        
+        // Create notification for carrier (Supabase-only)
         await sql`
           INSERT INTO carrier_notifications (
-            carrier_user_id, type, title, message, priority, load_id, action_url
+            supabase_user_id, carrier_user_id, type, title, message, priority, load_id, action_url
           ) VALUES (
+            ${carrierSupabaseUserId},
             ${updateResult[0].carrier_user_id},
             'offer_countered',
             'Counter Offer Received',
@@ -147,7 +159,7 @@ export async function PUT(
           ) VALUES (
             ${offerId}, 'countered', 'pending', 'countered', 
             ${updateResult[0].offer_amount}, ${counterAmount},
-            ${adminNotes || null}, ${updateResult[0].carrier_user_id}, NOW()
+            ${adminNotes || null}, ${carrierSupabaseUserId}, NOW()
           )
         `;
         break;

@@ -1,21 +1,21 @@
-import { requireCarrier } from "@/lib/auth";
-import { auth } from "@clerk/nextjs/server";
-import { getCarrierProfile } from "@/lib/auctions";
 import { CardGlass } from "@/components/ui/CardGlass";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { DollarSign, Clock, CheckCircle, XCircle, AlertCircle, Gavel } from "lucide-react";
+import { getCarrierProfile } from "@/lib/auctions";
+import { requireCarrier } from "@/lib/auth";
+import { getUnifiedAuth } from "@/lib/auth-unified";
 import { formatMoney, formatRelativeTime } from "@/lib/format";
+import { AlertCircle, CheckCircle, Clock, DollarSign, Gavel, XCircle } from "lucide-react";
 
 export const metadata = { title: "NOVA • My Offers" };
 
 export default async function CurrentOffersPage() {
   await requireCarrier();
-  const { userId } = auth();
-  if (!userId) return null;
+  const auth = await getUnifiedAuth();
+  if (!auth.userId) return null;
 
   // Get carrier profile to show their bids
-  const profile = await getCarrierProfile(userId);
+  const profile = await getCarrierProfile(auth.userId);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800">

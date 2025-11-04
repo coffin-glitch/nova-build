@@ -1,32 +1,28 @@
+import { requireApiAdmin } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
-import { auth } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(
-  req: Request,
+  request: NextRequest,
   { params }: { params: { userId: string } }
 ) {
   try {
-    const { userId: adminUserId } = await auth();
-    
-    if (!adminUserId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // TODO: Add admin role check here
+    // Ensure user is admin (Supabase-only)
+    const auth = await requireApiAdmin(request);
+    const adminUserId = auth.userId;
 
     const carrierUserId = params.userId;
-    const body = await req.json();
+    const body = await request.json();
     const { reason } = body;
 
-    // Lock carrier profile
+    // Lock carrier profile (Supabase-only)
     await sql`
       UPDATE carrier_profiles SET
         is_locked = true,
         locked_at = CURRENT_TIMESTAMP,
         locked_by = ${adminUserId},
         lock_reason = ${reason}
-      WHERE clerk_user_id = ${carrierUserId}
+      WHERE supabase_user_id = ${carrierUserId}
     `;
 
     return NextResponse.json({ 

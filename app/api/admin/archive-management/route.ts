@@ -4,12 +4,12 @@ import {
     getArchiveStatistics,
     verifyArchiveIntegrity
 } from "@/lib/archive-migration";
-import { requireAdmin } from "@/lib/auth-server";
+import { requireApiAdmin } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
-    await requireAdmin();
+    await requireApiAdmin(request);
 
     const { searchParams } = new URL(request.url);
     const action = searchParams.get("action");

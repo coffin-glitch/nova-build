@@ -1,5 +1,5 @@
 import sql from "@/lib/db";
-import { auth } from "@clerk/nextjs/server";
+import { requireApiCarrier } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 // Format phone number to 10 digits only
@@ -17,11 +17,9 @@ export async function GET(
   { params }: { params: Promise<{ loadId: string }> }
 ) {
   try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    // Ensure user is carrier (Supabase-only)
+    const authResult = await requireApiCarrier(request);
+    const userId = authResult.userId;
 
     const { loadId } = await params;
 
@@ -34,7 +32,7 @@ export async function GET(
         FROM loads l
         INNER JOIN load_offers lo ON l.rr_number = lo.load_rr_number
         WHERE l.id = ${parseInt(loadId)}
-          AND lo.carrier_user_id = ${userId}
+          AND lo.supabase_user_id = ${userId}
           AND lo.status = 'accepted'
         LIMIT 1
       `;
@@ -57,7 +55,7 @@ export async function GET(
         truck_number,
         trailer_number
       FROM load_offers 
-      WHERE id = ${loadOfferId} AND carrier_user_id = ${userId}
+      WHERE id = ${loadOfferId} AND supabase_user_id = ${userId}
     `;
 
     if (driverInfo.length === 0) {
@@ -84,11 +82,9 @@ export async function POST(
   { params }: { params: Promise<{ loadId: string }> }
 ) {
   try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    // Ensure user is carrier (Supabase-only)
+    const authResult = await requireApiCarrier(request);
+    const userId = authResult.userId;
 
     const { loadId } = await params;
     const { 
@@ -133,7 +129,7 @@ export async function POST(
         FROM loads l
         INNER JOIN load_offers lo ON l.rr_number = lo.load_rr_number
         WHERE l.id = ${parseInt(loadId)}
-          AND lo.carrier_user_id = ${userId}
+          AND lo.supabase_user_id = ${userId}
           AND lo.status = 'accepted'
         LIMIT 1
       `;
@@ -148,7 +144,7 @@ export async function POST(
     // Get current status for the load offer
     const loadOffer = await sql`
       SELECT status FROM load_offers 
-      WHERE id = ${loadOfferId} AND carrier_user_id = ${userId}
+      WHERE id = ${loadOfferId} AND supabase_user_id = ${userId}
     `;
 
     if (loadOffer.length === 0) {
@@ -169,7 +165,7 @@ export async function POST(
         truck_number = ${truck_number?.trim() || null},
         trailer_number = ${trailer_number?.trim() || null},
         updated_at = CURRENT_TIMESTAMP
-      WHERE id = ${loadOfferId} AND carrier_user_id = ${userId}
+      WHERE id = ${loadOfferId} AND supabase_user_id = ${userId}
     `;
 
     // Create driver info update event in lifecycle

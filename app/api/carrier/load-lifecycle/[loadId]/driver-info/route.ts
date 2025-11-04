@@ -1,5 +1,5 @@
 import sql from "@/lib/db";
-import { auth } from "@clerk/nextjs/server";
+import { requireApiCarrier } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 // Format phone number to 10 digits only
@@ -16,11 +16,8 @@ export async function POST(
   { params }: { params: Promise<{ loadId: string }> }
 ) {
   try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireApiCarrier(request);
+    const userId = auth.userId;
 
     const { loadId } = await params;
     const { 
@@ -63,7 +60,7 @@ export async function POST(
         FROM loads l
         INNER JOIN load_offers lo ON l.rr_number = lo.load_rr_number
         WHERE l.id = ${parseInt(loadId)}
-          AND lo.carrier_user_id = ${userId}
+          AND lo.supabase_user_id = ${userId}
           AND lo.status = 'accepted'
         LIMIT 1
       `;
@@ -73,25 +70,24 @@ export async function POST(
       }
       
       loadOfferId = loadOfferResult[0].load_offer_id;
-      const currentStatus = loadOfferResult[0].status;
     } else {
       // If loadId is a UUID, get the load offer directly
       const loadOffer = await sql`
         SELECT id, status FROM load_offers 
-        WHERE id = ${loadId} AND carrier_user_id = ${userId}
+        WHERE id = ${loadId} AND supabase_user_id = ${userId}
       `;
 
       if (loadOffer.length === 0) {
         return NextResponse.json({ error: "Load not found" }, { status: 404 });
       }
 
-      const currentStatus = loadOffer[0].status;
+      loadOfferId = loadId;
     }
 
     // Get current status for the load offer
     const loadOffer = await sql`
       SELECT status FROM load_offers 
-      WHERE id = ${loadOfferId} AND carrier_user_id = ${userId}
+      WHERE id = ${loadOfferId} AND supabase_user_id = ${userId}
     `;
 
     if (loadOffer.length === 0) {
@@ -161,7 +157,7 @@ export async function POST(
         truck_number = ${driver_info.truck_number || null},
         trailer_number = ${driver_info.trailer_number || null},
         updated_at = CURRENT_TIMESTAMP
-      WHERE id = ${loadOfferId} AND carrier_user_id = ${userId}
+      WHERE id = ${loadOfferId} AND supabase_user_id = ${userId}
     `;
 
     return NextResponse.json({

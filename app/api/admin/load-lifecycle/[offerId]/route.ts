@@ -1,5 +1,5 @@
+import { requireApiAdmin } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
-import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(
@@ -7,20 +7,8 @@ export async function GET(
   { params }: { params: Promise<{ offerId: string }> }
 ) {
   try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Check if user is admin
-    const userRoleResult = await sql`
-      SELECT role FROM user_roles_cache WHERE clerk_user_id = ${userId}
-    `;
-    
-    if (userRoleResult.length === 0 || userRoleResult[0].role !== 'admin') {
-      return NextResponse.json({ error: "Admin access required" }, { status: 403 });
-    }
+    // Ensure user is admin (Supabase-only)
+    await requireApiAdmin(request);
 
     const { offerId } = await params;
 

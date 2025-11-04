@@ -1,25 +1,17 @@
-import { getClerkUserRole } from "@/lib/clerk-server";
 import sql from "@/lib/db";
-import { auth } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { requireApiCarrier } from "@/lib/auth-api-helper";
+import { NextRequest, NextResponse } from "next/server";
 
 export async function PUT(
-  req: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
-    }
-
-    const userRole = await getClerkUserRole(userId);
-    if (userRole !== "carrier") {
-      return NextResponse.json({ error: "Only carriers can submit driver information" }, { status: 403 });
-    }
+    const auth = await requireApiCarrier(request);
+    const userId = auth.userId;
 
     const { id } = await params;
-    const body = await req.json();
+    const body = await request.json();
     const { 
       driver_name, 
       driver_phone, 
@@ -40,7 +32,7 @@ export async function PUT(
     // Check if offer exists and belongs to this carrier
     const offerResult = await sql`
       SELECT * FROM load_offers 
-      WHERE id = ${id} AND carrier_user_id = ${userId}
+      WHERE id = ${id} AND supabase_user_id = ${userId}
     `;
 
     if (offerResult.length === 0) {
@@ -77,10 +69,12 @@ export async function PUT(
     `;
 
     // Create notification for admin
+    const carrierUserId = null; // Supabase-only now
     await sql`
       INSERT INTO carrier_notifications (
-        carrier_user_id, type, title, message, priority, load_id, action_url
+        carrier_user_id, supabase_user_id, type, title, message, priority, load_id, action_url
       ) VALUES (
+        ${carrierUserId},
         ${userId},
         'driver_info_submitted',
         'Driver Information Submitted',
@@ -104,34 +98,20 @@ export async function PUT(
 }
 
 export async function GET(
-  req: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
-    }
+    const auth = await requireApiCarrier(request);
+    const userId = auth.userId;
 
-    const userRole = await getClerkUserRole(userId);
     const { id } = await params;
 
-    // Get offer details
-    let offerResult;
-    if (userRole === "admin") {
-      // Admin can see any offer
-      offerResult = await sql`
-        SELECT * FROM load_offers WHERE id = ${id}
-      `;
-    } else if (userRole === "carrier") {
-      // Carrier can only see their own offers
-      offerResult = await sql`
-        SELECT * FROM load_offers 
-        WHERE id = ${id} AND carrier_user_id = ${userId}
-      `;
-    } else {
-      return NextResponse.json({ error: "Access denied" }, { status: 403 });
-    }
+    // Carrier can only see their own offers
+    const offerResult = await sql`
+      SELECT * FROM load_offers 
+      WHERE id = ${id} AND supabase_user_id = ${userId}
+    `;
 
     if (offerResult.length === 0) {
       return NextResponse.json({ error: "Offer not found" }, { status: 404 });

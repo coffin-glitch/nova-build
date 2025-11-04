@@ -17,18 +17,28 @@ if (!process.env.DATABASE_URL) {
   `);
 }
 
+// Global singleton to prevent HMR creating multiple pools
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const g: any = globalThis as any;
+
 // Use the PostgreSQL database with improved connection pooling
 // Add search_path to ensure we use the public schema
 const dbUrl = process.env.DATABASE_URL || '';
-const sql = postgres(dbUrl.includes('?') ? `${dbUrl}&options=-csearch_path%3Dpublic` : `${dbUrl}?options=-csearch_path%3Dpublic`, { 
-  ssl: dbUrl.includes('localhost') ? false : 'require',
-  max: 5, // Allow multiple connections for better performance
-  idle_timeout: 60, // Keep connections alive longer
-  connect_timeout: 30, // Longer connection timeout
-  max_lifetime: 60 * 30, // 30 minutes max lifetime
-  onnotice: () => {}, // Suppress notices
-  debug: false, // Disable debug logging
-});
+const pooledUrl = dbUrl.includes('?') ? `${dbUrl}&options=-csearch_path%3Dpublic` : `${dbUrl}?options=-csearch_path%3Dpublic`;
+
+if (!g.__pg_sql_client) {
+  g.__pg_sql_client = postgres(pooledUrl, {
+    ssl: dbUrl.includes('localhost') ? false : 'require',
+    max: Number(process.env.PG_POOL_MAX || 15),
+    idle_timeout: Number(process.env.PG_IDLE_TIMEOUT || 20),
+    connect_timeout: Number(process.env.PG_CONNECT_TIMEOUT || 30),
+    max_lifetime: Number(process.env.PG_MAX_LIFETIME || 60 * 30),
+    onnotice: () => {},
+    debug: false,
+  });
+}
+
+const sql = g.__pg_sql_client as ReturnType<typeof postgres>;
 
 export default sql;
 

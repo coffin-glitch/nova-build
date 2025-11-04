@@ -1,28 +1,16 @@
 import sql from '@/lib/db';
-import { auth } from "@clerk/nextjs/server";
+import { requireApiCarrier } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireApiCarrier(request);
+    const userId = auth.userId;
 
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status"); // 'won', 'lost', 'pending', 'cancelled'
     const limit = Math.min(parseInt(searchParams.get("limit") || "50"), 100);
     const offset = parseInt(searchParams.get("offset") || "0");
-
-    // Build WHERE conditions
-    let whereConditions = [`cb.clerk_user_id = '${userId}'`];
-    
-    if (status) {
-      whereConditions.push(`COALESCE(cb.bid_outcome, 'pending') = '${status}'`);
-    }
-
-    const whereClause = `WHERE ${whereConditions.join(' AND ')}`;
 
     // Get carrier bid history with detailed information
     const rows = await sql`
@@ -51,7 +39,8 @@ export async function GET(request: NextRequest) {
       FROM carrier_bids cb
       LEFT JOIN archived_bids ab ON cb.bid_number = ab.bid_number
       LEFT JOIN telegram_bids tb ON cb.bid_number = tb.bid_number AND tb.is_archived = false
-      ${sql.unsafe(whereClause)}
+      WHERE cb.supabase_user_id = ${userId}
+      ${status ? sql`AND COALESCE(cb.bid_outcome, 'pending') = ${status}` : sql``}
       ORDER BY cb.created_at DESC
       LIMIT ${limit} OFFSET ${offset}
     `;
@@ -60,7 +49,8 @@ export async function GET(request: NextRequest) {
     const countResult = await sql`
       SELECT COUNT(*) as total
       FROM carrier_bids cb
-      ${sql.unsafe(whereClause)}
+      WHERE cb.supabase_user_id = ${userId}
+      ${status ? sql`AND COALESCE(cb.bid_outcome, 'pending') = ${status}` : sql``}
     `;
 
     const total = countResult[0]?.total || 0;
@@ -75,8 +65,8 @@ export async function GET(request: NextRequest) {
         COUNT(CASE WHEN COALESCE(bid_outcome, 'pending') = 'cancelled' THEN 1 END) as cancelled_bids,
         AVG(amount_cents / 100.0) as average_bid_amount,
         SUM(amount_cents / 100.0) as total_bid_value
-      FROM carrier_bids
-      WHERE clerk_user_id = ${userId}
+      FROM carrier_bids cb
+      WHERE cb.supabase_user_id = ${userId}
     `;
 
     return NextResponse.json({
@@ -110,11 +100,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireApiCarrier(request);
+    const userId = auth.userId;
 
     const body = await request.json();
     const { bidNumber, bidStatus, bidNotes } = body;
@@ -126,17 +113,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Update carrier bid outcome
-    const result = await sql`
-      UPDATE carrier_bids 
-      SET 
-        bid_outcome = ${bidStatus},
-        notes = COALESCE(${bidNotes}, notes),
-        updated_at = NOW()
-      WHERE clerk_user_id = ${userId} 
-      AND bid_number = ${bidNumber}
-      RETURNING id
-    `;
+           // Update carrier bid outcome
+           const result = await sql`
+             UPDATE carrier_bids 
+             SET 
+               bid_outcome = ${bidStatus},
+               notes = COALESCE(${bidNotes}, notes),
+               updated_at = NOW()
+             WHERE supabase_user_id = ${userId}
+             AND bid_number = ${bidNumber}
+             RETURNING id
+           `;
 
     if (result.length === 0) {
       return NextResponse.json(
@@ -145,26 +132,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Also insert into bid history for tracking
-    await sql`
-      INSERT INTO carrier_bid_history (
-        carrier_user_id, 
-        bid_number, 
-        bid_amount_cents, 
-        bid_status, 
-        bid_notes
-      )
-      SELECT 
-        clerk_user_id,
-        bid_number,
-        amount_cents,
-        ${bidStatus},
-        COALESCE(${bidNotes}, notes)
-      FROM carrier_bids
-      WHERE clerk_user_id = ${userId} 
-      AND bid_number = ${bidNumber}
-      ON CONFLICT (carrier_user_id, bid_number, created_at) DO NOTHING
-    `;
+           // Also insert into bid history for tracking
+           await sql`
+             INSERT INTO carrier_bid_history (
+               carrier_user_id, 
+               bid_number, 
+               bid_amount_cents, 
+               bid_status, 
+               bid_notes
+             )
+             SELECT 
+               cb.supabase_user_id,
+               cb.bid_number,
+               cb.amount_cents,
+               ${bidStatus},
+               COALESCE(${bidNotes}, cb.notes)
+             FROM carrier_bids cb
+             WHERE cb.supabase_user_id = ${userId}
+             AND cb.bid_number = ${bidNumber}
+             ON CONFLICT (carrier_user_id, bid_number, created_at) DO NOTHING
+           `;
 
     return NextResponse.json({
       ok: true,

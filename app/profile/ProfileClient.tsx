@@ -1,27 +1,27 @@
 "use client";
 
-import { useState } from "react";
-import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { useSupabase } from "@/components/providers/SupabaseProvider";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { SignOutButton } from "@clerk/nextjs";
-import { 
-  User, 
-  Mail, 
-  Phone, 
-  Truck,
-  FileText,
+import { updateCarrierProfile } from "@/lib/actions";
+import {
   CheckCircle,
   Clock,
   DollarSign,
   Edit,
+  FileText,
+  Mail,
   Save,
+  Truck,
+  User,
   X
 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { toast } from "sonner";
-import { updateCarrierProfile } from "@/lib/actions";
 
 interface Profile {
   mc_number?: string;
@@ -36,8 +36,20 @@ interface ProfileClientProps {
 }
 
 export function ProfileClient({ initialProfile, userRole }: ProfileClientProps) {
+  const { supabase } = useSupabase();
+  const router = useRouter();
   const [profile, setProfile] = useState(initialProfile);
   const [isEditing, setIsEditing] = useState(false);
+
+  const handleSignOut = async () => {
+    try {
+      await supabase.auth.signOut();
+      router.push('/sign-in');
+      router.refresh();
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
+  };
 
   const handleCancel = () => {
     setProfile(initialProfile);
@@ -268,15 +280,14 @@ export function ProfileClient({ initialProfile, userRole }: ProfileClientProps) 
               <Mail className="w-4 h-4 mr-2" />
               Change Email
             </Button>
-            <SignOutButton>
-              <Button 
-                variant="outline" 
-                className="w-full justify-start text-red-500 hover:text-red-600"
-              >
-                <X className="w-4 h-4 mr-2" />
-                Sign Out
-              </Button>
-            </SignOutButton>
+            <Button 
+              variant="outline" 
+              className="w-full justify-start text-red-500 hover:text-red-600"
+              onClick={handleSignOut}
+            >
+              <X className="w-4 h-4 mr-2" />
+              Sign Out
+            </Button>
           </div>
         </Card>
       </div>

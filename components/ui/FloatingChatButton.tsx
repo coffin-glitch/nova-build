@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useClerkRole } from "@/lib/clerk-roles";
+import { useUnifiedRole } from "@/hooks/useUnifiedRole";
 import { cn } from "@/lib/utils";
 import { MessageCircle, Send, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -19,7 +19,7 @@ interface ChatMessage {
 }
 
 export default function FloatingChatButton() {
-  const { isCarrier } = useClerkRole();
+  const { isCarrier } = useUnifiedRole();
   const [isOpen, setIsOpen] = useState(false);
   const [position, setPosition] = useState({ x: 20, y: 20 });
   const [isDragging, setIsDragging] = useState(false);
@@ -30,7 +30,7 @@ export default function FloatingChatButton() {
     {
       id: "1",
       sender: "Admin",
-      message: "Welcome to NOVA Build! How can we help you today?",
+      message: "Welcome to NOVA! How can we help you today?",
       timestamp: new Date(),
       isAdmin: true,
     },

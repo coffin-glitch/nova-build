@@ -1,16 +1,14 @@
 import sql from "@/lib/db";
-import { auth } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { requireApiAuth } from "@/lib/auth-api-helper";
+import { NextRequest, NextResponse } from "next/server";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const { userId } = await auth();
+    // Ensure user is authenticated (Supabase-only)
+    const auth = await requireApiAuth(request);
+    const userId = auth.userId;
 
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Get notifications for the current user
+    // Get notifications for the current user (Supabase-only)
     const notifications = await sql`
       SELECT 
         n.id,
@@ -21,7 +19,7 @@ export async function GET() {
         n.created_at,
         n.data
       FROM notifications n
-      WHERE n.user_id = ${userId}
+      WHERE n.supabase_user_id = ${userId}
       ORDER BY n.created_at DESC
       LIMIT 50
     `;
@@ -30,7 +28,7 @@ export async function GET() {
     const unreadCount = await sql`
       SELECT COUNT(*) as count
       FROM notifications n
-      WHERE n.user_id = ${userId} AND n.read = false
+      WHERE n.supabase_user_id = ${userId} AND n.read = false
     `;
 
     return NextResponse.json({
@@ -49,13 +47,11 @@ export async function GET() {
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
-    const { userId } = await auth();
-
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    // Ensure user is authenticated (Supabase-only)
+    const auth = await requireApiAuth(request);
+    const userId = auth.userId;
 
     const body = await request.json();
     
@@ -71,10 +67,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    // Create notification
+    // Create notification (Supabase-only)
     const notification = await sql`
-      INSERT INTO notifications (recipient_user_id, type, title, body)
-      VALUES (${userId}, ${type}, ${title}, ${message})
+      INSERT INTO notifications (supabase_user_id, type, title, message, data)
+      VALUES (${userId}, ${type}, ${title}, ${message}, ${data ? JSON.stringify(data) : null})
       RETURNING *
     `;
 
@@ -95,9 +91,9 @@ async function handleBidAwardNotifications(body: any) {
   const { bidNumber, winnerUserId, winnerAmount, winnerName } = body;
   
   try {
-    // Get all carriers who bid on this auction
+    // Get all carriers who bid on this auction (Supabase-only)
     const carriers = await sql`
-      SELECT DISTINCT clerk_user_id 
+      SELECT DISTINCT supabase_user_id 
       FROM carrier_bids 
       WHERE bid_number = ${bidNumber}
     `;
@@ -105,7 +101,7 @@ async function handleBidAwardNotifications(body: any) {
     const notifications = [];
     
     for (const carrier of carriers) {
-      const isWinner = carrier.clerk_user_id === winnerUserId;
+      const isWinner = carrier.supabase_user_id === winnerUserId;
       
       const notification = {
         type: isWinner ? 'bid_won' : 'bid_lost',
@@ -122,10 +118,10 @@ async function handleBidAwardNotifications(body: any) {
         }
       };
       
-      // Create notification for this carrier
+      // Create notification for this carrier (Supabase-only)
       const result = await sql`
-        INSERT INTO notifications (user_id, type, title, message, data, read)
-        VALUES (${carrier.clerk_user_id}, ${notification.type}, ${notification.title}, ${notification.message}, ${JSON.stringify(notification.data)}, false)
+        INSERT INTO notifications (supabase_user_id, type, title, message, data, read)
+        VALUES (${carrier.supabase_user_id}, ${notification.type}, ${notification.title}, ${notification.message}, ${JSON.stringify(notification.data)}, false)
         RETURNING *
       `;
       
@@ -148,13 +144,11 @@ async function handleBidAwardNotifications(body: any) {
   }
 }
 
-export async function PUT(request: Request) {
+export async function PUT(request: NextRequest) {
   try {
-    const { userId } = await auth();
-
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    // Ensure user is authenticated (Supabase-only)
+    const auth = await requireApiAuth(request);
+    const userId = auth.userId;
 
     const body = await request.json();
     const { notificationId, read } = body;
@@ -163,11 +157,11 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    // Update notification read status
+    // Update notification read status (Supabase-only)
     await sql`
       UPDATE notifications 
       SET read = ${read}
-      WHERE id = ${notificationId} AND user_id = ${userId}
+      WHERE id = ${notificationId} AND supabase_user_id = ${userId}
     `;
 
     return NextResponse.json({

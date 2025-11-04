@@ -10,23 +10,36 @@ import { NotificationBell } from "@/components/ui/NotificationBell";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useAccentColor } from "@/hooks/useAccentColor";
 import { useUnreadMessageCount } from "@/hooks/useUnreadMessageCount";
-import { useClerkRole } from "@/lib/clerk-roles";
+import { useUnifiedRole } from "@/hooks/useUnifiedRole";
+import { useUnifiedUser } from "@/hooks/useUnifiedUser";
+import { useSupabase } from "@/components/providers/SupabaseProvider";
 import { cn } from "@/lib/utils";
-import { UserButton, useUser } from "@clerk/nextjs";
-import { Mail, MailOpen, Menu, Truck, X } from "lucide-react";
+import { Mail, MailOpen, Menu, Truck, User, X, LogOut } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useTheme } from "next-themes";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import RoleNavigation, { MobileRoleNavigation } from "./RoleNavigation";
 
+// Check which auth provider is active
+const USE_SUPABASE_AUTH = process.env.NEXT_PUBLIC_USE_SUPABASE_AUTH === 'true';
+
 export default function SiteHeader() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const { role, isAdmin, isCarrier } = useClerkRole();
+  const { role, isAdmin, isCarrier } = useUnifiedRole();
   const pathname = usePathname();
-  const { user, isLoaded } = useUser();
+  const { user, isLoaded } = useUnifiedUser();
   const { preferences, updateAccentColor } = useUserPreferences();
+  
+  // Get Supabase client (always use Supabase now)
+  const { supabase } = useSupabase();
   const { accentColor } = useAccentColor();
   const { theme } = useTheme();
   const unreadMessageCount = useUnreadMessageCount();
@@ -74,7 +87,7 @@ export default function SiteHeader() {
                   <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ backgroundColor: getLogoBackgroundColor() }}>
                     <Truck className="h-5 w-5" style={{ color: getIconColor() }} />
                   </div>
-                  <span className="text-xl font-bold text-foreground">NOVA Build</span>
+                  <span className="text-xl font-bold text-foreground">NOVA</span>
                 </Link>
               </div>
 
@@ -90,16 +103,39 @@ export default function SiteHeader() {
                           currentColor={preferences.accentColor}
                           onColorChange={updateAccentColor}
                         />
-                        <UserButton
-                          afterSignOutUrl="/"
-                          appearance={{
-                            elements: {
-                              avatarBox: "h-8 w-8",
-                              userButtonPopoverCard: "shadow-card border-border",
-                              userButtonPopoverActionButton: "hover:bg-accent",
-                            },
-                          }}
-                        />
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm" className="h-8 w-8 rounded-full p-0">
+                              <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+                                <span className="text-xs font-medium text-primary">
+                                  {(user.email || user.firstName || 'U').charAt(0).toUpperCase()}
+                                </span>
+                              </div>
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-56">
+                            <div className="px-2 py-1.5 text-sm">
+                              <div className="font-medium">{user.firstName || user.email}</div>
+                              {user.email && (
+                                <div className="text-xs text-muted-foreground">{user.email}</div>
+                              )}
+                            </div>
+                            <DropdownMenuItem asChild>
+                              <Link href="/profile">Profile</Link>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={async () => {
+                                if (supabase) {
+                                  await supabase.auth.signOut();
+                                  window.location.href = '/';
+                                }
+                              }}
+                            >
+                              <LogOut className="mr-2 h-4 w-4" />
+                              Sign Out
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </>
                     ) : (
                       <Button asChild variant="default" size="sm">
@@ -134,7 +170,7 @@ export default function SiteHeader() {
               <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ backgroundColor: getLogoBackgroundColor() }}>
                 <Truck className="h-5 w-5" style={{ color: getIconColor() }} />
               </div>
-              <span className="text-xl font-bold text-foreground">NOVA Build</span>
+              <span className="text-xl font-bold text-foreground">NOVA</span>
               {/* Role Badge */}
               {role !== "none" && (
                 <Badge 
@@ -184,22 +220,43 @@ export default function SiteHeader() {
             <ThemeToggle />
 
             {/* User Menu */}
-            <div className="flex items-center space-x-2">
-              <ColorPalette 
-                currentColor={preferences.accentColor}
-                onColorChange={updateAccentColor}
-              />
-              <UserButton
-                afterSignOutUrl="/"
-                appearance={{
-                  elements: {
-                    avatarBox: "h-8 w-8",
-                    userButtonPopoverCard: "shadow-card border-border",
-                    userButtonPopoverActionButton: "hover:bg-accent",
-                  },
-                }}
-              />
-            </div>
+            {user && (
+              <div className="flex items-center space-x-2">
+                <ColorPalette 
+                  currentColor={preferences.accentColor}
+                  onColorChange={updateAccentColor}
+                />
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary">
+                        <User className="h-4 w-4" />
+                      </div>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                    <div className="px-2 py-1.5">
+                      <p className="text-sm font-medium">{user.email || 'User'}</p>
+                      <p className="text-xs text-muted-foreground">{role}</p>
+                    </div>
+                    <DropdownMenuItem asChild>
+                      <Link href="/profile">Profile</Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={async () => {
+                        if (supabase) {
+                          await supabase.auth.signOut();
+                          window.location.href = '/';
+                        }
+                      }}
+                    >
+                      <LogOut className="mr-2 h-4 w-4" />
+                      Sign Out
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            )}
 
             {/* Mobile menu button */}
             <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
@@ -216,7 +273,7 @@ export default function SiteHeader() {
                     <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ backgroundColor: getLogoBackgroundColor() }}>
                       <Truck className="h-5 w-5" style={{ color: getIconColor() }} />
                     </div>
-                    <span className="text-lg font-bold">NOVA Build</span>
+                    <span className="text-lg font-bold">NOVA</span>
                     {role !== "none" && (
                       <Badge 
                         variant={isAdmin ? "default" : "secondary"}
@@ -283,19 +340,30 @@ export default function SiteHeader() {
                         </Button>
                       </div>
                     )}
-                    <div className="flex items-center space-x-3">
-                      <UserButton
-                        afterSignOutUrl="/"
-                        appearance={{
-                          elements: {
-                            avatarBox: "h-8 w-8",
-                          },
-                        }}
-                      />
-                      <span className="text-sm text-muted-foreground">
-                        {user.firstName || user.emailAddresses[0]?.emailAddress}
-                      </span>
-                    </div>
+                    {user && (
+                      <div className="flex items-center space-x-3">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary">
+                          <User className="h-4 w-4" />
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm font-medium">{user.email || 'User'}</p>
+                          <p className="text-xs text-muted-foreground">{role}</p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={async () => {
+                            if (supabase) {
+                              await supabase.auth.signOut();
+                              window.location.href = '/';
+                            }
+                          }}
+                        >
+                          <LogOut className="mr-2 h-4 w-4" />
+                          Sign Out
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </SheetContent>

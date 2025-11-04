@@ -1,10 +1,10 @@
-import { NextResponse } from "next/server";
+import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { NextRequest, NextResponse } from "next/server";
 import { spawn } from "node:child_process";
-import { auth } from "@clerk/nextjs/server";
 
-export async function POST() {
-  const { userId } = auth();
-  if (!userId) return new NextResponse("Unauthorized", { status: 401 });
+export async function POST(request: NextRequest) {
+  // Ensure user is admin (Supabase-only)
+  await requireApiAdmin(request);
 
   // Fire-and-forget local run:
   const child = spawn(process.platform === "win32" ? "npm.cmd" : "npm", ["run", "eax:export"], {

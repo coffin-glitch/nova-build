@@ -1,14 +1,29 @@
 import sql from "@/lib/db";
-import { auth } from "@clerk/nextjs/server";
+import { requireApiCarrier } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 // GET /api/carrier/favorites/check - Check if specific bids are favorited
 export async function GET(request: NextRequest) {
   try {
-    const { userId } = await auth();
+    let auth;
+    try {
+      auth = await requireApiCarrier(request);
+    } catch (authError: any) {
+      console.error('Auth error in favorites check:', authError);
+      return NextResponse.json(
+        { error: "Authentication failed", details: authError?.message || "Unauthorized" },
+        { status: 401 }
+      );
+    }
+    
+    const userId = auth.userId;
     
     if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      console.error('No userId from auth:', auth);
+      return NextResponse.json(
+        { error: "Authentication failed: no user ID" },
+        { status: 401 }
+      );
     }
 
     const { searchParams } = new URL(request.url);
@@ -22,15 +37,43 @@ export async function GET(request: NextRequest) {
     }
 
     // Parse comma-separated bid numbers
-    const bidNumbersArray = bid_numbers.split(',').map(bn => bn.trim());
+    const bidNumbersArray = bid_numbers.split(',').map(bn => bn.trim()).filter(bn => bn.length > 0);
+
+    if (bidNumbersArray.length === 0) {
+      return NextResponse.json(
+        { error: "No valid bid numbers provided" },
+        { status: 400 }
+      );
+    }
 
     // Get favorites for the specified bid numbers
-    const favorites = await sql`
-      SELECT bid_number 
-      FROM carrier_favorites 
-      WHERE carrier_user_id = ${userId} 
-      AND bid_number = ANY(${bidNumbersArray})
-    `;
+    // Note: carrier_user_id was removed in migration 078, only supabase_carrier_user_id exists now
+    // Use sql template literal - query all favorites for the user, then filter in JavaScript
+    // This is simpler and more reliable than trying to use IN with sql.unsafe
+    console.log('[favorites/check] Querying favorites for userId:', userId);
+    console.log('[favorites/check] Bid numbers to check:', bidNumbersArray.length);
+    
+    let allFavorites;
+    try {
+      allFavorites = await sql`
+        SELECT bid_number 
+        FROM carrier_favorites 
+        WHERE supabase_carrier_user_id = ${userId}
+      `;
+      console.log('[favorites/check] Found', allFavorites.length, 'total favorites for user');
+    } catch (queryError: any) {
+      console.error('[favorites/check] SQL query error:', queryError);
+      console.error('[favorites/check] Error details:', {
+        message: queryError?.message,
+        code: queryError?.code,
+        stack: queryError?.stack
+      });
+      throw queryError;
+    }
+    
+    // Filter to only the requested bid numbers
+    const favorites = allFavorites.filter(f => bidNumbersArray.includes(f.bid_number));
+    console.log('[favorites/check] Filtered to', favorites.length, 'matching favorites');
 
     // Create a map of favorited bid numbers
     const favoritedBids = new Set(favorites.map(f => f.bid_number));
@@ -46,10 +89,15 @@ export async function GET(request: NextRequest) {
       data: result 
     });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error checking favorites:', error);
+    console.error('Error details:', {
+      message: error?.message,
+      code: error?.code,
+      stack: error?.stack
+    });
     return NextResponse.json(
-      { error: "Failed to check favorites" },
+      { error: "Failed to check favorites", details: error?.message },
       { status: 500 }
     );
   }

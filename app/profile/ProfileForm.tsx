@@ -1,13 +1,13 @@
 "use client";
 
-import { useState } from "react";
-import { useUser } from "@clerk/nextjs";
-import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Truck } from "lucide-react";
+import { useUnifiedUser } from "@/hooks/useUnifiedUser";
 import { updateCarrierProfile } from "@/lib/actions";
+import { Truck } from "lucide-react";
+import { useState } from "react";
 
 interface CarrierProfile {
   mc_number?: string;
@@ -21,7 +21,7 @@ interface ProfileFormProps {
 }
 
 export function ProfileForm({ profile }: ProfileFormProps) {
-  const { user } = useUser();
+  const { user } = useUnifiedUser();
   const [formData, setFormData] = useState({
     mc_number: profile?.mc_number || "",
     dot_number: profile?.dot_number || "",

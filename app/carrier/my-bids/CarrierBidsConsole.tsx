@@ -6,8 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { formatDistance, formatMoney } from "@/lib/format";
-import { useUser } from "@clerk/nextjs";
+import { formatDistance, formatMoney, formatStops, formatPickupDateTime, formatStopCount } from "@/lib/format";
+import { useUnifiedUser } from "@/hooks/useUnifiedUser";
+import { Countdown } from "@/components/ui/Countdown";
 import {
     Calendar,
     CheckCircle,
@@ -23,9 +24,12 @@ import {
     RefreshCw,
     TrendingUp,
     Truck,
-    XCircle
+    XCircle,
+    Zap,
+    Eye,
+    Navigation
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
 import { BidAnalytics } from "./BidAnalytics";
@@ -110,7 +114,7 @@ const getProgressForStatus = (status: string) => {
 };
 
 export function CarrierBidsConsole() {
-  const { user, isLoaded } = useUser();
+  const { user, isLoaded } = useUnifiedUser();
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState("all");
@@ -120,6 +124,7 @@ export function CarrierBidsConsole() {
   const [viewMode, setViewMode] = useState<'list' | 'card'>('list');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedBidForDialog, setSelectedBidForDialog] = useState<AwardedBid | null>(null);
+  const [viewLoadDetailsBid, setViewLoadDetailsBid] = useState<any | null>(null);
   const [advancedFilters, setAdvancedFilters] = useState<FilterState>({
     searchTerm: '',
     status: [],
@@ -161,13 +166,37 @@ export function CarrierBidsConsole() {
     { refreshInterval: 60000 }
   );
 
+  // Fetch active bids (bids placed on bid-board that are still active)
+  const { data: activeBidsData, mutate: mutateActiveBids } = useSWR(
+    user ? "/api/carrier/bids" : null,
+    fetcher,
+    { refreshInterval: 10000 } // Refresh every 10 seconds for active bids
+  );
+
   const awardedBids: AwardedBid[] = bidsData?.data || [];
-  const stats: BidStats = statsData?.data || {
+  const serverStats: BidStats = statsData?.data || {
     totalAwarded: 0,
     activeBids: 0,
     completedBids: 0,
     totalRevenue: 0,
     averageAmount: 0
+  };
+
+  // Filter active bids - only show bids that are still active (not expired, not won/lost)
+  const allBids: any[] = activeBidsData?.data || [];
+  const activeBidsList = allBids.filter((bid: any) => bid.bidStatus === 'active' && !bid.isExpired);
+  
+  // Combine stats: Active bids = active bids on bid-board + awarded bids that are active (awarded/accepted/in_progress)
+  const activeAwardedBids = awardedBids.filter(bid => 
+    ['awarded', 'accepted', 'in_progress'].includes(bid.status || 'awarded')
+  ).length;
+  
+  const stats: BidStats = {
+    totalAwarded: serverStats.totalAwarded,
+    activeBids: activeBidsList.length + activeAwardedBids, // Active bids from bid-board + active awarded bids
+    completedBids: serverStats.completedBids,
+    totalRevenue: serverStats.totalRevenue,
+    averageAmount: serverStats.averageAmount
   };
 
   // Filter bids based on search and filters
@@ -331,19 +360,147 @@ export function CarrierBidsConsole() {
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Recent Bids */}
-            <Card>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Active Bids - Live Auction Console */}
+            <Card className="overflow-hidden lg:col-span-1">
+              <CardHeader className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 border-b p-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2 text-sm">
+                    <Zap className="w-4 h-4 text-blue-500" />
+                    Active Bids
+                  </CardTitle>
+                  <Badge variant="outline" className="bg-green-500/20 text-green-400 border-green-500/30 text-xs">
+                    {activeBidsList.length}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="p-3">
+                {activeBidsList.length > 0 ? (
+                  <div className="space-y-2 max-h-[500px] overflow-y-auto">
+                    {activeBidsList.map((bid: any) => {
+                      const expiresAt = bid.expiresAt || (() => {
+                        const receivedAt = new Date(bid.receivedAt);
+                        return new Date(receivedAt.getTime() + (25 * 60 * 1000)).toISOString();
+                      })();
+                      const stops = Array.isArray(bid.stops) ? bid.stops : (bid.stops ? JSON.parse(bid.stops) : []);
+                      const origin = stops[0] || 'Unknown';
+                      const destination = stops[stops.length - 1] || 'Unknown';
+                      
+                      return (
+                        <div
+                          key={bid.bidNumber}
+                          onClick={() => {
+                            // For active bids, show load details only (not lifecycle)
+                            setViewLoadDetailsBid(bid);
+                          }}
+                          className="group relative p-2.5 border rounded-lg bg-card hover:bg-accent/50 transition-all duration-200 cursor-pointer hover:shadow-md hover:border-primary/50"
+                        >
+                          {/* Pulse animation for active status */}
+                          <div className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+                          
+                          <div className="space-y-2">
+                            {/* Header Row */}
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5 mb-0.5">
+                                  <h4 className="font-semibold text-xs">#{bid.bidNumber}</h4>
+                                  {bid.tag && (
+                                    <Badge variant="secondary" className="text-[10px] px-1 py-0">
+                                      {bid.tag}
+                                    </Badge>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                                  <MapPin className="w-2.5 h-2.5" />
+                                  <span className="truncate">{origin} → {destination}</span>
+                                </div>
+                              </div>
+                              
+                              {/* Countdown Timer */}
+                              <div className="flex-shrink-0">
+                                <Countdown 
+                                  expiresAt={expiresAt}
+                                  variant={bid.timeLeftSeconds && bid.timeLeftSeconds <= 300 ? "urgent" : "default"}
+                                  className="text-[10px]"
+                                />
+                              </div>
+                            </div>
+
+                            {/* Details Row */}
+                            <div className="grid grid-cols-2 gap-2 text-[10px]">
+                              <div className="flex items-center gap-1">
+                                <Navigation className="w-3 h-3 text-muted-foreground" />
+                                <span className="text-muted-foreground">{formatDistance(bid.distance || 0)}</span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <Truck className="w-3 h-3 text-muted-foreground" />
+                                <span className="text-muted-foreground">{stops.length} {stops.length === 1 ? 'stop' : 'stops'}</span>
+                              </div>
+                            </div>
+
+                            {/* Bid Info Row */}
+                            <div className="flex items-center justify-between pt-1.5 border-t">
+                              <div className="flex items-center gap-1.5">
+                                <DollarSign className="w-3.5 h-3.5 text-green-500" />
+                                <div>
+                                  <p className="text-[10px] text-muted-foreground">My Bid</p>
+                                  <p className="font-semibold text-xs text-green-500">
+                                    ${Number(bid.myBid || 0).toFixed(2)}
+                                  </p>
+                                </div>
+                              </div>
+                              
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 px-1.5 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  // For active bids, show load details only (not lifecycle)
+                                  setViewLoadDetailsBid(bid);
+                                }}
+                              >
+                                <Eye className="w-3 h-3 mr-0.5" />
+                                View
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-8 text-center">
+                    <Truck className="w-8 h-8 text-muted-foreground/50 mb-2" />
+                    <p className="text-xs font-medium text-muted-foreground mb-1">No Active Bids</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      Place bids on the bid-board to see them here
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Recent Awarded Bids */}
+            <Card className="lg:col-span-2">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Package className="w-5 h-5" />
-                  Recent Bids
+                  Recent Awarded Bids
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
                   {awardedBids.slice(0, 5).map((bid) => (
-                    <div key={bid.id} className="flex items-center justify-between p-3 border rounded-lg">
+                    <div 
+                      key={bid.id} 
+                      className="flex items-center justify-between p-3 border rounded-lg hover:bg-accent/50 transition-colors cursor-pointer"
+                      onClick={() => {
+                        // For awarded bids, show lifecycle dialog (can update lifecycle)
+                        setSelectedBidForDialog(bid);
+                        setDialogOpen(true);
+                      }}
+                    >
                       <div className="flex items-center gap-3">
                         {getStatusIcon(bid.status || 'awarded')}
                         <div>
@@ -361,40 +518,6 @@ export function CarrierBidsConsole() {
                   ))}
                   {awardedBids.length === 0 && (
                     <p className="text-center text-muted-foreground py-4">No awarded bids yet</p>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Active Bids */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Truck className="w-5 h-5" />
-                  Active Bids
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {awardedBids.filter(bid => ['accepted', 'in_progress'].includes(bid.status || 'awarded')).slice(0, 5).map((bid) => (
-                    <div key={bid.id} className="flex items-center justify-between p-3 border rounded-lg">
-                      <div className="flex items-center gap-3">
-                        {getStatusIcon(bid.status || 'awarded')}
-                        <div>
-                          <p className="font-medium">#{bid.bid_number}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {bid.distance_miles ? formatDistance(bid.distance_miles) : 'N/A'} • {bid.tag || 'N/A'}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-semibold">{formatMoney(bid.winner_amount_cents)}</p>
-                        {getStatusBadge(bid.status || 'awarded')}
-                      </div>
-                    </div>
-                  ))}
-                  {awardedBids.filter(bid => ['accepted', 'in_progress'].includes(bid.status || 'awarded')).length === 0 && (
-                    <p className="text-center text-muted-foreground py-4">No active bids</p>
                   )}
                 </div>
               </CardContent>
@@ -448,10 +571,12 @@ export function CarrierBidsConsole() {
                           <MapPin className="w-4 h-4 text-blue-500" />
                           <span>{bid.distance_miles ? formatDistance(bid.distance_miles) : 'N/A'}</span>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Package className="w-4 h-4 text-purple-500" />
-                          <span>{bid.source_channel || 'N/A'}</span>
-                        </div>
+                        {bid.source_channel && bid.source_channel !== '-1002560784901' && (
+                          <div className="flex items-center gap-2">
+                            <Package className="w-4 h-4 text-purple-500" />
+                            <span>{bid.source_channel}</span>
+                          </div>
+                        )}
                       </div>
 
                       {bid.notes && (
@@ -704,6 +829,111 @@ export function CarrierBidsConsole() {
               />
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Load Details Dialog for Active Bids */}
+      <Dialog open={!!viewLoadDetailsBid} onOpenChange={() => setViewLoadDetailsBid(null)}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Load Details - #{viewLoadDetailsBid?.bidNumber}</DialogTitle>
+          </DialogHeader>
+          
+          {viewLoadDetailsBid && (() => {
+            const stops = Array.isArray(viewLoadDetailsBid.stops) 
+              ? viewLoadDetailsBid.stops 
+              : (viewLoadDetailsBid.stops ? JSON.parse(viewLoadDetailsBid.stops) : []);
+            const origin = stops[0] || 'Unknown';
+            const destination = stops[stops.length - 1] || 'Unknown';
+            
+            return (
+              <div className="space-y-6">
+                {/* Basic Info */}
+                <div className="grid grid-cols-2 gap-4 p-4 bg-muted/50 rounded-lg">
+                  <div>
+                    <label className="text-sm font-medium text-muted-foreground">Bid Number</label>
+                    <p className="text-lg font-semibold">#{viewLoadDetailsBid.bidNumber}</p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-muted-foreground">State Tag</label>
+                    <p className="text-lg font-semibold">{viewLoadDetailsBid.tag || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-muted-foreground">Distance</label>
+                    <p className="text-lg font-semibold">{formatDistance(viewLoadDetailsBid.distance || 0)}</p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-muted-foreground">Stops</label>
+                    <p className="text-lg font-semibold">{formatStopCount(stops)}</p>
+                  </div>
+                </div>
+
+                {/* Route */}
+                <div className="p-4 bg-muted/50 rounded-lg">
+                  <label className="text-sm font-medium text-muted-foreground mb-2 block">Route</label>
+                  <div className="flex items-center gap-2">
+                    <MapPin className="w-4 h-4 text-primary" />
+                    <p className="text-lg font-semibold">{origin} → {destination}</p>
+                  </div>
+                  {stops.length > 2 && (
+                    <div className="mt-2 space-y-1">
+                      {stops.slice(1, -1).map((stop: string, idx: number) => (
+                        <div key={idx} className="flex items-center gap-2 text-sm text-muted-foreground pl-6">
+                          <span className="w-1 h-1 bg-muted-foreground rounded-full" />
+                          {stop}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Pickup & Delivery Times */}
+                <div className="grid grid-cols-2 gap-4 p-4 bg-muted/50 rounded-lg">
+                  <div>
+                    <label className="text-sm font-medium text-muted-foreground">Pickup Time</label>
+                    <p className="text-lg font-semibold">
+                      {viewLoadDetailsBid.pickupDate ? formatPickupDateTime(viewLoadDetailsBid.pickupDate) : 'N/A'}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-muted-foreground">Delivery Time</label>
+                    <p className="text-lg font-semibold">
+                      {viewLoadDetailsBid.deliveryDate ? formatPickupDateTime(viewLoadDetailsBid.deliveryDate) : 'N/A'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* My Bid Info */}
+                {viewLoadDetailsBid.myBid && (
+                  <div className="p-4 bg-green-500/10 border border-green-500/30 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <DollarSign className="w-5 h-5 text-green-500" />
+                      <div>
+                        <label className="text-sm font-medium text-muted-foreground">My Bid</label>
+                        <p className="text-2xl font-bold text-green-500">
+                          ${Number(viewLoadDetailsBid.myBid || 0).toFixed(2)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Countdown */}
+                {viewLoadDetailsBid.expiresAt && (
+                  <div className="p-4 bg-muted/50 rounded-lg">
+                    <label className="text-sm font-medium text-muted-foreground mb-2 block">Time Remaining</label>
+                    <Countdown 
+                      expiresAt={viewLoadDetailsBid.expiresAt || (() => {
+                        const receivedAt = new Date(viewLoadDetailsBid.receivedAt);
+                        return new Date(receivedAt.getTime() + (25 * 60 * 1000)).toISOString();
+                      })()}
+                      variant={viewLoadDetailsBid.timeLeftSeconds && viewLoadDetailsBid.timeLeftSeconds <= 300 ? "urgent" : "default"}
+                    />
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </DialogContent>
       </Dialog>
 

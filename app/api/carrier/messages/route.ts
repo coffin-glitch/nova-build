@@ -1,19 +1,16 @@
 import sql from "@/lib/db";
-import { auth } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { requireApiCarrier } from "@/lib/auth-api-helper";
+import { NextRequest, NextResponse } from "next/server";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireApiCarrier(request);
+    const userId = auth.userId;
 
     // Check carrier profile status
     const profile = await sql`
       SELECT profile_status FROM carrier_profiles 
-      WHERE clerk_user_id = ${userId}
+      WHERE supabase_user_id = ${userId}
     `;
 
     const profileStatus = profile[0]?.profile_status;
@@ -35,7 +32,7 @@ export async function GET() {
           created_at,
           updated_at
         FROM admin_messages 
-        WHERE carrier_user_id = ${userId}
+        WHERE supabase_user_id = ${userId}
         ORDER BY created_at DESC
       `;
     } else {
@@ -53,7 +50,7 @@ export async function GET() {
           created_at,
           updated_at
         FROM admin_messages 
-        WHERE carrier_user_id = ${userId}
+        WHERE supabase_user_id = ${userId}
         ORDER BY created_at DESC
       `;
 
@@ -72,7 +69,7 @@ export async function GET() {
         FROM conversations c
         JOIN conversation_messages cm ON cm.conversation_id = c.id
         LEFT JOIN message_reads mr ON mr.message_id = cm.id AND mr.user_id = ${userId}
-        WHERE c.carrier_user_id = ${userId} 
+        WHERE c.supabase_carrier_user_id = ${userId}
           AND c.conversation_type = 'appeal'
           AND cm.sender_type = 'admin'
         ORDER BY cm.created_at DESC

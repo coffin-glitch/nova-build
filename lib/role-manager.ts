@@ -3,11 +3,10 @@ import sql from "@/lib/db";
 export type UserRole = "admin" | "carrier" | "none";
 
 interface CachedUserRole {
-  clerk_user_id: string;
+  clerk_user_id: string; // Legacy field name for compatibility, but contains supabase_user_id
   role: UserRole;
   email: string;
   last_synced: Date;
-  clerk_updated_at: number;
 }
 
 class OptimizedRoleManager {
@@ -114,9 +113,9 @@ class OptimizedRoleManager {
   private async getCachedRoleFromDB(userId: string): Promise<CachedUserRole | null> {
     try {
       const result = await sql`
-        SELECT clerk_user_id, role, email, last_synced, clerk_updated_at 
+        SELECT supabase_user_id, role, email, last_synced 
         FROM user_roles_cache 
-        WHERE clerk_user_id = ${userId}
+        WHERE supabase_user_id = ${userId}
         LIMIT 1
       `;
       
@@ -125,11 +124,10 @@ class OptimizedRoleManager {
       const row = result[0];
       console.log("🔍 Found cached role:", row);
       return {
-        clerk_user_id: row.clerk_user_id,
+        clerk_user_id: row.supabase_user_id, // Keep for interface compatibility, but use supabase_user_id
         role: row.role as UserRole,
         email: row.email,
         last_synced: new Date(row.last_synced),
-        clerk_updated_at: row.clerk_updated_at,
       };
     } catch (error) {
       console.error("Error getting cached role from DB:", error);
@@ -201,25 +199,19 @@ class OptimizedRoleManager {
     try {
       const email = clerkUser.email_addresses[0]?.email_address || "";
       const role = this.extractRoleFromClerkUser(clerkUser);
-      const clerkUpdatedAt = Math.max(
-        clerkUser.last_sign_in_at || 0,
-        clerkUser.created_at || 0
-      );
 
       await sql`
         INSERT INTO user_roles_cache (
-          clerk_user_id, 
+          supabase_user_id, 
           role, 
           email, 
-          last_synced, 
-          clerk_updated_at
-        ) VALUES (${clerkUser.id}, ${role}, ${email}, NOW(), ${clerkUpdatedAt})
-        ON CONFLICT (clerk_user_id) 
+          last_synced
+        ) VALUES (${clerkUser.id}, ${role}, ${email}, NOW())
+        ON CONFLICT (supabase_user_id) 
         DO UPDATE SET 
           role = ${role},
           email = ${email},
-          last_synced = NOW(),
-          clerk_updated_at = ${clerkUpdatedAt}
+          last_synced = NOW()
       `;
     } catch (error) {
       console.error("Error updating cached role:", error);
@@ -292,13 +284,12 @@ class OptimizedRoleManager {
     try {
       await sql`
         INSERT INTO user_roles_cache (
-          clerk_user_id, 
+          supabase_user_id, 
           role, 
           email, 
-          last_synced, 
-          clerk_updated_at
-        ) VALUES (${userId}, ${role}, 'legacy@example.com', NOW(), 0)
-        ON CONFLICT (clerk_user_id) 
+          last_synced
+        ) VALUES (${userId}, ${role}, 'legacy@example.com', NOW())
+        ON CONFLICT (supabase_user_id) 
         DO UPDATE SET 
           role = ${role},
           last_synced = NOW()

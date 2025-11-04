@@ -44,3 +44,5 @@ storage/telethon_session.session
 storage/telethon_session.session-journal
 .nova_telegram.env
 .env
+backups/*.sql
+backup_*.sql

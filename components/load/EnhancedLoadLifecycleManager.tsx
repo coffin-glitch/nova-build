@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { useUser } from "@clerk/nextjs";
+import { useUnifiedUser } from "@/hooks/useUnifiedUser";
 import {
     CheckCircle,
     Clock,
@@ -58,7 +58,7 @@ interface EnhancedLoadLifecycleManagerProps {
 }
 
 export function EnhancedLoadLifecycleManager({ loadId, loadData }: EnhancedLoadLifecycleManagerProps) {
-  const { user } = useUser();
+  const { user } = useUnifiedUser();
   const [selectedEvent, setSelectedEvent] = useState<LifecycleEvent | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);

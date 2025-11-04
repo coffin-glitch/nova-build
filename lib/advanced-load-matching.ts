@@ -306,7 +306,7 @@ async function calculateMarketFit(bid: any, userId: string): Promise<number> {
         AVG(tb.distance_miles) as avg_distance
       FROM carrier_bids cb
       JOIN telegram_bids tb ON cb.bid_number = tb.bid_number
-      WHERE cb.clerk_user_id = ${userId}
+      WHERE cb.supabase_user_id = ${userId}
     `;
 
     if (userStats[0]?.total_bids === 0) return 50;

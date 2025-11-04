@@ -6,9 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useClerkRole } from "@/lib/clerk-roles";
+import { useUnifiedRole } from "@/hooks/useUnifiedRole";
 import { cn } from "@/lib/utils";
-import { useUser } from "@clerk/nextjs";
+import { useUnifiedUser } from "@/hooks/useUnifiedUser";
 import {
     Maximize2,
     MessageCircle,
@@ -56,8 +56,8 @@ interface UserInfo {
 }
 
 export default function FloatingCarrierMessagesButton() {
-  const { user, isLoaded } = useUser();
-  const { isCarrier } = useClerkRole();
+  const { user, isLoaded } = useUnifiedUser();
+  const { isCarrier } = useUnifiedRole();
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [position, setPosition] = useState({ x: 100, y: 100 }); // Safe default for SSR

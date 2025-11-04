@@ -1,19 +1,33 @@
-import { getClerkUserRole } from "@/lib/auth-server";
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import type { UserRole } from "@/lib/auth-unified";
+import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 
-// If Clerk env vars are missing during build, fail fast with a readable error.
-if (!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || !process.env.CLERK_SECRET_KEY) {
-  console.warn("[middleware] Clerk keys are not set. Authentication will not work.");
+// Simple route matcher function (replaces Clerk's createRouteMatcher)
+function matchRoute(pathname: string, patterns: string[]): boolean {
+  return patterns.some(pattern => {
+    // Handle patterns like "/sign-in(.*)" - convert to "/sign-in.*"
+    let normalizedPattern = pattern.replace(/\(\.\*\)/g, '.*').replace(/\*\*/g, '.*').replace(/\*/g, '[^/]*');
+    // If pattern doesn't start with ^, add it; if it doesn't end with $, add it
+    if (!normalizedPattern.startsWith('^')) {
+      normalizedPattern = '^' + normalizedPattern.replace(/^\//, '\\/');
+    }
+    if (!normalizedPattern.endsWith('$')) {
+      normalizedPattern = normalizedPattern + '$';
+    }
+    const regex = new RegExp(normalizedPattern);
+    return regex.test(pathname);
+  });
 }
 
 // Define public routes that don't require authentication
-const isPublicRoute = createRouteMatcher([
+const publicRoutes = [
   "/",
   "/contact",
   "/sign-in(.*)",
   "/sign-up(.*)",
+  "/verify-email(.*)",
+  "/auth/callback(.*)",
   "/api/test-db",
   "/api/reset-telegram-bids",
   "/api/test(.*)",
@@ -24,22 +38,22 @@ const isPublicRoute = createRouteMatcher([
   "/api/loads(.*)",
   "/api/offers(.*)",
   "/debug",
-]);
+];
 
 // Define admin-only routes
-const isAdminRoute = createRouteMatcher([
+const adminRoutes = [
   "/admin(.*)",
   "/api/admin(.*)",
-]);
+];
 
 // Define carrier-only routes
-const isCarrierRoute = createRouteMatcher([
+const carrierRoutes = [
   "/carrier(.*)",
   "/api/carrier(.*)",
-]);
+];
 
 // Define authenticated routes (accessible to both carriers and admins)
-const isAuthenticatedRoute = createRouteMatcher([
+const authenticatedRoutes = [
   "/find-loads",
   "/bid-board",
   "/book-loads",
@@ -48,74 +62,214 @@ const isAuthenticatedRoute = createRouteMatcher([
   "/dedicated-lanes",
   "/profile",
   "/pricing",
-]);
+];
 
-export default clerkMiddleware(async (auth, req) => {
-  const { userId, sessionClaims } = await auth();
+export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // Debug logging
-  console.log("🔍 Middleware Debug:", {
-    pathname,
-    userId,
-    sessionClaims: sessionClaims?.public_metadata,
-    userRole: (sessionClaims?.public_metadata as any)?.role?.toLowerCase()
-  });
+  // Helper function to create response with CSP headers
+  const createResponse = (res?: NextResponse) => {
+    const finalResponse = res || NextResponse.next();
+    
+    // Build CSP with Supabase domains only (Clerk removed)
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+    const supabaseBaseUrl = supabaseUrl.replace(/\/+$/, ''); // Remove trailing slashes
+    const isDev = process.env.NODE_ENV === 'development';
+    
+    // Build CSP with proper template literal interpolation (avoiding literal ${} strings)
+    const scriptSrc = `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ''} https://*.supabase.co https://*.supabase.in${supabaseBaseUrl ? ` ${supabaseBaseUrl}` : ''}`;
+    const connectSrc = `connect-src 'self' https://*.supabase.co https://*.supabase.in wss://*.supabase.co wss://*.supabase.in${supabaseBaseUrl ? ` ${supabaseBaseUrl} ${supabaseBaseUrl}/auth/v1 ${supabaseBaseUrl}/rest/v1` : ''}`;
+    const frameSrc = `frame-src 'self' https://*.supabase.co https://*.supabase.in${supabaseBaseUrl ? ` ${supabaseBaseUrl}` : ''}`;
+    
+    const csp = [
+      "default-src 'self'",
+      scriptSrc,
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "font-src 'self' https://fonts.gstatic.com data:",
+      "img-src 'self' data: https: blob:",
+      connectSrc,
+      frameSrc,
+      "object-src 'none'",
+      "base-uri 'self'",
+      "form-action 'self'"
+    ].join('; ');
+    
+    finalResponse.headers.set('Content-Security-Policy', csp);
+    return finalResponse;
+  };
 
-  // Allow public routes
-  if (isPublicRoute(req)) {
-    return NextResponse.next();
+  // Allow public routes - check this FIRST before any auth logic
+  if (matchRoute(pathname, publicRoutes)) {
+    // For public routes, just return early without any auth checks
+    return createResponse();
   }
 
-  // Redirect to sign-in if not authenticated
-  if (!userId) {
-    const signInUrl = new URL("/sign-in", req.url);
-    return NextResponse.redirect(signInUrl);
-  }
+  // Get Supabase auth
+  let userId: string | null = null;
+  let userRole: UserRole = "none";
 
-  // Get user role from Clerk metadata (fallback to server-side check)
-  let userRole = (sessionClaims?.public_metadata as any)?.role?.toLowerCase() || "carrier";
-  
-  // If session claims don't have role, fetch from server
-  if (!(sessionClaims?.public_metadata as any)?.role) {
-    try {
-      userRole = await getClerkUserRole(userId);
-      console.log("🔍 Server-side role check:", { userId, userRole });
-    } catch (error) {
-      console.error("❌ Error fetching user role:", error);
-      userRole = "carrier"; // Default to carrier on error
+  try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    
+    if (!supabaseUrl || !supabaseAnonKey) {
+      console.warn("[middleware] Supabase not configured. Redirecting to sign-in.");
+      const signInUrl = new URL("/sign-in", req.url);
+      return createResponse(NextResponse.redirect(signInUrl));
     }
+
+    // Create Supabase client with proper cookie handling for Edge runtime
+    // Use getAll/setAll format (preferred by Supabase SSR v0.7+) for better chunked cookie support
+    const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+      cookies: {
+        getAll() {
+          // Get all cookies and filter out Clerk cookies
+          return req.cookies.getAll()
+            .filter(cookie => {
+              const name = cookie.name;
+              // Filter out Clerk cookies - we're using Supabase only
+              return !name.startsWith('__clerk_') && !name.startsWith('clerk_');
+            })
+            .map(cookie => ({
+              name: cookie.name,
+              value: cookie.value
+            }));
+        },
+        setAll(cookiesToSet) {
+          // Cookies will be set via response headers
+          cookiesToSet.forEach(({ name, value }) => {
+            req.cookies.set(name, value);
+          });
+        },
+      },
+    });
+    
+    // Get user from session with error handling for fresh sign-ins
+    let user = null;
+    let error = null;
+    
+    try {
+      const result = await supabase.auth.getUser();
+      user = result.data.user;
+      error = result.error;
+    } catch (getUserError: any) {
+      // If getUser throws an error (e.g., cookie parsing issue), log but don't block
+      console.warn("[middleware] Error getting user (might be fresh sign-in):", getUserError?.message || getUserError);
+      // Don't immediately fail - cookies might still be setting up
+    }
+    
+    if (user && !error) {
+      // Check if email is confirmed - redirect to verification page if not
+      // OAuth providers (like Google) auto-confirm emails, so this mainly applies to email/password
+      if (!user.email_confirmed_at && !pathname.startsWith('/verify-email') && !pathname.startsWith('/sign-in') && !pathname.startsWith('/sign-up') && !pathname.startsWith('/auth/callback')) {
+        console.log('⚠️ [Middleware] Email not confirmed, redirecting to verification page');
+        const verifyUrl = new URL('/verify-email', req.url);
+        verifyUrl.searchParams.set('email', user.email || '');
+        return createResponse(NextResponse.redirect(verifyUrl));
+      }
+      
+      userId = user.id;
+      // Resolve role immediately - this is critical for admin route protection
+      userRole = await resolveUserRole(userId);
+    }
+    
+    // Debug logging (only in development and only for page routes, not static assets)
+    if (process.env.NODE_ENV === 'development' && !pathname.match(/\.(ico|png|jpg|jpeg|svg|gif|css|js|woff|woff2|ttf|eot)$/)) {
+      console.log("🔍 Supabase Auth Result:", {
+        userId: userId ? `${userId.substring(0, 8)}...` : null,
+        userRole,
+        email: user?.email
+      });
+    }
+  } catch (error) {
+    console.error("❌ Error in Supabase auth:", error);
   }
 
-  // Check admin routes
-  if (isAdminRoute(req)) {
-    console.log("🔍 Admin route check:", { userRole, isAdmin: userRole === "admin" });
+  // ⚠️ CRITICAL: API routes should NEVER be redirected - they must return JSON errors
+  // Let API routes handle their own authentication and return proper JSON responses
+  if (pathname.startsWith('/api/')) {
+    let response = createResponse();
+    // Set auth headers if authenticated, otherwise let API route return JSON error
+    if (userId) {
+      response.headers.set("X-User-Id", userId);
+      response.headers.set("X-User-Role", userRole);
+      response.headers.set("X-Auth-Provider", "supabase");
+    }
+    return response; // Always allow API routes through - they handle auth errors with JSON
+  }
+
+  // Redirect to sign-in if not authenticated (only for page routes, not API routes)
+  // IMPORTANT: Only redirect if NOT accessing public routes or auth pages
+  // This prevents redirect loops after Google sign-in
+  if (!userId && 
+      !pathname.startsWith('/sign-in') && 
+      !pathname.startsWith('/sign-up') && 
+      !pathname.startsWith('/verify-email') && 
+      !pathname.startsWith('/auth/callback') &&
+      !matchRoute(pathname, publicRoutes)) {
+    const signInUrl = new URL("/sign-in", req.url);
+    signInUrl.searchParams.set('next', pathname); // Preserve intended destination
+    return createResponse(NextResponse.redirect(signInUrl));
+  }
+  
+  // If not authenticated and trying to access sign-in/sign-up or public routes, allow it
+  if (!userId) {
+    return createResponse();
+  }
+
+  // Create response with auth headers for downstream routes
+  let response = createResponse();
+  
+  // Add auth headers for server components
+  response.headers.set("X-User-Id", userId);
+  response.headers.set("X-User-Role", userRole);
+  response.headers.set("X-Auth-Provider", "supabase");
+
+  // CRITICAL: Aggressively delete all Clerk cookies on every request
+  // We're using Supabase only, so Clerk cookies must be completely removed
+  const allCookieNames = Array.from(req.cookies.getAll()).map(c => c.name);
+  const clerkCookieNames = allCookieNames.filter((cookieName) => {
+    return cookieName.startsWith('__clerk_') || 
+           cookieName.startsWith('clerk_') || 
+           cookieName.includes('clerk') ||
+           cookieName.startsWith('__refresh_') ||
+           cookieName.startsWith('__client_uat') ||
+           cookieName.startsWith('__session_');
+  });
+  
+  clerkCookieNames.forEach((cookieName) => {
+    // Delete with multiple path/domain combinations to ensure removal
+    response.cookies.delete(cookieName);
+    response.cookies.set(cookieName, '', {
+      path: '/',
+      maxAge: 0,
+      expires: new Date(0),
+    });
+  });
+  
+  if (clerkCookieNames.length > 0) {
+    console.log(`🧹 [MIDDLEWARE] Deleted ${clerkCookieNames.length} Clerk cookies:`, clerkCookieNames);
+  }
+
+  // Check admin routes (only for page routes, not API routes)
+  if (!pathname.startsWith('/api/') && matchRoute(pathname, adminRoutes)) {
     if (userRole !== "admin") {
       const forbiddenUrl = new URL("/forbidden", req.url);
-      return NextResponse.redirect(forbiddenUrl);
+      return createResponse(NextResponse.redirect(forbiddenUrl));
     }
   }
 
-  // Check carrier routes and profile status
-  if (isCarrierRoute(req)) {
-    if (userRole !== "carrier" && userRole !== "admin") {
-      const forbiddenUrl = new URL("/forbidden", req.url);
-      return NextResponse.redirect(forbiddenUrl);
-    }
-
-    // Check carrier profile status for carrier users (skip for admins)
-    // Skip profile check if Supabase env vars are not set - client-side ProfileGuard will handle it
-    if (userRole === "carrier" && pathname !== '/carrier/profile') {
+  // Check carrier profile status for ALL authenticated PAGE routes (not API routes)
+  // This ensures new carriers are redirected to profile setup even when accessing home page
+  // Skip API routes - they handle their own errors and return JSON
+  if (userRole === "carrier" && !pathname.startsWith('/api/') && !matchRoute(pathname, publicRoutes) && pathname !== '/carrier/profile') {
       try {
-        // Extract Supabase URL from DATABASE_URL if NEXT_PUBLIC_SUPABASE_URL is not set
         let supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
         let supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
         // If Supabase URL not set, try to extract from DATABASE_URL
         if (!supabaseUrl && process.env.DATABASE_URL) {
           const dbUrl = process.env.DATABASE_URL;
-          // Extract project ref from Supabase pooler URL format:
-          // postgresql://postgres.PROJECT_REF:password@...
           const match = dbUrl.match(/postgres\.([^.]+)\./);
           if (match && match[1]) {
             supabaseUrl = `https://${match[1]}.supabase.co`;
@@ -123,25 +277,26 @@ export default clerkMiddleware(async (auth, req) => {
         }
 
         // If we still don't have Supabase credentials, skip server-side check
-        // Client-side ProfileGuard will handle profile validation
         if (!supabaseUrl || !supabaseKey) {
-          console.warn('[middleware] Supabase env vars not set, skipping server-side profile check. Client-side ProfileGuard will handle.');
-          return NextResponse.next();
+          console.warn('[middleware] Supabase env vars not set, skipping server-side profile check.');
+          return response;
         }
 
         // Use Supabase client compatible with Edge runtime
         const supabase = createClient(supabaseUrl, supabaseKey);
 
+        // Check profile using supabase_user_id
         const { data: profileResult, error } = await supabase
           .from('carrier_profiles')
           .select('profile_status, is_first_login, profile_completed_at')
-          .eq('clerk_user_id', userId)
+          .eq('supabase_user_id', userId)
           .limit(1)
-          .single();
+          .maybeSingle();
 
+        // If no profile exists (not just an error), redirect to profile setup
         if (error || !profileResult) {
-          // If no profile, allow access (will handle client-side)
-          return NextResponse.next();
+          console.log('🐛 [Middleware] No carrier profile found for user, redirecting to profile setup');
+          return createResponse(NextResponse.redirect(new URL('/carrier/profile?setup=true', req.url)));
         }
 
         const profile = profileResult;
@@ -153,47 +308,122 @@ export default clerkMiddleware(async (auth, req) => {
 
         // If approved, allow access to all carrier pages
         if (profileStatus === 'approved') {
-          return NextResponse.next();
+          return response;
         }
 
-        // If profile needs setup (no completion or first login)
-        if (!profileCompleted || (isFirstLogin && !profileCompleted)) {
-          return NextResponse.redirect(new URL('/carrier/profile?setup=true', req.url));
-        }
-
-        // If profile is open (setup required), redirect to profile page
+        // If profile is open (needs setup or edits enabled by admin), redirect to profile page
         if (profileStatus === 'open') {
-          return NextResponse.redirect(new URL('/carrier/profile?setup=true', req.url));
+          return createResponse(NextResponse.redirect(new URL('/carrier/profile?setup=true', req.url)));
+        }
+
+        // If first login and profile not completed, redirect to profile setup
+        if (isFirstLogin && !profileCompleted) {
+          return createResponse(NextResponse.redirect(new URL('/carrier/profile?setup=true', req.url)));
+        }
+
+        // If profile needs setup (no completion), redirect to profile page
+        if (!profileCompleted) {
+          return createResponse(NextResponse.redirect(new URL('/carrier/profile?setup=true', req.url)));
         }
 
         // If pending, redirect to profile status page
         if (profileStatus === 'pending') {
-          return NextResponse.redirect(new URL('/carrier/profile?status=pending', req.url));
+          return createResponse(NextResponse.redirect(new URL('/carrier/profile?status=pending', req.url)));
         }
 
         // If declined, redirect to profile declined page
         if (profileStatus === 'declined') {
-          return NextResponse.redirect(new URL('/carrier/profile?status=declined', req.url));
+          return createResponse(NextResponse.redirect(new URL('/carrier/profile?status=declined', req.url)));
         }
       } catch (error) {
         console.error('Profile check error:', error);
-        // On error, allow access to prevent blocking users - client-side ProfileGuard will handle
-        return NextResponse.next();
+        // On error, allow access to prevent blocking users
+        return response;
       }
+  }
+
+  // Check carrier routes for access control (only for page routes, not API routes)
+  if (!pathname.startsWith('/api/') && matchRoute(pathname, carrierRoutes)) {
+    if (userRole !== "carrier" && userRole !== "admin") {
+      const forbiddenUrl = new URL("/forbidden", req.url);
+      return createResponse(NextResponse.redirect(forbiddenUrl));
     }
   }
 
-  // Check authenticated routes (accessible to both carriers and admins)
-  if (isAuthenticatedRoute(req)) {
+  // Check authenticated routes (only for page routes, not API routes)
+  if (!pathname.startsWith('/api/') && matchRoute(pathname, authenticatedRoutes)) {
     if (userRole !== "carrier" && userRole !== "admin") {
       const forbiddenUrl = new URL("/forbidden", req.url);
-      return NextResponse.redirect(forbiddenUrl);
+      return createResponse(NextResponse.redirect(forbiddenUrl));
     }
   }
 
   // All other routes require authentication
-  return NextResponse.next();
-});
+  // Return response with auth headers and CSP
+  return response;
+}
+
+// In-memory role cache for middleware (Edge runtime doesn't support persistent caching)
+const roleCache = new Map<string, { role: UserRole; timestamp: number }>();
+const ROLE_CACHE_TTL = 30 * 1000; // 30 seconds cache for middleware
+
+/**
+ * Resolve user role from Supabase user_roles_cache
+ * Uses service role key for admin access in Edge runtime
+ * Implements caching to reduce database queries and improve performance
+ */
+async function resolveUserRole(userId: string): Promise<UserRole> {
+  try {
+    // Check cache first (30 second TTL)
+    const cached = roleCache.get(userId);
+    if (cached && Date.now() - cached.timestamp < ROLE_CACHE_TTL) {
+      return cached.role;
+    }
+
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    
+    if (!supabaseUrl || !supabaseServiceKey) {
+      // If service key not available, default to carrier
+      const defaultRole: UserRole = "carrier";
+      roleCache.set(userId, { role: defaultRole, timestamp: Date.now() });
+      return defaultRole;
+    }
+
+    // Use Supabase client to query user_roles_cache
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    
+    const { data, error } = await supabase
+      .from('user_roles_cache')
+      .select('role')
+      .eq('supabase_user_id', userId)
+      .limit(1)
+      .single();
+
+    if (error || !data) {
+      // Default to carrier for authenticated users if no role found
+      const defaultRole: UserRole = "carrier";
+      roleCache.set(userId, { role: defaultRole, timestamp: Date.now() });
+      
+      // Log warning if it's a real error (not just "no rows")
+      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
+        console.warn("[middleware] Error resolving user role:", error.message);
+      }
+      
+      return defaultRole;
+    }
+
+    const role = (data.role as UserRole) || "carrier";
+    // Cache the result
+    roleCache.set(userId, { role, timestamp: Date.now() });
+    return role;
+  } catch (error: any) {
+    console.error("[middleware] Error resolving user role:", error?.message || error);
+    const defaultRole: UserRole = "carrier";
+    roleCache.set(userId, { role: defaultRole, timestamp: Date.now() });
+    return defaultRole; // Safe default
+  }
+}
 
 export const config = {
   matcher: [
@@ -203,3 +433,4 @@ export const config = {
     '/(api|trpc)(.*)',
   ],
 };
+

@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/lib/auth";
+import { requireApiAdmin } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -20,8 +20,8 @@ import { NextRequest, NextResponse } from "next/server";
  */
 export async function GET(request: NextRequest) {
   try {
-    // Ensure user is admin
-    await requireAdmin();
+    // Ensure user is admin (Supabase-only)
+    await requireApiAdmin(request);
 
     const { searchParams } = new URL(request.url);
     const timeframe = searchParams.get("timeframe") || "30";
@@ -34,35 +34,51 @@ export async function GET(request: NextRequest) {
     const daysAgo = parseInt(timeframe);
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - daysAgo);
+    startDate.setHours(0, 0, 0, 0); // Normalize to start of day
+    console.log('[Carrier Leaderboard] Query params:', { timeframe, daysAgo, startDate: startDate.toISOString() });
+    console.log('[Carrier Leaderboard] Starting query execution...');
+
+    // Lightweight in-memory cache (30s TTL) to collapse bursts
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const g: any = globalThis as any;
+    g.__leader_cache = g.__leader_cache || new Map<string, { t: number; v: any }>();
+    const cacheKey = `leader:${timeframe}:${sortBy}:${limit}:${equipmentType || 'all'}:${minBids}`;
+    const now = Date.now();
+    const hit = g.__leader_cache.get(cacheKey);
+    if (hit && now - hit.t < 30_000) {
+      return NextResponse.json(hit.v);
+    }
 
     // Enhanced carrier statistics query using auction_awards for authoritative win data
-    const leaderboardData = await sql`
+    let leaderboardData;
+    try {
+      leaderboardData = await sql`
       WITH 
       -- Base carrier profile data
       carrier_profiles_data AS (
         SELECT 
-          cp.clerk_user_id,
+          cp.supabase_user_id,
           COALESCE(cp.company_name, cp.legal_name, 'Unknown') as company_name,
           cp.legal_name,
           cp.mc_number,
           cp.dot_number,
           cp.contact_name,
           cp.phone,
-          cp.dispatch_email as email,
-          COALESCE(cp.fleet_size, 1) as fleet_size,
-          cp.equipment_types,
-          COALESCE(cp.is_verified, false) as is_verified,
+          NULL as email, -- dispatch_email doesn't exist in carrier_profiles
+          1 as fleet_size, -- fleet_size doesn't exist, default to 1
+          NULL::JSONB as equipment_types, -- equipment_types doesn't exist
+          false as is_verified, -- is_verified doesn't exist, default to false
           cp.created_at as profile_created_at
         FROM carrier_profiles cp
-        ${equipmentType ? sql`WHERE cp.equipment_types::text LIKE ${`%${equipmentType}%`}` : sql``}
+        -- Note: equipment_types column doesn't exist in carrier_profiles, so filtering is disabled for now
       ),
       
-      -- Bid statistics (all bids in timeframe)
+      -- Bid statistics (ALL bids, with timeframe tracking)
       bid_stats AS (
         SELECT 
-          cb.clerk_user_id,
+          cb.supabase_user_id,
           COUNT(cb.id) as total_bids,
-          COUNT(CASE WHEN cb.created_at >= ${startDate.toISOString()} THEN 1 END) as bids_in_timeframe,
+          COUNT(CASE WHEN cb.created_at >= ${startDate} THEN 1 END) as bids_in_timeframe,
           COUNT(DISTINCT cb.bid_number) as unique_auctions_participated,
           COALESCE(AVG(cb.amount_cents), 0)::INTEGER as avg_bid_amount_cents,
           COALESCE(MIN(cb.amount_cents), 0) as min_bid_amount_cents,
@@ -70,34 +86,38 @@ export async function GET(request: NextRequest) {
           COALESCE(SUM(cb.amount_cents), 0) as total_bid_value_cents,
           MIN(cb.created_at) as first_bid_at,
           MAX(cb.created_at) as last_bid_at,
-          -- Response time: average time between auction posted and bid placed
+          -- Response time: average time between auction posted and bid placed (only for recent bids)
           COALESCE(AVG(
-            EXTRACT(EPOCH FROM (cb.created_at - tb.received_at)) / 60
+            CASE WHEN cb.created_at >= ${startDate}
+            THEN EXTRACT(EPOCH FROM (cb.created_at - tb.received_at)) / 60
+            END
           ), 0)::INTEGER as avg_response_time_minutes
         FROM carrier_bids cb
-        INNER JOIN telegram_bids tb ON cb.bid_number = tb.bid_number
-        WHERE cb.created_at >= ${startDate.toISOString()}
-        GROUP BY cb.clerk_user_id
+        LEFT JOIN telegram_bids tb ON cb.bid_number = tb.bid_number
+        -- Use LEFT JOIN to include carriers even if some bids don't match telegram_bids
+        -- Remove timeframe filter - show ALL carriers with any bids
+        GROUP BY cb.supabase_user_id
       ),
       
-      -- Win statistics using AUTHORITATIVE auction_awards table
+      -- Win statistics using AUTHORITATIVE auction_awards table (ALL wins, track timeframe separately)
       win_stats AS (
         SELECT 
-          aa.winner_user_id as clerk_user_id,
+          COALESCE(aa.supabase_winner_user_id, aa.winner_user_id) as supabase_user_id,
           COUNT(*) as total_wins,
+          COUNT(CASE WHEN aa.awarded_at >= ${startDate} THEN 1 END) as wins_in_timeframe,
           COALESCE(AVG(aa.winner_amount_cents), 0)::INTEGER as avg_winning_bid_cents,
           COALESCE(SUM(aa.winner_amount_cents), 0) as total_revenue_cents,
           MIN(aa.awarded_at) as first_win_at,
           MAX(aa.awarded_at) as last_win_at
         FROM auction_awards aa
-        WHERE aa.awarded_at >= ${startDate.toISOString()}
-        GROUP BY aa.winner_user_id
+        -- Remove timeframe filter - show ALL wins for carriers
+        GROUP BY COALESCE(aa.supabase_winner_user_id, aa.winner_user_id)
       ),
       
       -- Bid competitiveness: how often carrier bid is within top 3 or within 5% of lowest
       competitiveness_stats AS (
         SELECT 
-          cb.clerk_user_id,
+          cb.supabase_user_id,
           COUNT(*) as competitive_bids,
           COUNT(CASE 
             WHEN cb.amount_cents <= (
@@ -107,20 +127,20 @@ export async function GET(request: NextRequest) {
             ) THEN 1
           END) as bids_within_5_percent
         FROM carrier_bids cb
-        WHERE cb.created_at >= ${startDate.toISOString()}
-        GROUP BY cb.clerk_user_id
+        -- Remove timeframe filter - calculate competitiveness on all bids
+        GROUP BY cb.supabase_user_id
       ),
       
       -- Recent activity metrics
       recent_activity AS (
         SELECT 
-          cb.clerk_user_id,
+          cb.supabase_user_id,
           COUNT(CASE WHEN cb.created_at >= NOW() - INTERVAL '7 days' THEN 1 END) as bids_last_7_days,
           COUNT(CASE WHEN cb.created_at >= NOW() - INTERVAL '24 hours' THEN 1 END) as bids_last_24_hours,
           COUNT(CASE WHEN cb.created_at >= NOW() - INTERVAL '1 hour' THEN 1 END) as bids_last_hour,
           MAX(cb.created_at) as most_recent_bid_at
         FROM carrier_bids cb
-        GROUP BY cb.clerk_user_id
+        GROUP BY cb.supabase_user_id
       ),
       
       -- Combined statistics
@@ -169,7 +189,7 @@ export async function GET(request: NextRequest) {
           END as avg_bids_per_auction,
           
           CASE 
-            WHEN bs.unique_auctions_participated > 0 
+            WHEN COALESCE(bs.total_bids, 0) > 0 
             THEN ROUND((COALESCE(cs.bids_within_5_percent, 0)::DECIMAL / bs.total_bids * 100), 2)
             ELSE 0 
           END as competitiveness_score,
@@ -187,10 +207,10 @@ export async function GET(request: NextRequest) {
           END as hours_since_last_bid
           
         FROM carrier_profiles_data cpd
-        LEFT JOIN bid_stats bs ON cpd.clerk_user_id = bs.clerk_user_id
-        LEFT JOIN win_stats ws ON cpd.clerk_user_id = ws.clerk_user_id
-        LEFT JOIN competitiveness_stats cs ON cpd.clerk_user_id = cs.clerk_user_id
-        LEFT JOIN recent_activity ra ON cpd.clerk_user_id = ra.clerk_user_id
+        LEFT JOIN bid_stats bs ON cpd.supabase_user_id = bs.supabase_user_id
+        LEFT JOIN win_stats ws ON cpd.supabase_user_id = ws.supabase_user_id
+        LEFT JOIN competitiveness_stats cs ON cpd.supabase_user_id = cs.supabase_user_id
+        LEFT JOIN recent_activity ra ON cpd.supabase_user_id = ra.supabase_user_id
         WHERE COALESCE(bs.total_bids, 0) >= ${minBids}
       )
       
@@ -207,122 +227,185 @@ export async function GET(request: NextRequest) {
         CASE WHEN ${sortBy} = 'competitiveness' THEN competitiveness_score END DESC
       LIMIT ${limit}
     `;
+      console.log('[Carrier Leaderboard] Main query completed, rows:', leaderboardData?.length || 0);
+    } catch (queryError) {
+      console.error('[Carrier Leaderboard] Main query failed:', queryError);
+      throw queryError;
+    }
 
     // Enhanced summary statistics
-    const summaryStats = await sql`
+    let summaryStats;
+    try {
+      console.log('[Carrier Leaderboard] Executing summary stats query...');
+      // Fix: Count ALL bids for total_bids_placed, timeframe-filtered for recent_bids_placed
+      summaryStats = await sql`
+      WITH all_bids AS (
+        SELECT COUNT(*)::INTEGER as total_count
+        FROM carrier_bids
+      ),
+      timeframe_bids AS (
+        SELECT 
+          COUNT(*)::INTEGER as recent_count,
+          COUNT(DISTINCT cb.supabase_user_id)::INTEGER as active_carrier_count,
+          COUNT(DISTINCT cb.bid_number)::INTEGER as recent_auctions_count,
+          COALESCE(AVG(cb.amount_cents), 0)::INTEGER as avg_bid_cents,
+          COALESCE(MIN(cb.amount_cents), 0)::INTEGER as min_bid_cents,
+          COALESCE(MAX(cb.amount_cents), 0)::INTEGER as max_bid_cents,
+          COALESCE(AVG(
+            EXTRACT(EPOCH FROM (cb.created_at - tb.received_at)) / 60
+          ), 0)::INTEGER as avg_response_time
+        FROM carrier_bids cb
+        LEFT JOIN telegram_bids tb ON cb.bid_number = tb.bid_number
+        WHERE cb.created_at >= ${startDate}
+      ),
+      awards_stats AS (
+        SELECT
+          COUNT(DISTINCT winner_user_id)::INTEGER as unique_winners,
+          COALESCE(SUM(winner_amount_cents), 0)::BIGINT as total_revenue
+        FROM auction_awards
+        WHERE awarded_at >= ${startDate}
+      )
       SELECT 
-        COUNT(DISTINCT cp.clerk_user_id) as total_carriers,
-        COUNT(DISTINCT CASE WHEN cb.id IS NOT NULL THEN cp.clerk_user_id END) as active_carriers,
-        COUNT(cb.id) as total_bids_placed,
-        COUNT(CASE WHEN cb.created_at >= ${startDate.toISOString()} THEN cb.id END) as recent_bids_placed,
-        COALESCE(AVG(cb.amount_cents), 0)::INTEGER as platform_avg_bid_cents,
-        COALESCE(MIN(cb.amount_cents), 0) as platform_min_bid_cents,
-        COALESCE(MAX(cb.amount_cents), 0) as platform_max_bid_cents,
-        COUNT(DISTINCT cb.bid_number) as total_auctions_with_bids,
-        COUNT(DISTINCT aa.winner_user_id) as unique_winners,
-        COALESCE(SUM(aa.winner_amount_cents), 0) as total_platform_revenue_cents,
-        COALESCE(AVG(
-          EXTRACT(EPOCH FROM (cb.created_at - tb.received_at)) / 60
-        ), 0)::INTEGER as platform_avg_response_time_minutes
-      FROM carrier_profiles cp
-      LEFT JOIN carrier_bids cb ON cp.clerk_user_id = cb.clerk_user_id
-        AND cb.created_at >= ${startDate.toISOString()}
-      LEFT JOIN telegram_bids tb ON cb.bid_number = tb.bid_number
-      LEFT JOIN auction_awards aa ON aa.awarded_at >= ${startDate.toISOString()}
+        (SELECT COUNT(DISTINCT supabase_user_id)::INTEGER FROM carrier_profiles) as total_carriers,
+        tf.active_carrier_count as active_carriers,
+        ab.total_count as total_bids_placed,
+        tf.recent_count as recent_bids_placed,
+        tf.avg_bid_cents as platform_avg_bid_cents,
+        tf.min_bid_cents as platform_min_bid_cents,
+        tf.max_bid_cents as platform_max_bid_cents,
+        tf.recent_auctions_count as total_auctions_with_bids,
+        aw.unique_winners,
+        aw.total_revenue as total_platform_revenue_cents,
+        tf.avg_response_time as platform_avg_response_time_minutes
+      FROM all_bids ab
+      CROSS JOIN timeframe_bids tf
+      CROSS JOIN awards_stats aw
     `;
+      console.log('[Carrier Leaderboard] Summary stats query completed');
+    } catch (summaryError) {
+      console.error('[Carrier Leaderboard] Summary stats query failed:', summaryError);
+      throw summaryError;
+    }
 
     // Enhanced top performers using auction_awards
-    const topPerformers = await sql`
-      SELECT 
+    let topPerformers;
+    try {
+      console.log('[Carrier Leaderboard] Executing top performers query...');
+      // PostgreSQL requires parentheses around SELECT statements with ORDER BY in UNION queries
+      topPerformers = await sql`
+      (SELECT 
         'most_bids' as metric,
         COALESCE(cp.company_name, cp.legal_name, 'Unknown') as company_name,
         cp.legal_name,
         COUNT(cb.id)::INTEGER as value,
         'bids' as unit
       FROM carrier_profiles cp
-      INNER JOIN carrier_bids cb ON cp.clerk_user_id = cb.clerk_user_id
-      WHERE cb.created_at >= ${startDate.toISOString()}
-      GROUP BY cp.clerk_user_id, cp.company_name, cp.legal_name
+      INNER JOIN carrier_bids cb ON cp.supabase_user_id = cb.supabase_user_id
+      WHERE cb.created_at >= ${startDate}
+      GROUP BY cp.supabase_user_id, cp.company_name, cp.legal_name
       ORDER BY COUNT(cb.id) DESC
-      LIMIT 1
+      LIMIT 1)
       
       UNION ALL
       
-      SELECT 
+      (SELECT 
         'highest_win_rate' as metric,
         COALESCE(cp.company_name, cp.legal_name, 'Unknown') as company_name,
         cp.legal_name,
         ROUND((
-          COUNT(CASE WHEN aa.winner_user_id = cp.clerk_user_id THEN 1 END)::DECIMAL / 
+          COUNT(CASE WHEN COALESCE(aa.supabase_winner_user_id, aa.winner_user_id) = cp.supabase_user_id THEN 1 END)::DECIMAL / 
           NULLIF(COUNT(cb.id), 0) * 100
         ), 2) as value,
         '%' as unit
       FROM carrier_profiles cp
-      INNER JOIN carrier_bids cb ON cp.clerk_user_id = cb.clerk_user_id
+      INNER JOIN carrier_bids cb ON cp.supabase_user_id = cb.supabase_user_id
       LEFT JOIN auction_awards aa ON aa.bid_number = cb.bid_number
-      WHERE cb.created_at >= ${startDate.toISOString()}
-      GROUP BY cp.clerk_user_id, cp.company_name, cp.legal_name
+      WHERE cb.created_at >= ${startDate}
+      GROUP BY cp.supabase_user_id, cp.company_name, cp.legal_name
       HAVING COUNT(cb.id) >= 5
       ORDER BY value DESC
-      LIMIT 1
+      LIMIT 1)
       
       UNION ALL
       
-      SELECT 
+      (SELECT 
         'most_revenue' as metric,
         COALESCE(cp.company_name, cp.legal_name, 'Unknown') as company_name,
         cp.legal_name,
         COALESCE(SUM(aa.winner_amount_cents), 0)::INTEGER as value,
         'cents' as unit
       FROM carrier_profiles cp
-      INNER JOIN auction_awards aa ON cp.clerk_user_id = aa.winner_user_id
-      WHERE aa.awarded_at >= ${startDate.toISOString()}
-      GROUP BY cp.clerk_user_id, cp.company_name, cp.legal_name
+      INNER JOIN auction_awards aa ON cp.supabase_user_id = COALESCE(aa.supabase_winner_user_id, aa.winner_user_id)
+      WHERE aa.awarded_at >= ${startDate}
+      GROUP BY cp.supabase_user_id, cp.company_name, cp.legal_name
       ORDER BY value DESC
-      LIMIT 1
+      LIMIT 1)
       
       UNION ALL
       
-      SELECT 
+      (SELECT 
         'lowest_avg_bid' as metric,
         COALESCE(cp.company_name, cp.legal_name, 'Unknown') as company_name,
         cp.legal_name,
         ROUND(AVG(cb.amount_cents), 0)::INTEGER as value,
         'cents' as unit
       FROM carrier_profiles cp
-      INNER JOIN carrier_bids cb ON cp.clerk_user_id = cb.clerk_user_id
-      WHERE cb.created_at >= ${startDate.toISOString()}
-      GROUP BY cp.clerk_user_id, cp.company_name, cp.legal_name
+      INNER JOIN carrier_bids cb ON cp.supabase_user_id = cb.supabase_user_id
+      WHERE cb.created_at >= ${startDate}
+      GROUP BY cp.supabase_user_id, cp.company_name, cp.legal_name
       HAVING COUNT(cb.id) >= 3
       ORDER BY value ASC
-      LIMIT 1
+      LIMIT 1)
     `;
+      console.log('[Carrier Leaderboard] Top performers query completed, rows:', topPerformers?.length || 0);
+    } catch (topPerformersError) {
+      console.error('[Carrier Leaderboard] Top performers query failed:', topPerformersError);
+      throw topPerformersError;
+    }
 
     // Equipment type statistics
-    const equipmentStats = await sql`
+    let equipmentStats;
+    try {
+      console.log('[Carrier Leaderboard] Executing equipment stats query...');
+      equipmentStats = await sql`
       SELECT 
-        COALESCE(cp.equipment_types::text, 'Unknown') as equipment_type,
-        COUNT(DISTINCT cp.clerk_user_id) as carrier_count,
+        'Unknown' as equipment_type,
+        COUNT(DISTINCT cp.supabase_user_id) as carrier_count,
         COUNT(cb.id) as total_bids,
         COALESCE(AVG(cb.amount_cents), 0)::INTEGER as avg_bid_cents,
         COUNT(DISTINCT aa.winner_user_id) as total_winners
       FROM carrier_profiles cp
-      LEFT JOIN carrier_bids cb ON cp.clerk_user_id = cb.clerk_user_id
-        AND cb.created_at >= ${startDate.toISOString()}
-      LEFT JOIN auction_awards aa ON aa.winner_user_id = cp.clerk_user_id
-        AND aa.awarded_at >= ${startDate.toISOString()}
-      GROUP BY cp.equipment_types
+      LEFT JOIN carrier_bids cb ON cp.supabase_user_id = cb.supabase_user_id
+        AND cb.created_at >= ${startDate}
+      LEFT JOIN auction_awards aa ON COALESCE(aa.supabase_winner_user_id, aa.winner_user_id) = cp.supabase_user_id
+        AND aa.awarded_at >= ${startDate}
+      GROUP BY equipment_type
       ORDER BY total_bids DESC
       LIMIT 10
     `;
+      console.log('[Carrier Leaderboard] Equipment stats query completed, rows:', equipmentStats?.length || 0);
+    } catch (equipmentError) {
+      console.error('[Carrier Leaderboard] Equipment stats query failed:', equipmentError);
+      throw equipmentError;
+    }
 
-    return NextResponse.json({
+    // Log for debugging
+    console.log('[Carrier Leaderboard] Query executed successfully', {
+      leaderboardCount: Array.isArray(leaderboardData) ? leaderboardData.length : 0,
+      leaderboardSample: Array.isArray(leaderboardData) ? leaderboardData.slice(0, 2) : leaderboardData,
+      summary: summaryStats[0] || {},
+      topPerformersCount: Array.isArray(topPerformers) ? topPerformers.length : 0,
+      timeframe: { days: daysAgo, startDate: startDate.toISOString() },
+      queryParams: { timeframe, sortBy, limit, minBids }
+    });
+
+    const payload = {
       success: true,
       data: {
-        leaderboard: leaderboardData,
+        leaderboard: leaderboardData || [],
         summary: summaryStats[0] || {},
-        topPerformers: topPerformers,
-        equipmentStats: equipmentStats,
+        topPerformers: topPerformers || [],
+        equipmentStats: equipmentStats || [],
         timeframe: {
           days: daysAgo,
           startDate: startDate.toISOString(),
@@ -335,15 +418,60 @@ export async function GET(request: NextRequest) {
           minBids: minBids
         }
       }
-    });
+    };
+
+    g.__leader_cache.set(cacheKey, { t: now, v: payload });
+    return NextResponse.json(payload);
 
   } catch (error) {
     console.error("Carrier leaderboard API error:", error);
+    console.error("Error type:", typeof error);
+    console.error("Error constructor:", error?.constructor?.name);
+    
+    // Handle authentication/authorization errors
+    if (error instanceof Error) {
+      console.error("Error name:", error.name);
+      console.error("Error message:", error.message);
+      console.error("Error stack:", error.stack);
+      
+      // Check for SQL errors
+      if ((error as any).code) {
+        console.error("SQL Error Code:", (error as any).code);
+        console.error("SQL Error Detail:", (error as any).detail);
+        console.error("SQL Error Hint:", (error as any).hint);
+      }
+      
+      if (error.message === "Unauthorized" || error.message.includes("Unauthorized")) {
+        return NextResponse.json(
+          { 
+            success: false,
+            error: "Authentication required",
+            details: error.message
+          },
+          { status: 401 }
+        );
+      }
+      
+      if (error.message === "Admin access required" || error.message.includes("Admin access")) {
+        return NextResponse.json(
+          { 
+            success: false,
+            error: "Admin access required",
+            details: error.message
+          },
+          { status: 403 }
+        );
+      }
+    }
+    
     return NextResponse.json(
       { 
         success: false,
         error: "Failed to fetch carrier leaderboard",
-        details: error instanceof Error ? error.message : 'Unknown error'
+        details: error instanceof Error ? error.message : 'Unknown error',
+        errorCode: (error as any)?.code || undefined,
+        errorDetail: (error as any)?.detail || undefined,
+        stack: process.env.NODE_ENV === 'development' && error instanceof Error ? error.stack : undefined
       },
       { status: 500 }
     );

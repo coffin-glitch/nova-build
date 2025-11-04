@@ -1,6 +1,5 @@
-import { getClerkUserRole } from "@/lib/clerk-server";
 import sql from "@/lib/db";
-import { auth } from "@clerk/nextjs/server";
+import { requireApiCarrier } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(
@@ -10,22 +9,8 @@ export async function GET(
   try {
     const { bidNumber } = await params;
     
-    // Check authentication and carrier role
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json(
-        { error: "Authentication required" },
-        { status: 401 }
-      );
-    }
-
-    const userRole = await getClerkUserRole(userId);
-    if (userRole !== "carrier" && userRole !== "admin") {
-      return NextResponse.json(
-        { error: "Carrier access required" },
-        { status: 403 }
-      );
-    }
+    const auth = await requireApiCarrier(request);
+    const userId = auth.userId;
 
     // Get lifecycle events for this bid
     const events = await sql`
@@ -66,11 +51,12 @@ export async function GET(
     const currentStatus = await sql`
       SELECT status 
       FROM carrier_bids 
-      WHERE bid_number = ${bidNumber} AND clerk_user_id = ${userId}
+      WHERE bid_number = ${bidNumber} AND supabase_user_id = ${userId}
       LIMIT 1
     `;
 
     // Get bid details for complete information
+    // Note: winner_user_id was removed in migration 078, only supabase_winner_user_id exists
     const bidDetails = await sql`
       SELECT 
         aa.bid_number,
@@ -89,8 +75,10 @@ export async function GET(
         cb.lifecycle_notes
       FROM auction_awards aa
       LEFT JOIN telegram_bids tb ON aa.bid_number = tb.bid_number
-      LEFT JOIN carrier_bids cb ON aa.bid_number = cb.bid_number AND aa.winner_user_id = cb.clerk_user_id
-      WHERE aa.bid_number = ${bidNumber} AND aa.winner_user_id = ${userId}
+      LEFT JOIN carrier_bids cb ON aa.bid_number = cb.bid_number 
+        AND cb.supabase_user_id = aa.supabase_winner_user_id
+      WHERE aa.bid_number = ${bidNumber} 
+        AND aa.supabase_winner_user_id = ${userId}
       LIMIT 1
     `;
 
@@ -119,22 +107,8 @@ export async function POST(
   try {
     const { bidNumber } = await params;
     
-    // Check authentication and carrier role
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json(
-        { error: "Authentication required" },
-        { status: 401 }
-      );
-    }
-
-    const userRole = await getClerkUserRole(userId);
-    if (userRole !== "carrier" && userRole !== "admin") {
-      return NextResponse.json(
-        { error: "Carrier access required" },
-        { status: 403 }
-      );
-    }
+    const auth = await requireApiCarrier(request);
+    const userId = auth.userId;
 
     const { 
       status, 
@@ -182,9 +156,11 @@ export async function POST(
     }
 
     // Verify the user owns this bid
+    // Note: winner_user_id was removed in migration 078, only supabase_winner_user_id exists
     const bidOwnership = await sql`
       SELECT 1 FROM auction_awards 
-      WHERE bid_number = ${bidNumber} AND winner_user_id = ${userId}
+      WHERE bid_number = ${bidNumber} 
+        AND supabase_winner_user_id = ${userId}
     `;
 
     if (bidOwnership.length === 0) {
@@ -197,7 +173,7 @@ export async function POST(
     // Get current status to validate transition
     const currentBidStatus = await sql`
       SELECT status FROM carrier_bids 
-      WHERE bid_number = ${bidNumber} AND clerk_user_id = ${userId}
+      WHERE bid_number = ${bidNumber} AND supabase_user_id = ${userId}
       LIMIT 1
     `;
 
@@ -320,75 +296,108 @@ export async function POST(
           second_truck_number = COALESCE(${second_truck_number || null}, second_truck_number),
           second_trailer_number = COALESCE(${second_trailer_number || null}, second_trailer_number),
           updated_at = CURRENT_TIMESTAMP
-        WHERE bid_number = ${bidNumber} AND clerk_user_id = ${userId}
+        WHERE bid_number = ${bidNumber} AND supabase_user_id = ${userId}
       `;
     } else {
-      // Normal status update
-      await sql`
-        INSERT INTO carrier_bids (
-          bid_number, 
-          clerk_user_id, 
-          amount_cents, 
-          status, 
-          lifecycle_notes,
-          driver_name,
-          driver_phone,
-          driver_email,
-          driver_license_number,
-          driver_license_state,
-          truck_number,
-          trailer_number,
-          second_driver_name,
-          second_driver_phone,
-          second_driver_email,
-          second_driver_license_number,
-          second_driver_license_state,
-          second_truck_number,
-          second_trailer_number,
-          updated_at
-        )
-        VALUES (
-          ${bidNumber}, 
-          ${userId}, 
-          0, 
-          ${status}, 
-          ${notes || null},
-          ${driver_name || null},
-          ${driver_phone || null},
-          ${driver_email || null},
-          ${driver_license_number || null},
-          ${driver_license_state || null},
-          ${truck_number || null},
-          ${trailer_number || null},
-          ${second_driver_name || null},
-          ${second_driver_phone || null},
-          ${second_driver_email || null},
-          ${second_driver_license_number || null},
-          ${second_driver_license_state || null},
-          ${second_truck_number || null},
-          ${second_trailer_number || null},
-          CURRENT_TIMESTAMP
-        )
-        ON CONFLICT (bid_number, clerk_user_id)
-        DO UPDATE SET 
-          status = ${status},
-          lifecycle_notes = ${notes || null},
-          driver_name = COALESCE(${driver_name || null}, carrier_bids.driver_name),
-          driver_phone = COALESCE(${driver_phone || null}, carrier_bids.driver_phone),
-          driver_email = COALESCE(${driver_email || null}, carrier_bids.driver_email),
-          driver_license_number = COALESCE(${driver_license_number || null}, carrier_bids.driver_license_number),
-          driver_license_state = COALESCE(${driver_license_state || null}, carrier_bids.driver_license_state),
-          truck_number = COALESCE(${truck_number || null}, carrier_bids.truck_number),
-          trailer_number = COALESCE(${trailer_number || null}, carrier_bids.trailer_number),
-          second_driver_name = COALESCE(${second_driver_name || null}, carrier_bids.second_driver_name),
-          second_driver_phone = COALESCE(${second_driver_phone || null}, carrier_bids.second_driver_phone),
-          second_driver_email = COALESCE(${second_driver_email || null}, carrier_bids.second_driver_email),
-          second_driver_license_number = COALESCE(${second_driver_license_number || null}, carrier_bids.second_driver_license_number),
-          second_driver_license_state = COALESCE(${second_driver_license_state || null}, carrier_bids.second_driver_license_state),
-          second_truck_number = COALESCE(${second_truck_number || null}, carrier_bids.second_truck_number),
-          second_trailer_number = COALESCE(${second_trailer_number || null}, carrier_bids.second_trailer_number),
-          updated_at = CURRENT_TIMESTAMP
+      // Normal status update - Supabase-only
+      // First try to find existing record
+      const existingBid = await sql`
+        SELECT id FROM carrier_bids
+        WHERE bid_number = ${bidNumber} AND supabase_user_id = ${userId}
+        LIMIT 1
       `;
+      
+      if (existingBid.length > 0) {
+        // Update existing record
+        await sql`
+          UPDATE carrier_bids SET
+            status = ${status},
+            lifecycle_notes = ${notes || null},
+            driver_name = COALESCE(${driver_name || null}, driver_name),
+            driver_phone = COALESCE(${driver_phone || null}, driver_phone),
+            driver_email = COALESCE(${driver_email || null}, driver_email),
+            driver_license_number = COALESCE(${driver_license_number || null}, driver_license_number),
+            driver_license_state = COALESCE(${driver_license_state || null}, driver_license_state),
+            truck_number = COALESCE(${truck_number || null}, truck_number),
+            trailer_number = COALESCE(${trailer_number || null}, trailer_number),
+            second_driver_name = COALESCE(${second_driver_name || null}, second_driver_name),
+            second_driver_phone = COALESCE(${second_driver_phone || null}, second_driver_phone),
+            second_driver_email = COALESCE(${second_driver_email || null}, second_driver_email),
+            second_driver_license_number = COALESCE(${second_driver_license_number || null}, second_driver_license_number),
+            second_driver_license_state = COALESCE(${second_driver_license_state || null}, second_driver_license_state),
+            second_truck_number = COALESCE(${second_truck_number || null}, second_truck_number),
+            second_trailer_number = COALESCE(${second_trailer_number || null}, second_trailer_number),
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = ${existingBid[0].id}
+        `;
+      } else {
+        // Insert new record (Supabase-only)
+        await sql`
+          INSERT INTO carrier_bids (
+            bid_number, 
+            supabase_user_id,
+            amount_cents, 
+            status, 
+            lifecycle_notes,
+            driver_name,
+            driver_phone,
+            driver_email,
+            driver_license_number,
+            driver_license_state,
+            truck_number,
+            trailer_number,
+            second_driver_name,
+            second_driver_phone,
+            second_driver_email,
+            second_driver_license_number,
+            second_driver_license_state,
+            second_truck_number,
+            second_trailer_number,
+            updated_at
+          )
+          VALUES (
+            ${bidNumber}, 
+            ${userId},
+            0, 
+            ${status}, 
+            ${notes || null},
+            ${driver_name || null},
+            ${driver_phone || null},
+            ${driver_email || null},
+            ${driver_license_number || null},
+            ${driver_license_state || null},
+            ${truck_number || null},
+            ${trailer_number || null},
+            ${second_driver_name || null},
+            ${second_driver_phone || null},
+            ${second_driver_email || null},
+            ${second_driver_license_number || null},
+            ${second_driver_license_state || null},
+            ${second_truck_number || null},
+            ${second_trailer_number || null},
+            CURRENT_TIMESTAMP
+          )
+          ON CONFLICT (bid_number, supabase_user_id)
+          DO UPDATE SET 
+            status = ${status},
+            lifecycle_notes = ${notes || null},
+            driver_name = COALESCE(${driver_name || null}, carrier_bids.driver_name),
+            driver_phone = COALESCE(${driver_phone || null}, carrier_bids.driver_phone),
+            driver_email = COALESCE(${driver_email || null}, carrier_bids.driver_email),
+            driver_license_number = COALESCE(${driver_license_number || null}, carrier_bids.driver_license_number),
+            driver_license_state = COALESCE(${driver_license_state || null}, carrier_bids.driver_license_state),
+            truck_number = COALESCE(${truck_number || null}, carrier_bids.truck_number),
+            trailer_number = COALESCE(${trailer_number || null}, carrier_bids.trailer_number),
+            second_driver_name = COALESCE(${second_driver_name || null}, carrier_bids.second_driver_name),
+            second_driver_phone = COALESCE(${second_driver_phone || null}, carrier_bids.second_driver_phone),
+            second_driver_email = COALESCE(${second_driver_email || null}, carrier_bids.second_driver_email),
+            second_driver_license_number = COALESCE(${second_driver_license_number || null}, carrier_bids.second_driver_license_number),
+            second_driver_license_state = COALESCE(${second_driver_license_state || null}, carrier_bids.second_driver_license_state),
+            second_truck_number = COALESCE(${second_truck_number || null}, carrier_bids.second_truck_number),
+            second_trailer_number = COALESCE(${second_trailer_number || null}, carrier_bids.second_trailer_number),
+            updated_at = CURRENT_TIMESTAMP
+        `;
+      }
     }
 
     return NextResponse.json({

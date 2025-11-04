@@ -1,5 +1,5 @@
+import { requireApiCarrier } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
-import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function DELETE(
@@ -7,14 +7,9 @@ export async function DELETE(
   { params }: { params: { bidNumber: string } }
 ) {
   try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
-    }
+    // Ensure user is carrier (Supabase-only)
+    const auth = await requireApiCarrier(request);
+    const userId = auth.userId;
 
     const { bidNumber } = params;
 
@@ -25,11 +20,11 @@ export async function DELETE(
       );
     }
 
-    // Check if the carrier has a bid for this auction
+    // Check if the carrier has a bid for this auction (Supabase-only)
     const existingBid = await sql`
-      SELECT id, bid_number, clerk_user_id, amount_cents, notes, created_at
+      SELECT id, bid_number, supabase_user_id, amount_cents, notes, created_at
       FROM carrier_bids 
-      WHERE bid_number = ${bidNumber} AND clerk_user_id = ${userId}
+      WHERE bid_number = ${bidNumber} AND supabase_user_id = ${userId}
     `;
 
     if (existingBid.length === 0) {
@@ -39,10 +34,10 @@ export async function DELETE(
       );
     }
 
-    // Delete the carrier's bid
+    // Delete the carrier's bid (Supabase-only)
     const result = await sql`
       DELETE FROM carrier_bids 
-      WHERE bid_number = ${bidNumber} AND clerk_user_id = ${userId}
+      WHERE bid_number = ${bidNumber} AND supabase_user_id = ${userId}
     `;
 
     if (result.length === 0) {

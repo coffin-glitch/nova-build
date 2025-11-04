@@ -1,15 +1,12 @@
 import { getNotificationPreferences, updateNotificationPreferences } from "@/lib/load-matching";
-import { auth } from "@clerk/nextjs/server";
+import { requireApiCarrier } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 // GET /api/carrier/notification-preferences - Get notification preferences
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireApiCarrier(request);
+    const userId = auth.userId;
 
     const preferences = await getNotificationPreferences(userId);
 
@@ -37,11 +34,8 @@ export async function GET() {
 // PUT /api/carrier/notification-preferences - Update notification preferences
 export async function PUT(request: NextRequest) {
   try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireApiCarrier(request);
+    const userId = auth.userId;
 
     const preferences = await request.json();
 

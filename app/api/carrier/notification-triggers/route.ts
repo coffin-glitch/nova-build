@@ -1,5 +1,5 @@
 import sql from '@/lib/db';
-import { auth } from "@clerk/nextjs/server";
+import { requireApiCarrier } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 // Notification trigger types
@@ -24,28 +24,12 @@ export interface NotificationTriggerConfig {
 
 export async function GET(request: NextRequest) {
   try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireApiCarrier(request);
+    const userId = auth.userId;
 
     const { searchParams } = new URL(request.url);
     const triggerType = searchParams.get("triggerType") as NotificationTriggerType;
     const isActive = searchParams.get("isActive") !== "false";
-
-    // Build WHERE conditions
-    let whereConditions = [`carrier_user_id = '${userId}'`];
-    
-    if (triggerType) {
-      whereConditions.push(`trigger_type = '${triggerType}'`);
-    }
-    
-    if (isActive !== null) {
-      whereConditions.push(`is_active = ${isActive}`);
-    }
-
-    const whereClause = `WHERE ${whereConditions.join(' AND ')}`;
 
     // Get notification triggers with bid and route info for exact_match triggers
     // First get all triggers
@@ -59,7 +43,9 @@ export async function GET(request: NextRequest) {
         nt.created_at,
         nt.updated_at
       FROM notification_triggers nt
-      ${sql.unsafe(whereClause)}
+      WHERE nt.supabase_user_id = ${userId}
+      ${triggerType ? sql`AND nt.trigger_type = ${triggerType}` : sql``}
+      ${isActive !== null ? sql`AND nt.is_active = ${isActive}` : sql``}
       ORDER BY created_at DESC
     `;
 
@@ -85,7 +71,7 @@ export async function GET(request: NextRequest) {
             SELECT tb.stops
             FROM carrier_favorites cf
             JOIN telegram_bids tb ON cf.bid_number = tb.bid_number
-            WHERE cf.carrier_user_id = ${trigger.carrier_user_id}
+            WHERE cf.supabase_user_id = ${userId}
               AND cf.bid_number = ${bidNumber}
             LIMIT 1
           `;
@@ -116,11 +102,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireApiCarrier(request);
+    const userId = auth.userId;
 
     const body = await request.json();
     const { triggerType, triggerConfig, isActive = true } = body;
@@ -141,10 +124,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Insert new notification trigger
+    // Insert new notification trigger (Supabase-only)
     const result = await sql`
       INSERT INTO notification_triggers (
-        carrier_user_id,
+        supabase_user_id,
         trigger_type,
         trigger_config,
         is_active
@@ -181,11 +164,8 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireApiCarrier(request);
+    const userId = auth.userId;
 
     const body = await request.json();
     const { id, triggerConfig, isActive } = body;
@@ -205,7 +185,7 @@ export async function PUT(request: NextRequest) {
         is_active = COALESCE(${isActive}, is_active),
         updated_at = NOW()
       WHERE id = ${id} 
-      AND carrier_user_id = ${userId}
+      AND supabase_user_id = ${userId}
       RETURNING id
     `;
 
@@ -232,11 +212,8 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireApiCarrier(request);
+    const userId = auth.userId;
 
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
@@ -252,7 +229,7 @@ export async function DELETE(request: NextRequest) {
     const result = await sql`
       DELETE FROM notification_triggers 
       WHERE id = ${id} 
-      AND carrier_user_id = ${userId}
+      AND supabase_user_id = ${userId}
       RETURNING id
     `;
 

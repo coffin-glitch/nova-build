@@ -1,11 +1,11 @@
+import { requireApiAdmin } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth";
-import sql from "@/lib/db.server";
+import sql from "@/lib/db";
 import * as XLSX from "xlsx";
 
 export async function POST(request: NextRequest) {
   try {
-    await requireAdmin();
+    await requireApiAdmin(request);
 
     const formData = await request.formData();
     const file = formData.get("file") as File;

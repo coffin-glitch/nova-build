@@ -1,8 +1,9 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { getUserRoleAction } from "@/lib/actions";
-import { SignInButton, SignOutButton, useUser } from "@clerk/nextjs";
+import { useUnifiedUser } from "@/hooks/useUnifiedUser";
+import { useUnifiedRole } from "@/hooks/useUnifiedRole";
+import { useSupabase } from "@/components/providers/SupabaseProvider";
 import {
     Compass,
     Gavel,
@@ -15,7 +16,7 @@ import {
     X
 } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import NotificationsMenu from "../NotificationsMenu";
 
@@ -36,18 +37,15 @@ const navItems: NavItem[] = [
 
 export default function AppHeader() {
   const pathname = usePathname();
-  const { isSignedIn, user } = useUser();
-  const [userRole, setUserRole] = useState<"admin" | "carrier" | null>(null);
+  const router = useRouter();
+  const { user, isLoaded } = useUnifiedUser();
+  const { role } = useUnifiedRole();
+  const { supabase } = useSupabase();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isDark, setIsDark] = useState(false);
 
-  useEffect(() => {
-    if (isSignedIn && user) {
-      getUserRoleAction()
-        .then(role => setUserRole(role))
-        .catch(() => setUserRole("carrier"));
-    }
-  }, [isSignedIn, user]);
+  const isSignedIn = !!user;
+  const userRole = role;
 
   const getVisibleNavItems = () => {
     if (!isSignedIn) {
@@ -69,6 +67,14 @@ export default function AppHeader() {
     return navItems.filter(item => item.roles.includes("public"));
   };
 
+  const handleSignOut = async () => {
+    if (supabase) {
+      await supabase.auth.signOut();
+      router.push('/');
+      router.refresh();
+    }
+  };
+
   const visibleItems = getVisibleNavItems();
 
   return (
@@ -79,7 +85,7 @@ export default function AppHeader() {
           <div className="flex items-center space-x-2">
             <div className="flex items-center space-x-2">
               <Truck className="h-8 w-8 text-primary" />
-              <span className="text-xl font-bold text-foreground">NOVA Build</span>
+              <span className="text-xl font-bold text-foreground">NOVA</span>
             </div>
           </div>
 
@@ -124,28 +130,26 @@ export default function AppHeader() {
                 <div className="flex items-center space-x-2">
                   <div className="h-8 w-8 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center">
                     <span className="text-sm font-medium text-primary">
-                      {user?.firstName?.[0] || user?.emailAddresses[0]?.emailAddress?.[0] || "U"}
+                      {user?.firstName?.[0] || user?.email?.[0] || "U"}
                     </span>
                   </div>
-                  <SignOutButton>
-                    <Button variant="ghost" size="sm">
-                      Sign out
-                    </Button>
-                  </SignOutButton>
+                  <Button variant="ghost" size="sm" onClick={handleSignOut}>
+                    Sign out
+                  </Button>
                 </div>
               </>
             ) : (
               <div className="flex items-center space-x-2">
-                <SignInButton mode="modal">
+                <Link href="/sign-in">
                   <Button variant="ghost" size="sm">
                     Sign in
                   </Button>
-                </SignInButton>
-                <SignInButton mode="modal">
+                </Link>
+                <Link href="/sign-up">
                   <Button size="sm">
                     Get Started
                   </Button>
-                </SignInButton>
+                </Link>
               </div>
             )}
 

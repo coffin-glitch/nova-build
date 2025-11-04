@@ -1,17 +1,14 @@
 import sql from "@/lib/db";
-import { auth } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { requireApiCarrier } from "@/lib/auth-api-helper";
+import { NextRequest, NextResponse } from "next/server";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const { userId } = await auth();
+    const auth = await requireApiCarrier(request);
+    const userId = auth.userId;
     
     console.log("Booked loads - userId:", userId);
     
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     // Simplified query first
     const bookedLoads = await sql`
       SELECT 
@@ -29,7 +26,7 @@ export async function GET() {
         lo.created_at as assigned_at
       FROM loads l
       INNER JOIN load_offers lo ON l.rr_number = lo.load_rr_number
-      WHERE lo.carrier_user_id = ${userId}
+      WHERE lo.supabase_user_id = ${userId}
         AND lo.status IN ('accepted', 'assigned', 'checked_in', 'picked_up', 'departed', 'in_transit', 'checked_in_delivery', 'delivered', 'completed')
       ORDER BY lo.created_at DESC
     `;

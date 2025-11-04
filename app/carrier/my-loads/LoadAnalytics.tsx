@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatDistance, formatMoney } from "@/lib/format";
-import { useUser } from "@clerk/nextjs";
+import { useUnifiedUser } from "@/hooks/useUnifiedUser";
 import {
     Activity,
     BarChart3,
@@ -22,7 +22,7 @@ interface LoadAnalyticsProps {
 }
 
 export function LoadAnalytics({ stats, offers, bookedLoads }: LoadAnalyticsProps) {
-  const { user } = useUser();
+  const { user } = useUnifiedUser();
   
   // Fetch additional analytics data - disabled for now to prevent 500 errors
   // const { data: analyticsData } = useSWR(

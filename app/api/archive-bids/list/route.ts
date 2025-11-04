@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
         END as stops_count,
         COALESCE(bid_counts.bids_count, 0) as bids_count,
         COALESCE(lowest_bid.amount_cents, 0) as lowest_amount_cents,
-        lowest_bid.clerk_user_id as lowest_user_id
+        lowest_bid.supabase_user_id as lowest_user_id
       FROM telegram_bids tb
       LEFT JOIN (
         SELECT 
@@ -75,7 +75,7 @@ export async function GET(request: NextRequest) {
         SELECT 
           cb1.bid_number,
           cb1.amount_cents,
-          cb1.clerk_user_id
+          cb1.supabase_user_id
         FROM carrier_bids cb1
         WHERE cb1.id = (
           SELECT cb2.id 

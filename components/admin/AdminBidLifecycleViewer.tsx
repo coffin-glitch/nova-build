@@ -414,14 +414,23 @@ export default function AdminBidLifecycleViewer({ bidId, onBidSelect }: AdminBid
               </div>
               <div className="flex gap-2">
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="w-[140px]">
+                  <SelectTrigger className="w-[180px]">
                     <SelectValue placeholder="Status" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Status</SelectItem>
                     <SelectItem value="awarded">Awarded</SelectItem>
-                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="bid_awarded">Bid Awarded</SelectItem>
+                    <SelectItem value="load_assigned">Load Assigned</SelectItem>
+                    <SelectItem value="checked_in_origin">Checked In - Origin</SelectItem>
+                    <SelectItem value="picked_up">Picked Up</SelectItem>
+                    <SelectItem value="departed_origin">Departed - Origin</SelectItem>
+                    <SelectItem value="in_transit">In Transit</SelectItem>
+                    <SelectItem value="checked_in_destination">Checked In - Destination</SelectItem>
+                    <SelectItem value="delivered">Delivered</SelectItem>
                     <SelectItem value="completed">Completed</SelectItem>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="cancelled">Cancelled</SelectItem>
                   </SelectContent>
                 </Select>
                 <Select value={sortBy} onValueChange={(value: any) => setSortBy(value)}>

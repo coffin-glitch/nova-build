@@ -1,21 +1,24 @@
 "use server";
 
-import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-import { getUserRole } from "./auth";
-import { requireAdmin } from "./clerk-server";
+import { getSupabaseServer, createCookieAdapter } from "./supabase";
 import sql from "./db";
+import { headers, cookies } from "next/headers";
 
 // Profile Actions
 export async function getCarrierProfile() {
-  const { userId } = await auth();
-  if (!userId) return null;
-
   try {
+    const headersList = await headers();
+    const cookieStore = await cookies();
+    const cookieAdapter = createCookieAdapter(cookieStore);
+    const supabase = getSupabaseServer(headersList, cookieAdapter);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
     const profile = await sql`
       SELECT mc_number, dot_number, phone, dispatch_email 
       FROM carrier_profiles 
-      WHERE user_id = ${userId}
+      WHERE supabase_user_id = ${user.id}
     `;
     return profile[0] || {};
   } catch (error) {
@@ -25,19 +28,23 @@ export async function getCarrierProfile() {
 }
 
 export async function updateCarrierProfile(formData: FormData) {
-  const { userId } = await auth();
-  if (!userId) redirect("/sign-in");
-
   try {
+    const headersList = await headers();
+    const cookieStore = await cookies();
+    const cookieAdapter = createCookieAdapter(cookieStore, true); // readOnly for Server Actions
+    const supabase = getSupabaseServer(headersList, cookieAdapter);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) redirect("/sign-in");
+
     const mc_number = formData.get("mc_number") as string;
     const dot_number = formData.get("dot_number") as string;
     const phone = formData.get("phone") as string;
     const dispatch_email = formData.get("dispatch_email") as string;
 
     await sql`
-      INSERT INTO carrier_profiles (user_id, mc_number, dot_number, phone, dispatch_email, updated_at)
-      VALUES (${userId}, ${mc_number || null}, ${dot_number || null}, ${phone || null}, ${dispatch_email || null}, NOW())
-      ON CONFLICT (user_id) 
+      INSERT INTO carrier_profiles (supabase_user_id, mc_number, dot_number, phone, dispatch_email, updated_at)
+      VALUES (${user.id}, ${mc_number || null}, ${dot_number || null}, ${phone || null}, ${dispatch_email || null}, NOW())
+      ON CONFLICT (supabase_user_id) 
       DO UPDATE SET 
         mc_number = ${mc_number || null},
         dot_number = ${dot_number || null},
@@ -55,7 +62,14 @@ export async function updateCarrierProfile(formData: FormData) {
 
 // Admin Actions
 export async function getAdminStats() {
-  await requireAdmin();
+  // Check admin role via headers (Supabase-only)
+  const headersList = await headers();
+  const userId = headersList.get('X-User-Id');
+  const userRole = headersList.get('X-User-Role');
+  
+  if (!userId || userRole !== 'admin') {
+    throw new Error('Admin access required');
+  }
 
   try {
     const [
@@ -135,7 +149,7 @@ export async function getActiveBids() {
 export async function getBidOffers(bidId: number) {
   try {
     const offers = await sql`
-      SELECT id, user_id, amount_cents, note, created_at
+      SELECT id, COALESCE(supabase_user_id, user_id) as user_id, supabase_user_id, amount_cents, note, created_at
       FROM telegram_bid_offers
       WHERE bid_id = ${bidId}
       ORDER BY created_at DESC
@@ -147,14 +161,26 @@ export async function getBidOffers(bidId: number) {
   }
 }
 
-// User Role Actions
+// User Role Actions (Supabase-only)
 export async function getUserRoleAction() {
-  const { userId } = await auth();
-  if (!userId) return null;
-  
   try {
-    const role = await getUserRole(userId);
-    return role;
+    const headersList = await headers();
+    const supabase = getSupabaseServer(headersList);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+    
+    // First check user metadata
+    const metadataRole = user.user_metadata?.role;
+    if (metadataRole === "admin" || metadataRole === "carrier") {
+      return metadataRole;
+    }
+    
+    // If not in metadata, check database
+    const roleResult = await sql`
+      SELECT role FROM user_roles_cache WHERE supabase_user_id = ${user.id}
+    `;
+    
+    return roleResult[0]?.role || "carrier";
   } catch (error) {
     console.error("Error fetching user role:", error);
     return "carrier";
@@ -261,11 +287,11 @@ export async function getLoadOffers(loadId?: number) {
 
 export async function acceptOffer(offerId: number) {
   try {
-    await requireAdmin();
+    const { userId } = await requireAdmin(); // Get userId from requireAdmin
     
-    // Get offer details
+    // Get offer details (Supabase-only)
     const offer = await sql`
-      SELECT lo.*, l.load_id, l.origin, l.destination
+      SELECT lo.*, l.load_id, l.origin, l.destination, lo.supabase_carrier_user_id
       FROM load_offers lo
       JOIN loads l ON lo.load_id = l.id
       WHERE lo.id = ${offerId} AND lo.status = 'pending'
@@ -276,11 +302,16 @@ export async function acceptOffer(offerId: number) {
     }
     
     const offerData = offer[0];
+    const carrierUserId = offerData.supabase_carrier_user_id;
     
-    // Create assignment
+    if (!carrierUserId) {
+      throw new Error("Carrier user ID not found in offer");
+    }
+    
+    // Create assignment (Supabase-only)
     await sql`
-      INSERT INTO assignments (load_id, clerk_user_id, accepted_price, created_at)
-      VALUES (${offerData.load_id}, ${offerData.clerk_user_id}, ${offerData.price}, NOW())
+      INSERT INTO assignments (load_id, supabase_user_id, accepted_price, created_at)
+      VALUES (${offerData.load_id}, ${carrierUserId}, ${offerData.offer_amount || offerData.price}, NOW())
     `;
     
     // Update offer status

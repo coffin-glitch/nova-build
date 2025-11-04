@@ -1,18 +1,13 @@
 import { getCarrierProfile, upsertCarrierBid, validateCarrierProfileComplete } from "@/lib/auctions";
 import { validateMoneyInput } from "@/lib/format";
-import { auth } from "@clerk/nextjs/server";
+import { requireApiCarrier } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json(
-        { ok: false, error: "Unauthorized" },
-        { status: 401 }
-      );
-    }
+    // Ensure user is carrier (Supabase-only)
+    const auth = await requireApiCarrier(request);
+    const userId = auth.userId;
 
     const body = await request.json();
     const { bid_number, amount, notes } = body;
@@ -78,14 +73,9 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json(
-        { ok: false, error: "Unauthorized" },
-        { status: 401 }
-      );
-    }
+    // Ensure user is carrier (Supabase-only)
+    const auth = await requireApiCarrier(request);
+    const userId = auth.userId;
 
     // Get user's carrier profile and bids
     const profile = await getCarrierProfile(userId);

@@ -1,86 +1,147 @@
 import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiCarrier } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
-import { auth } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const { userId } = await auth();
+    let auth;
+    try {
+      auth = await requireApiCarrier(request);
+    } catch (authError: any) {
+      console.error('Auth error in carrier conversations GET:', authError);
+      return NextResponse.json(
+        { error: "Authentication failed", details: authError?.message || "Unauthorized" },
+        { status: 401 }
+      );
+    }
+    
+    const userId = auth.userId;
     
     if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      console.error('No userId from auth in carrier conversations GET:', auth);
+      return NextResponse.json(
+        { error: "Authentication failed: no user ID" },
+        { status: 401 }
+      );
     }
 
     // Get conversations for the current carrier with unread counts
-    const conversations = await sql`
-      SELECT 
-        c.id as conversation_id,
-        c.admin_user_id,
-        c.status,
-        c.subject,
-        c.created_at,
-        c.updated_at,
-        c.closed_at,
-        COUNT(CASE WHEN mr.id IS NULL AND cm.sender_type = 'admin' THEN 1 END) as unread_count,
-        (
-          SELECT cm2.message 
-          FROM conversation_messages cm2 
-          WHERE cm2.conversation_id = c.id 
-          ORDER BY cm2.created_at DESC 
+    // Query only columns that definitely exist in the conversations table
+    let conversations;
+    try {
+      // First, get basic conversations
+      // Note: carrier_user_id and admin_user_id were removed in migration 078
+      // Only supabase_carrier_user_id and supabase_admin_user_id exist now
+      const basicConversations = await sql`
+        SELECT 
+          c.id as conversation_id,
+          c.supabase_admin_user_id as admin_user_id,
+          c.created_at,
+          c.updated_at
+        FROM conversations c
+        WHERE c.supabase_carrier_user_id = ${userId}
+        ORDER BY c.updated_at DESC
+      `;
+      
+      // Then enrich each conversation with message data
+      conversations = await Promise.all(basicConversations.map(async (conv: any) => {
+        // Get unread count
+        const unreadResult = await sql`
+          SELECT COUNT(*) as unread_count
+          FROM conversation_messages cm
+          LEFT JOIN message_reads mr ON mr.message_id = cm.id AND (mr.supabase_user_id = ${userId} OR mr.user_id = ${userId})
+          WHERE cm.conversation_id = ${conv.conversation_id}
+          AND cm.sender_type = 'admin'
+          AND mr.id IS NULL
+        `;
+        
+        // Get last message
+        const lastMessageResult = await sql`
+          SELECT message, sender_type, created_at
+          FROM conversation_messages
+          WHERE conversation_id = ${conv.conversation_id}
+          ORDER BY created_at DESC
           LIMIT 1
-        ) as last_message,
-        (
-          SELECT cm2.sender_type 
-          FROM conversation_messages cm2 
-          WHERE cm2.conversation_id = c.id 
-          ORDER BY cm2.created_at DESC 
-          LIMIT 1
-        ) as last_message_sender_type,
-        (
-          SELECT cm2.created_at 
-          FROM conversation_messages cm2 
-          WHERE cm2.conversation_id = c.id 
-          ORDER BY cm2.created_at DESC 
-          LIMIT 1
-        ) as last_message_at
-      FROM conversations c
-      LEFT JOIN conversation_messages cm ON cm.conversation_id = c.id
-      LEFT JOIN message_reads mr ON mr.message_id = cm.id AND mr.user_id = ${userId}
-      WHERE c.carrier_user_id = ${userId}
-      GROUP BY c.id, c.admin_user_id, c.status, c.subject, c.created_at, c.updated_at, c.closed_at
-      ORDER BY c.updated_at DESC
-    `;
+        `;
+        
+        return {
+          ...conv,
+          unread_count: parseInt(unreadResult[0]?.unread_count || '0'),
+          last_message: lastMessageResult[0]?.message || null,
+          last_message_sender_type: lastMessageResult[0]?.sender_type || null,
+          last_message_at: lastMessageResult[0]?.created_at || null
+        };
+      }));
+    } catch (queryError: any) {
+      console.error('[conversations GET] SQL query error:', queryError);
+      console.error('[conversations GET] Error details:', {
+        message: queryError?.message,
+        code: queryError?.code,
+        stack: queryError?.stack
+      });
+      throw queryError;
+    }
+    
+    // Add default values for optional columns that might not exist in the database
+    const conversationsWithDefaults = conversations.map((conv: any) => ({
+      ...conv,
+      status: 'active',
+      subject: 'Chat with Admin',
+      closed_at: null
+    }));
 
     logSecurityEvent('carrier_conversations_accessed', userId);
     
     const response = NextResponse.json({ 
       ok: true, 
-      data: conversations 
+      data: conversationsWithDefaults 
     });
     
     return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching conversations:", error);
+    console.error("Error details:", {
+      message: error?.message,
+      code: error?.code,
+      stack: error?.stack
+    });
     logSecurityEvent('carrier_conversations_error', undefined, { error: error instanceof Error ? error.message : String(error) });
     
     const response = NextResponse.json({ 
-      error: "Failed to fetch conversations" 
+      error: "Failed to fetch conversations",
+      details: error?.message 
     }, { status: 500 });
     
     return addSecurityHeaders(response);
   }
 }
 
-export async function POST(req: Request) {
+export async function POST(request: NextRequest) {
   try {
-    const { userId } = await auth();
+    let auth;
+    try {
+      auth = await requireApiCarrier(request);
+    } catch (authError: any) {
+      console.error('Auth error in carrier conversations POST:', authError);
+      return NextResponse.json(
+        { error: "Authentication failed", details: authError?.message || "Unauthorized" },
+        { status: 401 }
+      );
+    }
+    
+    const userId = auth.userId;
     
     if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      console.error('No userId from auth in carrier conversations POST:', auth);
+      return NextResponse.json(
+        { error: "Authentication failed: no user ID" },
+        { status: 401 }
+      );
     }
 
-    const body = await req.json();
+    const body = await request.json();
     const { message, admin_user_id } = body;
 
     // Input validation
@@ -100,12 +161,13 @@ export async function POST(req: Request) {
     let targetAdminId = admin_user_id;
     if (!targetAdminId) {
       const admins = await sql`
-        SELECT clerk_user_id FROM user_roles 
+        SELECT supabase_user_id FROM user_roles_cache
         WHERE role = 'admin' 
         LIMIT 1
       `;
       if (admins.length > 0) {
-        targetAdminId = admins[0].clerk_user_id;
+        // Use supabase_user_id for admin
+        targetAdminId = admins[0].supabase_user_id;
       } else {
         return NextResponse.json({ 
           error: "No admin users available" 
@@ -114,26 +176,34 @@ export async function POST(req: Request) {
     }
 
     // Check if conversation already exists
+    // Note: carrier_user_id and admin_user_id were removed in migration 078
+    // Only supabase_carrier_user_id and supabase_admin_user_id exist now
     const existingConversation = await sql`
-      SELECT id FROM conversations 
-      WHERE carrier_user_id = ${userId} AND admin_user_id = ${targetAdminId}
+      SELECT id FROM conversations c
+      WHERE c.supabase_carrier_user_id = ${userId}
+      AND c.supabase_admin_user_id = ${targetAdminId}
     `;
 
     let conversationId;
     if (existingConversation.length > 0) {
       conversationId = existingConversation[0].id;
     } else {
-      // Create new conversation
+      // Create new conversation (Supabase-only)
+      // Only insert columns that definitely exist in the conversations table
       const conversationResult = await sql`
         INSERT INTO conversations (
-          carrier_user_id,
+          supabase_carrier_user_id,
           admin_user_id,
-          subject,
-          status,
           conversation_type,
           created_at,
           updated_at
-        ) VALUES (${userId}, ${targetAdminId}, 'Chat with Admin', 'active', 'regular', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        ) VALUES (
+          ${userId},
+          ${targetAdminId}, 
+          'regular', 
+          CURRENT_TIMESTAMP, 
+          CURRENT_TIMESTAMP
+        )
         RETURNING id
       `;
       conversationId = conversationResult[0].id;
@@ -143,7 +213,7 @@ export async function POST(req: Request) {
     const messageResult = await sql`
       INSERT INTO conversation_messages (
         conversation_id,
-        sender_id,
+        supabase_sender_id,
         sender_type,
         message
       ) VALUES (${conversationId}, ${userId}, 'carrier', ${message})

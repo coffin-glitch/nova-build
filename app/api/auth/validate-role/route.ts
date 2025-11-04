@@ -1,16 +1,15 @@
-import { getClerkUserRole } from "@/lib/clerk-server";
-import { auth } from "@clerk/nextjs/server";
+import { getApiAuth, unauthorizedResponse } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 /**
  * Secure server-side role validation endpoint
- * This should be used for sensitive operations that require role verification
+ * Uses unified auth (Supabase or Clerk)
  */
 export async function GET(request: NextRequest) {
   try {
-    const { userId } = await auth();
+    const auth = getApiAuth(request);
     
-    if (!userId) {
+    if (!auth.userId) {
       return NextResponse.json({ valid: false, error: "Unauthorized" }, { status: 401 });
     }
 
@@ -21,8 +20,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ valid: false, error: "Invalid role" }, { status: 400 });
     }
 
-    // Get user role from server-side (most secure)
-    const userRole = await getClerkUserRole(userId);
+    // Get user role from unified auth
+    const userRole = auth.userRole;
     
     // Validate role with proper hierarchy
     let isValid = false;
@@ -37,11 +36,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ 
       valid: isValid,
       userRole,
-      requiredRole 
+      requiredRole,
+      provider: auth.authProvider
     });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Role validation error:', error);
+    if (error.message === "Unauthorized") {
+      return unauthorizedResponse();
+    }
     return NextResponse.json(
       { valid: false, error: "Internal server error" },
       { status: 500 }

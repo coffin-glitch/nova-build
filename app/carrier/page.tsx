@@ -7,10 +7,12 @@ import { AlertCircle, BookOpen, DollarSign, Gavel, Search, TrendingUp, Truck, Us
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import useSWR from "swr";
+import { Suspense } from "react";
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
-export default function CarrierDashboard() {
+// Inner component that uses useSearchParams
+function CarrierDashboardInner() {
   const searchParams = useSearchParams();
   const setupMode = searchParams.get('setup') === 'true';
   const status = searchParams.get('status');
@@ -240,5 +242,21 @@ export default function CarrierDashboard() {
         </Card>
       </div>
     </div>
+  );
+}
+
+// Wrapper with Suspense for useSearchParams
+export default function CarrierDashboard() {
+  return (
+    <Suspense fallback={
+      <div className="py-8">
+        <div className="animate-pulse space-y-4">
+          <div className="h-8 bg-gray-200 rounded w-1/4"></div>
+          <div className="h-32 bg-gray-200 rounded"></div>
+        </div>
+      </div>
+    }>
+      <CarrierDashboardInner />
+    </Suspense>
   );
 }

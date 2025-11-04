@@ -1,14 +1,11 @@
 import sql from "@/lib/db";
-import { auth } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { requireApiCarrier } from "@/lib/auth-api-helper";
+import { NextRequest, NextResponse } from "next/server";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireApiCarrier(request);
+    const userId = auth.userId;
 
     // Get offers with load details
     const offers = await sql`
@@ -38,7 +35,7 @@ export async function GET() {
         l.tm_number
       FROM load_offers lo
       JOIN loads l ON lo.load_rr_number = l.rr_number
-      WHERE lo.carrier_user_id = ${userId}
+      WHERE lo.supabase_user_id = ${userId}
       ORDER BY lo.created_at DESC
     `;
 

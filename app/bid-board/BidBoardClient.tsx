@@ -13,6 +13,22 @@ import { useAccentColor } from "@/hooks/useAccentColor";
 import { useIsAdmin } from "@/hooks/useUserRole";
 import { TelegramBid } from "@/lib/auctions";
 import { formatDistance, formatPickupDateTime, formatStopCount, formatStops, formatStopsDetailed } from "@/lib/format";
+
+// Parse stops helper (matching admin page exactly)
+const parseStops = (stops: string | string[] | null): string[] => {
+  if (!stops) return [];
+  if (Array.isArray(stops)) return stops;
+  if (typeof stops === 'string') {
+    try {
+      const parsed = JSON.parse(stops);
+      return Array.isArray(parsed) ? parsed : [parsed];
+    } catch (error) {
+      // If it's not valid JSON, treat it as a single location
+      return [stops];
+    }
+  }
+  return [];
+};
 import {
     AlertCircle,
     Archive,
@@ -32,9 +48,9 @@ import { useTheme } from "next-themes";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import useSWR from "swr";
+import useSWR, { mutate as globalMutate } from "swr";
 
-const fetcher = (url: string) => fetch(url).then(r => r.json());
+import { swrFetcher } from "@/lib/safe-fetcher";
 
 interface BidBoardClientProps {
   initialBids: TelegramBid[];
@@ -52,10 +68,12 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
   const [showManageBidsConsole, setShowManageBidsConsole] = useState(false);
   const [showFavoritesConsole, setShowFavoritesConsole] = useState(false);
   
-  // New state for filtering and sorting
+  // State for filtering and sorting - matching admin page exactly
+  // Default to showing active bids for carriers (admin defaults to expired)
   const [showExpired, setShowExpired] = useState(false);
-  const [sortBy, setSortBy] = useState("time-remaining");
-  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'expired'>('all');
+  const [sortBy, setSortBy] = useState<"distance" | "time-remaining" | "pickup-time" | "delivery-time" | "state" | "received-time" | "bid-count">("received-time");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const isAdmin = useIsAdmin();
   const [showArchived, setShowArchived] = useState(false);
   const [archivedBids, setArchivedBids] = useState<any[]>([]);
@@ -72,12 +90,15 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
   const { accentColor, accentColorStyle, accentBgStyle } = useAccentColor();
   const { theme } = useTheme();
   
-  // Check profile status for access restriction
-  const { data: profileData, isLoading: profileLoading } = useSWR(
+  // Check profile status for access restriction - use swrFetcher with credentials
+  const { data: profileData, isLoading: profileLoading, mutate: mutateProfile } = useSWR(
     `/api/carrier/profile`,
-    fetcher,
+    swrFetcher,
     {
-      fallbackData: { ok: true, data: null }
+      refreshInterval: 10000, // Refresh every 10 seconds to catch approval updates
+      revalidateOnFocus: true,
+      revalidateOnReconnect: true,
+      dedupingInterval: 5000,
     }
   );
 
@@ -98,45 +119,89 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
     }
   }, [accentColor]);
 
-  // Fetch data for the main view - uses same API as admin page
+  // Fetch data for the main view - matching admin page exactly
   const { data, mutate, isLoading } = useSWR(
     `/api/telegram-bids?q=${encodeURIComponent(q)}&tag=${encodeURIComponent(tag)}&limit=1000&showExpired=${showExpired}&isAdmin=false`,
-    fetcher,
-    { 
-      refreshInterval: 5000, // Match admin refresh interval
-      fallbackData: { ok: true, data: initialBids }
+    swrFetcher,
+    {
+      refreshInterval: 5000
     }
   );
 
-  // Fetch separate data for accurate stats (like admin page)
+  // Fetch data for analytics regardless of showExpired filter - matching admin page exactly
   const { data: activeData } = useSWR(
     `/api/telegram-bids?q=&tag=&limit=1000&showExpired=false&isAdmin=false`,
-    fetcher,
-    { refreshInterval: 5000 }
+    swrFetcher,
+    { refreshInterval: 30000 } // Match admin page refresh interval (30s for stats)
   );
 
   const { data: expiredData } = useSWR(
     `/api/telegram-bids?q=&tag=&limit=1000&showExpired=true&isAdmin=false`,
-    fetcher,
-    { refreshInterval: 5000 }
+    swrFetcher,
+    { refreshInterval: 30000 } // Match admin page refresh interval (30s for stats)
   );
 
-  const bids = data?.data || initialBids;
-  const activeBidsAll = activeData?.data || [];
-  const expiredBidsAll = expiredData?.data || [];
+  // Calculate today's counts properly - matching admin page
+  const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+  
+  // Extract bids data - swrFetcher returns result.data || result
+  // API returns { ok: true, data: [...] }, so swrFetcher should return the array
+  // But handle both cases for safety (array or object with .data property)
+  const bids = Array.isArray(data) ? data : (data?.data || []);
+  const activeBidsAll = Array.isArray(activeData) ? activeData : (activeData?.data || []);
+  const expiredBidsAll = Array.isArray(expiredData) ? expiredData : (expiredData?.data || []);
+  
+  // Debug logging to track data structure
+  useEffect(() => {
+    console.log('🔍 [BidBoard] Data structure check:', {
+      dataType: Array.isArray(data) ? 'array' : typeof data,
+      dataLength: Array.isArray(data) ? data.length : (data?.data?.length || 0),
+      activeDataType: Array.isArray(activeData) ? 'array' : typeof activeData,
+      activeDataLength: Array.isArray(activeData) ? activeData.length : (activeData?.data?.length || 0),
+      expiredDataType: Array.isArray(expiredData) ? 'array' : typeof expiredData,
+      expiredDataLength: Array.isArray(expiredData) ? expiredData.length : (expiredData?.data?.length || 0),
+      bidsLength: bids.length,
+      activeBidsAllLength: activeBidsAll.length,
+      expiredBidsAllLength: expiredBidsAll.length,
+      today,
+      todaysActiveBidsLength: activeBidsAll.filter((b: TelegramBid) => {
+        const bidDate = new Date(b.received_at).toISOString().split('T')[0];
+        return bidDate === today && !b.is_expired;
+      }).length
+    });
+  }, [data, activeData, expiredData, bids.length, activeBidsAll.length, expiredBidsAll.length, today]);
 
   // Fetch favorites status for all bids
-  const { data: favoritesData } = useSWR(
+  const { data: favoritesData, mutate: mutateFavorites } = useSWR(
     bids.length > 0 ? `/api/carrier/favorites/check?bid_numbers=${bids.map((b: TelegramBid) => b.bid_number).join(',')}` : null,
-    fetcher,
+    swrFetcher,
     { 
       refreshInterval: 30000,
-      fallbackData: { ok: true, data: {} }
+      fallbackData: {} // swrFetcher unwraps, so fallback should be the unwrapped object
     }
   );
 
   // Use favorites data directly (stable reference pattern)
-  const favorites = favoritesData?.data || {};
+  // swrFetcher already unwraps result.data || result, so favoritesData is the data object itself
+  // Handle both cases: if swrFetcher unwrapped it (object with bid_number keys) or if it's still wrapped
+  const favorites = (favoritesData && typeof favoritesData === 'object' && !Array.isArray(favoritesData) && !favoritesData.ok) 
+    ? favoritesData 
+    : (favoritesData?.data || {});
+  
+  // Debug logging to track favorites data
+  useEffect(() => {
+    if (favoritesData) {
+      console.log('⭐ [BidBoard] Favorites data:', {
+        favoritesDataType: typeof favoritesData,
+        isArray: Array.isArray(favoritesData),
+        hasOk: 'ok' in (favoritesData || {}),
+        hasData: 'data' in (favoritesData || {}),
+        favoritesKeys: Object.keys(favorites || {}),
+        favoritesCount: Object.keys(favorites || {}).length,
+        sampleFavorite: Object.keys(favorites || {}).slice(0, 3).map(k => ({ [k]: favorites[k] }))
+      });
+    }
+  }, [favoritesData, favorites]);
 
   const handlePlaceBid = async () => {
     if (!selectedBid || !bidAmount) return;
@@ -193,6 +258,9 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
           toast.success("Removed from favorites");
           // Trigger SWR revalidation to update the favorites data
           mutate();
+          mutateFavorites(); // Revalidate favorites check endpoint
+          // Also trigger global SWR revalidation for the favorites list (used by FavoritesConsole)
+          globalMutate('/api/carrier/favorites');
         } else {
           toast.error(deleteResult.error || "Failed to remove from favorites");
         }
@@ -206,9 +274,30 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
         const result = await response.json();
         
         if (result.ok) {
-          toast.success("Added to favorites");
-          // Trigger SWR revalidation to update the favorites data
-          mutate();
+          // If it already exists, remove it instead (toggle behavior)
+          if (result.alreadyExists) {
+            // Remove from favorites
+            const deleteResponse = await fetch(`/api/carrier/favorites?bid_number=${bidNumber}`, {
+              method: 'DELETE'
+            });
+            const deleteResult = await deleteResponse.json();
+            
+            if (deleteResult.ok) {
+              toast.success("Removed from favorites");
+              mutate();
+              mutateFavorites(); // Revalidate favorites check endpoint
+              globalMutate('/api/carrier/favorites');
+            } else {
+              toast.error(deleteResult.error || "Failed to remove from favorites");
+            }
+          } else {
+            toast.success("Added to favorites");
+            // Trigger SWR revalidation to update the favorites data
+            mutate();
+            mutateFavorites(); // Revalidate favorites check endpoint
+            // Also trigger global SWR revalidation for the favorites list (used by FavoritesConsole)
+            globalMutate('/api/carrier/favorites');
+          }
         } else {
           toast.error(result.error || "Failed to add to favorites");
         }
@@ -246,81 +335,140 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
     }
   };
 
-  // Filter and sort bids based on current settings - use useMemo to prevent hydration mismatch
-  const filteredBids = useMemo(() => {
-    let filtered = bids.filter((bid: TelegramBid) => {
-      // Apply showExpired filter
-      if (!showExpired && bid.is_expired) return false;
-      return true;
-    });
-
-    // Apply sorting
-    filtered.sort((a: TelegramBid, b: TelegramBid) => {
-      let comparison = 0;
-      
-      switch (sortBy) {
-        case "time-remaining":
-          comparison = a.time_left_seconds - b.time_left_seconds;
-          break;
-        case "bid-count":
-          comparison = (a.bids_count || 0) - (b.bids_count || 0);
-          break;
-        case "distance":
-          comparison = (a.distance_miles || 0) - (b.distance_miles || 0);
-          break;
-        case "pickup-time":
-          comparison = new Date(a.pickup_timestamp || 0).getTime() - new Date(b.pickup_timestamp || 0).getTime();
-          break;
-        case "delivery-time":
-          comparison = new Date(a.delivery_timestamp || 0).getTime() - new Date(b.delivery_timestamp || 0).getTime();
-          break;
-        case "bid-number":
-          comparison = a.bid_number.localeCompare(b.bid_number);
-          break;
-        case "received-time":
-          comparison = new Date(a.received_at).getTime() - new Date(b.received_at).getTime();
-          break;
-        case "stops-count":
-          const aStops = Array.isArray(a.stops) ? a.stops.length : 0;
-          const bStops = Array.isArray(b.stops) ? b.stops.length : 0;
-          comparison = aStops - bStops;
-          break;
-        case "state":
-          comparison = (a.tag || "").localeCompare(b.tag || "");
-          break;
-        default:
-          comparison = a.time_left_seconds - b.time_left_seconds;
-      }
-      
-      // Apply sort direction
-      return sortDirection === "desc" ? -comparison : comparison;
-    });
-
-    return filtered;
-  }, [bids, showExpired, sortBy, sortDirection]);
-
-  // Calculate stats with useMemo to prevent hydration mismatch
-  const stats = useMemo(() => {
-    // Use separate API calls for accurate counts (matching admin page logic)
-    // activeBidsAll already contains only active bids (from showExpired=false query)
-    // expiredBidsAll already contains only expired bids (from showExpired=true query)
-    const activeCount = activeBidsAll.length;
-    const expiredCount = expiredBidsAll.length;
-    const uniqueStates = new Set([...activeBidsAll, ...expiredBidsAll].map((b: TelegramBid) => b.tag).filter(Boolean)).size;
+  // Filter bids based on showExpired toggle - matching admin page exactly
+  let filteredBids = bids.filter((bid: TelegramBid) => {
+    // Apply date filtering based on showExpired mode
+    const bidDate = new Date(bid.received_at).toISOString().split('T')[0];
     
+    // If showing active bids, only show today's bids
+    if (!showExpired) {
+      if (bidDate !== today) return false;
+    }
+    // If showing expired bids, we'll show all expired bids (the API already filtered by is_archived=false and archived_at IS NULL)
+    
+    // Apply search and tag filters
+    if (q && !bid.bid_number.toLowerCase().includes(q.toLowerCase())) return false;
+    if (tag && !bid.tag?.toLowerCase().includes(tag.toLowerCase())) return false;
+    
+    // Apply status filter
+    if (statusFilter === 'active' && bid.is_expired) return false;
+    if (statusFilter === 'expired' && !bid.is_expired) return false;
+    
+    return true;
+  });
+
+  // Apply sorting - matching admin page exactly
+  filteredBids = [...filteredBids].sort((a: TelegramBid, b: TelegramBid) => {
+    let comparison = 0;
+    
+    switch (sortBy) {
+      case "distance":
+        comparison = (a.distance_miles || 0) - (b.distance_miles || 0);
+        break;
+      case "time-remaining":
+        // Only available for active bids
+        if (!showExpired) {
+          comparison = (a.time_left_seconds || 0) - (b.time_left_seconds || 0);
+        } else {
+          // For expired bids, use expires_at_25 as fallback
+          const aExpiresAt = a.expires_at_25 ? new Date(a.expires_at_25).getTime() : new Date(a.received_at).getTime() + (25 * 60 * 1000);
+          const bExpiresAt = b.expires_at_25 ? new Date(b.expires_at_25).getTime() : new Date(b.received_at).getTime() + (25 * 60 * 1000);
+          comparison = aExpiresAt - bExpiresAt;
+        }
+        break;
+      case "pickup-time":
+        comparison = new Date(a.pickup_timestamp || 0).getTime() - new Date(b.pickup_timestamp || 0).getTime();
+        break;
+      case "delivery-time":
+        comparison = new Date(a.delivery_timestamp || 0).getTime() - new Date(b.delivery_timestamp || 0).getTime();
+        break;
+      case "state":
+        comparison = (a.tag || "").localeCompare(b.tag || "");
+        break;
+      case "received-time":
+        // For expired bids, sort by expires_at_25 (when they expired) to match API sorting
+        // For active bids, sort by received_at (when they were received)
+        if (showExpired) {
+          const aExpiresAt = a.expires_at_25 ? new Date(a.expires_at_25).getTime() : new Date(a.received_at).getTime() + (25 * 60 * 1000);
+          const bExpiresAt = b.expires_at_25 ? new Date(b.expires_at_25).getTime() : new Date(b.received_at).getTime() + (25 * 60 * 1000);
+          comparison = aExpiresAt - bExpiresAt;
+        } else {
+          comparison = new Date(a.received_at).getTime() - new Date(b.received_at).getTime();
+        }
+        break;
+      case "bid-count":
+        comparison = (a.bids_count || 0) - (b.bids_count || 0);
+        break;
+      default:
+        // Default to received-time sorting
+        if (showExpired) {
+          const aExpiresAt = a.expires_at_25 ? new Date(a.expires_at_25).getTime() : new Date(a.received_at).getTime() + (25 * 60 * 1000);
+          const bExpiresAt = b.expires_at_25 ? new Date(b.expires_at_25).getTime() : new Date(b.received_at).getTime() + (25 * 60 * 1000);
+          comparison = aExpiresAt - bExpiresAt;
+        } else {
+          comparison = new Date(a.received_at).getTime() - new Date(b.received_at).getTime();
+        }
+    }
+    
+    // Apply sort direction
+    return sortDirection === "desc" ? -comparison : comparison;
+  });
+  
+  // Get all bids for today (regardless of showExpired filter) - matching admin page
+  const todaysBids = bids.filter((bid: TelegramBid) => {
+    const bidDate = new Date(bid.received_at).toISOString().split('T')[0];
+    return bidDate === today;
+  });
+
+  // Analytics calculations - show stats based on current view mode - matching admin page exactly
+  const todaysActiveBids = activeBidsAll.filter((b: TelegramBid) => {
+    const bidDate = new Date(b.received_at).toISOString().split('T')[0];
+    return bidDate === today && !b.is_expired;
+  });
+  
+  const todaysExpiredBids = expiredBidsAll.filter((b: TelegramBid) => {
+    const bidDate = new Date(b.received_at).toISOString().split('T')[0];
+    return bidDate === today;
+  });
+  
+  // If showing active bids, show only active bid stats (hide expired)
+  // If showing expired bids, show all expired stats
+  const analytics = showExpired ? {
+    totalBids: expiredBidsAll.length, // All expired bids
+    activeBids: todaysActiveBids.length, // Today's active bids
+    expiredBids: expiredBidsAll.length, // All expired bids
+    totalCarrierBids: expiredBidsAll.reduce((sum: number, b: TelegramBid) => sum + (Number(b.bids_count) || 0), 0)
+  } : {
+    totalBids: todaysActiveBids.length, // Only today's active bids
+    activeBids: todaysActiveBids.length, // Only today's active bids
+    expiredBids: expiredBidsAll.length, // Always show actual expired count (not 0)
+    totalCarrierBids: todaysActiveBids.reduce((sum: number, b: TelegramBid) => sum + (Number(b.bids_count) || 0), 0)
+  };
+
+  // Calculate stats - matching admin page structure
+  // Get unique states from today's active bids and all expired bids
+  const allBidsForStates = showExpired 
+    ? [...todaysActiveBids, ...expiredBidsAll]
+    : [...todaysActiveBids, ...expiredBidsAll];
+  const uniqueStates = new Set(allBidsForStates.map((b: TelegramBid) => b.tag).filter(Boolean)).size;
+  
+  const stats = useMemo(() => {
     return {
-      activeCount,
-      expiredCount,
+      activeCount: analytics.activeBids,
+      expiredCount: analytics.expiredBids, // Always show actual expired count
       statesCount: uniqueStates,
       totalValue: filteredBids.length > 0 ? "Live" : "0"
     };
-  }, [activeBidsAll, expiredBidsAll, showExpired, filteredBids]);
+  }, [analytics.activeBids, analytics.expiredBids, uniqueStates, filteredBids.length]);
 
   // Show access restriction banner for unapproved users
   const renderAccessBanner = () => {
+    // Don't show banner while loading - wait for profile data
     if (profileLoading) return null;
     
-    if (!profile || profile.profile_status !== 'approved') {
+    // Only show banner if profile exists and is NOT approved
+    // If profile is null/undefined, don't show banner (middleware handles redirect)
+    if (profile && profile.profile_status !== 'approved') {
       return (
         <Glass className="border-l-4 border-l-red-500 dark:border-l-red-400 mb-6">
           <div className="p-6">
@@ -349,176 +497,172 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
     return null;
   };
 
+  // Determine if user is approved - default to true if profile is still loading (middleware handles blocking)
+  // This allows the page to render while profile loads, preventing blank screen
+  // IMPORTANT: Since middleware already blocks unapproved users from accessing /bid-board,
+  // we can safely assume approved if profile is loading. If profile exists and is not approved,
+  // middleware would have redirected, so we can trust that if we get here, user is approved.
+  const isApproved = profileLoading ? true : (profile?.profile_status === 'approved' || !profile);
+  
+
   return (
     <div className="space-y-6">
       {/* Access Restriction Banner */}
       {renderAccessBanner()}
       
-      {/* Filters - Only show for approved users */}
-      {profile?.profile_status === 'approved' && (
+      {/* Header Actions - Matching admin page */}
+      {isApproved && (
         <Glass className="p-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-          {/* Search */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground">Search</label>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="Bid number..."
-                className="pl-10"
-              />
-            </div>
-          </div>
-
-          {/* State Filter */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground">State</label>
-            <Input
-              value={tag}
-              onChange={(e) => setTag(e.target.value.toUpperCase())}
-              placeholder="State tag (e.g. GA)"
-            />
-          </div>
-
-          {/* Sort */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground">Sort By</label>
-            <select 
-              className="w-full h-10 px-3 py-2 text-sm border border-input bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-            >
-              <option value="time-remaining">Time Remaining</option>
-              <option value="bid-count">Bid Count</option>
-              <option value="distance">Distance (Miles)</option>
-              <option value="pickup-time">Pickup Time</option>
-              <option value="delivery-time">Delivery Time</option>
-              <option value="bid-number">Bid Number</option>
-              <option value="received-time">Received Time</option>
-              <option value="stops-count">Number of Stops</option>
-              <option value="state">State/Tag</option>
-            </select>
-          </div>
-
-          {/* Sort Direction */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground">Direction</label>
-            <select 
-              className="w-full h-10 px-3 py-2 text-sm border border-input bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-              value={sortDirection}
-              onChange={(e) => setSortDirection(e.target.value as "asc" | "desc")}
-            >
-              <option value="asc">Ascending</option>
-              <option value="desc">Descending</option>
-            </select>
-          </div>
-
-          {/* Quick Sort Actions */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground">Quick Sort</label>
-            <div className="space-y-2">
-              <div className="flex gap-3">
-                <Button
-                  onClick={() => {
-                    setSortBy("time-remaining");
-                    setSortDirection("asc");
-                  }}
-                  variant="outline"
-                  size="sm"
-                  className="flex-1 text-xs border-orange-200 hover:border-orange-300 hover:bg-orange-50 dark:border-orange-800 dark:hover:border-orange-700 dark:hover:bg-orange-950"
-                >
-                  <Clock className="w-3 h-3 mr-1 text-orange-600 dark:text-orange-400" />
-                  Urgent
-                </Button>
-                <Button
-                  onClick={() => {
-                    setSortBy("bid-count");
-                    setSortDirection("desc");
-                  }}
-                  variant="outline"
-                  size="sm"
-                  className="flex-1 text-xs border-blue-200 hover:border-blue-300 hover:bg-blue-50 dark:border-blue-800 dark:hover:border-blue-700 dark:hover:bg-blue-950"
-                >
-                  <Gavel className="w-3 h-3 mr-1 text-blue-600 dark:text-blue-400" />
-                  Popular
-                </Button>
-              </div>
+          <div className="flex items-center justify-between flex-wrap gap-4">
+            <div className="flex items-center gap-3">
+              <Button
+                variant="outline"
+                onClick={() => setShowManageBidsConsole(true)}
+                className="flex items-center gap-2 hover:bg-blue-500/20 hover:text-blue-400 hover:border-blue-500/30"
+              >
+                <Gavel className="w-4 h-4" />
+                Manage Bids
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setShowFavoritesConsole(true)}
+                className="flex items-center gap-2 hover:bg-yellow-500/20 hover:text-yellow-400 hover:border-yellow-500/30"
+              >
+                <Star className="w-4 h-4" />
+                Favorites
+              </Button>
               <Button
                 onClick={() => mutate()}
                 disabled={isLoading}
                 variant="outline"
-                className="w-full border-green-200 hover:border-green-300 hover:bg-green-50 dark:border-green-800 dark:hover:border-green-700 dark:hover:bg-green-950"
+                className="flex items-center gap-2"
               >
-                <RefreshCw className={`w-4 h-4 mr-2 text-green-600 dark:text-green-400 ${isLoading ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
                 Refresh
               </Button>
             </div>
           </div>
-        </div>
         </Glass>
       )}
 
-      {/* Filter Controls - Only show for approved users */}
-      {profile?.profile_status === 'approved' && (
-        <Glass className="p-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Button
-              variant={showExpired ? "default" : "outline"}
-              onClick={() => setShowExpired(!showExpired)}
-              style={showExpired ? {
-                backgroundColor: accentColor,
-                color: buttonTextColor
-              } : {}}
-            >
-              <Clock className="w-4 h-4 mr-2" />
-              {showExpired ? "Hide Expired" : "Show Expired"}
-            </Button>
-            
-            <Button
-              variant="outline"
-              onClick={() => setShowManageBidsConsole(true)}
-              className="hover:bg-blue-500/20 hover:text-blue-400 hover:border-blue-500/30"
-            >
-              <Gavel className="w-4 h-4 mr-2" />
-              Manage Bids
-            </Button>
-            
-            <Button
-              variant="outline"
-              onClick={() => setShowFavoritesConsole(true)}
-              className="hover:bg-yellow-500/20 hover:text-yellow-400 hover:border-yellow-500/30"
-            >
-              <Star className="w-4 h-4 mr-2" />
-              Favorites
-            </Button>
-            
-            {isAdmin && (
-              <Button
-                variant="outline"
-                onClick={() => setShowArchived(true)}
+      {/* Filters and Controls - Matching admin page exactly */}
+      {isApproved && (
+        <Glass className="p-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+            {/* Search */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Search</label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  placeholder="Bid number..."
+                  className="pl-10"
+                />
+              </div>
+            </div>
+
+            {/* Tag Filter */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">State/Tag</label>
+              <Input
+                value={tag}
+                onChange={(e) => setTag(e.target.value.toUpperCase())}
+                placeholder="State tag (e.g. GA)"
+              />
+            </div>
+
+            {/* Status Filter */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Status</label>
+              <select
+                className="w-full h-10 px-3 py-2 text-sm border border-input bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as 'all' | 'active' | 'expired')}
               >
-                <Archive className="w-4 h-4 mr-2" />
-                Archived Bids
+                <option value="all">All Bids</option>
+                <option value="active">Active Only</option>
+                <option value="expired">Expired Only</option>
+              </select>
+            </div>
+
+            {/* Stats */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Stats</label>
+              <div className="flex items-center gap-2">
+                <Badge variant="outline">
+                  {stats.activeCount} Active
+                </Badge>
+                <Badge variant="outline">
+                  {stats.expiredCount} Expired
+                </Badge>
+              </div>
+            </div>
+          </div>
+
+          {/* Sort Controls - Matching admin page exactly */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 pt-4 border-t border-border/40">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Sort By</label>
+              <select 
+                className="w-full h-10 px-3 py-2 text-sm border border-input bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+              >
+                <option value="distance">Distance (Miles)</option>
+                {!showExpired && <option value="time-remaining">Time Remaining</option>}
+                <option value="pickup-time">Pickup Time</option>
+                <option value="delivery-time">Delivery Time</option>
+                <option value="state">State/Tag</option>
+                <option value="received-time">
+                  {showExpired ? "Time Expired" : "Time Received"}
+                </option>
+                <option value="bid-count">Bid Count</option>
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Direction</label>
+              <select 
+                className="w-full h-10 px-3 py-2 text-sm border border-input bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                value={sortDirection}
+                onChange={(e) => setSortDirection(e.target.value as "asc" | "desc")}
+              >
+                <option value="asc">Ascending</option>
+                <option value="desc">Descending</option>
+              </select>
+            </div>
+
+            <div className="flex items-end">
+              <Button
+                variant={showExpired ? "default" : "outline"}
+                onClick={() => setShowExpired(!showExpired)}
+                style={showExpired ? {
+                  backgroundColor: accentColor,
+                  color: '#ffffff'
+                } : {}}
+                className="w-full"
+              >
+                <Clock className="w-4 h-4 mr-2" />
+                {showExpired ? "Hide Expired" : "Show Expired"}
               </Button>
-            )}
+            </div>
           </div>
-          
-          <div className="text-sm text-muted-foreground">
-            Showing {showExpired ? "all" : "live"} bids
-            {!isAdmin && !showExpired && " (today only)"}
-            <span className="ml-2 px-2 py-1 bg-muted rounded text-xs">
-              Sorted by: {sortBy.replace("-", " ")} ({sortDirection})
-            </span>
+
+          <div className="flex items-center justify-between mt-4 pt-4 border-t border-border/40">
+            <div className="text-sm text-muted-foreground">
+              {showExpired 
+                ? `Showing ${filteredBids.length} expired bid${filteredBids.length !== 1 ? 's' : ''} (pending archive)`
+                : `Showing ${filteredBids.length} active bid${filteredBids.length !== 1 ? 's' : ''}`
+              }
+            </div>
           </div>
-        </div>
         </Glass>
       )}
 
       {/* Stats - Only show for approved users */}
-      {profile?.profile_status === 'approved' && (
+      {isApproved && (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Glass className="p-4">
           <div className="flex items-center gap-3">
@@ -568,7 +712,7 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
       )}
 
       {/* Bids Grid - Only show for approved users */}
-      {profile?.profile_status === 'approved' && (
+      {isApproved && (
         <>
         {isLoading ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
@@ -583,18 +727,34 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
       ) : filteredBids.length === 0 ? (
         <Glass className="p-12 text-center">
           <Truck className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-          <h3 className="text-xl font-semibold text-foreground mb-2">No Active Auctions</h3>
-          <p className="text-muted-foreground">Check back later for new USPS loads to bid on.</p>
+          {!showExpired && todaysBids.filter((b: TelegramBid) => !b.is_expired).length === 0 ? (
+            <>
+              <h3 className="text-xl font-semibold text-foreground mb-2">No Active Bids</h3>
+              <p className="text-muted-foreground">
+                Last bid seen: {todaysBids.length > 0 
+                  ? new Date(todaysBids[todaysBids.length - 1]?.received_at).toLocaleString('en-US', { 
+                      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit'
+                    })
+                  : 'None'
+                }
+              </p>
+            </>
+          ) : (
+            <>
+              <h3 className="text-xl font-semibold text-foreground mb-2">No Bids Found</h3>
+              <p className="text-muted-foreground">Try adjusting your filters or check back later.</p>
+            </>
+          )}
         </Glass>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
           {filteredBids.map((bid: TelegramBid) => (
             <Glass key={bid.bid_number} className="p-6 space-y-4 hover:shadow-card transition-all duration-300 hover:-translate-y-1">
-              {/* Header */}
+              {/* Header - Matching admin page exactly */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Badge 
-                    variant="outline" 
+                  <Badge
+                    variant="outline"
                     className="border-2"
                     style={{
                       backgroundColor: `${accentColor}15`,
@@ -609,18 +769,31 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
                       {bid.tag}
                     </Badge>
                   )}
+                  {bid.is_expired ? (
+                    <Badge variant="destructive">Expired</Badge>
+                  ) : (
+                    <Badge variant="default" style={{ backgroundColor: accentColor }}>
+                      Active
+                    </Badge>
+                  )}
                 </div>
-                <Countdown 
-                  expiresAt={bid.expires_at_25} 
+                <Countdown
+                  expiresAt={bid.expires_at_25}
                   variant={bid.is_expired ? "expired" : bid.time_left_seconds <= 300 ? "urgent" : "default"}
                 />
               </div>
 
-              {/* Route Info */}
+              {/* Route Info - Matching admin page format exactly */}
               <div className="space-y-2">
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <MapPin className="w-4 h-4" />
-                  <span className="text-sm">{formatStops(bid.stops || [])}</span>
+                  <span className="text-sm">
+                    {(() => {
+                      const parsed = parseStops(bid.stops);
+                      const formatted = formatStops(parsed);
+                      return formatted || 'N/A';
+                    })()}
+                  </span>
                 </div>
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <Truck className="w-4 h-4" />
@@ -632,14 +805,19 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
                 </div>
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <Navigation className="w-4 h-4" />
-                  <span className="text-sm">{formatStopCount(bid.stops || [])}</span>
+                  <span className="text-sm">
+                    {(() => {
+                      const parsed = parseStops(bid.stops);
+                      return formatStopCount(parsed);
+                    })()}
+                  </span>
                 </div>
               </div>
 
-              {/* Bidding Info */}
+              {/* Bidding Info - Matching admin page */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Bids:</span>
+                  <span className="text-muted-foreground">Carrier Bids:</span>
                   <span className="font-medium">{bid.bids_count || 0}</span>
                 </div>
               </div>
@@ -665,7 +843,7 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
                       {isTogglingFavorite === bid.bid_number ? (
                         <RefreshCw className="w-4 h-4 animate-spin" />
                       ) : (
-                        <Star className={`w-4 h-4 ${favorites[bid.bid_number] ? 'fill-current' : ''}`} />
+                        <Star className={`w-4 h-4 ${favorites[bid.bid_number] ? 'fill-yellow-400 text-yellow-400' : ''}`} />
                       )}
                     </Button>
                     <Button
@@ -704,31 +882,38 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
             <DialogTitle>Place Bid - #{selectedBid?.bid_number}</DialogTitle>
           </DialogHeader>
           
-          {selectedBid && (
-            <div className="space-y-6">
-              {/* Bid Details */}
-              <div className="space-y-3 p-4 bg-muted/50 rounded-lg">
-                <div className="flex items-center gap-2">
-                  <MapPin className="w-4 h-4 text-muted-foreground" />
-                  <span className="text-sm">{formatStops(selectedBid.stops || [])}</span>
+          {selectedBid && (() => {
+            // Calculate expires_at_25 if not present
+            const expiresAt = selectedBid.expires_at_25 || (() => {
+              const receivedAt = new Date(selectedBid.received_at);
+              return new Date(receivedAt.getTime() + (25 * 60 * 1000)).toISOString();
+            })();
+            
+            return (
+              <div className="space-y-6">
+                {/* Bid Details */}
+                <div className="space-y-3 p-4 bg-muted/50 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <MapPin className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-sm">{formatStops(parseStops(selectedBid.stops))}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Truck className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-sm">{formatDistance(selectedBid.distance_miles)}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-sm">
+                      Pickup: {formatPickupDateTime(selectedBid.pickup_timestamp)} | Delivery: {formatPickupDateTime(selectedBid.delivery_timestamp)}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Countdown 
+                      expiresAt={expiresAt}
+                      variant={selectedBid.is_expired ? "expired" : (selectedBid.time_left_seconds || 0) <= 300 ? "urgent" : "default"}
+                    />
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Truck className="w-4 h-4 text-muted-foreground" />
-                  <span className="text-sm">{formatDistance(selectedBid.distance_miles)}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-muted-foreground" />
-                  <span className="text-sm">
-                    Pickup: {formatPickupDateTime(selectedBid.pickup_timestamp)} | Delivery: {formatPickupDateTime(selectedBid.delivery_timestamp)}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Countdown 
-                    expiresAt={selectedBid.expires_at_25}
-                    variant={selectedBid.is_expired ? "expired" : selectedBid.time_left_seconds <= 300 ? "urgent" : "default"}
-                  />
-                </div>
-              </div>
 
               {/* Bid Form */}
               <div className="space-y-4">
@@ -779,8 +964,9 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
                   {isBidding ? "Placing Bid..." : "Place Bid"}
                 </Button>
               </div>
-            </div>
-          )}
+              </div>
+            );
+          })()}
         </DialogContent>
       </Dialog>
 
@@ -809,7 +995,7 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
                 </div>
                 <div>
                   <label className="text-sm font-medium text-muted-foreground">Stops</label>
-                  <p className="text-lg font-semibold">{formatStopCount(viewDetailsBid.stops || [])}</p>
+                  <p className="text-lg font-semibold">{formatStopCount(parseStops(viewDetailsBid.stops))}</p>
                 </div>
               </div>
 
@@ -829,7 +1015,7 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
               <div className="space-y-3">
                 <h3 className="text-lg font-semibold">Route Details</h3>
                 <div className="space-y-2">
-                  {formatStopsDetailed(viewDetailsBid.stops || []).map((stop, index) => (
+                  {formatStopsDetailed(parseStops(viewDetailsBid.stops)).map((stop, index) => (
                     <div key={index} className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg">
                       <div className="flex items-center justify-center w-6 h-6 bg-primary text-primary-foreground rounded-full text-sm font-bold">
                         {index + 1}
@@ -838,7 +1024,7 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
                         <p className="font-medium">{stop}</p>
                         <p className="text-sm text-muted-foreground">
                           {index === 0 ? 'Pickup Location' : 
-                           index === formatStopsDetailed(viewDetailsBid.stops || []).length - 1 ? 'Delivery Location' : 
+                           index === formatStopsDetailed(parseStops(viewDetailsBid.stops)).length - 1 ? 'Delivery Location' : 
                            'Stop Location'}
                         </p>
                       </div>
@@ -852,7 +1038,7 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
                 <h3 className="text-lg font-semibold">Route Map</h3>
                 <div className="rounded-lg overflow-hidden border border-border/40">
                   <MapboxMap 
-                    stops={formatStopsDetailed(viewDetailsBid.stops || [])} 
+                    stops={formatStopsDetailed(parseStops(viewDetailsBid.stops))} 
                     className="w-full"
                   />
                 </div>
@@ -872,15 +1058,22 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
                       {viewDetailsBid.is_expired ? 'Auction Closed' : 'Bidding Open'}
                     </p>
                   </div>
-                  <div>
-                    <label className="text-sm font-medium text-muted-foreground">Time Remaining</label>
-                    <div className="flex items-center gap-2">
-                      <Countdown 
-                        expiresAt={viewDetailsBid.expires_at_25}
-                        variant={viewDetailsBid.is_expired ? "expired" : viewDetailsBid.time_left_seconds <= 300 ? "urgent" : "default"}
-                      />
+                    <div>
+                      <label className="text-sm font-medium text-muted-foreground">Time Remaining</label>
+                      <div className="flex items-center gap-2">
+                        <Countdown 
+                          expiresAt={(() => {
+                            // Calculate expires_at_25 if not present
+                            if (viewDetailsBid.expires_at_25) {
+                              return viewDetailsBid.expires_at_25;
+                            }
+                            const receivedAt = new Date(viewDetailsBid.received_at);
+                            return new Date(receivedAt.getTime() + (25 * 60 * 1000)).toISOString();
+                          })()}
+                          variant={viewDetailsBid.is_expired ? "expired" : (viewDetailsBid.time_left_seconds || 0) <= 300 ? "urgent" : "default"}
+                        />
+                      </div>
                     </div>
-                  </div>
                 </div>
               </div>
 
@@ -1020,7 +1213,7 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
                       <div className="space-y-1 text-sm">
                         <div className="flex items-center gap-2">
                           <MapPin className="w-4 h-4 text-muted-foreground" />
-                          <span>{formatStops(bid.stops)}</span>
+                          <span>{formatStops(parseStops(bid.stops))}</span>
                         </div>
                         <div className="flex items-center gap-2">
                           <Truck className="w-4 h-4 text-muted-foreground" />

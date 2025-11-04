@@ -1,22 +1,17 @@
+import { requireApiAdmin } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
-import { auth } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 export async function PUT(
-  req: Request,
+  request: NextRequest,
   { params }: { params: { userId: string } }
 ) {
   try {
-    const { userId: adminUserId } = await auth();
-    
-    if (!adminUserId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // TODO: Add admin role check here
+    // Ensure user is admin (Supabase-only)
+    await requireApiAdmin(request);
 
     const carrierUserId = params.userId;
-    const body = await req.json();
+    const body = await request.json();
     const {
       company_name,
       mc_number,
@@ -25,7 +20,7 @@ export async function PUT(
       phone
     } = body;
 
-    // Update carrier profile
+    // Update carrier profile (Supabase-only)
     await sql`
       UPDATE carrier_profiles SET
         legal_name = ${company_name},
@@ -33,7 +28,7 @@ export async function PUT(
         dot_number = ${dot_number},
         contact_name = ${contact_name},
         phone = ${phone}
-      WHERE clerk_user_id = ${carrierUserId}
+      WHERE supabase_user_id = ${carrierUserId}
     `;
 
     return NextResponse.json({ 

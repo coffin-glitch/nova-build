@@ -150,7 +150,7 @@ export function DriverInfoDialog({
     setIsLoading(true);
     try {
       const endpoint = isBid 
-        ? `/api/carrier/bids/${loadId}/driver-info`
+        ? `/api/carrier/bids/driver-info?bidNumber=${loadId}`
         : `/api/carrier/loads/${loadId}/driver-info`;
       
       const response = await fetch(endpoint);
@@ -165,6 +165,26 @@ export function DriverInfoDialog({
           setDriverLicenseState(info.driver_license_state || "");
           setTruckNumber(info.truck_number || "");
           setTrailerNumber(info.trailer_number || "");
+          
+          // Load second driver info if available
+          if (info.second_driver_name || info.second_driver_phone) {
+            setShowSecondDriver(true);
+            setSecondDriverName(info.second_driver_name || "");
+            setSecondDriverPhone(info.second_driver_phone ? formatPhoneDisplay(info.second_driver_phone) : "");
+            setSecondDriverEmail(info.second_driver_email || "");
+            setSecondDriverLicenseNumber(info.second_driver_license_number || "");
+            setSecondDriverLicenseState(info.second_driver_license_state || "");
+            setSecondTruckNumber(info.second_truck_number || "");
+            setSecondTrailerNumber(info.second_trailer_number || "");
+          }
+        }
+      } else {
+        // If response is not ok, try to get error message
+        try {
+          const errorData = await response.json();
+          console.error('Error loading driver info:', errorData.error || 'Unknown error');
+        } catch {
+          console.error('Error loading driver info: HTTP', response.status);
         }
       }
     } catch (error) {
@@ -317,7 +337,7 @@ export function DriverInfoDialog({
 
     try {
       const endpoint = isBid 
-        ? `/api/carrier/bids/${loadId}/driver-info`
+        ? `/api/carrier/bids/driver-info?bidNumber=${loadId}`
         : `/api/carrier/loads/${loadId}/driver-info`;
       
       const response = await fetch(endpoint, {
@@ -346,8 +366,22 @@ export function DriverInfoDialog({
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to update driver information');
+        // Try to parse error response as JSON, but handle HTML error pages
+        let errorMessage = 'Failed to update driver information';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch {
+          // If response is not JSON (likely HTML error page), use status text
+          errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
+      }
+
+      // Check if response is JSON before parsing
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        throw new Error('Server returned non-JSON response');
       }
 
       const result = await response.json();
@@ -507,16 +541,13 @@ export function DriverInfoDialog({
               )}
             </div>
 
-            {/* Driver Information Form */}
-            <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Driver Information */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <User className="h-5 w-5" />
-                  <h3 className="text-lg font-semibold">Driver Information</h3>
-                  <span className="text-sm font-normal text-muted-foreground">Required</span>
-                </div>
+            <Separator />
 
+            {/* Primary Driver Information */}
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div className="space-y-4">
+                <h3 className="text-lg font-medium">Primary Driver Information</h3>
+                
                 {/* Primary Driver Profile Selection */}
                 <div className="space-y-2">
                   <Label htmlFor="primary-profile">Driver Profile</Label>
@@ -545,7 +576,7 @@ export function DriverInfoDialog({
                       id="driver-name"
                       value={driverName}
                       onChange={(e) => setDriverName(e.target.value)}
-                      placeholder="Enter driver's full name"
+                      placeholder="Enter driver name"
                       required
                     />
                   </div>
@@ -555,20 +586,14 @@ export function DriverInfoDialog({
                     <Input
                       id="driver-phone"
                       value={driverPhone}
-                      onChange={(e) => {
-                        const value = e.target.value.replace(/\D/g, '');
-                        if (value.length <= 10) {
-                          setDriverPhone(value);
-                        }
-                      }}
-                      placeholder="1234567890 or 123-456-7890"
-                      maxLength={12}
+                      onChange={(e) => setDriverPhone(e.target.value)}
+                      placeholder="(555) 123-4567"
                       required
                     />
                   </div>
                   
                   <div className="space-y-2">
-                    <Label htmlFor="driver-email">Email Address</Label>
+                    <Label htmlFor="driver-email">Email</Label>
                     <Input
                       id="driver-email"
                       value={driverEmail}
@@ -584,40 +609,93 @@ export function DriverInfoDialog({
                       id="driver-license"
                       value={driverLicenseNumber}
                       onChange={(e) => setDriverLicenseNumber(e.target.value)}
-                      placeholder="D123456789"
+                      placeholder="Enter license number"
                     />
                   </div>
                   
                   <div className="space-y-2">
                     <Label htmlFor="driver-license-state">License State</Label>
-                    <Input
-                      id="driver-license-state"
-                      value={driverLicenseState}
-                      onChange={(e) => setDriverLicenseState(e.target.value)}
-                      placeholder="CA"
-                      maxLength={2}
-                    />
+                    <Select value={driverLicenseState} onValueChange={setDriverLicenseState}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select state" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="AL">Alabama</SelectItem>
+                        <SelectItem value="AK">Alaska</SelectItem>
+                        <SelectItem value="AZ">Arizona</SelectItem>
+                        <SelectItem value="AR">Arkansas</SelectItem>
+                        <SelectItem value="CA">California</SelectItem>
+                        <SelectItem value="CO">Colorado</SelectItem>
+                        <SelectItem value="CT">Connecticut</SelectItem>
+                        <SelectItem value="DE">Delaware</SelectItem>
+                        <SelectItem value="FL">Florida</SelectItem>
+                        <SelectItem value="GA">Georgia</SelectItem>
+                        <SelectItem value="HI">Hawaii</SelectItem>
+                        <SelectItem value="ID">Idaho</SelectItem>
+                        <SelectItem value="IL">Illinois</SelectItem>
+                        <SelectItem value="IN">Indiana</SelectItem>
+                        <SelectItem value="IA">Iowa</SelectItem>
+                        <SelectItem value="KS">Kansas</SelectItem>
+                        <SelectItem value="KY">Kentucky</SelectItem>
+                        <SelectItem value="LA">Louisiana</SelectItem>
+                        <SelectItem value="ME">Maine</SelectItem>
+                        <SelectItem value="MD">Maryland</SelectItem>
+                        <SelectItem value="MA">Massachusetts</SelectItem>
+                        <SelectItem value="MI">Michigan</SelectItem>
+                        <SelectItem value="MN">Minnesota</SelectItem>
+                        <SelectItem value="MS">Mississippi</SelectItem>
+                        <SelectItem value="MO">Missouri</SelectItem>
+                        <SelectItem value="MT">Montana</SelectItem>
+                        <SelectItem value="NE">Nebraska</SelectItem>
+                        <SelectItem value="NV">Nevada</SelectItem>
+                        <SelectItem value="NH">New Hampshire</SelectItem>
+                        <SelectItem value="NJ">New Jersey</SelectItem>
+                        <SelectItem value="NM">New Mexico</SelectItem>
+                        <SelectItem value="NY">New York</SelectItem>
+                        <SelectItem value="NC">North Carolina</SelectItem>
+                        <SelectItem value="ND">North Dakota</SelectItem>
+                        <SelectItem value="OH">Ohio</SelectItem>
+                        <SelectItem value="OK">Oklahoma</SelectItem>
+                        <SelectItem value="OR">Oregon</SelectItem>
+                        <SelectItem value="PA">Pennsylvania</SelectItem>
+                        <SelectItem value="RI">Rhode Island</SelectItem>
+                        <SelectItem value="SC">South Carolina</SelectItem>
+                        <SelectItem value="SD">South Dakota</SelectItem>
+                        <SelectItem value="TN">Tennessee</SelectItem>
+                        <SelectItem value="TX">Texas</SelectItem>
+                        <SelectItem value="UT">Utah</SelectItem>
+                        <SelectItem value="VT">Vermont</SelectItem>
+                        <SelectItem value="VA">Virginia</SelectItem>
+                        <SelectItem value="WA">Washington</SelectItem>
+                        <SelectItem value="WV">West Virginia</SelectItem>
+                        <SelectItem value="WI">Wisconsin</SelectItem>
+                        <SelectItem value="WY">Wyoming</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
-                  
+                </div>
+              </div>
+
+              {/* Equipment Information */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-medium">Equipment Information</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="truck-number">Truck Number *</Label>
+                    <Label htmlFor="truck-number">Truck Number</Label>
                     <Input
                       id="truck-number"
                       value={truckNumber}
                       onChange={(e) => setTruckNumber(e.target.value)}
-                      placeholder="TRK-123 or 12345"
-                      required
+                      placeholder="Enter truck number"
                     />
                   </div>
-                  
                   <div className="space-y-2">
-                    <Label htmlFor="trailer-number">Trailer Number (Optional)</Label>
+                    <Label htmlFor="trailer-number">Trailer Number</Label>
                     <Input
                       id="trailer-number"
                       value={trailerNumber}
                       onChange={(e) => setTrailerNumber(e.target.value)}
-                      placeholder="TRL-456 or 67890"
-                      required
+                      placeholder="Enter trailer number"
                     />
                   </div>
                 </div>

@@ -1,16 +1,17 @@
 "use client";
 
 import { useAdminView } from '@/components/providers/AdminViewProvider';
-import { useClerkRole } from '@/lib/clerk-roles';
+import { useUnifiedRole } from '@/hooks/useUnifiedRole';
 
 export type EffectiveUserRole = "admin" | "carrier" | "none";
 
 /**
  * Hook that provides the effective user role based on current view mode
  * For admins in carrier view mode, returns 'carrier' to simulate carrier experience
+ * (Supabase-only)
  */
 export function useEffectiveRole() {
-  const { role, isAdmin, isCarrier } = useClerkRole();
+  const { role, isAdmin, isCarrier } = useUnifiedRole();
   const { isCarrierView, effectiveRole } = useAdminView();
 
   // If user is admin and in carrier view mode, return carrier

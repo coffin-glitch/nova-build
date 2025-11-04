@@ -27,7 +27,7 @@ export interface TelegramBid {
 export interface CarrierBid {
   id: number;
   bid_number: string;
-  clerk_user_id: string;
+  supabase_user_id: string; // Supabase-only: replaced clerk_user_id
   amount_cents: number;
   notes: string | null;
   created_at: string;
@@ -49,7 +49,7 @@ export interface BidSummary {
 export interface AuctionAward {
   id: number;
   bid_number: string;
-  winner_user_id: string;
+  winner_user_id: string; // Still uses winner_user_id for compatibility, but populated with supabase_user_id
   winner_amount_cents: number;
   awarded_by: string;
   awarded_at: string;
@@ -59,7 +59,7 @@ export interface AuctionAward {
 }
 
 export interface CarrierProfile {
-  clerk_user_id: string;
+  supabase_user_id: string; // Supabase-only: replaced clerk_user_id
   legal_name: string;
   mc_number: string;
   dot_number: string | null;
@@ -242,14 +242,14 @@ export async function getBidSummary(bid_number: string, userId?: string): Promis
     const bid = telegramBid[0];
     const countdown = formatCountdown(bid.expires_at_25);
 
-    // Get all carrier bids with carrier info
+    // Get all carrier bids with carrier info (Supabase-only)
     const carrierBids = await sql`
       SELECT 
         cb.*,
         cp.legal_name as carrier_legal_name,
         cp.mc_number as carrier_mc_number
       FROM public.carrier_bids cb
-      LEFT JOIN public.carrier_profiles cp ON cb.clerk_user_id = cp.clerk_user_id
+      LEFT JOIN public.carrier_profiles cp ON cb.supabase_user_id = cp.supabase_user_id
       WHERE cb.bid_number = ${bid_number}
       ORDER BY cb.amount_cents ASC
     `;
@@ -257,8 +257,8 @@ export async function getBidSummary(bid_number: string, userId?: string): Promis
     // Get lowest bid info
     const lowestBid = carrierBids.length > 0 ? carrierBids[0] : null;
 
-    // Get user's bid if userId provided
-    const userBid = userId ? carrierBids.find(bid => bid.clerk_user_id === userId) || null : null;
+    // Get user's bid if userId provided (Supabase-only)
+    const userBid = userId ? carrierBids.find(bid => bid.supabase_user_id === userId) || null : null;
 
     return {
       telegram_bid: {
@@ -267,7 +267,7 @@ export async function getBidSummary(bid_number: string, userId?: string): Promis
       },
       carrier_bids: carrierBids,
       lowest_amount_cents: lowestBid?.amount_cents || null,
-      lowest_user_id: lowestBid?.clerk_user_id || null,
+      lowest_user_id: lowestBid?.supabase_user_id || null,
       bids_count: carrierBids.length,
       user_bid: userBid,
     };
@@ -316,11 +316,12 @@ export async function upsertCarrierBid({
       throw new Error(`Profile incomplete. Please complete the following required fields: ${missingFieldsText}. Go to your profile page to update your information.`);
     }
 
-    // Upsert the bid
+    // Upsert the bid (Supabase-only)
+    // Use the unique constraint name explicitly for ON CONFLICT
     const result = await sql`
-      INSERT INTO public.carrier_bids (bid_number, clerk_user_id, amount_cents, notes)
+      INSERT INTO public.carrier_bids (bid_number, supabase_user_id, amount_cents, notes)
       VALUES (${bid_number}, ${userId}, ${amount_cents}, ${notes || null})
-      ON CONFLICT (bid_number, clerk_user_id)
+      ON CONFLICT (bid_number, supabase_user_id)
       DO UPDATE SET 
         amount_cents = EXCLUDED.amount_cents,
         notes = EXCLUDED.notes,
@@ -345,11 +346,11 @@ export async function upsertCarrierBid({
 
 async function createAdminBidNotifications(bid_number: string, carrier_user_id: string, amount_cents: number) {
   try {
-    // Get all admin users from user_roles table
+    // Get all admin users from user_roles_cache table (Supabase-only)
     const admins = await sql`
-      SELECT clerk_user_id 
-      FROM user_roles 
-      WHERE role = 'admin'
+      SELECT supabase_user_id 
+      FROM user_roles_cache 
+      WHERE role = 'admin' AND supabase_user_id IS NOT NULL
     `;
 
     if (admins.length === 0) {
@@ -357,11 +358,11 @@ async function createAdminBidNotifications(bid_number: string, carrier_user_id: 
       return;
     }
 
-    // Get carrier profile info for the notification
+    // Get carrier profile info for the notification (Supabase-only)
     const carrierProfile = await sql`
       SELECT legal_name, mc_number, company_name
       FROM carrier_profiles
-      WHERE clerk_user_id = ${carrier_user_id}
+      WHERE supabase_user_id = ${carrier_user_id}
       LIMIT 1
     `;
 
@@ -369,9 +370,9 @@ async function createAdminBidNotifications(bid_number: string, carrier_user_id: 
     const mcNumber = carrierProfile[0]?.mc_number || 'N/A';
     const amountDollars = (amount_cents / 100).toFixed(2);
 
-    // Create notifications for all admins
+    // Create notifications for all admins (Supabase-only)
     const notifications = admins.map(admin => ({
-      user_id: admin.clerk_user_id,
+      user_id: admin.supabase_user_id,
       type: 'bid_received',
       title: '📨 New Bid Received',
       message: `${carrierName} (MC: ${mcNumber}) placed a bid of $${amountDollars} on Bid #${bid_number}`,
@@ -414,11 +415,11 @@ export async function awardAuction({
   admin_notes?: string;
 }): Promise<AuctionAward> {
   try {
-    // Verify the winner has a bid for this auction
+    // Verify the winner has a bid for this auction (Supabase-only)
     const winnerBid = await sql`
       SELECT amount_cents
       FROM public.carrier_bids
-      WHERE bid_number = ${bid_number} AND clerk_user_id = ${winner_user_id}
+      WHERE bid_number = ${bid_number} AND supabase_user_id = ${winner_user_id}
     `;
 
     if (winnerBid.length === 0) {
@@ -435,32 +436,32 @@ export async function awardAuction({
     }
 
     // Create the award with admin notes if provided
-    // Note: admin_notes column must exist (migration 048_add_admin_notes_to_auction_awards.sql)
+    // Note: Uses supabase_winner_user_id and supabase_awarded_by (migration 078 removed winner_user_id and awarded_by)
     const award = await sql`
-      INSERT INTO public.auction_awards (bid_number, winner_user_id, winner_amount_cents, awarded_by, admin_notes)
+      INSERT INTO public.auction_awards (bid_number, supabase_winner_user_id, winner_amount_cents, supabase_awarded_by, admin_notes)
       VALUES (${bid_number}, ${winner_user_id}, ${winnerBid[0].amount_cents}, ${awarded_by}, ${admin_notes || null})
       RETURNING *
     `;
 
     // Create notification for winner
+    const winnerMessage = `Congratulations! You won Bid #${bid_number} for ${formatMoney(winnerBid[0].amount_cents)}. Check your My Loads for next steps.`;
     await sql`
       INSERT INTO public.notifications (user_id, type, title, message)
-      VALUES (${winner_user_id}, 'success', 'Auction Won!', 
-              'Congratulations! You won Bid #${bid_number} for ${formatMoney(winnerBid[0].amount_cents)}. Check your My Loads for next steps.')
+      VALUES (${winner_user_id}, 'success', 'Auction Won!', ${winnerMessage})
     `;
 
-    // Create notifications for other bidders
+    // Create notifications for other bidders (Supabase-only)
     const otherBidders = await sql`
-      SELECT DISTINCT clerk_user_id 
+      SELECT DISTINCT supabase_user_id 
       FROM public.carrier_bids 
-      WHERE bid_number = ${bid_number} AND clerk_user_id != ${winner_user_id}
+      WHERE bid_number = ${bid_number} AND supabase_user_id != ${winner_user_id}
     `;
 
     for (const bidder of otherBidders) {
+      const lostMessage = `Bid #${bid_number} was awarded to another carrier.`;
       await sql`
         INSERT INTO public.notifications (user_id, type, title, message)
-        VALUES (${bidder.clerk_user_id}, 'info', 'Auction Awarded', 
-                'Bid #${bid_number} was awarded to another carrier.')
+        VALUES (${bidder.supabase_user_id}, 'info', 'Auction Awarded', ${lostMessage})
       `;
     }
 
@@ -482,14 +483,18 @@ export async function awardAuction({
 
 export async function listAwardsForUser(userId: string): Promise<AuctionAward[]> {
   try {
+    // Supabase-only: Use supabase_winner_user_id if available, fallback to winner_user_id for compatibility
     const awards = await sql`
       SELECT 
         aa.*,
         cp.legal_name as winner_legal_name,
         cp.mc_number as winner_mc_number
       FROM public.auction_awards aa
-      LEFT JOIN public.carrier_profiles cp ON aa.winner_user_id = cp.clerk_user_id
-      WHERE aa.winner_user_id = ${userId}
+      LEFT JOIN public.carrier_profiles cp ON (
+        (aa.supabase_winner_user_id IS NOT NULL AND aa.supabase_winner_user_id = cp.supabase_user_id)
+        OR (aa.supabase_winner_user_id IS NULL AND aa.winner_user_id = cp.supabase_user_id)
+      )
+      WHERE aa.supabase_winner_user_id = ${userId} OR aa.winner_user_id = ${userId}
       ORDER BY aa.awarded_at DESC
     `;
 
@@ -502,20 +507,22 @@ export async function listAwardsForUser(userId: string): Promise<AuctionAward[]>
 
 export async function ensureCarrierProfile(userId: string): Promise<CarrierProfile> {
   try {
-    // Check if profile exists
+    // Check if profile exists (Supabase-only)
     const existing = await sql`
-      SELECT * FROM public.carrier_profiles WHERE clerk_user_id = ${userId}
+      SELECT * FROM public.carrier_profiles 
+      WHERE supabase_user_id = ${userId}
+      LIMIT 1
     `;
 
     if (existing.length > 0) {
       return existing[0];
     }
 
-    // Create a basic profile with a unique MC number
+    // Create a basic profile with a unique MC number (Supabase-only)
     const uniqueMcNumber = `TBD-${userId.slice(-8)}-${Date.now()}`;
     const profile = await sql`
-      INSERT INTO public.carrier_profiles (clerk_user_id, legal_name, mc_number)
-      VALUES (${userId}, 'Pending Setup', ${uniqueMcNumber})
+      INSERT INTO public.carrier_profiles (supabase_user_id, legal_name, mc_number, profile_status)
+      VALUES (${userId}, 'Pending Setup', ${uniqueMcNumber}, 'open')
       RETURNING *
     `;
 
@@ -528,10 +535,11 @@ export async function ensureCarrierProfile(userId: string): Promise<CarrierProfi
 
 export async function validateCarrierProfileComplete(userId: string): Promise<{ isComplete: boolean; missingFields: string[] }> {
   try {
+    // Supabase-only: Query by supabase_user_id only
     const profile = await sql`
-      SELECT company_name, mc_number, contact_name, phone
+      SELECT company_name, legal_name, mc_number, contact_name, phone
       FROM public.carrier_profiles 
-      WHERE clerk_user_id = ${userId}
+      WHERE supabase_user_id = ${userId}
     `;
 
     if (profile.length === 0) {
@@ -541,8 +549,9 @@ export async function validateCarrierProfileComplete(userId: string): Promise<{ 
     const p = profile[0];
     const missingFields: string[] = [];
 
-    // Check required fields
-    if (!p.company_name || p.company_name === 'Pending Setup') {
+    // Check required fields (use legal_name or company_name)
+    const companyName = p.legal_name || p.company_name;
+    if (!companyName || companyName === 'Pending Setup') {
       missingFields.push('company_name');
     }
     if (!p.mc_number || p.mc_number.startsWith('TBD-')) {
@@ -567,8 +576,11 @@ export async function validateCarrierProfileComplete(userId: string): Promise<{ 
 
 export async function getCarrierProfile(userId: string): Promise<CarrierProfile | null> {
   try {
+    // Supabase-only: Query by supabase_user_id only
     const profiles = await sql`
-      SELECT * FROM public.carrier_profiles WHERE clerk_user_id = ${userId}
+      SELECT * FROM public.carrier_profiles 
+      WHERE supabase_user_id = ${userId}
+      LIMIT 1
     `;
 
     return profiles.length > 0 ? profiles[0] : null;
@@ -608,7 +620,7 @@ export async function updateCarrierProfile({
     const result = await sql`
       UPDATE public.carrier_profiles 
       SET ${sql(setClause, ...Object.values(updates))}
-      WHERE clerk_user_id = ${userId}
+      WHERE supabase_user_id = ${userId}
       RETURNING *
     `;
 

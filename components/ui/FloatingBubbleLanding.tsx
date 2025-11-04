@@ -3,13 +3,13 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { useUser } from "@clerk/nextjs";
+import { useUnifiedUser } from "@/hooks/useUnifiedUser";
 import { ArrowRight, Shield, Sparkles, Truck, Zap } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
 export default function FloatingBubbleLanding() {
-  const { user, isLoaded } = useUser();
+  const { user, isLoaded } = useUnifiedUser();
   const [isVisible, setIsVisible] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
 
@@ -58,7 +58,7 @@ export default function FloatingBubbleLanding() {
                 <Truck className="w-8 h-8 text-white" />
               </div>
               <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                NOVA Build
+                NOVA
               </h1>
               <p className="text-muted-foreground mt-2">
                 Premium Freight Marketplace
@@ -91,7 +91,7 @@ export default function FloatingBubbleLanding() {
               </Button>
               
               <p className="text-xs text-muted-foreground">
-                Join thousands of carriers already using NOVA Build
+                Join thousands of carriers already using NOVA
               </p>
             </div>
           </CardContent>

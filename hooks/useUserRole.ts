@@ -1,6 +1,7 @@
 "use client";
 
-import { useUser } from "@clerk/nextjs";
+import { useUnifiedRole } from "@/hooks/useUnifiedRole";
+import { useUnifiedUser } from "@/hooks/useUnifiedUser";
 import { useMemo } from "react";
 
 export type UserRole = "admin" | "carrier" | "none";
@@ -14,16 +15,18 @@ interface RoleState {
 }
 
 /**
- * Secure and efficient user role hook that prevents infinite loops
- * Uses Clerk's built-in metadata and server-side validation
+ * Secure and efficient user role hook (Supabase-only)
+ * Uses Supabase user metadata and server-side validation
+ * DEPRECATED: Use useUnifiedRole() instead - this is kept for backward compatibility
  */
 export function useUserRole(): RoleState {
-  const { user, isLoaded } = useUser();
+  const { user, isLoaded } = useUnifiedUser();
+  const { role, isAdmin, isCarrier, isLoading } = useUnifiedRole();
 
   // Memoize the role state to prevent unnecessary re-renders
   const roleState = useMemo((): RoleState => {
-    // Still loading Clerk
-    if (!isLoaded) {
+    // Still loading
+    if (!isLoaded || isLoading) {
       return {
         role: "none",
         isAdmin: false,
@@ -44,27 +47,14 @@ export function useUserRole(): RoleState {
       };
     }
 
-    // Get role from Clerk metadata (most secure and efficient)
-    const metadataRole = (user.publicMetadata as any)?.role?.toLowerCase();
-    
-    // Validate role and provide secure defaults
-    let role: UserRole = "carrier"; // Default to least privileged role
-    
-    if (metadataRole === "admin") {
-      role = "admin";
-    } else if (metadataRole === "carrier") {
-      role = "carrier";
-    }
-    // Any other value defaults to "carrier" for security
-
     return {
-      role,
-      isAdmin: role === "admin",
-      isCarrier: role === "carrier",
+      role: role || "carrier",
+      isAdmin,
+      isCarrier,
       isLoading: false,
       error: null,
     };
-  }, [user?.id, user?.publicMetadata, isLoaded]);
+  }, [user, isLoaded, role, isAdmin, isCarrier, isLoading]);
 
   return roleState;
 }
@@ -90,9 +80,10 @@ export function useRole(): UserRole {
 /**
  * Hook for server-side role validation
  * This should be used for sensitive operations
+ * DEPRECATED: Use useUnifiedRole() instead
  */
 export function useServerRoleValidation() {
-  const { user } = useUser();
+  const { user } = useUnifiedUser();
   
   const validateRole = async (requiredRole: UserRole): Promise<boolean> => {
     if (!user) return false;

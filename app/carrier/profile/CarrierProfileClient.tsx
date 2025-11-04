@@ -5,33 +5,106 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useAccentColor } from "@/hooks/useAccentColor";
-import { useUser } from "@clerk/nextjs";
 import {
-    AlertCircle,
-    Building2,
-    CheckCircle,
-    Clock,
-    Edit3,
-    History,
-    Lock,
-    MessageSquare,
-    Phone,
-    Save,
-    Truck,
-    User,
-    XCircle
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { useAccentColor } from "@/hooks/useAccentColor";
+import { useUnifiedUser } from "@/hooks/useUnifiedUser";
+import {
+  AlertCircle,
+  Building2,
+  CheckCircle,
+  Clock,
+  Edit3,
+  History,
+  Lock,
+  MessageSquare,
+  Phone,
+  Save,
+  Truck,
+  User,
+  XCircle
 } from "lucide-react";
-import { useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
 
-const fetcher = (url: string) => fetch(url).then(r => r.json());
+const fetcher = async (url: string) => {
+  // Create abort controller for timeout (compatible with all browsers)
+  const controller = new AbortController();
+  let timeoutId: NodeJS.Timeout | null = null;
+  
+  try {
+    // Set timeout to abort request after 15 seconds
+    timeoutId = setTimeout(() => {
+      controller.abort();
+    }, 15000); // 15 second timeout
+    
+    const response = await fetch(url, {
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      signal: controller.signal,
+    });
+    
+    // Clear timeout if request succeeded
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      timeoutId = null;
+    }
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorData;
+      try {
+        errorData = JSON.parse(errorText);
+      } catch {
+        throw new Error(`HTTP ${response.status}: ${errorText || response.statusText}`);
+      }
+      throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      throw new Error('Server returned non-JSON response');
+    }
+    
+    return response.json();
+  } catch (error) {
+    // Clear timeout in error case too
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      timeoutId = null;
+    }
+    
+    // Handle abort errors (timeouts or manual aborts)
+    if (error instanceof Error && (error.name === 'AbortError' || error.message.includes('aborted'))) {
+      // Check if it's a timeout (no response yet) vs network error
+      console.warn(`[CarrierProfileClient] Request aborted for ${url} - this may be a timeout or network issue`);
+      throw new Error('Request timed out or was cancelled. The server may be slow or unreachable. Please try refreshing the page.');
+    }
+    
+    // Handle network errors
+    if (error instanceof Error && (error.message.includes('Failed to fetch') || error.message.includes('NetworkError'))) {
+      console.error(`[CarrierProfileClient] Network error for ${url}:`, error);
+      throw new Error('Network error: Unable to connect to the server. Please check your internet connection and try again.');
+    }
+    
+    console.error(`[CarrierProfileClient] Error fetching ${url}:`, error);
+    throw error instanceof Error ? error : new Error('Failed to fetch profile');
+  }
+};
 
 interface CarrierProfile {
   id: string;
-  clerk_user_id: string;
+  supabase_user_id: string;
   legal_name: string;
   company_name: string;
   mc_number: string;
@@ -42,7 +115,7 @@ interface CarrierProfile {
   locked_at?: string;
   locked_by?: string;
   lock_reason?: string;
-  profile_status: 'pending' | 'approved' | 'declined';
+  profile_status: 'pending' | 'approved' | 'declined' | 'open';
   submitted_at?: string;
   reviewed_at?: string;
   reviewed_by?: string;
@@ -71,8 +144,10 @@ interface ProfileHistory {
   created_at: string;
 }
 
-export function CarrierProfileClient() {
-  const { user } = useUser();
+// Inner component that uses useSearchParams - must be wrapped in Suspense
+function CarrierProfileClientInner() {
+  const { user, isLoaded } = useUnifiedUser();
+  const router = useRouter();
   const { accentColor } = useAccentColor();
   const [isEditing, setIsEditing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -82,15 +157,34 @@ export function CarrierProfileClient() {
   const [isSendingAppeal, setIsSendingAppeal] = useState(false);
   const [conversationMessages, setConversationMessages] = useState<any[]>([]);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const searchParams = useSearchParams();
   const setupMode = searchParams.get('setup') === 'true';
   const status = searchParams.get('status');
+  
+  // Client-side auth check - redirect to sign-in if not authenticated
+  useEffect(() => {
+    if (isLoaded && !user) {
+      router.push('/sign-in');
+    }
+  }, [isLoaded, user, router]);
 
   const { data, mutate, isLoading: profileLoading, error: profileError } = useSWR(
     `/api/carrier/profile`,
     fetcher,
     {
-      fallbackData: { ok: true, data: null }
+      fallbackData: { ok: true, data: null },
+      // Don't retry on errors - show error state immediately
+      shouldRetryOnError: false,
+      // Refresh interval - disabled for now to prevent excessive requests
+      refreshInterval: 0,
+      // Revalidate on focus - disabled to prevent unnecessary requests
+      revalidateOnFocus: false,
+      // Error retry configuration
+      errorRetryCount: 0,
+      errorRetryInterval: 0,
+      // Dedupe requests - if multiple components request the same data, only one request is made
+      dedupingInterval: 2000,
     }
   );
 
@@ -104,6 +198,10 @@ export function CarrierProfileClient() {
 
   const profile = data?.data;
   const profileHistory: ProfileHistory[] = historyData?.data || [];
+  
+  // If we have an error and no profile, stop showing loading state
+  // This prevents the stuck "Loading Profile..." message
+  const isActuallyLoading = profileLoading && !profile && !profileError;
 
   const [formData, setFormData] = useState<Partial<CarrierProfile>>({
     legal_name: "",
@@ -113,16 +211,51 @@ export function CarrierProfileClient() {
     phone: ""
   });
 
+  // Track last initialized profile/user to prevent infinite loops
+  const lastInitializedProfileId = useRef<string | null>(null);
+  const lastInitializedUserId = useRef<string | null>(null);
+  
+  // Initialize form data from profile or user - only update when profile/user actually changes
   useEffect(() => {
-    if (profile) {
-      setFormData(profile);
-    } else if (user) {
-      setFormData(prev => ({
-        ...prev,
-        contact_name: user.fullName || ""
-      }));
+    // If we have a profile and haven't initialized it yet, or it's a different profile
+    if (profile?.id && profile.id !== lastInitializedProfileId.current) {
+      setFormData({
+        legal_name: profile.legal_name || "",
+        mc_number: profile.mc_number || "",
+        dot_number: profile.dot_number || "",
+        contact_name: profile.contact_name || "",
+        phone: profile.phone || ""
+      });
+      lastInitializedProfileId.current = profile.id;
+    } 
+    // If no profile but we have a user, and we haven't initialized for this user yet
+    else if (!profile?.id && user?.id && user.id !== lastInitializedUserId.current) {
+      const contactName = user?.firstName && user?.lastName 
+        ? `${user.firstName} ${user.lastName}` 
+        : user?.email || "";
+      
+      if (contactName && !formData.contact_name) {
+        setFormData(prev => ({
+          ...prev,
+          contact_name: contactName
+        }));
+      }
+      lastInitializedUserId.current = user.id;
     }
-  }, [profile, user]);
+  }, [profile?.id, user?.id]); // Only depend on IDs to prevent infinite loops
+
+  // Auto-enable editing mode when in setup mode and profile doesn't exist or can be edited
+  useEffect(() => {
+    const canEditProfile = !profile || 
+      profile.profile_status === 'open' ||
+      (profile.profile_status !== 'pending' && 
+       ((profile.profile_status === 'declined' && profile.edits_enabled) ||
+        (profile.profile_status === 'approved' && profile.edits_enabled)));
+    
+    if (setupMode && !profileLoading && !isEditing && canEditProfile) {
+      setIsEditing(true);
+    }
+  }, [setupMode, profileLoading, profile, isEditing]);
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({
@@ -131,31 +264,87 @@ export function CarrierProfileClient() {
     }));
   };
 
-  const handleSave = async () => {
+  const handleSave = () => {
+    // Show confirmation dialog before submitting
+    setShowConfirmDialog(true);
+  };
+
+  const handleConfirmSave = async () => {
+    setShowConfirmDialog(false);
     setIsLoading(true);
+    let timeoutId: NodeJS.Timeout | null = null;
+    
     try {
+      // Add timeout controller to prevent hanging
+      const controller = new AbortController();
+      timeoutId = setTimeout(() => {
+        controller.abort();
+      }, 30000); // 30 second timeout
+      
       const response = await fetch('/api/carrier/profile', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
+        signal: controller.signal,
         body: JSON.stringify({
           ...formData,
           submit_for_approval: true // Flag to indicate this is a submission
         }),
       });
+      
+      // Clear timeout on success
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
 
       if (response.ok) {
-        toast.success("Profile submitted for approval!");
+        const result = await response.json();
+        toast.success(result.message || "Profile submitted for approval!");
         setIsEditing(false);
-        mutate();
+        mutate(); // Refresh profile data
+        // Redirect to show pending status
+        router.push('/carrier/profile?status=pending');
       } else {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to submit profile');
+        // Try to parse error response, but handle non-JSON responses gracefully
+        let errorMessage = 'Failed to submit profile';
+        try {
+          const contentType = response.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            const errorData = await response.json();
+            errorMessage = errorData.error || errorData.message || errorMessage;
+          } else {
+            const text = await response.text();
+            errorMessage = text || `HTTP ${response.status}: ${response.statusText}`;
+          }
+        } catch (parseError) {
+          errorMessage = `HTTP ${response.status}: ${response.statusText || 'Unknown error'}`;
+        }
+        throw new Error(errorMessage);
       }
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to submit profile");
-      console.error(error);
+      // Clear timeout in error case
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+      
+      let errorMessage = "Failed to submit profile";
+      
+      if (error instanceof Error) {
+        if (error.name === 'AbortError' || error.message.includes('aborted')) {
+          errorMessage = 'Request timed out. The server may be slow or unreachable. Please try again.';
+        } else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+          errorMessage = 'Network error: Unable to connect to the server. Please check your internet connection.';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
+      toast.error(errorMessage);
+      console.error('[CarrierProfileClient] Error saving profile:', error);
     } finally {
       setIsLoading(false);
     }
@@ -247,9 +436,29 @@ export function CarrierProfileClient() {
   // Status-specific rendering
   const renderStatusCard = () => {
     
-    // Show loading state ONLY if we have no profile data at all (initial load)
-    // Don't show it during re-fetches to prevent flickering
-    if (profileLoading && !profile) {
+    // Show error state if there's an error and no profile
+    // Show error even if still loading - the request has failed
+    if (profileError && !profile) {
+      return (
+        <Card className="border-l-4 border-l-red-500">
+          <CardContent className="p-6">
+            <div className="flex items-center gap-3">
+              <AlertCircle className="h-6 w-6 text-red-500" />
+              <div>
+                <h3 className="font-semibold text-red-700">Error Loading Profile</h3>
+                <p className="text-sm text-muted-foreground">
+                  {profileError instanceof Error ? profileError.message : 'Failed to load profile. Please try refreshing the page.'}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      );
+    }
+    
+    // Show loading state ONLY if we have no profile data at all AND no error (initial load)
+    // Don't show it during re-fetches or if there's an error to prevent stuck loading states
+    if (isActuallyLoading) {
       return (
         <Card className="border-l-4 border-l-gray-500">
           <CardContent className="p-6">
@@ -267,17 +476,22 @@ export function CarrierProfileClient() {
       );
     }
 
-    // Only show setup banner if profile is not approved AND we have profile data
+    // Show setup banner if:
+    // 1. setupMode is true AND profile is null (new user needs to create profile)
+    // 2. setupMode is true AND profile exists but is not approved/pending (profile needs updates)
+    // 3. Profile status is 'open' (needs setup or edits enabled by admin)
     // Don't show it if profile is approved, even if setupMode is in URL
     // Don't show it while loading to prevent flickering
-    if (setupMode && profile && profile?.profile_status !== 'approved' && profile?.profile_status !== 'pending') {
+    if ((setupMode && !profileLoading && 
+        (!profile || (profile && profile?.profile_status !== 'approved' && profile?.profile_status !== 'pending'))) ||
+        profile?.profile_status === 'open') {
       return (
         <Card className="border-l-4 border-l-red-500 dark:border-l-red-400">
           <CardContent className="p-6">
             <div className="flex items-center gap-3">
               <AlertCircle className="h-6 w-6 text-red-500 dark:text-red-400" />
               <div>
-                <h3 className="font-semibold text-red-700 dark:text-red-400">Access Restricted - Profile Setup Required</h3>
+                <h3 className="font-semibold text-red-700 dark:text-red-400">Access Restricted</h3>
                 <p className="text-sm text-muted-foreground">
                   <strong>Access to website features are restricted until you setup your profile and it has been reviewed by an admin.</strong>
                 </p>
@@ -291,16 +505,16 @@ export function CarrierProfileClient() {
       );
     }
 
-    if (status === 'pending') {
+    if (status === 'pending' || profile?.profile_status === 'pending') {
       return (
         <Card className="border-l-4 border-l-yellow-500 dark:border-l-yellow-400">
           <CardContent className="p-6">
             <div className="flex items-center gap-3">
               <Clock className="h-6 w-6 text-yellow-500 dark:text-yellow-400" />
               <div>
-                <h3 className="font-semibold text-yellow-700 dark:text-yellow-400">Profile Under Review</h3>
+                <h3 className="font-semibold text-yellow-700 dark:text-yellow-400">Pending Admin Review</h3>
                 <p className="text-sm text-muted-foreground">
-                  Your profile has been submitted and is currently under review by our admin team.
+                  Your profile has been submitted and is currently under review by our admin team. Once submitted, modifications are not allowed until admin reviews.
                 </p>
                 {profile?.submitted_at && (
                   <p className="text-xs text-muted-foreground mt-1">
@@ -518,6 +732,7 @@ export function CarrierProfileClient() {
   const canEdit = () => {
     if (!profile) return true; // New profile
     if (profile.profile_status === 'pending') return false;
+    if (profile.profile_status === 'open') return true; // Open status means setup required or edits enabled, so allow editing
     if (profile.profile_status === 'declined') return profile.edits_enabled;
     if (profile.profile_status === 'approved') return profile.edits_enabled;
     return false;
@@ -626,10 +841,27 @@ export function CarrierProfileClient() {
     );
   };
 
+  // Always render something - even if all checks fail
+  const statusCard = renderStatusCard();
+  
   return (
     <div className="space-y-6">
-      {/* Status Card */}
-      {renderStatusCard()}
+      {/* Status Card - always render something */}
+      {statusCard || (
+        <Card className="border-l-4 border-l-gray-500">
+          <CardContent className="p-6">
+            <div className="flex items-center gap-3">
+              <User className="h-6 w-6 text-gray-500" />
+              <div>
+                <h3 className="font-semibold text-gray-700">Carrier Profile</h3>
+                <p className="text-sm text-muted-foreground">
+                  {setupMode ? 'Please complete your profile below to get started.' : 'Manage your carrier profile.'}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
       
       {/* Appeal Chat */}
       {renderAppealChat()}
@@ -809,6 +1041,39 @@ export function CarrierProfileClient() {
             </div>
           )}
 
+          {/* Confirmation Dialog */}
+          <Dialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Confirm Profile Submission</DialogTitle>
+                <DialogDescription>
+                  Once submitted, modifications are not allowed until admin reviews your profile.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="py-4">
+                <p className="text-sm text-muted-foreground">
+                  Are you sure you want to submit your profile for review? You will not be able to make changes until an admin reviews and approves your profile.
+                </p>
+              </div>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setShowConfirmDialog(false)}
+                  disabled={isLoading}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleConfirmSave}
+                  disabled={isLoading}
+                  style={{ backgroundColor: accentColor }}
+                >
+                  {isLoading ? "Submitting..." : "Submit for Review"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
           {/* Profile Completion Warning */}
           {isEditing && !isProfileComplete() && (
             <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-md">
@@ -826,5 +1091,28 @@ export function CarrierProfileClient() {
       {/* Profile History */}
       {renderProfileHistory()}
     </div>
+  );
+}
+
+// Wrapper component with Suspense for useSearchParams
+export function CarrierProfileClient() {
+  return (
+    <Suspense fallback={
+      <Card className="border-l-4 border-l-gray-500">
+        <CardContent className="p-6">
+          <div className="flex items-center gap-3">
+            <Clock className="h-6 w-6 text-gray-500" />
+            <div>
+              <h3 className="font-semibold text-gray-700">Loading Profile...</h3>
+              <p className="text-sm text-muted-foreground">
+                Please wait while we load your profile information.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    }>
+      <CarrierProfileClientInner />
+    </Suspense>
   );
 }

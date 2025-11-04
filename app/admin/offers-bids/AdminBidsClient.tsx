@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAccentColor } from "@/hooks/useAccentColor";
-import { useUser } from "@clerk/nextjs";
+import { useUnifiedUser } from "@/hooks/useUnifiedUser";
 import {
     BarChart3,
     CheckCircle2,
@@ -47,6 +47,9 @@ interface AwardedBid {
   lifecycle_notes?: string;
   driver_name?: string;
   driver_phone?: string;
+  driver_email?: string;
+  driver_license_number?: string;
+  driver_license_state?: string;
   truck_number?: string;
   trailer_number?: string;
   driver_info_submitted_at?: string;
@@ -64,7 +67,7 @@ interface BidStats {
 }
 
 export default function AdminBidsClient() {
-  const { user } = useUser();
+  const { user } = useUnifiedUser();
   const [bids, setBids] = useState<AwardedBid[]>([]);
   const [stats, setStats] = useState<BidStats>({ total: 0, active: 0, completed: 0, revenue: 0 });
   const [loading, setLoading] = useState(true);
@@ -87,7 +90,9 @@ export default function AdminBidsClient() {
       setLoading(true);
       const response = await fetch('/api/admin/awarded-bids');
       if (!response.ok) {
-        throw new Error('Failed to fetch bids');
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('Failed to fetch bids:', errorData);
+        throw new Error(errorData.error || errorData.details || 'Failed to fetch bids');
       }
       const data = await response.json();
       // Handle new API format with pagination

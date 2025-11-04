@@ -1,7 +1,7 @@
-import { NextResponse } from "next/server";
+import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { requireAdmin } from "@/lib/auth";
-import sql from "@/lib/db.server";
+import sql from "@/lib/db";
 import * as XLSX from "xlsx";
 
 const RowSchema = z.object({
@@ -60,11 +60,11 @@ function cityStateSplit(s: any) {
   return { city: m[1].trim(), state: m[2] };
 }
 
-export async function POST(req: Request) {
-  await requireAdmin();
+export async function POST(request: NextRequest) {
+  await requireApiAdmin(request);
 
-  const form = await req.formData();
-  const file = form.get("file") as File | null;
+  const formData = await request.formData();
+  const file = formData.get("file") as File | null;
   if (!file) return NextResponse.json({ ok: false, error: "Missing file" }, { status: 400 });
 
   const buf = Buffer.from(await file.arrayBuffer());

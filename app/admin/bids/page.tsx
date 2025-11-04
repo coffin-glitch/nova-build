@@ -1,5 +1,5 @@
 import PageHeader from "@/components/layout/PageHeader";
-import { requireAdmin } from "@/lib/clerk-server";
+import { requireAdmin } from "@/lib/auth";
 import { AdminBiddingConsole } from "./AdminBiddingConsole";
 
 export const dynamic = "force-dynamic";

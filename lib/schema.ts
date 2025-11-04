@@ -8,13 +8,12 @@ export const userRoles = pgTable('user_roles', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
-// User roles cache table
+// User roles cache table (Supabase-only)
 export const userRolesCache = pgTable('user_roles_cache', {
-  clerkUserId: varchar('clerk_user_id', { length: 255 }).primaryKey(),
+  supabaseUserId: varchar('supabase_user_id', { length: 255 }).primaryKey(),
   role: varchar('role', { length: 50 }).notNull(),
   email: varchar('email', { length: 255 }).notNull(),
   lastSynced: timestamp('last_synced', { withTimezone: true }).notNull().defaultNow(),
-  clerkUpdatedAt: integer('clerk_updated_at').notNull().default(0),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

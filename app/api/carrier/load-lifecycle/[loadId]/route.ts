@@ -1,5 +1,5 @@
 import sql from "@/lib/db";
-import { auth } from "@clerk/nextjs/server";
+import { requireApiCarrier } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(
@@ -7,11 +7,8 @@ export async function GET(
   { params }: { params: Promise<{ loadId: string }> }
 ) {
   try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireApiCarrier(request);
+    const userId = auth.userId;
 
     const { loadId } = await params;
 
@@ -27,7 +24,7 @@ export async function GET(
         FROM loads l
         INNER JOIN load_offers lo ON l.rr_number = lo.load_rr_number
         WHERE l.id = ${parseInt(loadId)}
-          AND lo.carrier_user_id = ${userId}
+          AND lo.supabase_user_id = ${userId}
           AND lo.status IN ('accepted', 'assigned', 'checked_in', 'picked_up', 'departed', 'in_transit', 'delivered', 'completed')
         LIMIT 1
       `;
@@ -71,7 +68,7 @@ export async function GET(
         lo.status as current_status
       FROM load_lifecycle_events lle
       INNER JOIN load_offers lo ON lle.load_offer_id = lo.id
-      WHERE lo.carrier_user_id = ${userId}
+      WHERE lo.supabase_user_id = ${userId}
         AND lo.id = ${loadOfferId}
       ORDER BY lle.timestamp ASC
     `;
@@ -129,11 +126,8 @@ export async function POST(
   { params }: { params: Promise<{ loadId: string }> }
 ) {
   try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireApiCarrier(request);
+    const userId = auth.userId;
 
     const { loadId } = await params;
     const { 
@@ -174,7 +168,7 @@ export async function POST(
         FROM loads l
         INNER JOIN load_offers lo ON l.rr_number = lo.load_rr_number
         WHERE l.id = ${parseInt(loadId)}
-          AND lo.carrier_user_id = ${userId}
+          AND lo.supabase_user_id = ${userId}
           AND lo.status IN ('accepted', 'assigned', 'checked_in', 'picked_up', 'departed', 'in_transit', 'delivered', 'completed')
         LIMIT 1
       `;
@@ -201,7 +195,7 @@ export async function POST(
     // Get current load offer status
     const loadOffer = await sql`
       SELECT id, status FROM load_offers 
-      WHERE id = ${loadOfferId} AND carrier_user_id = ${userId}
+      WHERE id = ${loadOfferId} AND supabase_user_id = ${userId}
     `;
 
     if (loadOffer.length === 0) {
@@ -308,7 +302,7 @@ export async function POST(
         SET 
           status = ${newStatus},
           updated_at = CURRENT_TIMESTAMP
-        WHERE id = ${loadOfferId} AND carrier_user_id = ${userId}
+        WHERE id = ${loadOfferId} AND supabase_user_id = ${userId}
         RETURNING id, status
       `;
       

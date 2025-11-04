@@ -1,23 +1,11 @@
 import sql from "@/lib/db";
-import { auth } from "@clerk/nextjs/server";
+import { requireApiCarrier } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Check if user is carrier
-    const userRole = await sql`
-      SELECT role FROM user_roles WHERE user_id = ${userId}
-    `;
-    
-    if (userRole.length === 0 || userRole[0].role !== 'carrier') {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const auth = await requireApiCarrier(request);
+    const userId = auth.userId;
 
     const body = await request.json();
     const { admin_user_id, message } = body;
@@ -26,9 +14,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    // Verify the admin user exists
+    // Verify the admin user exists (Supabase-only)
     const adminExists = await sql`
-      SELECT user_id FROM user_roles WHERE user_id = ${admin_user_id} AND role = 'admin'
+      SELECT supabase_user_id FROM user_roles_cache 
+      WHERE supabase_user_id = ${admin_user_id} AND role = 'admin'
+      LIMIT 1
     `;
     
     if (adminExists.length === 0) {
@@ -38,7 +28,7 @@ export async function POST(request: NextRequest) {
     // Check if there's already an existing conversation
     const existingMessage = await sql`
       SELECT id FROM admin_messages 
-      WHERE admin_user_id = ${admin_user_id} AND carrier_user_id = ${userId}
+      WHERE admin_user_id = ${admin_user_id} AND supabase_user_id = ${userId}
       LIMIT 1
     `;
 
@@ -46,9 +36,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Conversation already exists with this admin" }, { status: 409 });
     }
 
-    // Create a new carrier chat message to start the conversation
+    // Create a new carrier chat message to start the conversation (Supabase-only)
     const newMessage = await sql`
-      INSERT INTO carrier_chat_messages (carrier_user_id, message, created_at, updated_at)
+      INSERT INTO carrier_chat_messages (supabase_user_id, message, created_at, updated_at)
       VALUES (${userId}, ${message}, NOW(), NOW())
       RETURNING id, carrier_user_id, message, created_at
     `;

@@ -1,34 +1,85 @@
 import { requireSignedIn } from "@/lib/auth";
+import { getSupabaseUserInfo } from "@/lib/auth-unified";
 import sql from "@/lib/db";
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { User, Award, FileText, CheckCircle, Edit, Lock, Bell, CreditCard, Mail, HelpCircle, MessageSquare } from "lucide-react";
-import ClientProfile from "@/components/ClientProfile";
 
 export const dynamic = "force-dynamic";
 
 async function getRole(userId: string) {
-  const rows = await sql/*sql*/`select role from public.user_roles where clerk_user_id = ${userId} limit 1`;
+  const rows = await sql/*sql*/`select role from public.user_roles_cache where supabase_user_id = ${userId} limit 1`;
   return rows?.[0]?.role ?? "—";
 }
 
-async function getStats(userId: string) {
-  const offers = await sql/*sql*/`select count(*)::int as c from public.load_offers where clerk_user_id = ${userId}`;
-  const assigns = await sql/*sql*/`select count(*)::int as c from public.assignments where clerk_user_id = ${userId}`;
-  return { offers: offers?.[0]?.c ?? 0, assignments: assigns?.[0]?.c ?? 0 };
+async function getStats(userId: string, role: string) {
+  // Only fetch stats for carriers (admins don't have these stats)
+  if (role === 'admin') {
+    return { offers: 0, assignments: 0 };
+  }
+  
+  // For carriers, use correct column names
+  // load_offers has supabase_carrier_user_id (not supabase_user_id)
+  // assignments has supabase_user_id
+  try {
+    const offers = await sql/*sql*/`
+      SELECT count(*)::int as c 
+      FROM public.load_offers 
+      WHERE COALESCE(supabase_carrier_user_id, carrier_user_id) = ${userId}
+    `;
+    const assigns = await sql/*sql*/`
+      SELECT count(*)::int as c 
+      FROM public.assignments 
+      WHERE supabase_user_id = ${userId}
+    `;
+    return { offers: offers?.[0]?.c ?? 0, assignments: assigns?.[0]?.c ?? 0 };
+  } catch (error: any) {
+    // If columns don't exist, return zeros
+    console.error('Error fetching stats:', error);
+    return { offers: 0, assignments: 0 };
+  }
+}
+
+async function getCarrierProfile(userId: string) {
+  try {
+    const profile = await sql/*sql*/`
+      SELECT 
+        legal_name,
+        mc_number,
+        dot_number,
+        phone,
+        contact_name,
+        email,
+        company_name,
+        address_line1,
+        address_line2,
+        city,
+        state,
+        zip_code,
+        created_at
+      FROM carrier_profiles 
+      WHERE supabase_user_id = ${userId}
+      LIMIT 1
+    `;
+    return profile[0] || null;
+  } catch (error) {
+    console.error('Error fetching carrier profile:', error);
+    return null;
+  }
 }
 
 export default async function ProfilePage() {
   const userId = await requireSignedIn();
   const role = await getRole(userId);
-  const stats = await getStats(userId);
+  const stats = await getStats(userId, role);
+  const userInfo = await getSupabaseUserInfo(userId);
+  const carrierProfile = role === 'carrier' ? await getCarrierProfile(userId) : null;
 
   return (
     <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Header */}
       <div className="mb-8" data-aos="fade-up">
         <h1 className="text-2xl font-bold text-gray-800 mb-2">My Profile</h1>
-        <p className="text-gray-600">Manage your carrier profile and preferences</p>
+        <p className="text-gray-600">
+          {role === 'admin' ? 'Manage your admin profile and settings' : 'Manage your carrier profile and preferences'}
+        </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -46,28 +97,48 @@ export default async function ProfilePage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Full Name</label>
-                <p className="text-gray-900">John Carrier</p>
+                <p className="text-gray-900">
+                  {userInfo.fullName || `${userInfo.firstName || ''} ${userInfo.lastName || ''}`.trim() || 'Not set'}
+                </p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Email Address</label>
-                <p className="text-gray-900">john.carrier@example.com</p>
+                <p className="text-gray-900">
+                  {userInfo.emailAddresses[0]?.emailAddress || 'Not set'}
+                </p>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Phone Number</label>
-                <p className="text-gray-900">(555) 123-4567</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">MC Number</label>
-                <p className="text-gray-900">MC-1234567</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">USDOT Number</label>
-                <p className="text-gray-900">123456789</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Carrier Since</label>
-                <p className="text-gray-900">January 2018</p>
-              </div>
+              {role === 'carrier' && carrierProfile && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Phone Number</label>
+                    <p className="text-gray-900">{carrierProfile.phone || 'Not set'}</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">MC Number</label>
+                    <p className="text-gray-900">{carrierProfile.mc_number || 'Not set'}</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">USDOT Number</label>
+                    <p className="text-gray-900">{carrierProfile.dot_number || 'Not set'}</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Member Since</label>
+                    <p className="text-gray-900">
+                      {carrierProfile.created_at 
+                        ? new Date(carrierProfile.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+                        : 'Not set'}
+                    </p>
+                  </div>
+                </>
+              )}
+              {role === 'admin' && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Role</label>
+                    <p className="text-gray-900 capitalize">{role}</p>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
@@ -80,62 +151,68 @@ export default async function ProfilePage() {
               </button>
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Company Name</label>
-                <p className="text-gray-900">Carrier Express LLC</p>
+            {role === 'carrier' && carrierProfile ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Company Name</label>
+                  <p className="text-gray-900">{carrierProfile.company_name || carrierProfile.legal_name || 'Not set'}</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Address</label>
+                  <p className="text-gray-900">
+                    {carrierProfile.address_line1 || 'Not set'}
+                    {carrierProfile.address_line2 && <><br/>{carrierProfile.address_line2}</>}
+                    {carrierProfile.city && carrierProfile.state && (
+                      <><br/>{carrierProfile.city}, {carrierProfile.state} {carrierProfile.zip_code || ''}</>
+                    )}
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Contact Name</label>
+                  <p className="text-gray-900">{carrierProfile.contact_name || 'Not set'}</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                  <p className="text-gray-900">{carrierProfile.email || userInfo.emailAddresses[0]?.emailAddress || 'Not set'}</p>
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Address</label>
-                <p className="text-gray-900">123 Trucker Lane<br/>Dallas, TX 75201</p>
+            ) : role === 'admin' ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Admin Account</label>
+                  <p className="text-gray-900">Administrator</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Access Level</label>
+                  <p className="text-gray-900">Full System Access</p>
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Company Type</label>
-                <p className="text-gray-900">Owner Operator</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Fleet Size</label>
-                <p className="text-gray-900">2 Trucks</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Primary Equipment</label>
-                <p className="text-gray-900">Dry Van (53')</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Operating Radius</label>
-                <p className="text-gray-900">National</p>
-              </div>
-            </div>
+            ) : (
+              <div className="text-gray-500 text-sm">No profile information available</div>
+            )}
           </div>
 
-          {/* Preferences Card */}
-          <div className="bg-white rounded-xl p-6 profile-card shadow-sm border border-gray-100" data-aos="fade-up">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-semibold text-gray-800">Preferences</h2>
-              <button className="text-blue-600 hover:text-blue-800 text-sm font-medium">
-                <i data-feather="edit" className="w-4 h-4 inline mr-1"></i> Edit
-              </button>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Preferred Lanes</label>
-                <p className="text-gray-900">Midwest, Southeast</p>
+          {role === 'carrier' && (
+            <div className="bg-white rounded-xl p-6 profile-card shadow-sm border border-gray-100" data-aos="fade-up">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-semibold text-gray-800">Preferences</h2>
+                <button className="text-blue-600 hover:text-blue-800 text-sm font-medium">
+                  <i data-feather="edit" className="w-4 h-4 inline mr-1"></i> Edit
+                </button>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Minimum Rate</label>
-                <p className="text-gray-900">$2.00/mile</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Notification Preferences</label>
-                <p className="text-gray-900">Email & SMS</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Language</label>
-                <p className="text-gray-900">English</p>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Notification Preferences</label>
+                  <p className="text-gray-900">Email notifications enabled</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Account Status</label>
+                  <p className="text-gray-900">Active</p>
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Right Column - Stats & Actions */}

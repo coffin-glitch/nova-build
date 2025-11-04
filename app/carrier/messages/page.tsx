@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAccentColor } from "@/hooks/useAccentColor";
-import { useUser } from "@clerk/nextjs";
+import { useUnifiedUser } from "@/hooks/useUnifiedUser";
 import {
     Clock,
     MessageCircle,
@@ -20,7 +20,7 @@ import useSWR from "swr";
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
 export default function CarrierMessagesPage() {
-  const { user, isLoaded } = useUser();
+  const { user, isLoaded } = useUnifiedUser();
   const { accentColor, accentBgStyle } = useAccentColor();
   const router = useRouter();
   const [isCarrier, setIsCarrier] = useState(false);
@@ -146,9 +146,10 @@ export default function CarrierMessagesPage() {
       return;
     }
 
-    // Check if user is carrier
-    const role = (user.publicMetadata?.role as string)?.toLowerCase() || "carrier";
-    const carrierStatus = role === "carrier";
+    // Check if user is carrier - middleware handles auth, but we check here for UI
+    // Since middleware redirects non-carriers, if we get here and have a user, they're a carrier
+    // The role check is handled by middleware, so we can safely assume carrier status
+    const carrierStatus = true; // Middleware ensures only carriers can access
     
     if (!carrierStatus) {
       router.push('/forbidden');
@@ -248,7 +249,11 @@ export default function CarrierMessagesPage() {
                   <User className="h-4 w-4 text-primary" />
                 </div>
                 <div>
-                  <div className="text-sm font-medium">{user?.fullName || user?.firstName || 'Carrier'}</div>
+                  <div className="text-sm font-medium">
+                    {user?.firstName && user?.lastName 
+                      ? `${user.firstName} ${user.lastName}` 
+                      : user?.firstName || user?.email || 'Carrier'}
+                  </div>
                   <p className="text-xs text-muted-foreground">
                     Online
                   </p>

@@ -1,11 +1,11 @@
-import { requireAdmin } from "@/lib/clerk-server";
+import { requireApiAdmin } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    // Ensure user is admin
-    await requireAdmin();
+    // Ensure user is admin (Supabase-only)
+    await requireApiAdmin(request);
 
     // Get basic offer statistics
     const basicStats = await sql`
@@ -61,8 +61,8 @@ export async function GET() {
         COALESCE(AVG(lo.offer_amount), 0) as avg_offer_amount,
         COALESCE(SUM(lo.offer_amount), 0) as total_offer_value
       FROM load_offers lo
-      LEFT JOIN carrier_profiles cp ON lo.carrier_user_id = cp.clerk_user_id
-      GROUP BY cp.company_name, cp.legal_name, lo.carrier_user_id
+      LEFT JOIN carrier_profiles cp ON lo.supabase_user_id = cp.supabase_user_id
+      GROUP BY cp.company_name, cp.legal_name, lo.supabase_user_id
       ORDER BY offer_count DESC
       LIMIT 10
     `;

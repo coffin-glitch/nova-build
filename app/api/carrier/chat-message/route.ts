@@ -1,16 +1,13 @@
 import sql from "@/lib/db";
-import { auth } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { requireApiCarrier } from "@/lib/auth-api-helper";
+import { NextRequest, NextResponse } from "next/server";
 
-export async function POST(req: Request) {
+export async function POST(request: NextRequest) {
   try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireApiCarrier(request);
+    const userId = auth.userId;
 
-    const body = await req.json();
+    const body = await request.json();
     const { message } = body;
 
     if (!message) {
@@ -19,10 +16,10 @@ export async function POST(req: Request) {
       }, { status: 400 });
     }
 
-    // Create carrier chat message
+    // Create carrier chat message (Supabase-only)
     const result = await sql`
       INSERT INTO carrier_chat_messages (
-        carrier_user_id,
+        supabase_user_id,
         message,
         created_at,
         updated_at

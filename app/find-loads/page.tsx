@@ -1,13 +1,13 @@
 import FindLoadsClient from "@/components/find-loads/FindLoadsClient";
 import PageHeader from "@/components/layout/PageHeader";
-import { auth } from "@clerk/nextjs/server";
+import { getUnifiedAuth } from "@/lib/auth-unified";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
 export default async function FindLoadsPage() {
-  const { userId } = await auth();
+  const auth = await getUnifiedAuth();
   
-  if (!userId) {
+  if (!auth.userId) {
     redirect('/sign-in');
   }
   return (

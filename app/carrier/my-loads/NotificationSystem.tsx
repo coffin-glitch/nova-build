@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatPickupDateTime } from "@/lib/format";
-import { useUser } from "@clerk/nextjs";
+import { useUnifiedUser } from "@/hooks/useUnifiedUser";
 import {
     Bell,
     BellOff,
@@ -40,7 +40,7 @@ interface Notification {
 }
 
 export function NotificationSystem({ className }: NotificationSystemProps) {
-  const { user } = useUser();
+  const { user } = useUnifiedUser();
   const [isOpen, setIsOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
 
@@ -222,7 +222,7 @@ export function NotificationSystem({ className }: NotificationSystemProps) {
 
 // Notification Settings Component
 export function NotificationSettings() {
-  const { user } = useUser();
+  const { user } = useUnifiedUser();
   const [settings, setSettings] = useState({
     emailNotifications: true,
     pushNotifications: true,

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useIsAdmin } from "@/lib/clerk-roles";
+import { useUnifiedRole } from "@/hooks/useUnifiedRole";
 import { cn } from "@/lib/utils";
 import {
     Maximize2,
@@ -66,7 +66,7 @@ export default function FloatingAdminMessagesButton() {
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [dragStartTime, setDragStartTime] = useState(0);
-  const isAdmin = useIsAdmin();
+  const { isAdmin } = useUnifiedRole();
   
   const buttonRef = useRef<HTMLDivElement>(null);
   

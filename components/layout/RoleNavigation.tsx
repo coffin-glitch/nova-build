@@ -28,7 +28,6 @@ import { usePathname } from "next/navigation";
 const adminNavigation = [
   { name: "Dashboard", href: "/admin", icon: BarChart3 },
   { name: "Users", href: "/admin/users", icon: Users },
-  { name: "Settings", href: "/admin/settings", icon: Settings },
 ];
 
 const adminDropdowns = {

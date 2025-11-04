@@ -32,6 +32,8 @@ interface DriverInfoDialogProps {
     equipment?: string;
     equipment_type?: string;
     carrier_email?: string;
+    carrier_name?: string;
+    carrier_phone?: string;
     stops?: any;
     miles?: number;
   } | null;
@@ -168,9 +170,31 @@ export function DriverInfoDialog({ open, onOpenChange, offer, isBid = false }: D
                   <p className="text-sm text-muted-foreground">License State</p>
                   <p className="font-medium">{offer.driver_license_state || 'Not provided'}</p>
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Carrier Contact Information */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <User className="h-4 w-4" />
+                Carrier Contact
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-muted-foreground">Carrier Name</p>
+                  <p className="font-medium">{offer.carrier_name || 'Not provided'}</p>
+                </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Carrier Email</p>
                   <p className="font-medium">{offer.carrier_email || 'Not provided'}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Carrier Phone</p>
+                  <p className="font-medium">{offer.carrier_phone || 'Not provided'}</p>
                 </div>
               </div>
             </CardContent>

@@ -1,20 +1,20 @@
 import CollapsibleMapPanel from "@/components/bid-board/CollapsibleMapPanel";
 import PageHeader from "@/components/layout/PageHeader";
 import { listActiveTelegramBids } from "@/lib/auctions";
-import { auth } from "@clerk/nextjs/server";
+import { getUnifiedAuth } from "@/lib/auth-unified";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import BidBoardClient from "./BidBoardClient";
 
 export default async function BidBoardPage() {
-  const { userId } = await auth();
+  const auth = await getUnifiedAuth();
   
-  if (!userId) {
+  if (!auth.userId) {
     redirect('/sign-in');
   }
 
-  // Fetch initial data server-side
-  const initialBids = await listActiveTelegramBids({ limit: 50 });
+  // Fetch initial data server-side - no limit to match API behavior
+  const initialBids = await listActiveTelegramBids({ limit: 1000 });
 
   return (
     <div className="py-8">

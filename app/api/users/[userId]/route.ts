@@ -1,4 +1,4 @@
-import { getClerkUserInfo } from "@/lib/clerk-server";
+import { getSupabaseUserInfo } from "@/lib/auth-unified";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(
@@ -12,7 +12,7 @@ export async function GET(
       return NextResponse.json({ error: "User ID is required" }, { status: 400 });
     }
 
-    const userInfo = await getClerkUserInfo(userId);
+    const userInfo = await getSupabaseUserInfo(userId);
     
     return NextResponse.json(userInfo);
   } catch (error) {

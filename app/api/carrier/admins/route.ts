@@ -1,28 +1,18 @@
-import { getClerkUserRole } from "@/lib/clerk-server";
 import sql from "@/lib/db";
-import { auth } from "@clerk/nextjs/server";
+import { requireApiCarrier } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireApiCarrier(request);
 
-    // Check if user is carrier using the same method as middleware
-    const userRole = await getClerkUserRole(userId);
-    if (userRole !== "carrier") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
-    // Fetch admin users
+    // Fetch admin users (Supabase-only)
     const admins = await sql`
       SELECT 
-        ur.user_id,
+        ur.supabase_user_id as user_id,
+        ur.email,
         ur.created_at as role_created_at
-      FROM user_roles ur
+      FROM user_roles_cache ur
       WHERE ur.role = 'admin'
       ORDER BY ur.created_at DESC
     `;

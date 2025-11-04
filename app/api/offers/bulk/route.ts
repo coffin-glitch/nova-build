@@ -1,11 +1,12 @@
-import { requireAdmin } from "@/lib/clerk-server";
+import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { NextRequest } from "next/server";
 import sql from "@/lib/db";
 import { NextResponse } from "next/server";
 
-export async function PUT(req: Request) {
+export async function PUT(req: NextRequest) {
   try {
     // Ensure user is admin
-    await requireAdmin();
+    await requireApiAdmin(req);
 
     const body = await req.json();
     const { offerIds, action, adminNotes } = body;
@@ -18,9 +19,9 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: "Invalid action" }, { status: 400 });
     }
 
-    // Validate that all offers exist and are pending
+    // Validate that all offers exist and are pending (Supabase-only)
     const offers = await sql`
-      SELECT id, carrier_user_id, load_rr_number, offer_amount, status
+      SELECT id, supabase_carrier_user_id, carrier_user_id, load_rr_number, offer_amount, status
       FROM load_offers 
       WHERE id = ANY(${offerIds}) AND status = 'pending'
     `;
@@ -39,13 +40,16 @@ export async function PUT(req: Request) {
         admin_notes = ${adminNotes || null},
         updated_at = NOW()
       WHERE id = ANY(${offerIds})
-      RETURNING id, carrier_user_id, load_rr_number
+      RETURNING id, supabase_carrier_user_id, carrier_user_id, load_rr_number
     `;
 
-    // Create notifications for each carrier
+    // Create notifications for each carrier (Supabase-only)
     for (const offer of updateResult) {
+      const carrierSupabaseUserId = offer.supabase_carrier_user_id || offer.carrier_user_id;
+      
       await sql`
         INSERT INTO carrier_notifications (
+          supabase_user_id,
           carrier_user_id,
           type,
           title,
@@ -53,6 +57,7 @@ export async function PUT(req: Request) {
           is_read,
           created_at
         ) VALUES (
+          ${carrierSupabaseUserId},
           ${offer.carrier_user_id},
           ${action === 'accept' ? 'offer_accepted' : 'offer_rejected'},
           ${action === 'accept' ? 'Offer Accepted' : 'Offer Rejected'},

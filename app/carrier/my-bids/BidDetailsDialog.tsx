@@ -50,7 +50,7 @@ export function BidDetailsDialog({ bid, children }: BidDetailsDialogProps) {
   useEffect(() => {
     if (isOpen && bid?.bid_number) {
       setHistoryLoading(true);
-      fetch(`/api/carrier/bids/${bid.bid_number}/history`)
+      fetch(`/api/carrier/bids/history?bidNumber=${bid.bid_number}`)
         .then(res => res.json())
         .then(data => {
           if (data.ok) {
@@ -199,10 +199,12 @@ export function BidDetailsDialog({ bid, children }: BidDetailsDialogProps) {
                       {new Date(bid.awarded_at).toLocaleString()}
                     </p>
                   </div>
-                  <div>
-                    <Label className="text-sm font-medium text-muted-foreground">Source Channel</Label>
-                    <p className="text-lg font-semibold">{bid.source_channel || 'N/A'}</p>
-                  </div>
+                  {bid.source_channel && bid.source_channel !== '-1002560784901' && (
+                    <div>
+                      <Label className="text-sm font-medium text-muted-foreground">Source Channel</Label>
+                      <p className="text-lg font-semibold">{bid.source_channel}</p>
+                    </div>
+                  )}
                   <div>
                     <Label className="text-sm font-medium text-muted-foreground">Last Updated</Label>
                     <p className="text-lg font-semibold">

@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { formatMoney, formatPickupDateTime } from "@/lib/format";
-import { useUser } from "@clerk/nextjs";
+import { useUnifiedUser } from "@/hooks/useUnifiedUser";
 import {
     Camera,
     CheckCircle,
@@ -39,7 +39,7 @@ interface LifecycleEvent {
 }
 
 export function LoadLifecycleManager({ loadId, loadData }: LoadLifecycleManagerProps) {
-  const { user } = useUser();
+  const { user } = useUnifiedUser();
   const [selectedEvent, setSelectedEvent] = useState<LifecycleEvent | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
 

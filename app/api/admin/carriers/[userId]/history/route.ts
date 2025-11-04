@@ -1,6 +1,5 @@
-import { getClerkUserRole } from "@/lib/clerk-server";
+import { requireApiAdmin } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
-import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(
@@ -8,17 +7,8 @@ export async function GET(
   { params }: { params: { userId: string } }
 ) {
   try {
-    const { userId: adminUserId } = await auth();
-    
-    if (!adminUserId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Check if user is admin
-    const userRole = await getClerkUserRole(adminUserId);
-    if (userRole !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    // Ensure user is admin (Supabase-only)
+    await requireApiAdmin(request);
 
     const { userId } = params;
 

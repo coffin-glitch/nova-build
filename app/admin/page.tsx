@@ -2,13 +2,13 @@ import { TelegramForwarderConsole } from "@/components/admin/TelegramForwarderCo
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { getAdminStats } from "@/lib/actions";
-import { requireAdmin } from "@/lib/clerk-server";
+import { requireAdmin } from "@/lib/auth";
 import {
-    FileText,
-    TrendingUp,
-    Truck,
-    Upload,
-    Users
+  FileText,
+  TrendingUp,
+  Truck,
+  Upload,
+  Users
 } from "lucide-react";
 import Link from "next/link";
 

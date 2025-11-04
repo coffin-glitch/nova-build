@@ -793,10 +793,12 @@ export default function CarrierActiveBidsClient() {
               
               {/* Additional Info */}
               <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <span className="text-muted-foreground">Source:</span>
-                  <span className="ml-2 font-medium">{viewDetailsBid.sourceChannel}</span>
-                </div>
+                {viewDetailsBid.sourceChannel && viewDetailsBid.sourceChannel !== '-1002560784901' && (
+                  <div>
+                    <span className="text-muted-foreground">Source:</span>
+                    <span className="ml-2 font-medium">{viewDetailsBid.sourceChannel}</span>
+                  </div>
+                )}
                 <div>
                   <span className="text-muted-foreground">Bid Placed:</span>
                   <span className="ml-2 font-medium">

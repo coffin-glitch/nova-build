@@ -1,28 +1,18 @@
 import { awardAuction } from '@/lib/auctions';
-import { getClerkUserRole } from '@/lib/clerk-server';
+import { requireApiAdmin, unauthorizedResponse, forbiddenResponse } from '@/lib/auth-api-helper';
 import sql from '@/lib/db';
-import { auth } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { bidNumber: string } }
+  { params }: { params: Promise<{ bidNumber: string }> }
 ) {
   try {
-    // Ensure user is authenticated and is admin
-    const { userId } = await auth();
+    // Use unified auth (supports Supabase and Clerk)
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
     
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Check if user is admin
-    const userRole = await getClerkUserRole(userId);
-    if (userRole !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-    
-    const { bidNumber } = params;
+    const { bidNumber } = await params;
     const body = await request.json();
     const { winnerUserId, adminNotes } = body;
 
@@ -51,33 +41,46 @@ export async function POST(
     // Admin notes are now handled in awardAuction function
 
         // Get comprehensive award details for response
+        // Note: winner_user_id was removed in migration 078, only supabase_winner_user_id exists
         const awardDetails = await sql`
           SELECT 
             aa.*,
             cp.legal_name as winner_legal_name,
             cp.mc_number as winner_mc_number,
             cp.phone as winner_phone,
-            cp.email as winner_email,
+            cp.dispatch_email as winner_email,
             tb.distance_miles,
             tb.stops,
             tb.tag,
             tb.pickup_timestamp,
             tb.delivery_timestamp
           FROM auction_awards aa
-          LEFT JOIN carrier_profiles cp ON aa.winner_user_id = cp.clerk_user_id
+          LEFT JOIN carrier_profiles cp ON (
+            aa.supabase_winner_user_id = cp.supabase_user_id
+          )
           LEFT JOIN telegram_bids tb ON aa.bid_number = tb.bid_number
           WHERE aa.id = ${award.id}
         `;
 
-        // Get admin user details from Clerk
+        // Get admin user details from Supabase or Clerk
         let adminName = 'System';
         try {
-          const { users } = await import("@clerk/clerk-sdk-node");
-          const adminUser = await users.getUser(userId);
-          if (adminUser.firstName || adminUser.lastName) {
-            adminName = `${adminUser.firstName || ''} ${adminUser.lastName || ''}`.trim();
-          } else if (adminUser.emailAddresses?.[0]?.emailAddress) {
-            adminName = adminUser.emailAddresses[0].emailAddress;
+          if (auth.authProvider === 'supabase') {
+            // Get from Supabase
+            const { getSupabaseService } = await import("@/lib/supabase");
+            const supabase = getSupabaseService();
+            const { data: adminUser, error: userError } = await supabase.auth.admin.getUserById(userId);
+            if (!userError && adminUser?.user) {
+              adminName = adminUser.user.email || adminUser.user.user_metadata?.full_name || 'System';
+            }
+          } else {
+            // Get admin name from user_roles_cache (Supabase-only)
+            const adminUserResult = await sql`
+              SELECT email FROM user_roles_cache WHERE supabase_user_id = ${userId}
+            `;
+            if (adminUserResult[0]?.email) {
+              adminName = adminUserResult[0].email;
+            }
           }
         } catch (error) {
           console.error('Error fetching admin user details:', error);
@@ -116,23 +119,13 @@ export async function POST(
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { bidNumber: string } }
+  { params }: { params: Promise<{ bidNumber: string }> }
 ) {
   try {
-    // Ensure user is authenticated and is admin
-    const { userId } = await auth();
+    // Ensure user is admin (Supabase-only)
+    await requireApiAdmin(request);
     
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Check if user is admin
-    const userRole = await getClerkUserRole(userId);
-    if (userRole !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-    
-    const { bidNumber } = params;
+    const { bidNumber } = await params;
 
     if (!bidNumber) {
       return NextResponse.json(
@@ -153,7 +146,7 @@ export async function GET(
         cp.contact_name as carrier_contact_name,
         cp.created_at as carrier_created_at
       FROM carrier_bids cb
-      LEFT JOIN carrier_profiles cp ON cb.clerk_user_id = cp.clerk_user_id
+      LEFT JOIN carrier_profiles cp ON cb.supabase_user_id = cp.supabase_user_id
       WHERE cb.bid_number = ${bidNumber}
       ORDER BY cb.amount_cents ASC
     `;
@@ -169,28 +162,29 @@ export async function GET(
     `;
 
     // Get award details if exists
+    // Note: winner_user_id was removed in migration 078, only supabase_winner_user_id exists
     const awardDetails = await sql`
       SELECT 
         aa.*,
         cp.legal_name as winner_legal_name,
         cp.mc_number as winner_mc_number
       FROM auction_awards aa
-      LEFT JOIN carrier_profiles cp ON aa.winner_user_id = cp.clerk_user_id
+      LEFT JOIN carrier_profiles cp ON (
+        aa.supabase_winner_user_id = cp.supabase_user_id
+      )
       WHERE aa.bid_number = ${bidNumber}
     `;
 
-    // Get admin name for existing awards
+    // Get admin name for existing awards (Supabase-only)
     let awardWithAdminName = awardDetails[0] || null;
-    if (awardWithAdminName?.awarded_by) {
+    if (awardWithAdminName?.supabase_awarded_by || awardWithAdminName?.awarded_by) {
       try {
-        const { users } = await import("@clerk/clerk-sdk-node");
-        const adminUser = await users.getUser(awardWithAdminName.awarded_by);
-        let adminName = 'System';
-        if (adminUser.firstName || adminUser.lastName) {
-          adminName = `${adminUser.firstName || ''} ${adminUser.lastName || ''}`.trim();
-        } else if (adminUser.emailAddresses?.[0]?.emailAddress) {
-          adminName = adminUser.emailAddresses[0].emailAddress;
-        }
+        const adminUserId = awardWithAdminName.supabase_awarded_by || awardWithAdminName.awarded_by;
+        // Get admin name from user_roles_cache (Supabase-only)
+        const adminUserResult = await sql`
+          SELECT email FROM user_roles_cache WHERE supabase_user_id = ${adminUserId}
+        `;
+        const adminName = adminUserResult[0]?.email || 'System';
         awardWithAdminName = {
           ...awardWithAdminName,
           awarded_by_name: adminName
@@ -211,6 +205,18 @@ export async function GET(
       const expiresAt = new Date(receivedAt.getTime() + (25 * 60 * 1000));
       const now = new Date();
       timeLeftSeconds = Math.max(0, Math.floor((expiresAt.getTime() - now.getTime()) / 1000));
+    }
+
+    console.log(`[Admin Bids Award GET] Bid ${bidNumber}: Found ${bids.length} carrier bids`);
+    if (bids.length > 0) {
+      console.log(`[Admin Bids Award GET] Sample bid:`, {
+        id: bids[0].id,
+        bid_number: bids[0].bid_number,
+        supabase_user_id: bids[0].supabase_user_id,
+        amount_cents: bids[0].amount_cents,
+        carrier_legal_name: bids[0].carrier_legal_name,
+        carrier_mc_number: bids[0].carrier_mc_number
+      });
     }
 
     return NextResponse.json({

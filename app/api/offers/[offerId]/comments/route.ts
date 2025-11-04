@@ -1,7 +1,6 @@
-import { getClerkUserRole } from "@/lib/clerk-server";
+import { requireApiAdmin, requireApiCarrier } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
-import { auth } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 // GET /api/offers/[id]/comments - Get all comments for an offer
 export async function GET(
@@ -31,8 +30,8 @@ export async function GET(
           ELSE 'Unknown'
         END as author_display_name
       FROM offer_comments oc
-      LEFT JOIN user_roles_cache urc ON oc.author_id = urc.clerk_user_id
-      LEFT JOIN carrier_profiles cp ON oc.author_id = cp.clerk_user_id
+      LEFT JOIN user_roles_cache urc ON oc.author_id = urc.supabase_user_id
+      LEFT JOIN carrier_profiles cp ON oc.author_id = cp.supabase_user_id
       WHERE oc.offer_id = ${offerId}
       ORDER BY oc.created_at ASC
     `;
@@ -70,16 +69,19 @@ export async function POST(
       );
     }
 
-    // Get the current user's role
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Get user role
-    const userRole = await getClerkUserRole(userId);
-    if (!userRole || !['admin', 'carrier'].includes(userRole)) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+    // Check if user is admin or carrier (Supabase-only)
+    let userId: string;
+    let userRole: 'admin' | 'carrier';
+    
+    try {
+      const adminAuth = await requireApiAdmin(request);
+      userId = adminAuth.userId;
+      userRole = 'admin';
+    } catch {
+      // Not admin, try carrier
+      const carrierAuth = await requireApiCarrier(request);
+      userId = carrierAuth.userId;
+      userRole = 'carrier';
     }
     
     const result = await sql`
@@ -95,7 +97,7 @@ export async function POST(
       );
     }
 
-    // Get the full comment with author details
+    // Get the full comment with author details (Supabase-only)
     const newComment = await sql`
       SELECT 
         oc.id,
@@ -112,7 +114,7 @@ export async function POST(
           ELSE 'Unknown'
         END as author_display_name
       FROM offer_comments oc
-      LEFT JOIN user_roles_cache urc ON oc.author_id = urc.clerk_user_id
+      LEFT JOIN user_roles_cache urc ON oc.author_id = urc.supabase_user_id
       WHERE oc.id = ${result[0].id}
     `;
 

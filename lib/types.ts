@@ -45,7 +45,7 @@ export interface TelegramBid {
 export interface LoadOffer {
   id: number;
   load_rr: string;
-  clerk_user_id: string;
+  supabase_user_id: string; // Supabase-only: replaced clerk_user_id
   price: number;
   notes?: string;
   status: 'pending' | 'accepted' | 'rejected' | 'countered';
@@ -56,7 +56,7 @@ export interface LoadOffer {
 export interface Assignment {
   id: number;
   load_rr: string;
-  clerk_user_id: string;
+  supabase_user_id: string; // Supabase-only: replaced clerk_user_id
   accepted_price: number;
   created_at: string;
 }

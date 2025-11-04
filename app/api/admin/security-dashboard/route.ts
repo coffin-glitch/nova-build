@@ -1,5 +1,5 @@
 import { addSecurityHeaders } from "@/lib/api-security";
-import { requireAdmin } from "@/lib/auth-server";
+import { requireApiAdmin } from "@/lib/auth-api-helper";
 import { securityMonitor } from "@/lib/security-monitoring";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -10,8 +10,8 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
-    // Require admin authentication
-    await requireAdmin();
+    // Require admin authentication (Supabase-only)
+    await requireApiAdmin(request);
 
     // Get security dashboard data
     const dashboardData = securityMonitor.getDashboardData();

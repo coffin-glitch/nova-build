@@ -1,6 +1,6 @@
+import { requireApiAdmin, requireApiCarrier } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
-import { auth } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 const MessageSchema = z.object({
@@ -8,13 +8,18 @@ const MessageSchema = z.object({
 });
 
 export async function GET(
-  req: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    // Ensure user is authenticated (Supabase-only)
+    let userId: string;
+    try {
+      const adminAuth = await requireApiAdmin(request);
+      userId = adminAuth.userId;
+    } catch {
+      const carrierAuth = await requireApiCarrier(request);
+      userId = carrierAuth.userId;
     }
 
     const { id } = await params;
@@ -49,38 +54,37 @@ export async function GET(
 }
 
 export async function POST(
-  req: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    // Check if user is admin or carrier (Supabase-only)
+    let userId: string;
+    let userRole: 'admin' | 'carrier';
+    
+    try {
+      const adminAuth = await requireApiAdmin(request);
+      userId = adminAuth.userId;
+      userRole = 'admin';
+    } catch {
+      // Not admin, try carrier
+      const carrierAuth = await requireApiCarrier(request);
+      userId = carrierAuth.userId;
+      userRole = 'carrier';
     }
 
     const { id } = await params;
-    const body = await req.json();
+    const body = await request.json();
     const { message } = MessageSchema.parse(body);
 
-    // Get user role
-    const userRoleResult = await sql`
-      SELECT role FROM user_roles_cache WHERE clerk_user_id = ${userId}
-    `;
-    
-    if (userRoleResult.length === 0) {
-      return NextResponse.json({ error: "User role not found" }, { status: 403 });
-    }
-
-    const userRole = userRoleResult[0].role;
-
-    // Verify user has access to this offer
+    // Verify user has access to this offer (Supabase-only)
     const offerResult = await sql`
       SELECT id FROM load_offers 
       WHERE id = ${id} AND (
-        carrier_user_id = ${userId} OR 
+        supabase_carrier_user_id = ${userId} OR 
         EXISTS (
           SELECT 1 FROM user_roles_cache 
-          WHERE clerk_user_id = ${userId} AND role = 'admin'
+          WHERE supabase_user_id = ${userId} AND role = 'admin'
         )
       )
     `;
@@ -106,16 +110,16 @@ export async function POST(
       ) RETURNING id, created_at
     `;
 
-    // Create notification for the other party
+    // Create notification for the other party (Supabase-only)
     const otherPartyRole = userRole === 'admin' ? 'carrier' : 'admin';
     const otherPartyId = userRole === 'admin' 
-      ? (await sql`SELECT carrier_user_id FROM load_offers WHERE id = ${id}`)[0]?.carrier_user_id
+      ? (await sql`SELECT supabase_user_id FROM load_offers WHERE id = ${id}`)[0]?.supabase_user_id
       : null; // For admin notifications, we'll handle this differently
 
     if (otherPartyId) {
       await sql`
         INSERT INTO carrier_notifications (
-          carrier_user_id,
+          supabase_user_id,
           type,
           title,
           message,

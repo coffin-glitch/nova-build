@@ -274,7 +274,7 @@ export class SecurityMonitor {
    */
   private containsSQLInjection(input: any): boolean {
     const sqlPatterns = [
-      /('|(\\\\')|(;)|(\\\\;)|(--)|(\\\\\/\\\\\*)|(\\\\\*\\\\\/)|(xp_)|(sp_)|(exec)|(execute)|(select)|(insert)|(update)|(delete)|(drop)|(create)|(alter)|(union)|(script)/i
+      /(\'|(\\)(\')|(;)|(\\)(\\)(;)|(--)|(\/\*)|(\*\/)|(xp_)|(sp_)|(exec)|(execute)|(select)|(insert)|(update)|(delete)|(drop)|(create)|(alter)|(union)|(script))/i
     ];
     
     const inputStr = JSON.stringify(input);

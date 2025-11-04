@@ -27,11 +27,11 @@ export const optimizedQueries = {
       NOW() > (tb.received_at + INTERVAL '25 minutes') as is_expired,
       0 as stops_count,
       COALESCE(lowest_bid.amount_cents, 0) as lowest_amount_cents,
-      lowest_bid.clerk_user_id as lowest_user_id,
+      lowest_bid.supabase_user_id as lowest_user_id,
       COALESCE(bid_counts.bids_count, 0) as bids_count
     FROM public.telegram_bids tb
     LEFT JOIN LATERAL (
-      SELECT amount_cents, clerk_user_id
+      SELECT amount_cents, supabase_user_id
       FROM public.carrier_bids cb
       WHERE cb.bid_number = tb.bid_number
       ORDER BY amount_cents ASC

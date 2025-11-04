@@ -1,17 +1,14 @@
 import sql from "@/lib/db";
-import { auth } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { requireApiCarrier } from "@/lib/auth-api-helper";
+import { NextRequest, NextResponse } from "next/server";
 
 export async function PUT(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ offerId: string }> }
 ) {
   try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireApiCarrier(request);
+    const userId = auth.userId;
 
     const { offerId } = await params;
     const body = await request.json();
@@ -25,7 +22,7 @@ export async function PUT(
     const existingOffer = await sql`
       SELECT id, status, offer_amount, notes, load_rr_number
       FROM load_offers 
-      WHERE id = ${offerId} AND carrier_user_id = ${userId}
+      WHERE id = ${offerId} AND supabase_user_id = ${userId}
     `;
 
     if (existingOffer.length === 0) {
@@ -65,7 +62,7 @@ export async function PUT(
           END,
           counter_amount = NULL,
           updated_at = NOW()
-        WHERE id = ${offerId} AND carrier_user_id = ${userId}
+        WHERE id = ${offerId} AND supabase_user_id = ${userId}
         RETURNING id, offer_amount, notes, status, updated_at
       `;
 
@@ -93,7 +90,7 @@ export async function PUT(
         SET 
           status = 'withdrawn',
           updated_at = NOW()
-        WHERE id = ${offerId} AND carrier_user_id = ${userId}
+        WHERE id = ${offerId} AND supabase_user_id = ${userId}
         RETURNING id, status, updated_at
       `;
 
@@ -128,7 +125,7 @@ export async function PUT(
           status = 'accepted',
           offer_amount = counter_amount,
           updated_at = NOW()
-        WHERE id = ${offerId} AND carrier_user_id = ${userId}
+        WHERE id = ${offerId} AND supabase_user_id = ${userId}
         RETURNING id, status, offer_amount, updated_at
       `;
 
@@ -162,7 +159,7 @@ export async function PUT(
         SET 
           status = 'rejected',
           updated_at = NOW()
-        WHERE id = ${offerId} AND carrier_user_id = ${userId}
+        WHERE id = ${offerId} AND supabase_user_id = ${userId}
         RETURNING id, status, updated_at
       `;
 
@@ -196,23 +193,21 @@ export async function PUT(
 }
 
 export async function DELETE(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireApiCarrier(request);
+    const userId = auth.userId;
 
     const { id } = await params;
+    const offerId = id; // Alias for clarity
 
     // First, verify the offer belongs to this carrier and is in a deletable state
     const existingOffer = await sql`
       SELECT id, status, load_rr_number
       FROM load_offers 
-      WHERE id = ${offerId} AND carrier_user_id = ${userId}
+      WHERE id = ${offerId} AND supabase_user_id = ${userId}
     `;
 
     if (existingOffer.length === 0) {
@@ -231,7 +226,7 @@ export async function DELETE(
     // Delete the offer
     const result = await sql`
       DELETE FROM load_offers 
-      WHERE id = ${offerId} AND carrier_user_id = ${userId}
+      WHERE id = ${offerId} AND supabase_user_id = ${userId}
       RETURNING id, load_rr_number
     `;
 

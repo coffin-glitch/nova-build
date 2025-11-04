@@ -1,12 +1,14 @@
-import { requireAdmin } from '@/lib/auth';
+import { requireApiAdmin } from '@/lib/auth-api-helper';
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
     console.log("Testing authentication...");
     
-    // Test the requireAdmin function
-    const { userId, role } = await requireAdmin();
+    // Test the requireApiAdmin function (Supabase-only)
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
+    const role = auth.role;
     
     console.log("Authentication successful:", { userId, role });
     

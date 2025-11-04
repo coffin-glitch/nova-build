@@ -1,16 +1,16 @@
-import { NextResponse } from "next/server";
+import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import sql from "@/lib/db.server";
-import { requireAdmin } from "@/lib/auth";
+import sql from "@/lib/db";
 
 const CounterSchema = z.object({
   counter_price: z.coerce.number().positive(),
 });
 
-export async function POST(req: Request, { params }: { params: { id: string } }) {
-  await requireAdmin();
+export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+  await requireApiAdmin(request);
   const id = Number(params.id);
-  const body = await req.json().catch(() => ({}));
+  const body = await request.json().catch(() => ({}));
   const parse = CounterSchema.safeParse(body);
   if (!parse.success) return NextResponse.json({ ok:false, errors: parse.error.flatten() }, { status: 400 });
 

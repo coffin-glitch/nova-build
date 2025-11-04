@@ -1,6 +1,5 @@
-import { getClerkUserRole } from "@/lib/clerk-server";
 import sql from "@/lib/db";
-import { auth } from "@clerk/nextjs/server";
+import { requireApiAdmin, unauthorizedResponse, forbiddenResponse } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(
@@ -13,23 +12,10 @@ export async function POST(
     
     console.log("Lock edits API called for userId:", userId);
     
-    const { userId: adminUserId } = await auth();
-    
-    if (!adminUserId) {
-      console.log("No admin user ID found");
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    console.log("Admin user ID:", adminUserId);
-
-    // Check if user is admin
-    const userRole = await getClerkUserRole(adminUserId);
-    console.log("User role:", userRole);
-    
-    if (userRole !== "admin") {
-      console.log("User is not admin");
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    // Use unified auth (supports Supabase and Clerk)
+    const auth = await requireApiAdmin(request);
+    const adminUserId = auth.userId;
+    console.log("Admin user ID:", adminUserId, "Provider:", auth.provider);
 
     const body = await request.json();
     const { restore_status } = body; // approved or declined
@@ -37,10 +23,10 @@ export async function POST(
     console.log("Processing lock edits for userId:", userId);
     console.log("Restore status:", restore_status);
 
-    // Get current profile data before updating for history
+    // Get current profile data before updating for history (Supabase-only)
     const currentProfile = await sql`
       SELECT 
-        clerk_user_id,
+        supabase_user_id,
         legal_name,
         company_name,
         mc_number,
@@ -61,7 +47,7 @@ export async function POST(
         created_at,
         updated_at
       FROM carrier_profiles 
-      WHERE clerk_user_id = ${userId}
+      WHERE supabase_user_id = ${userId}
     `;
 
     console.log("Current profile found:", currentProfile.length > 0 ? "Yes" : "No");
@@ -71,13 +57,15 @@ export async function POST(
       return NextResponse.json({ error: "Carrier profile not found" }, { status: 404 });
     }
 
-    // Lock edits and restore to original status
+    const profileUserId = currentProfile[0].supabase_user_id || userId;
+
+    // Lock edits and restore to original status (Supabase-only)
     await sql`
       UPDATE carrier_profiles 
       SET 
         edits_enabled = false,
         profile_status = ${restore_status || currentProfile[0].profile_status}
-      WHERE clerk_user_id = ${userId}
+      WHERE supabase_user_id = ${profileUserId}
     `;
 
     console.log("Profile updated successfully");
@@ -94,14 +82,14 @@ export async function POST(
         review_notes,
         version_number
       ) VALUES (
-        ${userId},
+        ${profileUserId},
         ${JSON.stringify(currentProfile[0])}::jsonb,
         ${restore_status || currentProfile[0].profile_status},
         ${currentProfile[0].submitted_at || new Date()},
         ${currentProfile[0].reviewed_at},
         ${currentProfile[0].reviewed_by},
         ${currentProfile[0].review_notes},
-        (SELECT COALESCE(MAX(version_number), 0) + 1 FROM carrier_profile_history WHERE carrier_user_id = ${userId})
+        (SELECT COALESCE(MAX(version_number), 0) + 1 FROM carrier_profile_history WHERE carrier_user_id = ${profileUserId})
       )
     `;
     

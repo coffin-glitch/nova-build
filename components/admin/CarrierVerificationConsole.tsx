@@ -1,13 +1,13 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { useClerkRole } from "@/lib/clerk-roles";
+import { useUnifiedRole } from "@/hooks/useUnifiedRole";
 import { cn } from "@/lib/utils";
 import { Eye, Monitor, RefreshCw, Truck, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 export function CarrierVerificationConsole() {
-  const { isAdmin } = useClerkRole();
+  const { isAdmin } = useUnifiedRole();
   const [isOpen, setIsOpen] = useState(false);
   const [position, setPosition] = useState({ x: 100, y: 100 }); // Safe default for SSR
   const [isDragging, setIsDragging] = useState(false);

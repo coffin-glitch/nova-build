@@ -8,8 +8,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { AlertTriangle, Bell, CheckCircle, Info, XCircle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import useSWR from "swr";
-
-const fetcher = (url: string) => fetch(url).then(r => r.json());
+import { swrFetcher } from "@/lib/safe-fetcher";
 
 interface Notification {
   id: string;
@@ -28,7 +27,7 @@ export function NotificationBell() {
   const buttonRef = useRef<HTMLButtonElement>(null);
   
   // Use carrier-specific notifications endpoint
-  const { data, mutate } = useSWR('/api/carrier/notifications', fetcher, {
+  const { data, mutate } = useSWR('/api/carrier/notifications', swrFetcher, {
     refreshInterval: 10000, // Refresh every 10 seconds
     onError: (err) => console.error('Notification fetch error:', err),
   });

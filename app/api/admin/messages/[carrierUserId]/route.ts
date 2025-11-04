@@ -1,27 +1,22 @@
-import { db } from "@/lib/db-local";
-import { auth } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { requireApiAdmin } from "@/lib/auth-api-helper";
+import sql from "@/lib/db";
+import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(
-  req: Request,
+  request: NextRequest,
   { params }: { params: { carrierUserId: string } }
 ) {
   try {
-    const { userId: adminUserId } = await auth();
-    
-    if (!adminUserId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // TODO: Add admin role check here
+    // Ensure user is admin (Supabase-only)
+    await requireApiAdmin(request);
 
     const carrierUserId = params.carrierUserId;
 
-    // Get messages for specific carrier
-    const messages = db.prepare(`
+    // Get messages for specific carrier (Supabase-only)
+    const messages = await sql`
       SELECT 
         id,
-        carrier_user_id,
+        supabase_user_id,
         admin_user_id,
         subject,
         message,
@@ -30,9 +25,9 @@ export async function GET(
         created_at,
         updated_at
       FROM admin_messages 
-      WHERE carrier_user_id = ?
+      WHERE supabase_user_id = ${carrierUserId}
       ORDER BY created_at DESC
-    `).all(carrierUserId);
+    `;
 
     return NextResponse.json({ 
       ok: true, 

@@ -1,16 +1,8 @@
 import sql from '@/lib/db';
-import { auth } from '@clerk/nextjs/server';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
 export async function middleware(request: NextRequest) {
-  const { userId } = await auth();
-  
-  // Skip middleware for non-authenticated users
-  if (!userId) {
-    return NextResponse.next();
-  }
-
   const { pathname } = request.nextUrl;
 
   // Skip middleware for API routes, static files, and auth pages
@@ -27,6 +19,49 @@ export async function middleware(request: NextRequest) {
   }
 
   try {
+    // Get Supabase credentials
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!supabaseUrl || !supabaseKey) {
+      // If Supabase not configured, skip middleware
+      return NextResponse.next();
+    }
+
+    // Use service role key for admin access or anon key with cookie handling
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    
+    if (!supabaseAnonKey) {
+      return NextResponse.next();
+    }
+
+    // Create Supabase client with proper cookie handling for Edge runtime (same as main middleware)
+    const { createServerClient } = await import('@supabase/ssr');
+    const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+      cookies: {
+        get(name: string) {
+          return request.cookies.get(name)?.value;
+        },
+        set(name: string, value: string, options: any) {
+          // Cookies will be set via response headers
+          request.cookies.set(name, value);
+        },
+        remove(name: string, options: any) {
+          // Cookies will be removed via response headers
+          request.cookies.delete(name);
+        },
+      },
+    });
+    
+    // Get user from session
+    const { data: { user }, error } = await supabase.auth.getUser();
+    const userId = user?.id || null;
+
+    // Skip middleware for non-authenticated users
+    if (!userId) {
+      return NextResponse.next();
+    }
+
     // Check if user is a carrier and needs profile completion
     const profileResult = await sql`
       SELECT 
@@ -38,7 +73,7 @@ export async function middleware(request: NextRequest) {
         decline_reason,
         edits_enabled
       FROM carrier_profiles 
-      WHERE clerk_user_id = ${userId}
+      WHERE supabase_user_id = ${userId}
     `;
 
     const profile = profileResult[0];

@@ -37,7 +37,7 @@ export default function Footer() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           <div>
-            <h4 className="text-lg font-semibold mb-4 text-foreground">NOVA Build</h4>
+            <h4 className="text-lg font-semibold mb-4 text-foreground">NOVA</h4>
             <p className="text-muted-foreground text-sm">Connecting carriers with quality loads since 2024.</p>
           </div>
           <div>
@@ -77,7 +77,7 @@ export default function Footer() {
           </div>
         </div>
         <div className="border-t border-border mt-8 pt-8 text-sm text-muted-foreground">
-          <p>© {new Date().getFullYear()} NOVA Build. All rights reserved.</p>
+          <p>© {new Date().getFullYear()} NOVA. All rights reserved.</p>
         </div>
       </div>
     </footer>

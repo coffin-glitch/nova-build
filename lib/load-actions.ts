@@ -1,8 +1,7 @@
 "use server";
 
-import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-import sql from "./db.server";
+import sql from "./db";
 import { requireAdmin } from "./auth";
 
 // Get all loads with pagination and filtering

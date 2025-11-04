@@ -1,6 +1,5 @@
-import { getClerkUserRole } from "@/lib/clerk-server";
 import sql from "@/lib/db";
-import { auth } from "@clerk/nextjs/server";
+import { requireApiAdmin, unauthorizedResponse, forbiddenResponse } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(
@@ -13,29 +12,16 @@ export async function POST(
     
     console.log("Unlock edits API called for userId:", userId);
     
-    const { userId: adminUserId } = await auth();
-    
-    if (!adminUserId) {
-      console.log("No admin user ID found");
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    console.log("Admin user ID:", adminUserId);
-
-    // Check if user is admin
-    const userRole = await getClerkUserRole(adminUserId);
-    console.log("User role:", userRole);
-    
-    if (userRole !== "admin") {
-      console.log("User is not admin");
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    // Use unified auth (supports Supabase and Clerk)
+    const auth = await requireApiAdmin(request);
+    const adminUserId = auth.userId;
+    console.log("Admin user ID:", adminUserId, "Provider:", auth.provider);
     console.log("Processing unlock edits for userId:", userId);
 
-    // Get current profile data before updating for history
+    // Get current profile data before updating for history (Supabase-only)
     const currentProfile = await sql`
       SELECT 
-        clerk_user_id,
+        supabase_user_id,
         legal_name,
         company_name,
         mc_number,
@@ -56,7 +42,7 @@ export async function POST(
         created_at,
         updated_at
       FROM carrier_profiles 
-      WHERE clerk_user_id = ${userId}
+      WHERE supabase_user_id = ${userId}
     `;
 
     console.log("Current profile found:", currentProfile.length > 0 ? "Yes" : "No");
@@ -65,6 +51,8 @@ export async function POST(
       console.log("Carrier profile not found for userId:", userId);
       return NextResponse.json({ error: "Carrier profile not found" }, { status: 404 });
     }
+
+    const profileUserId = currentProfile[0].supabase_user_id || userId;
 
     const currentStatus = currentProfile[0].profile_status;
     console.log("Current profile status:", currentStatus);
@@ -85,7 +73,7 @@ export async function POST(
           reviewed_by = NULL,
           review_notes = NULL,
           decline_reason = NULL
-        WHERE clerk_user_id = ${userId}
+        WHERE supabase_user_id = ${profileUserId}
       `;
 
       console.log("Profile updated successfully");
@@ -103,7 +91,7 @@ export async function POST(
           decline_reason,
           version_number
         ) VALUES (
-          ${userId},
+          ${profileUserId},
           ${JSON.stringify(currentProfile[0])}::jsonb,
           'declined',
           ${currentProfile[0].submitted_at || new Date()},
@@ -111,7 +99,7 @@ export async function POST(
           ${currentProfile[0].reviewed_by},
           ${currentProfile[0].review_notes},
           ${currentProfile[0].decline_reason},
-          (SELECT COALESCE(MAX(version_number), 0) + 1 FROM carrier_profile_history WHERE carrier_user_id = ${userId})
+          (SELECT COALESCE(MAX(version_number), 0) + 1 FROM carrier_profile_history WHERE carrier_user_id = ${profileUserId})
         )
       `;
       
@@ -127,7 +115,7 @@ export async function POST(
           edits_enabled_by = ${adminUserId},
           edits_enabled_at = ${new Date()},
           profile_status = 'open'
-        WHERE clerk_user_id = ${userId}
+        WHERE supabase_user_id = ${profileUserId}
       `;
 
       console.log("Profile updated successfully");
@@ -144,14 +132,14 @@ export async function POST(
           review_notes,
           version_number
         ) VALUES (
-          ${userId},
+          ${profileUserId},
           ${JSON.stringify(currentProfile[0])}::jsonb,
           'approved',
           ${currentProfile[0].submitted_at || new Date()},
           ${currentProfile[0].reviewed_at},
           ${currentProfile[0].reviewed_by},
           ${currentProfile[0].review_notes},
-          (SELECT COALESCE(MAX(version_number), 0) + 1 FROM carrier_profile_history WHERE carrier_user_id = ${userId})
+          (SELECT COALESCE(MAX(version_number), 0) + 1 FROM carrier_profile_history WHERE carrier_user_id = ${profileUserId})
         )
       `;
       

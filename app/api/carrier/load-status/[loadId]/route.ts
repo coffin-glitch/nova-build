@@ -1,19 +1,16 @@
 import sql from "@/lib/db";
-import { auth } from "@clerk/nextjs/server";
+import { requireApiCarrier } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { loadId: string } }
+  { params }: { params: Promise<{ loadId: string }> }
 ) {
   try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireApiCarrier(request);
+    const userId = auth.userId;
 
-    const { loadId } = params;
+    const { loadId } = await params;
 
     // Get current load status
     const loadStatus = await sql`
@@ -27,7 +24,7 @@ export async function GET(
         l.destination_state
       FROM load_offers lo
       INNER JOIN loads l ON lo.load_rr_number = l.rr_number
-      WHERE lo.carrier_user_id = ${userId}
+      WHERE lo.supabase_user_id = ${userId}
         AND lo.id = ${loadId}
         AND lo.status = 'accepted'
     `;
@@ -50,18 +47,15 @@ export async function GET(
   }
 }
 
-export async function POST(
+export async function PATCH(
   request: NextRequest,
-  { params }: { params: { loadId: string } }
+  { params }: { params: Promise<{ loadId: string }> }
 ) {
   try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireApiCarrier(request);
+    const userId = auth.userId;
 
-    const { loadId } = params;
+    const { loadId } = await params;
     const { status: newStatus } = await request.json();
 
     // Validate status transition
@@ -76,7 +70,7 @@ export async function POST(
     // Get current status
     const currentLoad = await sql`
       SELECT status FROM load_offers 
-      WHERE id = ${loadId} AND carrier_user_id = ${userId}
+      WHERE id = ${loadId} AND supabase_user_id = ${userId}
     `;
 
     if (currentLoad.length === 0) {
@@ -97,7 +91,7 @@ export async function POST(
       SET 
         status = ${newStatus},
         updated_at = CURRENT_TIMESTAMP
-      WHERE id = ${loadId} AND carrier_user_id = ${userId}
+      WHERE id = ${loadId} AND supabase_user_id = ${userId}
       RETURNING status, updated_at
     `;
 

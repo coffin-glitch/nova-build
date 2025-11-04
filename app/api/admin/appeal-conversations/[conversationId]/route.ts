@@ -1,24 +1,15 @@
-import { getClerkUserRole } from "@/lib/clerk-server";
+import { requireApiAdmin } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
-import { auth } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(
-  req: Request,
+  request: NextRequest,
   { params }: { params: { conversationId: string } }
 ) {
   try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Check if user is admin
-    const userRole = await getClerkUserRole(userId);
-    if (userRole !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    // Ensure user is admin (Supabase-only)
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
 
     const { conversationId } = await params;
 
@@ -62,24 +53,16 @@ export async function GET(
 }
 
 export async function POST(
-  req: Request,
+  request: NextRequest,
   { params }: { params: { conversationId: string } }
 ) {
   try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Check if user is admin
-    const userRole = await getClerkUserRole(userId);
-    if (userRole !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    // Ensure user is admin (Supabase-only)
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
 
     const { conversationId } = await params;
-    const body = await req.json();
+    const body = await request.json();
     const { message } = body;
 
     if (!message) {

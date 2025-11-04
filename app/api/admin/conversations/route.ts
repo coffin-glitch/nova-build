@@ -1,27 +1,19 @@
-import { getClerkUserRole } from "@/lib/clerk-server";
+import { forbiddenResponse, requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
-import { auth } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Check if user is admin
-    const userRole = await getClerkUserRole(userId);
-    if (userRole !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    // Supabase auth only
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
 
     // Get conversations for the current admin with unread counts
+    // Note: carrier_user_id was removed in migration 078, only supabase_carrier_user_id exists
     const conversations = await sql`
       SELECT 
         c.id as conversation_id,
-        c.carrier_user_id,
+        c.supabase_carrier_user_id as carrier_user_id,
         c.last_message_at,
         c.created_at,
         c.updated_at,
@@ -42,9 +34,9 @@ export async function GET() {
         ) as last_message_sender_type
       FROM conversations c
       LEFT JOIN conversation_messages cm ON cm.conversation_id = c.id
-      LEFT JOIN message_reads mr ON mr.message_id = cm.id AND mr.user_id = ${userId}
-      WHERE c.admin_user_id = ${userId}
-      GROUP BY c.id, c.carrier_user_id, c.last_message_at, c.created_at, c.updated_at
+      LEFT JOIN message_reads mr ON mr.message_id = cm.id AND mr.supabase_user_id = ${userId}
+      WHERE c.supabase_admin_user_id = ${userId}
+      GROUP BY c.id, c.supabase_carrier_user_id, c.last_message_at, c.created_at, c.updated_at
       ORDER BY c.last_message_at DESC
     `;
 
@@ -53,27 +45,28 @@ export async function GET() {
       data: conversations 
     });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching admin conversations:", error);
+    
+    // Handle auth errors
+    if (error.message === "Unauthorized") {
+      return unauthorizedResponse();
+    }
+    if (error.message === "Admin access required" || error.message?.includes("Forbidden")) {
+      return forbiddenResponse(error.message || "Admin access required");
+    }
+    
     return NextResponse.json({ 
       error: "Failed to fetch conversations" 
     }, { status: 500 });
   }
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Check if user is admin
-    const userRole = await getClerkUserRole(userId);
-    if (userRole !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    // Supabase auth only
+    const auth = await requireApiAdmin(req);
+    const userId = auth.userId;
 
     const body = await req.json();
     const { carrier_user_id } = body;
@@ -84,10 +77,11 @@ export async function POST(req: Request) {
       }, { status: 400 });
     }
 
-    // Check if conversation already exists
+    // Check if conversation already exists (Supabase-only)
     const existingConversation = await sql`
       SELECT id FROM conversations 
-      WHERE carrier_user_id = ${carrier_user_id} AND admin_user_id = ${userId}
+      WHERE supabase_carrier_user_id = ${carrier_user_id}
+        AND supabase_admin_user_id = ${userId}
     `;
 
     if (existingConversation.length > 0) {
@@ -98,17 +92,25 @@ export async function POST(req: Request) {
       });
     }
 
-    // Create new conversation
+    // Create new conversation (Supabase-only)
     const result = await sql`
       INSERT INTO conversations (
-        carrier_user_id,
-        admin_user_id,
+        supabase_carrier_user_id,
+        supabase_admin_user_id,
         subject,
         status,
         conversation_type,
         created_at,
         updated_at
-      ) VALUES (${carrier_user_id}, ${userId}, 'Admin Chat', 'active', 'regular', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      ) VALUES (
+        ${carrier_user_id}, 
+        ${userId},
+        'Admin Chat', 
+        'active', 
+        'regular', 
+        CURRENT_TIMESTAMP, 
+        CURRENT_TIMESTAMP
+      )
       RETURNING id
     `;
 

@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAccentColor } from "@/hooks/useAccentColor";
+import { useIsAdmin } from "@/hooks/useUnifiedRole";
 import {
     Maximize2,
     MessageCircle,
@@ -59,9 +60,40 @@ interface UserInfo {
 }
 
 export default function FloatingChatConsole() {
+  // Call all hooks first (React rules)
+  const isAdmin = useIsAdmin();
   const { accentColor } = useAccentColor();
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
+  const [selectedChat, setSelectedChat] = useState<string | null>(null);
+  const [newMessage, setNewMessage] = useState("");
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [isInputFocused, setIsInputFocused] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
+  
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Fetch data (must call all hooks before any conditional returns)
+  const { data: chatMessagesData, mutate: mutateChatMessages } = useSWR(
+    isAdmin ? "/api/admin/all-chat-messages" : null,
+    fetcher,
+    { refreshInterval: 5000 }
+  );
+
+  const { data: adminMessagesData, mutate: mutateAdminMessages } = useSWR(
+    isAdmin ? "/api/admin/all-messages" : null,
+    fetcher,
+    { refreshInterval: 5000 }
+  );
+
+  const { data: carriersData } = useSWR(
+    isAdmin ? "/api/admin/carriers" : null,
+    fetcher,
+    { refreshInterval: 10000 }
+  );
 
   // Add floating animation styles
   useEffect(() => {
@@ -114,36 +146,8 @@ export default function FloatingChatConsole() {
       document.head.removeChild(style);
     };
   }, []);
-  const [selectedChat, setSelectedChat] = useState<string | null>(null);
-  const [newMessage, setNewMessage] = useState("");
-  const [isSendingMessage, setIsSendingMessage] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [isInputFocused, setIsInputFocused] = useState(false);
-  const [isTyping, setIsTyping] = useState(false);
-  
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Fetch data
-  const { data: chatMessagesData, mutate: mutateChatMessages } = useSWR(
-    "/api/admin/all-chat-messages",
-    fetcher,
-    { refreshInterval: 5000 }
-  );
-
-  const { data: adminMessagesData, mutate: mutateAdminMessages } = useSWR(
-    "/api/admin/all-messages",
-    fetcher,
-    { refreshInterval: 5000 }
-  );
-
-  const { data: carriersData } = useSWR(
-    "/api/admin/carriers",
-    fetcher,
-    { refreshInterval: 10000 }
-  );
-
+  // All hooks must be called before any conditional returns (React rules)
   const chatMessages: ChatMessage[] = chatMessagesData?.data || [];
   const adminMessages: AdminMessage[] = adminMessagesData?.data || [];
   const carriers: CarrierProfile[] = Array.isArray(carriersData) ? carriersData : [];
@@ -156,7 +160,7 @@ export default function FloatingChatConsole() {
 
   // Fetch user information for all carriers
   const { data: userInfos = {} } = useSWR(
-    carrierUserIds.length > 0 ? `/api/users/batch?ids=${carrierUserIds.join(',')}` : null,
+    isAdmin && carrierUserIds.length > 0 ? `/api/users/batch?ids=${carrierUserIds.join(',')}` : null,
     fetcher
   );
 
@@ -274,6 +278,7 @@ export default function FloatingChatConsole() {
     };
   }, []);
 
+  // All callback hooks (must be before early return)
   // Function to mark messages as read when conversation is selected
   const markMessagesAsRead = useCallback(async (carrierId: string) => {
     try {
@@ -357,6 +362,11 @@ export default function FloatingChatConsole() {
       clearTimeout(typingTimeoutRef.current);
     }
   }, []);
+
+  // Only render for admin users (after ALL hooks)
+  if (!isAdmin) {
+    return null;
+  }
 
   const formatTime = (timestamp: string) => {
     const date = new Date(timestamp);

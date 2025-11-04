@@ -1,5 +1,5 @@
 import sql from "@/lib/db";
-import { auth } from "@clerk/nextjs/server";
+import { requireApiCarrier } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 // DELETE /api/carrier/bids/[id] - Cancel/delete a bid
@@ -8,11 +8,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireApiCarrier(request);
+    const userId = auth.userId;
 
     const { id } = await params;
 
@@ -21,7 +18,7 @@ export async function DELETE(
       SELECT cb.*, tb.received_at, tb.expires_at
       FROM carrier_bids cb
       LEFT JOIN telegram_bids tb ON cb.bid_number = tb.bid_number
-      WHERE cb.id = ${id} AND cb.clerk_user_id = ${userId}
+      WHERE cb.id = ${id} AND cb.supabase_user_id = ${userId}
     `;
 
     if (bidCheck.length === 0) {
@@ -47,12 +44,12 @@ export async function DELETE(
       }
     }
 
-    // Delete the bid
-    const result = await sql`
-      DELETE FROM carrier_bids 
-      WHERE id = ${id} AND clerk_user_id = ${userId}
-      RETURNING id
-    `;
+      // Delete the bid
+      const result = await sql`
+        DELETE FROM carrier_bids 
+        WHERE id = ${id} AND supabase_user_id = ${userId}
+        RETURNING id
+      `;
 
     if (result.length === 0) {
       return NextResponse.json(

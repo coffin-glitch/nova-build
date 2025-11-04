@@ -10,7 +10,7 @@ export default function Footer() {
           <div className="space-y-4">
             <div className="flex items-center space-x-2">
               <Truck className="h-6 w-6 text-primary" />
-              <span className="text-lg font-bold text-foreground">NOVA Build</span>
+              <span className="text-lg font-bold text-foreground">NOVA</span>
             </div>
             <p className="text-sm text-muted-foreground max-w-xs">
               Connecting carriers with quality loads since 2024. Streamlined logistics for the modern freight industry.
@@ -85,7 +85,7 @@ export default function Footer() {
         <div className="mt-8 pt-8 border-t border-border/40">
           <div className="flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
             <p className="text-sm text-muted-foreground">
-              © 2025 NOVA Build. All rights reserved.
+              © 2025 NOVA. All rights reserved.
             </p>
             <div className="flex space-x-6">
               <Link href="/privacy" className="text-sm text-muted-foreground hover:text-foreground transition-colors">

@@ -2,13 +2,12 @@
 
 import { useEffect, useState } from "react";
 import useSWR from "swr";
-
-const fetcher = (url: string) => fetch(url).then(r => r.json());
+import { swrFetcher } from "@/lib/safe-fetcher";
 
 export function useUnreadMessageCount() {
   const { data: chatMessagesData } = useSWR(
     "/api/admin/all-chat-messages",
-    fetcher,
+    swrFetcher,
     { refreshInterval: 5000 }
   );
 

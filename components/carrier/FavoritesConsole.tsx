@@ -11,28 +11,28 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAccentColor } from "@/hooks/useAccentColor";
 import { formatDistance, formatStopCount, formatStops, formatStopsDetailed } from "@/lib/format";
 import {
-    Activity,
-    BarChart3,
-    Bell,
-    Clock,
-    DollarSign,
-    Eye,
-    EyeOff,
-    Heart,
-    LayoutGrid,
-    MapPin,
-    Navigation,
-    RefreshCw,
-    Search,
-    Settings,
-    SortAsc,
-    SortDesc,
-    Star,
-    Table as TableIcon,
-    Target,
-    Truck,
-    X,
-    Zap
+  Activity,
+  BarChart3,
+  Bell,
+  Clock,
+  DollarSign,
+  Eye,
+  EyeOff,
+  Heart,
+  LayoutGrid,
+  MapPin,
+  Navigation,
+  RefreshCw,
+  Search,
+  Settings,
+  SortAsc,
+  SortDesc,
+  Star,
+  Table as TableIcon,
+  Target,
+  Truck,
+  X,
+  Zap
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -57,6 +57,7 @@ interface FavoriteBid {
   currentBid: number | null;
   bidCount: number;
   myBid?: number | null;
+  timeLeftSeconds?: number;
 }
 
 interface NotificationTrigger {
@@ -124,7 +125,9 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
     fetcher,
     { 
       refreshInterval: 10000,
-      fallbackData: { ok: true, data: [] }
+      fallbackData: { ok: true, data: [] },
+      revalidateOnFocus: true,
+      revalidateOnReconnect: true
     }
   );
 
@@ -150,6 +153,20 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
 
   const favorites: FavoriteBid[] = data?.data || [];
   const notificationTriggers: NotificationTrigger[] = triggersData?.data || [];
+  
+  // Debug logging
+  useEffect(() => {
+    if (isOpen && data) {
+      console.log('[FavoritesConsole] Data received:', {
+        hasData: !!data,
+        hasOk: data?.ok,
+        dataLength: data?.data?.length || 0,
+        dataType: typeof data?.data,
+        isArray: Array.isArray(data?.data),
+        firstItem: data?.data?.[0]
+      });
+    }
+  }, [isOpen, data]);
   
   // Stable preferences with fallback
   const defaultPreferences: NotificationPreferences = {
@@ -1255,67 +1272,139 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                   )}
                 </div>
               ) : viewMode === 'card' ? (
-                /* Card View - 3 Column Grid */
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                /* Card View - 3 Column Grid with proper spacing */
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 auto-rows-fr">
                   {filteredFavorites.map((favorite) => {
                     const similarityScore = getSimilarityScoreSync(favorite);
                     return (
-                      <Glass key={favorite.favorite_id} className="p-4">
-                        <div className="space-y-3">
-                          {/* Header */}
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <h4 className="font-semibold text-sm">{favorite.bid_number}</h4>
+                      <Glass key={favorite.favorite_id} className="p-3 flex flex-col h-[280px]">
+                        <div className="space-y-3 flex-1 flex flex-col min-h-0">
+                          {/* Header Row - Bid Number, Badges, State Tag, Time Left */}
+                          <div className="flex items-center justify-between gap-2 flex-wrap flex-shrink-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h4 className="font-semibold text-sm">#{favorite.bid_number}</h4>
                               <Badge className={getStatusColor(favorite)}>
-                                {getStatusText(favorite)}
+                                <span className="text-[10px] px-1.5">{getStatusText(favorite)}</span>
                               </Badge>
-                              <Badge variant="outline" className="text-xs">
+                              <Badge variant="outline" className="text-xs px-2">
                                 <Target className="h-3 w-3 mr-1" />
-                                {similarityScore}% match
+                                {similarityScore}%
                               </Badge>
+                              {favorite.tag && (
+                                <Badge variant="secondary" className="text-[10px] px-2 py-1">
+                                  {favorite.tag}
+                                </Badge>
+                              )}
                             </div>
                             
-                            <div className="flex items-center gap-2">
-                              {!favorite.isExpired && (
-                                <div className="text-right">
-                                  <div className="text-xs text-muted-foreground">Time Left</div>
-                                  <Countdown 
-                                    expiresAt={favorite.expiresAt} 
-                                    className="text-sm font-mono"
-                                  />
-                                </div>
-                              )}
-                              
-                              {/* Notification Trigger Buttons */}
-                              <div className="flex items-center gap-1">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => handleCreateExactMatchTrigger(favorite.bid_number)}
-                                  disabled={isCreatingTrigger}
-                                  className="text-blue-400 hover:text-blue-300 hover:bg-blue-500/20 border-blue-500/30 px-2 py-1"
-                                  title="Get notified when this exact load appears again"
-                                >
-                                  <Bell className="h-3 w-3" />
-                                </Button>
-                                
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => setShowNotificationTriggers(true)}
-                                  className="text-purple-400 hover:text-purple-300 hover:bg-purple-500/20 border-purple-500/30 px-2 py-1"
-                                  title="Manage notification settings"
-                                >
-                                  <Settings className="h-3 w-3" />
-                                </Button>
+                            {/* Time Left - Top Right */}
+                            {!favorite.isExpired && (
+                              <div className="text-right">
+                                <div className="text-[10px] text-muted-foreground mb-0.5">Time Left</div>
+                                <Countdown 
+                                  expiresAt={favorite.expiresAt} 
+                                  variant={(favorite.timeLeftSeconds || 0) <= 300 ? "urgent" : "default"}
+                                  className="text-xs font-mono"
+                                />
                               </div>
+                            )}
+                          </div>
+
+                          {/* Route Details Section - Prominent and Well-Spaced */}
+                          <div className="space-y-2.5 flex-shrink-0 bg-muted/30 rounded-lg p-3 border border-border/50">
+                            {/* Route */}
+                            <div className="flex items-start gap-2">
+                              <MapPin className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                {favorite.stops && Array.isArray(favorite.stops) && favorite.stops.length > 0 ? (
+                                  <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm leading-snug">
+                                    {favorite.stops.slice(0, 3).map((stop, idx) => (
+                                      <span key={idx} className="inline-flex items-center">
+                                        <span className="text-foreground font-semibold truncate max-w-[140px]">{stop}</span>
+                                        {idx < Math.min(favorite.stops.length - 1, 2) && (
+                                          <span className="mx-1.5 text-muted-foreground text-xs">→</span>
+                                        )}
+                                      </span>
+                                    ))}
+                                    {favorite.stops.length > 3 && (
+                                      <span className="text-muted-foreground text-xs ml-1">+{favorite.stops.length - 3} more</span>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span className="text-muted-foreground text-sm">No route information</span>
+                                )}
+                              </div>
+                            </div>
+                            
+                            {/* Distance and Stops - Grouped together */}
+                            <div className="flex items-center gap-4 text-xs text-muted-foreground pl-6">
+                              <div className="flex items-center gap-1.5">
+                                <Navigation className="h-3.5 w-3.5" />
+                                <span className="font-medium">{formatDistance(favorite.distance)}</span>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <Truck className="h-3.5 w-3.5" />
+                                <span className="font-medium">{formatStopCount(favorite.stops)}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Details, Bid Now (Left) and Action Buttons (Right) */}
+                          <div className="flex items-center justify-between gap-2 flex-wrap flex-shrink-0">
+                            {/* Left side - Details, Bid Now */}
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setViewDetailsBid(favorite)}
+                                className="text-xs px-3 py-1.5 h-8"
+                              >
+                                Details
+                              </Button>
+                              
+                              {!favorite.isExpired && (
+                                <Link href="/bid-board">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="text-xs px-3 py-1.5 h-8 hover:bg-blue-500/20 hover:text-blue-400"
+                                  >
+                                    <Zap className="h-3.5 w-3.5 mr-1" />
+                                    Bid Now
+                                  </Button>
+                                </Link>
+                              )}
+                            </div>
+
+                            {/* Right side - Action Buttons */}
+                            <div className="flex items-center gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleCreateExactMatchTrigger(favorite.bid_number)}
+                                disabled={isCreatingTrigger}
+                                className="text-blue-400 hover:text-blue-300 hover:bg-blue-500/20 border-blue-500/30 p-1 h-7 w-7"
+                                title="Get notified when this exact load appears again"
+                              >
+                                <Bell className="h-3 w-3" />
+                              </Button>
+                              
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setShowNotificationTriggers(true)}
+                                className="text-purple-400 hover:text-purple-300 hover:bg-purple-500/20 border-purple-500/30 p-1 h-7 w-7"
+                                title="Manage notification settings"
+                              >
+                                <Settings className="h-3 w-3" />
+                              </Button>
                               
                               <Button
                                 variant="outline"
                                 size="sm"
                                 onClick={() => handleRemoveFavorite(favorite.bid_number)}
                                 disabled={isRemoving === favorite.bid_number}
-                                className="text-red-400 hover:text-red-300 hover:bg-red-500/20 border-red-500/30 px-2 py-1"
+                                className="text-red-400 hover:text-red-300 hover:bg-red-500/20 border-red-500/30 p-1 h-7 w-7"
                               >
                                 {isRemoving === favorite.bid_number ? (
                                   <RefreshCw className="h-3 w-3 animate-spin" />
@@ -1326,79 +1415,14 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                             </div>
                           </div>
 
-                          {/* Route Info - Full Lane Display */}
-                          <div className="space-y-2">
-                            <div className="flex items-start gap-2 text-xs">
-                              <MapPin className="h-3 w-3 text-muted-foreground mt-0.5 flex-shrink-0" />
-                              <div className="flex-1 min-w-0">
-                                {favorite.stops && Array.isArray(favorite.stops) && favorite.stops.length > 0 ? (
-                                  <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5">
-                                    {favorite.stops.map((stop, idx) => (
-                                      <span key={idx} className="inline-flex items-center">
-                                        <span className="text-foreground">{stop}</span>
-                                        {idx < favorite.stops.length - 1 && (
-                                          <span className="mx-1 text-muted-foreground">→</span>
-                                        )}
-                                      </span>
-                                    ))}
-                                  </div>
-                                ) : (
-                                  <span className="text-muted-foreground">No route information</span>
-                                )}
+                          {/* Footer - My Bid Info */}
+                          <div className="flex flex-col gap-2 mt-auto pt-2 border-t flex-shrink-0">
+                            {favorite.myBid && (
+                              <div className="flex items-center gap-2 text-sm justify-center">
+                                <DollarSign className="h-4 w-4 text-muted-foreground" />
+                                <span>My Bid: <span className="font-semibold text-blue-400">${Number(favorite.myBid || 0).toFixed(2)}</span></span>
                               </div>
-                            </div>
-                            <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                              <div className="flex items-center gap-1">
-                                <Navigation className="h-3 w-3" />
-                                <span>{formatDistance(favorite.distance)}</span>
-                              </div>
-                              <div className="flex items-center gap-1">
-                                <Truck className="h-3 w-3" />
-                                <span>{formatStopCount(favorite.stops)}</span>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Bidding Info */}
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3 text-xs">
-                              {favorite.myBid && (
-                                <div className="flex items-center gap-1">
-                                  <DollarSign className="h-3 w-3 text-muted-foreground" />
-                                  <span>My Bid: <span className="font-semibold text-blue-400">${Number(favorite.myBid || 0).toFixed(2)}</span></span>
-                                </div>
-                              )}
-                            </div>
-                            
-                            <div className="flex items-center gap-1">
-                              {favorite.tag && (
-                                <Badge variant="secondary" className="text-xs px-1 py-0">
-                                  {favorite.tag}
-                                </Badge>
-                              )}
-                              
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setViewDetailsBid(favorite)}
-                                className="text-xs px-2 py-1"
-                              >
-                                Details
-                              </Button>
-                              
-                              {!favorite.isExpired && (
-                                <Link href="/bid-board">
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="text-xs px-2 py-1 hover:bg-blue-500/20 hover:text-blue-400"
-                                  >
-                                    <Zap className="h-3 w-3 mr-1" />
-                                    Bid Now
-                                  </Button>
-                                </Link>
-                              )}
-                            </div>
+                            )}
                           </div>
                         </div>
                       </Glass>
@@ -1432,6 +1456,7 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                                 <div className="text-xs text-muted-foreground mt-1">
                                   <Countdown 
                                     expiresAt={favorite.expiresAt} 
+                                    variant={(favorite.timeLeftSeconds || 0) <= 300 ? "urgent" : "default"}
                                     className="font-mono"
                                   />
                                 </div>
@@ -1580,10 +1605,12 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                 </div>
                 
                 <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div>
-                    <span className="text-muted-foreground">Source:</span>
-                    <span className="ml-2 font-medium">{viewDetailsBid.sourceChannel}</span>
-                  </div>
+                  {viewDetailsBid.sourceChannel && viewDetailsBid.sourceChannel !== '-1002560784901' && (
+                    <div>
+                      <span className="text-muted-foreground">Source:</span>
+                      <span className="ml-2 font-medium">{viewDetailsBid.sourceChannel}</span>
+                    </div>
+                  )}
                   <div>
                     <span className="text-muted-foreground">Favorited:</span>
                     <span className="ml-2 font-medium">
@@ -1618,3 +1645,4 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
     </Dialog>
   );
 }
+

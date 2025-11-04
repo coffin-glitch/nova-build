@@ -1,22 +1,13 @@
-import { roleManager } from "@/lib/role-manager";
+import { requireApiAdmin } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
-import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { NextRequest, NextResponse } from "next/server";
 
-export async function PUT(req: Request) {
+export async function PUT(request: NextRequest) {
   try {
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    // Ensure user is admin (Supabase-only)
+    await requireApiAdmin(request);
 
-    // Check if user is admin
-    const userRole = await roleManager.getUserRole(userId);
-    if (userRole !== 'admin') {
-      return NextResponse.json({ error: "Only admins can update loads" }, { status: 403 });
-    }
-
-    const body = await req.json();
+    const body = await request.json();
     const { 
       rrNumber, 
       originCity, 

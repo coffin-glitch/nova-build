@@ -5,9 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { useIsAdmin } from "@/lib/clerk-roles";
+import { useIsAdmin } from "@/hooks/useUnifiedRole";
 import { cn } from "@/lib/utils";
-import { useUser } from "@clerk/nextjs";
+import { useUnifiedUser } from "@/hooks/useUnifiedUser";
 import { Crown, RefreshCw, Search, Settings, Shield, Truck, User, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -32,7 +32,7 @@ export default function FloatingDevAdminButton() {
   const [selectedUser, setSelectedUser] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
   
-  const { user, isLoaded } = useUser();
+  const { user, isLoaded } = useUnifiedUser();
   const buttonRef = useRef<HTMLDivElement>(null);
   const consoleRef = useRef<HTMLDivElement>(null);
 
@@ -164,12 +164,32 @@ export default function FloatingDevAdminButton() {
   const loadUsers = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch('/api/clerk-roles?action=list');
+      // Use Supabase admin users API
+      const response = await fetch('/api/admin/users', {
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
       if (response.ok) {
         const data = await response.json();
-        setUsers(data.users || []);
+        // The API returns { ok: true, data: [...] }
+        const usersList = data.data || data.users || [];
+        // Transform Supabase users to expected format
+        const transformedUsers = usersList.map((user: any) => ({
+          id: user.user_id || user.supabase_user_id,
+          supabase_user_id: user.supabase_user_id,
+          email: user.email || user.user_id || '', // Use email from cache
+          firstName: user.contact_name?.split(' ')[0] || user.firstName || '',
+          lastName: user.contact_name?.split(' ').slice(1).join(' ') || user.lastName || '',
+          role: user.role || 'carrier',
+        }));
+        console.log('📊 Loaded users:', transformedUsers.length, transformedUsers);
+        setUsers(transformedUsers);
       } else {
-        toast.error("Failed to load users");
+        const errorData = await response.json().catch(() => ({}));
+        toast.error(errorData.error || "Failed to load users");
       }
     } catch (error) {
       console.error("Error loading users:", error);
@@ -182,19 +202,27 @@ export default function FloatingDevAdminButton() {
   const assignRole = async (userId: string, role: "admin" | "carrier") => {
     setIsLoading(true);
     try {
-      const response = await fetch('/api/clerk-roles', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetUserId: userId, role }),
+      // Use Supabase admin users API for role assignment
+      const response = await fetch('/api/admin/users', {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 
+          'Content-Type': 'application/json' 
+        },
+        body: JSON.stringify({ 
+          user_id: userId, 
+          role: role 
+        }),
       });
 
       if (response.ok) {
         const result = await response.json();
-        toast.success(result.message);
+        toast.success(result.message || `User role updated to ${role}`);
         loadUsers(); // Reload users
         setSelectedUser(null);
       } else {
-        toast.error("Failed to assign role");
+        const errorData = await response.json().catch(() => ({}));
+        toast.error(errorData.error || "Failed to assign role");
       }
     } catch (error) {
       console.error("Error assigning role:", error);

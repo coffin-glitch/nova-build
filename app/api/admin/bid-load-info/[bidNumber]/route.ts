@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/lib/clerk-server";
+import { requireApiAdmin } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -7,10 +7,10 @@ export async function GET(
   { params }: { params: Promise<{ bidNumber: string }> }
 ) {
   try {
-    const { bidNumber } = await params;
+    // Ensure user is admin (Supabase-only)
+    await requireApiAdmin(request);
     
-    // This will redirect if user is not admin
-    await requireAdmin();
+    const { bidNumber } = await params;
 
     // Get load information from telegram_bids table
     const loadInfo = await sql`

@@ -1,4 +1,4 @@
-import { getClerkUserInfo } from "@/lib/clerk-server";
+import { getSupabaseUserInfo } from "@/lib/auth-unified";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -32,24 +32,24 @@ export async function GET(request: NextRequest) {
         }
         
         try {
-          // First try to get user info from Clerk
-          const userInfo = await getClerkUserInfo(userId.trim());
+          // Get user info from Supabase
+          const userInfo = await getSupabaseUserInfo(userId.trim());
           userInfos[userId.trim()] = userInfo;
-        } catch (error) {
-          console.error(`Error fetching user info from Clerk for ${userId}:`, error);
+          } catch (error) {
+          console.error(`Error fetching user info from Supabase for ${userId}:`, error);
           
-          // Fallback: try to get user info from local database
+          // Fallback: try to get user info from local database (shouldn't be needed but kept for safety)
           try {
-            const localUser = await sql`
+              const localUser = await sql`
               SELECT 
-                u.clerk_user_id,
-                u.email,
-                u.role,
-                cp.company_name,
-                cp.contact_name
-              FROM users u
-              LEFT JOIN carrier_profiles cp ON u.clerk_user_id = cp.clerk_user_id
-              WHERE u.clerk_user_id = ${userId.trim()}
+                cp.supabase_user_id,
+                cp.contact_name,
+                cp.legal_name,
+                urc.role,
+                urc.email
+              FROM carrier_profiles cp
+              LEFT JOIN user_roles_cache urc ON cp.supabase_user_id = urc.supabase_user_id
+              WHERE cp.supabase_user_id = ${userId.trim()}
             `;
             
             if (localUser.length > 0) {

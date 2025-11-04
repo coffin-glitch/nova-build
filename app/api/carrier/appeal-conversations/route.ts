@@ -1,14 +1,11 @@
 import sql from "@/lib/db";
-import { auth } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { requireApiCarrier } from "@/lib/auth-api-helper";
+import { NextRequest, NextResponse } from "next/server";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireApiCarrier(request);
+    const userId = auth.userId;
 
     // Get appeal conversations for the current carrier with unread counts
     const conversations = await sql`
@@ -36,7 +33,8 @@ export async function GET() {
       FROM conversations c
       LEFT JOIN conversation_messages cm ON cm.conversation_id = c.id
       LEFT JOIN message_reads mr ON mr.message_id = cm.id AND mr.user_id = ${userId}
-      WHERE c.carrier_user_id = ${userId} AND c.conversation_type = 'appeal'
+      WHERE c.supabase_carrier_user_id = ${userId}
+      AND c.conversation_type = 'appeal'
       GROUP BY c.id, c.admin_user_id, c.last_message_at, c.created_at, c.updated_at
       ORDER BY c.last_message_at DESC
     `;
@@ -54,15 +52,12 @@ export async function GET() {
   }
 }
 
-export async function POST(req: Request) {
+export async function POST(request: NextRequest) {
   try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireApiCarrier(request);
+    const userId = auth.userId;
 
-    const body = await req.json();
+    const body = await request.json();
     const { message, admin_user_id } = body;
 
     if (!message) {
@@ -80,17 +75,17 @@ export async function POST(req: Request) {
     // Check if appeal conversation already exists
     const existingConversation = await sql`
       SELECT id FROM conversations 
-      WHERE carrier_user_id = ${userId} AND admin_user_id = ${targetAdminId} AND conversation_type = 'appeal'
+      WHERE supabase_carrier_user_id = ${userId} AND admin_user_id = ${targetAdminId} AND conversation_type = 'appeal'
     `;
 
     let conversationId;
     if (existingConversation.length > 0) {
       conversationId = existingConversation[0].id;
     } else {
-      // Create new appeal conversation
+      // Create new appeal conversation (Supabase-only)
       const conversationResult = await sql`
         INSERT INTO conversations (
-          carrier_user_id,
+          supabase_carrier_user_id,
           admin_user_id,
           conversation_type,
           created_at,
@@ -105,12 +100,19 @@ export async function POST(req: Request) {
     const messageResult = await sql`
       INSERT INTO conversation_messages (
         conversation_id,
-        sender_id,
+        supabase_sender_id,
         sender_type,
         message,
         created_at,
         updated_at
-      ) VALUES (${conversationId}, ${userId}, 'carrier', ${message}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      ) VALUES (
+        ${conversationId}, 
+        ${userId},
+        'carrier', 
+        ${message}, 
+        CURRENT_TIMESTAMP, 
+        CURRENT_TIMESTAMP
+      )
       RETURNING id, created_at
     `;
 

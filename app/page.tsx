@@ -4,7 +4,7 @@ import PageHeader from "@/components/layout/PageHeader";
 import SectionCard from "@/components/layout/SectionCard";
 import { Button } from "@/components/ui/button";
 import { useAccentColor } from "@/hooks/useAccentColor";
-import { useUser } from "@clerk/nextjs";
+import { useUnifiedUser } from "@/hooks/useUnifiedUser";
 import {
     ArrowRight,
     CheckCircle,
@@ -19,10 +19,18 @@ import Link from "next/link";
 
 export default function HomePage() {
   const { accentColor } = useAccentColor();
-  const { user, isLoaded } = useUser();
+  const { user, isLoaded } = useUnifiedUser();
+
+  // 🐛 DEBUG: Log auth state
+  console.log('🐛 [HOME PAGE DEBUG] Auth state:');
+  console.log('🐛 - isLoaded:', isLoaded);
+  console.log('🐛 - Has user:', !!user);
+  console.log('🐛 - User email:', user?.emailAddresses?.[0]?.emailAddress || user?.primaryEmailAddress?.emailAddress || 'None');
+  console.log('🐛 - User ID:', user?.id || 'None');
 
   // Show landing page for unauthenticated users
   if (!isLoaded || !user) {
+    console.log('🐛 [HOME PAGE DEBUG] Showing landing page (not authenticated)');
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="max-w-4xl mx-auto text-center px-4">
@@ -33,7 +41,7 @@ export default function HomePage() {
             <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight mb-6">
               Welcome to{" "}
               <span className="bg-gradient-to-r from-blue-500 via-purple-600 to-indigo-600 bg-clip-text text-transparent">
-                NOVA Build
+                NOVA
               </span>
             </h1>
             <p className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto leading-relaxed">
@@ -67,7 +75,7 @@ export default function HomePage() {
               </Link>
             </Button>
             <p className="text-sm text-muted-foreground">
-              Join thousands of carriers already using NOVA Build
+              Join thousands of carriers already using NOVA
             </p>
           </div>
         </div>
@@ -76,6 +84,7 @@ export default function HomePage() {
   }
   
   // Show full homepage for authenticated users
+  console.log('🐛 [HOME PAGE DEBUG] Showing authenticated homepage');
   return (
     <div className="min-h-screen">
       {/* Hero Section */}
@@ -140,7 +149,7 @@ export default function HomePage() {
       {/* Features Section */}
       <section className="py-20">
         <PageHeader 
-          title="Why Choose NOVA Build?" 
+          title="Why Choose NOVA?" 
           subtitle="Built for carriers who demand efficiency and reliability"
         />
         

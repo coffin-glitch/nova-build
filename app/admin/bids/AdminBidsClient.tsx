@@ -308,10 +308,12 @@ export function AdminBidsClient({ initialBids, initialTags }: AdminBidsClientPro
 
                 {/* Source Info */}
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-sm font-medium text-muted-foreground">Source Channel</label>
-                    <p className="text-sm font-mono">{selectedBid.source_channel}</p>
-                  </div>
+                  {selectedBid.source_channel && selectedBid.source_channel !== '-1002560784901' && (
+                    <div>
+                      <label className="text-sm font-medium text-muted-foreground">Source Channel</label>
+                      <p className="text-sm font-mono">{selectedBid.source_channel}</p>
+                    </div>
+                  )}
                   <div>
                     <label className="text-sm font-medium text-muted-foreground">Forwarded To</label>
                     <p className="text-sm font-mono">{selectedBid.forwarded_to || "N/A"}</p>
@@ -328,10 +330,10 @@ export function AdminBidsClient({ initialBids, initialTags }: AdminBidsClientPro
                       bidOffers.map((offer, index) => (
                         <div key={index} className="flex items-center justify-between p-3 bg-muted/30 rounded">
                           <div>
-                            <span className="font-mono text-sm">{offer.clerk_user_id.slice(-8)}</span>
-                            <span className="text-sm text-muted-foreground ml-2">${offer.price.toLocaleString()}</span>
+                            <span className="font-mono text-sm">{(offer.supabase_user_id || offer.user_id || '').slice(-8)}</span>
+                            <span className="text-sm text-muted-foreground ml-2">${offer.amount_cents ? (offer.amount_cents / 100).toLocaleString() : '0'}</span>
                           </div>
-                          <Badge variant="secondary">{offer.status}</Badge>
+                          <Badge variant="secondary">{offer.status || 'pending'}</Badge>
                         </div>
                       ))
                     )}

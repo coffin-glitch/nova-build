@@ -1,14 +1,11 @@
 import sql from "@/lib/db";
-import { auth } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { requireApiCarrier } from "@/lib/auth-api-helper";
+import { NextRequest, NextResponse } from "next/server";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireApiCarrier(request);
+    const userId = auth.userId;
 
     // Get carrier's bids with real-time auction data from telegram_bids
     // Use the EXACT same calculation logic as telegram-bids API
@@ -39,7 +36,7 @@ export async function GET() {
         SELECT 
           cb1.bid_number,
           cb1.amount_cents,
-          cb1.clerk_user_id
+          cb1.supabase_user_id
         FROM carrier_bids cb1
         WHERE cb1.id = (
           SELECT cb2.id 
@@ -56,7 +53,7 @@ export async function GET() {
         FROM carrier_bids
         GROUP BY bid_number
       ) bid_counts ON cb.bid_number = bid_counts.bid_number
-      WHERE cb.clerk_user_id = ${userId}
+      WHERE cb.supabase_user_id = ${userId}
       ORDER BY cb.created_at DESC
     `;
 
@@ -69,7 +66,7 @@ export async function GET() {
           const bidAwards = await sql`
             SELECT 
               aa.bid_number,
-              aa.winner_user_id,
+              aa.supabase_winner_user_id as winner_user_id,
               CAST(aa.winner_amount_cents / 100.0 AS DECIMAL(10,2)) as winner_amount,
               aa.awarded_at
             FROM auction_awards aa

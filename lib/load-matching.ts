@@ -1,5 +1,5 @@
 import { TelegramBid } from "@/lib/auctions";
-import { getClerkUserInfo } from "@/lib/clerk-server";
+import { getSupabaseUserInfo } from "@/lib/auth-unified";
 import sql from "@/lib/db";
 import { sendSimilarLoadNotificationEmail } from "@/lib/email/notify";
 
@@ -357,8 +357,8 @@ async function createNotification({
       const emailEnabled = prefsResult[0]?.email_notifications ?? true;
 
       if (emailEnabled && notificationType === 'similar_load') {
-        // Get carrier's email from Clerk
-        const userInfo = await getClerkUserInfo(carrierUserId);
+        // Get carrier's email from Supabase
+        const userInfo = await getSupabaseUserInfo(carrierUserId);
         const email = userInfo.emailAddresses?.[0]?.emailAddress;
 
         if (email) {

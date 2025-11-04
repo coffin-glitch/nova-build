@@ -1,8 +1,9 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { getUserRoleAction } from "@/lib/actions";
-import { SignInButton, SignOutButton, useUser } from "@clerk/nextjs";
+import { useUnifiedUser } from "@/hooks/useUnifiedUser";
+import { useUnifiedRole } from "@/hooks/useUnifiedRole";
+import { useSupabase } from "@/components/providers/SupabaseProvider";
 import {
     Book,
     Compass,
@@ -21,7 +22,7 @@ import {
     User
 } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import NotificationsMenu from "./NotificationsMenu";
 
@@ -52,17 +53,14 @@ const navItems: NavItem[] = [
 
 export default function Nav() {
   const pathname = usePathname();
-  const { isSignedIn, user } = useUser();
-  const [userRole, setUserRole] = useState<"admin" | "carrier" | null>(null);
+  const router = useRouter();
+  const { user, isLoaded } = useUnifiedUser();
+  const { role } = useUnifiedRole();
+  const { supabase } = useSupabase();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  useEffect(() => {
-    if (isSignedIn && user) {
-      getUserRoleAction()
-        .then(role => setUserRole(role))
-        .catch(() => setUserRole("carrier"));
-    }
-  }, [isSignedIn, user]);
+  const isSignedIn = !!user;
+  const userRole = role;
 
   const getVisibleNavItems = () => {
     if (!isSignedIn) {
@@ -84,6 +82,14 @@ export default function Nav() {
     return navItems.filter(item => item.roles.includes("public"));
   };
 
+  const handleSignOut = async () => {
+    if (supabase) {
+      await supabase.auth.signOut();
+      router.push('/');
+      router.refresh();
+    }
+  };
+
   const visibleItems = getVisibleNavItems();
 
   return (
@@ -93,7 +99,7 @@ export default function Nav() {
           <div className="flex items-center">
             <div className="flex-shrink-0 flex items-center">
               <Truck className="h-8 w-8 text-blue-400" />
-              <span className="ml-2 text-xl font-bold text-white">NOVA Build</span>
+              <span className="ml-2 text-xl font-bold text-white">NOVA</span>
             </div>
           </div>
 
@@ -125,30 +131,33 @@ export default function Nav() {
                 {isSignedIn ? (
                   <>
                     <span className="text-sm font-medium text-slate-300">
-                      Welcome, {user?.firstName || user?.emailAddresses[0]?.emailAddress}
+                      Welcome, {user?.firstName || user?.email || 'User'}
                     </span>
                     <NotificationsMenu />
                     <div className="h-8 w-8 rounded-full bg-blue-500/20 border border-blue-400/30 flex items-center justify-center">
                       <User className="w-4 h-4 text-blue-400" />
                     </div>
-                    <SignOutButton>
-                      <Button variant="outline" size="sm" className="border-white/20 text-slate-300 hover:bg-white/10">
-                        Sign out
-                      </Button>
-                    </SignOutButton>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="border-white/20 text-slate-300 hover:bg-white/10"
+                      onClick={handleSignOut}
+                    >
+                      Sign out
+                    </Button>
                   </>
                 ) : (
                   <div className="flex items-center space-x-2">
-                    <SignInButton mode="modal">
+                    <Link href="/sign-in">
                       <Button variant="ghost" size="sm" className="text-slate-300 hover:text-white hover:bg-white/10">
                         Sign in
                       </Button>
-                    </SignInButton>
-                    <SignInButton mode="modal">
+                    </Link>
+                    <Link href="/sign-up">
                       <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white">
                         Get Started
                       </Button>
-                    </SignInButton>
+                    </Link>
                   </div>
                 )}
               </div>

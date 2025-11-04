@@ -1,6 +1,5 @@
-import { getClerkUserRole } from "@/lib/clerk-server";
 import sql from "@/lib/db";
-import { auth } from "@clerk/nextjs/server";
+import { requireApiAdmin, unauthorizedResponse, forbiddenResponse } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(
@@ -13,23 +12,10 @@ export async function POST(
     
     console.log("Toggle status API called for userId:", userId);
     
-    const { userId: adminUserId } = await auth();
-    
-    if (!adminUserId) {
-      console.log("No admin user ID found");
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    console.log("Admin user ID:", adminUserId);
-
-    // Check if user is admin
-    const userRole = await getClerkUserRole(adminUserId);
-    console.log("User role:", userRole);
-    
-    if (userRole !== "admin") {
-      console.log("User is not admin");
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    // Use unified auth (supports Supabase and Clerk)
+    const auth = await requireApiAdmin(request);
+    const adminUserId = auth.userId;
+    console.log("Admin user ID:", adminUserId, "Provider:", auth.provider);
 
     const body = await request.json();
     const { new_status, reason, review_notes } = body;
@@ -37,10 +23,10 @@ export async function POST(
     console.log("Processing toggle status for userId:", userId);
     console.log("New status:", new_status);
 
-    // Get current profile data before updating for history
+    // Get current profile data before updating for history (Supabase-only)
     const currentProfile = await sql`
       SELECT 
-        clerk_user_id,
+        supabase_user_id,
         legal_name,
         company_name,
         mc_number,
@@ -61,7 +47,7 @@ export async function POST(
         created_at,
         updated_at
       FROM carrier_profiles 
-      WHERE clerk_user_id = ${userId}
+      WHERE supabase_user_id = ${userId}
     `;
 
     console.log("Current profile found:", currentProfile.length > 0 ? "Yes" : "No");
@@ -71,12 +57,14 @@ export async function POST(
       return NextResponse.json({ error: "Carrier profile not found" }, { status: 404 });
     }
 
+    const profileUserId = currentProfile[0].supabase_user_id || userId;
+
     // Validate new_status
     if (!['approved', 'declined'].includes(new_status)) {
       return NextResponse.json({ error: "Invalid status. Must be 'approved' or 'declined'" }, { status: 400 });
     }
 
-    // Update profile status
+    // Update profile status (Supabase-only)
     if (new_status === 'approved') {
       await sql`
         UPDATE carrier_profiles 
@@ -87,7 +75,7 @@ export async function POST(
           review_notes = ${review_notes || null},
           decline_reason = NULL,
           edits_enabled = false
-        WHERE clerk_user_id = ${userId}
+        WHERE supabase_user_id = ${profileUserId}
       `;
     } else if (new_status === 'declined') {
       await sql`
@@ -99,7 +87,7 @@ export async function POST(
           review_notes = ${review_notes || null},
           decline_reason = ${reason || null},
           edits_enabled = false
-        WHERE clerk_user_id = ${userId}
+        WHERE supabase_user_id = ${profileUserId}
       `;
     }
 
@@ -118,7 +106,7 @@ export async function POST(
         decline_reason,
         version_number
       ) VALUES (
-        ${userId},
+        ${profileUserId},
         ${JSON.stringify(currentProfile[0])}::jsonb,
         ${new_status},
         ${currentProfile[0].submitted_at || new Date()},
@@ -126,7 +114,7 @@ export async function POST(
         ${adminUserId},
         ${review_notes || null},
         ${reason || null},
-        (SELECT COALESCE(MAX(version_number), 0) + 1 FROM carrier_profile_history WHERE carrier_user_id = ${userId})
+        (SELECT COALESCE(MAX(version_number), 0) + 1 FROM carrier_profile_history WHERE carrier_user_id = ${profileUserId})
       )
     `;
     

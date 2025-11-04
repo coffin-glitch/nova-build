@@ -1,25 +1,22 @@
 import sql from "@/lib/db";
-import { auth } from "@clerk/nextjs/server";
+import { requireApiCarrier } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { notificationId: string } }
+  { params }: { params: Promise<{ notificationId: string }> }
 ) {
   try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireApiCarrier(request);
+    const userId = auth.userId;
 
-    const { notificationId } = params;
+    const { notificationId } = await params;
 
     // Mark notification as read
     const result = await sql`
       UPDATE carrier_notifications 
       SET read = true, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ${notificationId} AND carrier_user_id = ${userId}
+      WHERE id = ${notificationId} AND supabase_user_id = ${userId}
       RETURNING id
     `;
 

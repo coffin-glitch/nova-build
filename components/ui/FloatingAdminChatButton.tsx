@@ -6,9 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useClerkRole } from "@/lib/clerk-roles";
+import { useUnifiedRole } from "@/hooks/useUnifiedRole";
 import { cn } from "@/lib/utils";
-import { useUser } from "@clerk/nextjs";
+import { useUnifiedUser } from "@/hooks/useUnifiedUser";
 import {
     ArrowLeft,
     Maximize2,
@@ -59,8 +59,8 @@ interface UserInfo {
 }
 
 export default function FloatingAdminChatButton() {
-  const { user, isLoaded } = useUser();
-  const { isAdmin } = useClerkRole();
+  const { user, isLoaded } = useUnifiedUser();
+  const { isAdmin } = useUnifiedRole();
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [position, setPosition] = useState({ x: 100, y: 100 }); // Safe default for SSR

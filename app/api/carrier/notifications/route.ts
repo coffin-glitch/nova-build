@@ -1,14 +1,29 @@
 import sql from "@/lib/db";
-import { auth } from "@clerk/nextjs/server";
+import { requireApiCarrier } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 // GET /api/carrier/notifications - Get carrier notifications
 export async function GET(request: NextRequest) {
   try {
-    const { userId } = await auth();
+    let auth;
+    try {
+      auth = await requireApiCarrier(request);
+    } catch (authError: any) {
+      console.error('Auth error in carrier notifications GET:', authError);
+      return NextResponse.json(
+        { error: "Authentication failed", details: authError?.message || "Unauthorized" },
+        { status: 401 }
+      );
+    }
+    
+    const userId = auth.userId;
     
     if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      console.error('No userId from auth in carrier notifications GET:', auth);
+      return NextResponse.json(
+        { error: "Authentication failed: no user ID" },
+        { status: 401 }
+      );
     }
 
     const { searchParams } = new URL(request.url);
@@ -16,52 +31,34 @@ export async function GET(request: NextRequest) {
     const offset = parseInt(searchParams.get('offset') || '0');
     const unreadOnly = searchParams.get('unread_only') === 'true';
 
-    let query = sql`
+    // Get notifications - check both supabase_user_id and carrier_user_id for compatibility
+    // Note: carrier_notifications table has: carrier_user_id (required), supabase_user_id (optional), type (not notification_type), read (not is_read), timestamp (not sent_at), load_id (not bid_number)
+    const notifications = await sql`
       SELECT 
         id,
         type,
         title,
         message,
-        bid_number,
         priority,
         read,
         timestamp,
-        created_at
+        created_at,
+        COALESCE(load_id::text, NULL) as load_id
       FROM carrier_notifications
-      WHERE carrier_user_id = ${userId}
-    `;
-
-    if (unreadOnly) {
-      query = sql`
-        SELECT 
-          id,
-          type,
-          title,
-          message,
-          bid_number,
-          priority,
-          read,
-          timestamp,
-          created_at
-        FROM carrier_notifications
-        WHERE carrier_user_id = ${userId} AND read = false
-      `;
-    }
-
-    query = sql`
-      ${query}
+      WHERE (supabase_user_id = ${userId} OR carrier_user_id = ${userId})
+      ${unreadOnly ? sql`AND read = false` : sql``}
       ORDER BY timestamp DESC
       LIMIT ${limit} OFFSET ${offset}
     `;
 
-    const notifications = await query;
-
     // Get total count
-    const countQuery = unreadOnly 
-      ? sql`SELECT COUNT(*) as count FROM carrier_notifications WHERE carrier_user_id = ${userId} AND read = false`
-      : sql`SELECT COUNT(*) as count FROM carrier_notifications WHERE carrier_user_id = ${userId}`;
+    const countResult = await sql`
+      SELECT COUNT(*) as count 
+      FROM carrier_notifications 
+      WHERE (supabase_user_id = ${userId} OR carrier_user_id = ${userId})
+      ${unreadOnly ? sql`AND read = false` : sql``}
+    `;
     
-    const countResult = await countQuery;
     const totalCount = countResult[0]?.count || 0;
 
     return NextResponse.json({ 
@@ -77,10 +74,34 @@ export async function GET(request: NextRequest) {
       }
     });
 
-  } catch (error) {
+  } catch (error: any) {
+    // Log full error details for debugging
+    console.error('[API /api/carrier/notifications] Full error:', {
+      message: error?.message,
+      stack: error?.stack,
+      name: error?.name,
+      error: error
+    });
     console.error('Error fetching notifications:', error);
+    
+    // Handle authentication/authorization errors properly
+    if (error instanceof Error) {
+      if (error.message === "Unauthorized" || error.message.includes("Unauthorized")) {
+        return NextResponse.json(
+          { error: "Authentication required" },
+          { status: 401 }
+        );
+      }
+      if (error.message === "Carrier access required" || error.message.includes("Carrier access")) {
+        return NextResponse.json(
+          { error: "Carrier access required" },
+          { status: 403 }
+        );
+      }
+    }
+    
     return NextResponse.json(
-      { error: "Failed to fetch notifications" },
+      { error: "Failed to fetch notifications", details: error?.message || String(error) },
       { status: 500 }
     );
   }
@@ -92,10 +113,25 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { userId } = await auth();
+    let auth;
+    try {
+      auth = await requireApiCarrier(request);
+    } catch (authError: any) {
+      console.error('Auth error in carrier notifications PUT:', authError);
+      return NextResponse.json(
+        { error: "Authentication failed", details: authError?.message || "Unauthorized" },
+        { status: 401 }
+      );
+    }
+    
+    const userId = auth.userId;
     
     if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      console.error('No userId from auth in carrier notifications PUT:', auth);
+      return NextResponse.json(
+        { error: "Authentication failed: no user ID" },
+        { status: 401 }
+      );
     }
 
     const { id } = await params;
@@ -103,7 +139,7 @@ export async function PUT(
     const result = await sql`
       UPDATE carrier_notifications 
       SET read = true, updated_at = NOW()
-      WHERE id = ${id} AND carrier_user_id = ${userId}
+      WHERE id = ${id} AND (supabase_user_id = ${userId} OR carrier_user_id = ${userId})
       RETURNING id
     `;
 
@@ -134,17 +170,32 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { userId } = await auth();
+    let auth;
+    try {
+      auth = await requireApiCarrier(request);
+    } catch (authError: any) {
+      console.error('Auth error in carrier notifications DELETE:', authError);
+      return NextResponse.json(
+        { error: "Authentication failed", details: authError?.message || "Unauthorized" },
+        { status: 401 }
+      );
+    }
+    
+    const userId = auth.userId;
     
     if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      console.error('No userId from auth in carrier notifications DELETE:', auth);
+      return NextResponse.json(
+        { error: "Authentication failed: no user ID" },
+        { status: 401 }
+      );
     }
 
     const { id } = await params;
 
     const result = await sql`
       DELETE FROM carrier_notifications 
-      WHERE id = ${id} AND carrier_user_id = ${userId}
+      WHERE id = ${id} AND (supabase_user_id = ${userId} OR carrier_user_id = ${userId})
       RETURNING id
     `;
 

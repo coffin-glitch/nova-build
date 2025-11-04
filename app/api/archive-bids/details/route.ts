@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
         cp.mc_number,
         cp.phone as carrier_phone
       FROM carrier_bids cb
-      LEFT JOIN carrier_profiles cp ON cb.carrier_user_id = cp.clerk_user_id
+      LEFT JOIN carrier_profiles cp ON cb.supabase_user_id = cp.supabase_user_id
       WHERE cb.bid_number = ${bidNumber}
       ORDER BY cb.amount_cents ASC, cb.created_at ASC
     `;
@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
         cp.legal_name as winner_name,
         cp.mc_number as winner_mc_number
       FROM auction_awards aa
-      LEFT JOIN carrier_profiles cp ON aa.winner_user_id = cp.clerk_user_id
+      LEFT JOIN carrier_profiles cp ON COALESCE(aa.supabase_winner_user_id, aa.winner_user_id) = cp.supabase_user_id
       WHERE aa.bid_number = ${bidNumber}
       LIMIT 1
     `;
@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
         MIN(amount_cents) as lowest_bid_cents,
         MAX(amount_cents) as highest_bid_cents,
         AVG(amount_cents) as avg_bid_cents,
-        COUNT(DISTINCT carrier_user_id) as unique_carriers
+        COUNT(DISTINCT supabase_user_id) as unique_carriers
       FROM carrier_bids
       WHERE bid_number = ${bidNumber}
     `;

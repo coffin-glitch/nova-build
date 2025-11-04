@@ -1,28 +1,16 @@
-import { getClerkUserRole } from "@/lib/clerk-server";
 import sql from "@/lib/db";
-import { auth } from "@clerk/nextjs/server";
+import { requireApiCarrier } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
-    // Check authentication and carrier role
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json(
-        { error: "Authentication required" },
-        { status: 401 }
-      );
-    }
+    const auth = await requireApiCarrier(request);
+    const userId = auth.userId;
 
-    const userRole = await getClerkUserRole(userId);
-    if (userRole !== "carrier" && userRole !== "admin") {
-      return NextResponse.json(
-        { error: "Carrier access required" },
-        { status: 403 }
-      );
-    }
+    console.log(`[Bid Stats] Fetching for user: ${userId}`);
 
     // Get bid statistics for this carrier
+    // Note: winner_user_id was removed in migration 078, only supabase_winner_user_id exists
     const stats = await sql`
       SELECT 
         COUNT(*) as total_awarded,
@@ -31,8 +19,9 @@ export async function GET(request: NextRequest) {
         COALESCE(SUM(aa.winner_amount_cents), 0) as total_revenue,
         COALESCE(AVG(aa.winner_amount_cents), 0) as average_amount
       FROM auction_awards aa
-      LEFT JOIN carrier_bids cb ON aa.bid_number = cb.bid_number AND aa.winner_user_id = cb.clerk_user_id
-      WHERE aa.winner_user_id = ${userId}
+      LEFT JOIN carrier_bids cb ON aa.bid_number = cb.bid_number 
+        AND cb.supabase_user_id = aa.supabase_winner_user_id
+      WHERE aa.supabase_winner_user_id = ${userId}
     `;
 
     const result = stats[0] || {
@@ -43,14 +32,22 @@ export async function GET(request: NextRequest) {
       average_amount: 0
     };
 
+    console.log(`[Bid Stats] Result for user ${userId}:`, {
+      total_awarded: result.total_awarded,
+      active_bids: result.active_bids,
+      completed_bids: result.completed_bids,
+      total_revenue: result.total_revenue,
+      average_amount: result.average_amount
+    });
+
     return NextResponse.json({
       ok: true,
       data: {
-        totalAwarded: parseInt(result.total_awarded),
-        activeBids: parseInt(result.active_bids),
-        completedBids: parseInt(result.completed_bids),
-        totalRevenue: parseInt(result.total_revenue),
-        averageAmount: parseInt(result.average_amount)
+        totalAwarded: parseInt(result.total_awarded) || 0,
+        activeBids: parseInt(result.active_bids) || 0,
+        completedBids: parseInt(result.completed_bids) || 0,
+        totalRevenue: parseInt(result.total_revenue) || 0,
+        averageAmount: parseInt(result.average_amount) || 0
       }
     });
 

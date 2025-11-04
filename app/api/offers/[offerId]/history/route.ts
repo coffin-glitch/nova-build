@@ -1,14 +1,15 @@
-import { requireAdmin } from "@/lib/clerk-server";
+import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { NextRequest } from "next/server";
 import sql from "@/lib/db";
 import { NextResponse } from "next/server";
 
 export async function GET(
-  req: Request,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // This will redirect if user is not admin
-    await requireAdmin();
+    // This will throw if user is not admin
+    await requireApiAdmin(req);
 
     const { id } = await params;
 
@@ -19,7 +20,7 @@ export async function GET(
         urc.email as performed_by_email,
         urc.role as performed_by_role
       FROM offer_history oh
-      LEFT JOIN user_roles_cache urc ON oh.performed_by = urc.clerk_user_id
+      LEFT JOIN user_roles_cache urc ON oh.performed_by = urc.supabase_user_id
       WHERE oh.offer_id = ${id}
       ORDER BY oh.performed_at DESC
     `;

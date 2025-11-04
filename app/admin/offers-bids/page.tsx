@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/lib/clerk-server";
+import { requireAdmin } from "@/lib/auth";
 import AdminBidsClient from "./AdminBidsClient";
 
 export const dynamic = "force-dynamic";

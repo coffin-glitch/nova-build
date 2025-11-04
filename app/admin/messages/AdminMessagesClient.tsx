@@ -330,7 +330,7 @@ export function AdminMessagesClient() {
               <div className="flex flex-col items-start">
                 <div className="max-w-[80%] rounded-2xl px-3 py-2 text-sm bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-100">
                   <div className="font-semibold text-xs mb-1">Admin</div>
-                  <div>Welcome to NOVA Build! How can we help you today?</div>
+                  <div>Welcome to NOVA! How can we help you today?</div>
                   <div className="text-xs opacity-70 mt-1">
                     {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </div>
