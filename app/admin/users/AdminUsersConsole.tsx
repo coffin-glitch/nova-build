@@ -14,6 +14,7 @@ import {
     History,
     MessageSquare,
     Search,
+    Shield,
     Unlock,
     Users,
     X
@@ -21,6 +22,7 @@ import {
 import { useState } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
+import { CarrierHealthCard } from "./CarrierHealthCard";
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
@@ -92,6 +94,9 @@ export function AdminUsersConsole() {
   const [showApproveDialog, setShowApproveDialog] = useState(false);
   const [showDeclineDialog, setShowDeclineDialog] = useState(false);
   const [showHistoryDialog, setShowHistoryDialog] = useState(false);
+  const [showHealthDialog, setShowHealthDialog] = useState(false);
+  const [healthData, setHealthData] = useState<any>(null);
+  const [isLoadingHealth, setIsLoadingHealth] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
@@ -272,6 +277,43 @@ export function AdminUsersConsole() {
   const handleViewHistory = (carrier: CarrierProfile) => {
     setSelectedCarrier(carrier);
     setShowHistoryDialog(true);
+  };
+
+  const handleViewHealth = async (carrier: CarrierProfile) => {
+    if (!carrier.mc_number) {
+      toast.error("MC number is required to fetch health data");
+      return;
+    }
+
+    setSelectedCarrier(carrier);
+    setIsLoadingHealth(true);
+    setHealthData(null);
+    setShowHealthDialog(true);
+
+    try {
+      const response = await fetch(`/api/admin/carrier-health?mc=${encodeURIComponent(carrier.mc_number)}`);
+      const data = await response.json();
+
+      if (!data.ok) {
+        const errorMessage = data.error || "Failed to fetch health data";
+        const errorDetails = data.details || "";
+        throw new Error(errorDetails ? `${errorMessage}\n${errorDetails}` : errorMessage);
+      }
+
+      setHealthData(data.data);
+    } catch (error: any) {
+      console.error("Error fetching health data:", error);
+      const errorMessage = error.message || "Failed to fetch carrier health data";
+      // Show error in toast - if it contains newlines, show the first line in toast and log the full message
+      const lines = errorMessage.split('\n');
+      toast.error(lines[0], {
+        description: lines.length > 1 ? lines.slice(1).join(' ') : undefined,
+        duration: 8000,
+      });
+      setHealthData(null);
+    } finally {
+      setIsLoadingHealth(false);
+    }
   };
 
   const handleLockProfile = async (carrier: CarrierProfile, reason: string) => {
@@ -566,11 +608,11 @@ export function AdminUsersConsole() {
         )}
 
         {/* Action Buttons */}
-        <div className="flex gap-2 pt-2">
+        <div className="grid grid-cols-2 gap-2 pt-2">
           <Button 
             variant="outline" 
             size="sm" 
-            className="flex-1"
+            className="w-full"
             onClick={() => handleEditProfile(carrier)}
           >
             <Edit3 className="h-4 w-4 mr-2" />
@@ -579,15 +621,26 @@ export function AdminUsersConsole() {
           <Button 
             variant="outline" 
             size="sm" 
-            className="flex-1"
+            className="w-full"
             onClick={() => handleViewHistory(carrier)}
           >
             <History className="h-4 w-4 mr-2" />
             History
           </Button>
+          {carrier.mc_number && (
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="w-full"
+              onClick={() => handleViewHealth(carrier)}
+            >
+              <Shield className="h-4 w-4 mr-2" />
+              Health
+            </Button>
+          )}
           <Button
             size="sm" 
-            className="flex-1 relative"
+            className="w-full relative"
             style={{ backgroundColor: accentColor }}
             onClick={() => handleOpenAppeal(carrier)}
           >
@@ -1292,6 +1345,53 @@ export function AdminUsersConsole() {
                   Close
                 </Button>
               </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Health Dialog */}
+      <Dialog open={showHealthDialog} onOpenChange={setShowHealthDialog}>
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Shield className="h-5 w-5 text-blue-600" />
+              Carrier Health Report - {selectedCarrier?.company_name}
+            </DialogTitle>
+          </DialogHeader>
+          
+          {isLoadingHealth ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                <p className="text-muted-foreground">Fetching health data from Highway...</p>
+              </div>
+            </div>
+          ) : healthData ? (
+            <CarrierHealthCard 
+              healthData={healthData} 
+              mcNumber={selectedCarrier?.mc_number || ""} 
+            />
+          ) : (
+            <div className="text-center py-12">
+              <Shield className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground">
+                No health data available for this carrier.
+              </p>
+              {selectedCarrier?.mc_number && (
+                <p className="text-sm text-muted-foreground mt-2">
+                  MC Number: {selectedCarrier.mc_number}
+                </p>
+              )}
+            </div>
+          )}
+
+          <div className="flex justify-end pt-4">
+            <Button
+              variant="outline"
+              onClick={() => setShowHealthDialog(false)}
+            >
+              Close
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

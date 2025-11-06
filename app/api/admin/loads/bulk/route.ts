@@ -1,8 +1,12 @@
+import { requireApiAdmin } from "@/lib/auth-api-helper";
 import sql from "@/lib/db.server";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
   try {
+    // Ensure user is admin (Supabase-only)
+    await requireApiAdmin(request);
+    
     const body = await request.json();
     const { action, loadIds, confirmAction } = body;
 

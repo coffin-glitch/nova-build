@@ -33,7 +33,7 @@ export async function GET(
         cm.updated_at,
         CASE WHEN mr.id IS NOT NULL THEN true ELSE false END as is_read
       FROM conversation_messages cm
-      LEFT JOIN message_reads mr ON mr.message_id = cm.id AND mr.user_id = ${userId}
+      LEFT JOIN message_reads mr ON mr.message_id = cm.id AND mr.supabase_user_id = ${userId}
       WHERE cm.conversation_id = ${conversationId}
       ORDER BY cm.created_at ASC
     `;

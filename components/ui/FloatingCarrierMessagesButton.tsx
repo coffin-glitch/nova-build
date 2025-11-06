@@ -10,6 +10,7 @@ import { useUnifiedRole } from "@/hooks/useUnifiedRole";
 import { cn } from "@/lib/utils";
 import { useUnifiedUser } from "@/hooks/useUnifiedUser";
 import {
+    ArrowLeft,
     Maximize2,
     MessageCircle,
     Minimize2,
@@ -24,25 +25,25 @@ import useSWR from "swr";
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
-interface AdminMessage {
-  id: string;
-  carrier_user_id: string;
+interface Conversation {
+  conversation_id: string;
   admin_user_id: string;
-  subject: string;
-  message: string;
-  is_read: boolean;
-  read_at?: string;
+  last_message_at: string;
   created_at: string;
   updated_at: string;
+  last_message: string;
+  last_message_sender_type: 'admin' | 'carrier';
+  unread_count: number;
 }
 
-interface CarrierResponse {
+interface ConversationMessage {
   id: string;
-  message_id: string;
-  carrier_user_id: string;
-  response: string;
+  conversation_id: string;
+  sender_id: string;
+  sender_type: 'admin' | 'carrier';
+  message: string;
   created_at: string;
-  updated_at: string;
+  is_read: boolean;
 }
 
 interface UserInfo {
@@ -68,15 +69,12 @@ export default function FloatingCarrierMessagesButton() {
   const buttonRef = useRef<HTMLDivElement>(null);
   
   // Chat functionality state
-  const [selectedMessage, setSelectedMessage] = useState<AdminMessage | null>(null);
+  const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   const [newMessage, setNewMessage] = useState("");
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
-  const [isInputFocused, setIsInputFocused] = useState(false);
-  const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Set initial position on client side
   useEffect(() => {
@@ -85,27 +83,28 @@ export default function FloatingCarrierMessagesButton() {
     }
   }, []);
 
-  // Fetch admin messages
+  // Fetch conversations
+  const { data: conversationsData, mutate: mutateConversations } = useSWR(
+    user && isCarrier ? "/api/carrier/conversations" : null,
+    fetcher,
+    { refreshInterval: 5000 } // Refresh conversations every 5 seconds
+  );
+
+  const conversations: Conversation[] = conversationsData?.data || [];
+
+  // Fetch messages for selected conversation
   const { data: messagesData, mutate: mutateMessages } = useSWR(
-    user ? "/api/carrier/messages" : null,
+    user && isCarrier && selectedConversationId ? `/api/carrier/conversations/${selectedConversationId}` : null,
     fetcher,
-    { refreshInterval: 5000 }
+    { refreshInterval: 2000 } // Refresh messages every 2 seconds
   );
 
-  // Fetch carrier responses
-  const { data: responsesData, mutate: mutateResponses } = useSWR(
-    user ? "/api/carrier/messages/responses" : null,
-    fetcher,
-    { refreshInterval: 5000 }
-  );
+  const messages: ConversationMessage[] = messagesData?.data || [];
 
-  const messages = messagesData?.data || [];
-  const responses = responsesData?.data || [];
-
-  // Get unique admin user IDs
+  // Get unique admin user IDs from conversations
   const adminUserIds = useMemo(() => {
-    return Array.from(new Set(messages.map((msg: AdminMessage) => msg.admin_user_id)));
-  }, [messages]);
+    return Array.from(new Set(conversations.map(conv => conv.admin_user_id)));
+  }, [conversations]);
 
   // Fetch admin user information
   const { data: userInfos = {} } = useSWR(
@@ -116,8 +115,8 @@ export default function FloatingCarrierMessagesButton() {
   // Helper function to get display name
   const getDisplayName = useCallback((userId: string): string => {
     const userInfo = userInfos[userId] as UserInfo;
-    if (!userInfo) return "Admin";
-    
+    if (!userInfo) return "Admin"; // Default for admin if info not loaded
+
     if (userInfo.fullName) return userInfo.fullName;
     if (userInfo.firstName && userInfo.lastName) return `${userInfo.firstName} ${userInfo.lastName}`;
     if (userInfo.firstName) return userInfo.firstName;
@@ -127,77 +126,25 @@ export default function FloatingCarrierMessagesButton() {
     return "Admin";
   }, [userInfos]);
 
-  // Group messages by admin (similar to admin console structure)
-  const messageGroups = useMemo(() => {
-    const groups = new Map<string, any[]>();
-    
-    // Add admin messages
-    messages.forEach((message: AdminMessage) => {
-      if (!groups.has(message.admin_user_id)) {
-        groups.set(message.admin_user_id, []);
-      }
-      groups.get(message.admin_user_id)!.push({
-        ...message,
-        type: 'admin',
-        timestamp: message.created_at
-      });
-    });
-
-    // Add carrier responses
-    responses.forEach((response: CarrierResponse) => {
-      const adminId = messages.find(msg => msg.id === response.message_id)?.admin_user_id;
-      if (adminId) {
-        if (!groups.has(adminId)) {
-          groups.set(adminId, []);
-        }
-        groups.get(adminId)!.push({
-          ...response,
-          type: 'carrier',
-          message: response.response,
-          timestamp: response.created_at
-        });
-      }
-    });
-
-    // Sort messages by timestamp within each group
-    groups.forEach((messages) => {
-      messages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-    });
-
-    return groups;
-  }, [messages, responses]);
-
-  // Calculate unread count
+  // Calculate total unread count for the button badge
   const totalUnreadCount = useMemo(() => {
-    return messages.filter((msg: AdminMessage) => !msg.is_read).length;
-  }, [messages]);
-
-  // Calculate unread counts per admin
-  const unreadCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    messageGroups.forEach((messages, adminId) => {
-      const unreadCount = messages.filter(m => m.type === 'admin' && !m.is_read).length;
-      if (unreadCount > 0) {
-        counts.set(adminId, unreadCount);
-      }
-    });
-    return counts;
-  }, [messageGroups]);
+    return conversations.reduce((sum, conv) => sum + conv.unread_count, 0);
+  }, [conversations]);
 
   // Filter conversations based on search
   const filteredConversations = useMemo(() => {
-    if (!searchTerm) return Array.from(messageGroups.entries());
+    if (!searchTerm) return conversations;
     
-    return Array.from(messageGroups.entries()).filter(([adminId, messages]) => {
-      const displayName = getDisplayName(adminId);
-      const searchLower = searchTerm.toLowerCase();
+    const searchLower = searchTerm.toLowerCase();
+    return conversations.filter(conv => {
+      const displayName = getDisplayName(conv.admin_user_id);
       return (
         displayName.toLowerCase().includes(searchLower) ||
-        adminId.toLowerCase().includes(searchLower) ||
-        messages.some(msg => msg.message.toLowerCase().includes(searchLower))
+        conv.admin_user_id.toLowerCase().includes(searchLower) ||
+        (conv.last_message && conv.last_message.toLowerCase().includes(searchLower))
       );
     });
-  }, [messageGroups, searchTerm, getDisplayName]);
+  }, [conversations, searchTerm, getDisplayName]);
 
   // Scroll to bottom function
   const scrollToBottom = useCallback(() => {
@@ -206,157 +153,69 @@ export default function FloatingCarrierMessagesButton() {
     }
   }, []);
 
-  // Auto-scroll when messages change
+  // Auto-scroll when messages change or conversation changes
   useEffect(() => {
-    if (isOpen && selectedMessage) {
+    if (isOpen && selectedConversationId) {
       setTimeout(scrollToBottom, 100);
     }
-  }, [messages, responses, isOpen, selectedMessage, scrollToBottom]);
-
-  // Cleanup typing timeout
-  useEffect(() => {
-    return () => {
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  // Handle input change with debounced typing indicator
-  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setNewMessage(value);
-    
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current);
-    }
-    
-    typingTimeoutRef.current = setTimeout(() => {
-      setIsTyping(false);
-    }, 1000);
-    
-    if (!isTyping && value.trim()) {
-      setIsTyping(true);
-    }
-  }, [isTyping]);
+  }, [messages, isOpen, selectedConversationId, scrollToBottom]);
 
   // Handle send message
   const handleSendMessage = useCallback(async () => {
-    if (!selectedMessage || !newMessage.trim() || isSendingMessage) return;
+    if (!selectedConversationId || !newMessage.trim() || isSendingMessage) return;
 
     setIsSendingMessage(true);
-    
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current);
-    }
-    setIsTyping(false);
 
     try {
-      // Check if this is a placeholder message (new conversation)
-      if (selectedMessage.id.startsWith('placeholder-')) {
-        // Start a new chat with the admin
-        const response = await fetch('/api/carrier/start-chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            admin_user_id: selectedMessage.admin_user_id,
-            message: newMessage.trim(),
-          }),
-        });
+      const response = await fetch(`/api/carrier/conversations/${selectedConversationId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: newMessage.trim() })
+      });
 
-        if (response.ok) {
-          setNewMessage("");
-          mutateMessages();
-          mutateResponses();
-          setTimeout(scrollToBottom, 100);
-        } else {
-          throw new Error('Failed to start new chat');
-        }
+      if (response.ok) {
+        setNewMessage("");
+        mutateMessages(); // Refresh messages in current conversation
+        mutateConversations(); // Refresh conversations list (for last_message_at update)
+        setTimeout(scrollToBottom, 100);
       } else {
-        // Regular message response
-        const response = await fetch('/api/carrier/messages/responses', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            message_id: selectedMessage.id,
-            response: newMessage.trim()
-          })
-        });
-
-        if (response.ok) {
-          setNewMessage("");
-          mutateResponses();
-          setTimeout(scrollToBottom, 100);
-        } else {
-          throw new Error('Failed to send message');
-        }
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to send message');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error sending message:', error);
     } finally {
       setIsSendingMessage(false);
     }
-  }, [selectedMessage, newMessage, isSendingMessage, mutateMessages, mutateResponses, scrollToBottom]);
+  }, [selectedConversationId, newMessage, isSendingMessage, mutateMessages, mutateConversations, scrollToBottom]);
 
   // Handle key press
-  const handleKeyPress = useCallback((e: React.KeyboardEvent) => {
+  const handleKeyPress = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
     }
   }, [handleSendMessage]);
 
-  // Handle input focus
-  const handleInputFocus = useCallback(() => {
-    setIsInputFocused(true);
-  }, []);
-
-  // Handle input blur
-  const handleInputBlur = useCallback(() => {
-    setIsInputFocused(false);
-  }, []);
-
-  // Mark message as read
-  const markMessageAsRead = useCallback(async (messageId: string) => {
+  // Mark conversation as read
+  const markConversationAsRead = useCallback(async (convId: string) => {
     try {
-      await fetch(`/api/carrier/messages/${messageId}/read`, {
+      await fetch(`/api/carrier/conversations/${convId}/read`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       });
-      mutateMessages();
+      mutateConversations(); // Refresh conversations to update unread counts
     } catch (error) {
-      console.error('Error marking message as read:', error);
+      console.error('Error marking conversation as read:', error);
     }
-  }, [mutateMessages]);
+  }, [mutateConversations]);
 
   // Handle conversation selection
-  const handleConversationSelect = useCallback((adminId: string) => {
-    const adminMessages = messageGroups.get(adminId);
-    if (adminMessages && adminMessages.length > 0) {
-      const latestMessage = adminMessages.find(m => m.type === 'admin');
-      if (latestMessage) {
-        setSelectedMessage(latestMessage);
-        
-        // Mark as read if unread
-        if (!latestMessage.is_read) {
-          markMessageAsRead(latestMessage.id);
-        }
-      }
-    } else {
-      // If no messages found, create a placeholder message for the conversation
-      const placeholderMessage: AdminMessage = {
-        id: `placeholder-${adminId}`,
-        carrier_user_id: user?.id || '',
-        admin_user_id: adminId,
-        subject: 'New Conversation',
-        message: 'Start a new conversation with this admin.',
-        is_read: true,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-      setSelectedMessage(placeholderMessage);
-    }
-  }, [messageGroups, markMessageAsRead, user?.id]);
+  const handleConversationSelect = useCallback((convId: string) => {
+    setSelectedConversationId(convId);
+    // Mark all messages in this conversation as read for the current user
+    markConversationAsRead(convId);
+  }, [markConversationAsRead]);
 
   // Helper functions
   const formatTime = (timestamp: string) => {
@@ -569,7 +428,7 @@ export default function FloatingCarrierMessagesButton() {
 
               {!isMinimized && (
                 <CardContent className="p-0 h-[500px] flex flex-col">
-                  {!selectedMessage ? (
+                  {!selectedConversationId ? (
                     // Conversations List
                     <div className="flex flex-col h-full">
                       <div className="p-4 border-b">
@@ -592,15 +451,13 @@ export default function FloatingCarrierMessagesButton() {
                               <p>No conversations found</p>
                             </div>
                           ) : (
-                            filteredConversations.map(([adminId, messages]) => {
-                              const displayName = getDisplayName(adminId);
-                              const latestMessage = messages[messages.length - 1];
-                              const unreadCount = unreadCounts.get(adminId) || 0;
+                            filteredConversations.map((conv) => {
+                              const displayName = getDisplayName(conv.admin_user_id);
                               
                               return (
                                 <div
-                                  key={adminId}
-                                  onClick={() => handleConversationSelect(adminId)}
+                                  key={conv.conversation_id}
+                                  onClick={() => handleConversationSelect(conv.conversation_id)}
                                   className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
                                 >
                                   <Avatar className="h-10 w-10">
@@ -615,26 +472,23 @@ export default function FloatingCarrierMessagesButton() {
                                       <p className="font-medium text-sm truncate">
                                         {displayName}
                                       </p>
-                                      {unreadCount > 0 && (
+                                      {conv.unread_count > 0 && (
                                         <Badge variant="destructive" className="text-xs h-5 px-1.5">
-                                          {unreadCount}
+                                          {conv.unread_count}
                                         </Badge>
                                       )}
                                     </div>
-                                    <p className="text-xs text-muted-foreground truncate">
-                                      {adminId}
-                                    </p>
-                                    {latestMessage && (
+                                    {conv.last_message && (
                                       <p className="text-xs text-muted-foreground truncate mt-1">
-                                        {latestMessage.type === 'carrier' ? 'You: ' : ''}
-                                        {latestMessage.message}
+                                        {conv.last_message_sender_type === 'carrier' ? 'You: ' : ''}
+                                        {conv.last_message}
                                       </p>
                                     )}
                                   </div>
                                   
-                                  {latestMessage && (
+                                  {conv.last_message_at && (
                                     <div className="text-xs text-muted-foreground">
-                                      {formatTime(latestMessage.timestamp)}
+                                      {formatTime(conv.last_message_at)}
                                     </div>
                                   )}
                                 </div>
@@ -648,8 +502,8 @@ export default function FloatingCarrierMessagesButton() {
                     // Chat Interface
                     <div className="flex flex-col h-full">
                       {(() => {
-                        const displayName = getDisplayName(selectedMessage.admin_user_id);
-                        const messages = messageGroups.get(selectedMessage.admin_user_id) || [];
+                        const selectedConversation = conversations.find(c => c.conversation_id === selectedConversationId);
+                        const adminDisplayName = selectedConversation ? getDisplayName(selectedConversation.admin_user_id) : "Admin";
                         
                         return (
                           <>
@@ -659,23 +513,23 @@ export default function FloatingCarrierMessagesButton() {
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  onClick={() => setSelectedMessage(null)}
+                                  onClick={() => setSelectedConversationId(null)}
                                   className="h-8 w-8 p-0"
                                 >
-                                  ←
+                                  <ArrowLeft className="h-4 w-4" />
                                 </Button>
                                 <Avatar className="h-8 w-8">
                                   <AvatarImage src={undefined} />
                                   <AvatarFallback className="text-xs">
-                                    {getInitials(displayName)}
+                                    {getInitials(adminDisplayName)}
                                   </AvatarFallback>
                                 </Avatar>
                                 <div>
                                   <p className="font-medium text-sm">
-                                    {displayName}
+                                    {adminDisplayName}
                                   </p>
                                   <p className="text-xs text-muted-foreground">
-                                    {selectedMessage.admin_user_id}
+                                    Administrator
                                   </p>
                                 </div>
                               </div>
@@ -689,25 +543,25 @@ export default function FloatingCarrierMessagesButton() {
                             {/* Messages */}
                             <ScrollArea className="flex-1 p-4">
                               <div className="space-y-4">
-                                {messages.map((message, index) => (
+                                {messages.map((message) => (
                                   <div
-                                    key={`${message.id}-${index}`}
-                                    className={`flex ${message.type === 'carrier' ? 'justify-end' : 'justify-start'}`}
+                                    key={message.id}
+                                    className={`flex ${message.sender_type === 'carrier' ? 'justify-end' : 'justify-start'}`}
                                   >
                                     <div
                                       className={`max-w-[80%] rounded-lg px-3 py-2 ${
-                                        message.type === 'carrier'
+                                        message.sender_type === 'carrier'
                                           ? 'bg-primary text-primary-foreground'
                                           : 'bg-muted'
                                       }`}
                                     >
                                       <p className="text-sm">{message.message}</p>
                                       <p className={`text-xs mt-1 ${
-                                        message.type === 'carrier' 
+                                        message.sender_type === 'carrier' 
                                           ? 'text-primary-foreground/70' 
                                           : 'text-muted-foreground'
                                       }`}>
-                                        {formatTime(message.timestamp)}
+                                        {formatTime(message.created_at)}
                                       </p>
                                     </div>
                                   </div>
@@ -722,10 +576,8 @@ export default function FloatingCarrierMessagesButton() {
                                 <Input
                                   ref={inputRef}
                                   value={newMessage}
-                                  onChange={handleInputChange}
+                                  onChange={(e) => setNewMessage(e.target.value)}
                                   onKeyPress={handleKeyPress}
-                                  onFocus={handleInputFocus}
-                                  onBlur={handleInputBlur}
                                   placeholder="Type your message..."
                                   className="flex-1"
                                   disabled={isSendingMessage}

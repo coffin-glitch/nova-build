@@ -23,19 +23,35 @@ export async function POST(
     }
 
     // Mark all unread messages in this conversation as read
-    await sql`
-      INSERT INTO message_reads (message_id, user_id, read_at)
-      SELECT 
-        cm.id,
-        ${userId},
-        CURRENT_TIMESTAMP
+    // Note: message_reads uses supabase_user_id, not user_id
+    // Use NOT EXISTS to prevent duplicates (no unique constraint exists on supabase_user_id yet)
+    const unreadMessages = await sql`
+      SELECT cm.id as message_id
       FROM conversation_messages cm
-      LEFT JOIN message_reads mr ON mr.message_id = cm.id AND mr.user_id = ${userId}
       WHERE cm.conversation_id = ${conversationId}
         AND cm.sender_type = 'admin'
-        AND mr.id IS NULL
-      ON CONFLICT (message_id, user_id) DO NOTHING
+        AND NOT EXISTS (
+          SELECT 1 FROM message_reads mr 
+          WHERE mr.message_id = cm.id AND mr.supabase_user_id = ${userId}
+        )
     `;
+
+    // Insert read records for each unread message
+    if (unreadMessages.length > 0) {
+      for (const msg of unreadMessages) {
+        try {
+          await sql`
+            INSERT INTO message_reads (message_id, supabase_user_id, read_at)
+            VALUES (${msg.message_id}, ${userId}, CURRENT_TIMESTAMP)
+          `;
+        } catch (err: any) {
+          // Ignore duplicate key errors (in case constraint exists)
+          if (err?.code !== '23505' && err?.code !== '42P10') {
+            console.error('Error inserting read record:', err);
+          }
+        }
+      }
+    }
 
     return NextResponse.json({ 
       ok: true, 

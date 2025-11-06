@@ -16,7 +16,7 @@ export async function GET(
     // Verify the admin has access to this appeal conversation
     const conversation = await sql`
       SELECT id FROM conversations 
-      WHERE id = ${conversationId} AND (admin_user_id = ${userId} OR admin_user_id = 'admin_system') AND conversation_type = 'appeal'
+      WHERE id = ${conversationId} AND (supabase_admin_user_id = ${userId} OR supabase_admin_user_id IS NULL) AND conversation_type = 'appeal'
     `;
 
     if (conversation.length === 0) {
@@ -27,14 +27,14 @@ export async function GET(
     const messages = await sql`
       SELECT 
         cm.id,
-        cm.sender_id,
+        cm.supabase_sender_id as sender_id,
         cm.sender_type,
         cm.message,
         cm.created_at,
         cm.updated_at,
         CASE WHEN mr.id IS NOT NULL THEN true ELSE false END as is_read
       FROM conversation_messages cm
-      LEFT JOIN message_reads mr ON mr.message_id = cm.id AND mr.user_id = ${userId}
+      LEFT JOIN message_reads mr ON mr.message_id = cm.id AND mr.supabase_user_id = ${userId}
       WHERE cm.conversation_id = ${conversationId}
       ORDER BY cm.created_at ASC
     `;
@@ -74,18 +74,18 @@ export async function POST(
     // Verify the admin has access to this appeal conversation
     const conversation = await sql`
       SELECT id FROM conversations 
-      WHERE id = ${conversationId} AND (admin_user_id = ${userId} OR admin_user_id = 'admin_system') AND conversation_type = 'appeal'
+      WHERE id = ${conversationId} AND (supabase_admin_user_id = ${userId} OR supabase_admin_user_id IS NULL) AND conversation_type = 'appeal'
     `;
 
     if (conversation.length === 0) {
       return NextResponse.json({ error: "Appeal conversation not found" }, { status: 404 });
     }
 
-    // Create new appeal response message
+    // Create new appeal response message (Supabase-only)
     const result = await sql`
       INSERT INTO conversation_messages (
         conversation_id,
-        sender_id,
+        supabase_sender_id,
         sender_type,
         message,
         created_at,

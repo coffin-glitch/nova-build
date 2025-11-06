@@ -596,9 +596,6 @@ export default function FloatingCarrierChatButton() {
                                         </Badge>
                                       )}
                                     </div>
-                                    <p className="text-xs text-muted-foreground truncate">
-                                      {adminId}
-                                    </p>
                                     {latestMessage && (
                                       <p className="text-xs text-muted-foreground truncate mt-1">
                                         {latestMessage.type === 'carrier' ? 'You: ' : ''}
@@ -648,9 +645,6 @@ export default function FloatingCarrierChatButton() {
                                 <div>
                                   <p className="font-medium text-sm">
                                     {displayName}
-                                  </p>
-                                  <p className="text-xs text-muted-foreground">
-                                    {selectedMessage.admin_user_id}
                                   </p>
                                 </div>
                               </div>

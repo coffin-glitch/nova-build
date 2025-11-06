@@ -47,7 +47,7 @@ import {
   XCircle,
   Zap
 } from "lucide-react";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
 
@@ -234,7 +234,7 @@ function BidAdjudicationConsole({ bid, accentColor, onClose, onAwarded }: {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div className="flex items-center gap-2 p-3 bg-gradient-to-r from-slate-700/50 to-slate-800/50 rounded-lg border border-slate-600/30">
                   <MapPin className="w-4 h-4 text-violet-300" />
                   <div>
@@ -526,15 +526,236 @@ function BidAdjudicationConsole({ bid, accentColor, onClose, onAwarded }: {
   );
 }
 
+// Tag Details View Component
+function TagDetailsView({ data, accentColor }: { data: any; accentColor: string }) {
+  const stats = data.summary || {};
+  const hourlyTrends = data.hourlyTrends || [];
+  const distanceBreakdown = data.distanceBreakdown || [];
+  const topCarriers = data.topCarriers || [];
+  const competitionMetrics = data.competitionMetrics || {};
+  const revenueMetrics = data.revenueMetrics || {};
+  
+  return (
+    <div className="space-y-6 mt-4">
+      {/* Key Metrics Grid */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Truck className="w-4 h-4 text-blue-500" />
+              <span className="text-xs text-muted-foreground">Total Auctions</span>
+            </div>
+            <p className="text-2xl font-bold">{stats.total_auctions || 0}</p>
+            <p className="text-xs text-muted-foreground mt-1">{stats.no_bid_auctions || 0} with no bids</p>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <TrendingUp className="w-4 h-4 text-green-500" />
+              <span className="text-xs text-muted-foreground">Total Bids</span>
+            </div>
+            <p className="text-2xl font-bold">{stats.total_bids || 0}</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {(typeof stats.avg_bids_per_auction === 'number' ? stats.avg_bids_per_auction.toFixed(1) : Number(stats.avg_bids_per_auction || 0).toFixed(1))} avg per auction
+            </p>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Users className="w-4 h-4 text-purple-500" />
+              <span className="text-xs text-muted-foreground">Unique Carriers</span>
+            </div>
+            <p className="text-2xl font-bold">{stats.unique_carriers || 0}</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {(typeof stats.carrier_participation_rate === 'number' ? stats.carrier_participation_rate.toFixed(1) : Number(stats.carrier_participation_rate || 0).toFixed(1))}% participation
+            </p>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <DollarSign className="w-4 h-4 text-green-600" />
+              <span className="text-xs text-muted-foreground">Avg Bid</span>
+            </div>
+            <p className="text-2xl font-bold">{formatMoney(stats.avg_bid_amount || 0)}</p>
+            <p className="text-xs text-muted-foreground mt-1">Range: {formatMoney(stats.min_bid_amount || 0)} - {formatMoney(stats.max_bid_amount || 0)}</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Competition & Revenue Metrics */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Competition Metrics</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <div className="flex justify-between">
+              <span className="text-sm text-muted-foreground">High Competition (5+ bids):</span>
+              <span className="font-semibold">{competitionMetrics.high_competition_auctions || 0}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-sm text-muted-foreground">Moderate (2-4 bids):</span>
+              <span className="font-semibold">{competitionMetrics.moderate_competition_auctions || 0}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-sm text-muted-foreground">Single Bid:</span>
+              <span className="font-semibold">{competitionMetrics.single_bid_auctions || 0}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-sm text-muted-foreground">No Bids:</span>
+              <span className="font-semibold">{competitionMetrics.no_bid_auctions || 0}</span>
+            </div>
+            <div className="flex justify-between pt-2 border-t">
+              <span className="text-sm font-medium">Avg Bid Spread:</span>
+              <span className="font-semibold">{formatMoney(competitionMetrics.avg_bid_spread || 0)}</span>
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Revenue Opportunities</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <div className="flex justify-between">
+              <span className="text-sm text-muted-foreground">Total Revenue Potential:</span>
+              <span className="font-semibold text-green-600">{formatMoney(revenueMetrics.total_revenue_potential || 0)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-sm text-muted-foreground">Avg Winning Bid:</span>
+              <span className="font-semibold">{formatMoney(revenueMetrics.avg_winning_bid || 0)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-sm text-muted-foreground">Highest Bid:</span>
+              <span className="font-semibold">{formatMoney(revenueMetrics.highest_bid || 0)}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-muted-foreground flex items-center gap-1">
+                Market Efficiency
+                <Info className="w-3 h-3 text-muted-foreground/70 cursor-help" title="Market Efficiency: Measures how efficiently the market sets prices. Calculated as: (1 - Avg Bid Spread / Avg Winning Bid) × 100. A higher percentage indicates tighter bid spreads and more efficient price discovery, meaning carriers are bidding closer to market value." />
+              </span>
+              <span className="font-semibold">{((1 - (competitionMetrics.avg_bid_spread || 0) / (revenueMetrics.avg_winning_bid || 1)) * 100).toFixed(1)}%</span>
+            </div>
+            <div className="flex justify-between pt-2 border-t">
+              <span className="text-sm font-medium">Avg Distance:</span>
+              <span className="font-semibold">
+                {(typeof stats.avg_distance === 'number' ? stats.avg_distance.toFixed(1) : Number(stats.avg_distance || 0).toFixed(1))} mi
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Hourly Activity Pattern */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">Hourly Activity Pattern</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-6 gap-2">
+            {hourlyTrends.map((trend: any, index: number) => {
+              const formatCTTime = (utcHour: number) => {
+                const today = new Date();
+                const utcDate = new Date(Date.UTC(
+                  today.getUTCFullYear(),
+                  today.getUTCMonth(),
+                  today.getUTCDate(),
+                  utcHour,
+                  0,
+                  0
+                ));
+                return utcDate.toLocaleTimeString('en-US', {
+                  timeZone: 'America/Chicago',
+                  hour: 'numeric',
+                  minute: '2-digit',
+                  hour12: true
+                });
+              };
+              
+              return (
+                <div key={index} className="text-center p-2 bg-muted/30 rounded">
+                  <p className="text-xs font-semibold">{trend.hour}:00</p>
+                  <p className="text-xs text-muted-foreground">({formatCTTime(trend.hour)} CT)</p>
+                  <p className="text-sm font-bold mt-1">{trend.auctions_created}</p>
+                  <p className="text-xs text-muted-foreground">{trend.bids_placed} bids</p>
+                </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Distance Breakdown */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">Distance Breakdown</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            {distanceBreakdown.map((dist: any, index: number) => (
+              <div key={index} className="flex justify-between items-center p-2 bg-muted/30 rounded">
+                <span className="text-sm font-medium">{dist.distance_category}</span>
+                <div className="text-right">
+                  <p className="text-sm font-semibold">{dist.auction_count} auctions</p>
+                  <p className="text-xs text-muted-foreground">Avg: {formatMoney(dist.avg_bid_amount || 0)}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Top Carriers for this State */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">Top Carriers in This State</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            {topCarriers.slice(0, 10).map((carrier: any, index: number) => (
+              <div key={index} className="flex justify-between items-center p-2 bg-muted/30 rounded">
+                <div>
+                  <p className="text-sm font-medium">{carrier.company_name || carrier.legal_name}</p>
+                  <p className="text-xs text-muted-foreground">MC: {carrier.mc_number || 'N/A'}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-semibold">{carrier.bid_count} bids</p>
+                  <p className="text-xs text-muted-foreground">{carrier.win_count} wins</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 // Advanced Analytics Component
 function AdvancedAnalytics({ accentColor }: { accentColor: string }) {
   const [timeframe, setTimeframe] = useState("30");
   const [analyticsType, setAnalyticsType] = useState("overview");
+  const [hourlyTimeframe, setHourlyTimeframe] = useState("today");
+  const [tagFilter, setTagFilter] = useState<string>("all");
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [showTagDetails, setShowTagDetails] = useState(false);
 
   const { data: analyticsData, mutate: mutateAnalytics, isLoading: analyticsLoading } = useSWR(
-    `/api/admin/bid-analytics?timeframe=${timeframe}&action=${analyticsType}`,
+    `/api/admin/bid-analytics?timeframe=${timeframe}&action=${analyticsType}&hourlyTimeframe=${hourlyTimeframe}`,
     fetcher,
     { refreshInterval: 60000 }
+  );
+
+  // Fetch detailed tag analytics when a tag is selected
+  const { data: tagDetailsData, isLoading: tagDetailsLoading } = useSWR(
+    selectedTag ? `/api/admin/tag-analytics?tag=${encodeURIComponent(selectedTag)}&timeframe=${timeframe}` : null,
+    fetcher
   );
 
   const data = analyticsData?.data || {};
@@ -688,20 +909,67 @@ function AdvancedAnalytics({ accentColor }: { accentColor: string }) {
 
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Clock className="w-5 h-5" />
-              Hourly Activity (Today)
-            </CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <Clock className="w-5 h-5" />
+                Hourly Activity
+              </CardTitle>
+              <Select value={hourlyTimeframe} onValueChange={setHourlyTimeframe}>
+                <SelectTrigger className="w-40">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="today">Today</SelectItem>
+                  <SelectItem value="yesterday">Yesterday</SelectItem>
+                  <SelectItem value="this_week">This Week</SelectItem>
+                  <SelectItem value="last_week">Last Week</SelectItem>
+                  <SelectItem value="this_month">This Month</SelectItem>
+                  <SelectItem value="last_month">Last Month</SelectItem>
+                  <SelectItem value="last_3_months">Last 3 Months</SelectItem>
+                  <SelectItem value="this_year">This Year</SelectItem>
+                  <SelectItem value="last_year">Last Year</SelectItem>
+                  <SelectItem value="all_time">All Time</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-4 gap-4">
-              {hourlyTrends.map((trend: any, index: number) => (
-                <div key={index} className="text-center p-3 bg-muted/30 rounded-lg">
-                  <p className="font-semibold">{trend.hour}:00</p>
-                  <p className="text-sm text-muted-foreground">{trend.auctions_created} auctions</p>
-                  <p className="text-sm text-muted-foreground">{trend.bids_placed} bids</p>
-                </div>
-              ))}
+              {hourlyTrends.map((trend: any, index: number) => {
+                // Convert UTC hour to CT time
+                const formatCTTime = (utcHour: number) => {
+                  // Create a date for today at the UTC hour
+                  const today = new Date();
+                  const utcDate = new Date(Date.UTC(
+                    today.getUTCFullYear(),
+                    today.getUTCMonth(),
+                    today.getUTCDate(),
+                    utcHour,
+                    0,
+                    0
+                  ));
+                  
+                  // Format to CT timezone
+                  const ctTime = utcDate.toLocaleTimeString('en-US', {
+                    timeZone: 'America/Chicago',
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    hour12: true
+                  });
+                  
+                  return `${ctTime} CT`;
+                };
+                
+                return (
+                  <div key={index} className="text-center p-3 bg-muted/30 rounded-lg">
+                    <p className="font-semibold">
+                      {trend.hour}:00 <span className="text-xs text-muted-foreground font-normal">({formatCTTime(trend.hour)})</span>
+                    </p>
+                    <p className="text-sm text-muted-foreground">{trend.auctions_created} auctions</p>
+                    <p className="text-sm text-muted-foreground">{trend.bids_placed} bids</p>
+                  </div>
+                );
+              })}
             </div>
           </CardContent>
         </Card>
@@ -745,30 +1013,84 @@ function AdvancedAnalytics({ accentColor }: { accentColor: string }) {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {timePerformance.map((perf: any, index: number) => (
-                <div key={index} className="flex justify-between items-center p-2 bg-muted/30 rounded">
-                  <span className="font-medium">{perf.time_category}</span>
-                  <div className="text-right">
-                    <p className="text-sm font-semibold">{perf.auction_count} auctions</p>
-                    <p className="text-xs text-muted-foreground">{perf.bid_count} bids</p>
+              {timePerformance.map((perf: any, index: number) => {
+                // Parse time category to extract hours and add CT time
+                const parseTimeCategory = (category: string) => {
+                  const match = category.match(/(\d+)-(\d+)/);
+                  if (!match) return category;
+                  const startHour = parseInt(match[1]);
+                  const endHour = parseInt(match[2]);
+                  
+                  // Convert UTC hours to CT time
+                  const formatCTHour = (utcHour: number) => {
+                    const today = new Date();
+                    const utcDate = new Date(Date.UTC(
+                      today.getUTCFullYear(),
+                      today.getUTCMonth(),
+                      today.getUTCDate(),
+                      utcHour,
+                      0,
+                      0
+                    ));
+                    return utcDate.toLocaleTimeString('en-US', {
+                      timeZone: 'America/Chicago',
+                      hour: 'numeric',
+                      minute: '2-digit',
+                      hour12: true
+                    });
+                  };
+                  
+                  const startCT = formatCTHour(startHour);
+                  const endCT = formatCTHour(endHour);
+                  return `${category} (${startCT} - ${endCT} CT)`;
+                };
+                
+                return (
+                  <div key={index} className="flex justify-between items-center p-2 bg-muted/30 rounded">
+                    <span className="font-medium">{parseTimeCategory(perf.time_category)}</span>
+                    <div className="text-right">
+                      <p className="text-sm font-semibold">{perf.auction_count} auctions</p>
+                      <p className="text-xs text-muted-foreground">{perf.bid_count} bids</p>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </CardContent>
           </Card>
         </div>
 
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Filter className="w-5 h-5" />
-              Performance by Tag
-            </CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <Filter className="w-5 h-5" />
+                Performance by Tag
+              </CardTitle>
+              <Select value={tagFilter} onValueChange={setTagFilter}>
+                <SelectTrigger className="w-32">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Tags</SelectItem>
+                  <SelectItem value="top10">Top 10</SelectItem>
+                  <SelectItem value="top20">Top 20</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {tagPerformance.slice(0, 9).map((perf: any, index: number) => (
-                <div key={index} className="p-3 bg-muted/30 rounded-lg">
+              {(tagFilter === "all" ? tagPerformance : tagPerformance.slice(0, tagFilter === "top10" ? 10 : 20)).map((perf: any, index: number) => (
+                <div 
+                  key={index} 
+                  className="p-3 bg-muted/30 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors border border-transparent hover:border-primary/20"
+                  onClick={() => {
+                    if (perf.tag && perf.tag !== 'No Tag') {
+                      setSelectedTag(perf.tag);
+                      setShowTagDetails(true);
+                    }
+                  }}
+                >
                   <div className="flex justify-between items-center mb-2">
                     <span className="font-medium">{perf.tag}</span>
                     <Badge variant="outline">{perf.auction_count}</Badge>
@@ -777,11 +1099,37 @@ function AdvancedAnalytics({ accentColor }: { accentColor: string }) {
                     <p>{perf.bid_count} bids • {perf.unique_carriers} carriers</p>
                     <p>Avg: {formatMoney(perf.avg_bid_amount)}</p>
                   </div>
+                  {perf.tag && perf.tag !== 'No Tag' && (
+                    <p className="text-xs text-muted-foreground mt-2 text-primary">Click for details →</p>
+                  )}
                 </div>
               ))}
             </div>
           </CardContent>
         </Card>
+
+        {/* Tag Details Dialog */}
+        <Dialog open={showTagDetails} onOpenChange={setShowTagDetails}>
+          <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <MapPin className="w-5 h-5" style={{ color: accentColor }} />
+                {selectedTag} - Detailed Analytics
+              </DialogTitle>
+            </DialogHeader>
+            {tagDetailsLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2" style={{ borderColor: accentColor }}></div>
+              </div>
+            ) : tagDetailsData?.data ? (
+              <TagDetailsView data={tagDetailsData.data} accentColor={accentColor} />
+            ) : (
+              <div className="text-center py-8">
+                <p className="text-muted-foreground">No data available for this tag.</p>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     );
   };
@@ -931,6 +1279,7 @@ function AdvancedAnalytics({ accentColor }: { accentColor: string }) {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="all">All</SelectItem>
                 <SelectItem value="7">Last 7 days</SelectItem>
                 <SelectItem value="30">Last 30 days</SelectItem>
                 <SelectItem value="90">Last 90 days</SelectItem>
@@ -1009,7 +1358,7 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
   
   // Fetch grouped data when viewMode is 'grouped'
   const { data: groupedData, mutate: mutateGrouped, isLoading: groupedLoading, isValidating: groupedValidating } = useSWR(
-    viewMode === 'grouped' ? `/api/admin/carrier-leaderboard-grouped?timeframe=${timeframe}&sortBy=${sortBy}&limit=${limit}&groupBy=${groupBy}` : null,
+    viewMode === 'grouped' ? `/api/admin/carrier-leaderboard-grouped?timeframe=${timeframe}&sortBy=${sortBy}&limit=${limit === 'all' ? '1000' : limit}&groupBy=${groupBy}` : null,
     fetcher,
     {
       refreshInterval: 31500,
@@ -1028,7 +1377,7 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
   );
 
   const { data: leaderboardData, mutate: mutateLeaderboard, isLoading: leaderboardLoading, isValidating: leaderboardValidating } = useSWR(
-    `/api/admin/carrier-leaderboard?timeframe=${timeframe}&sortBy=${sortBy}&limit=${limit}`,
+    `/api/admin/carrier-leaderboard?timeframe=${timeframe}&sortBy=${sortBy}&limit=${limit === 'all' ? '1000' : limit}`,
     fetcher,
     {
       refreshInterval: 30000,
@@ -1072,6 +1421,8 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
         return <ArrowDownRight className="w-4 h-4 text-purple-500" />;
       case 'most_wins':
         return <Crown className="w-4 h-4 text-yellow-500" />;
+      case 'highest_competitiveness':
+        return <Target className="w-4 h-4 text-cyan-500" />;
       default:
         return <Star className="w-4 h-4 text-yellow-500" />;
     }
@@ -1090,6 +1441,9 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
       .sort((a: any, b: any) => (Number(a.avg_bid_amount_cents) || Number.POSITIVE_INFINITY) - (Number(b.avg_bid_amount_cents) || Number.POSITIVE_INFINITY))[0];
     const highestAvgBid = [...leaderboard]
       .sort((a: any, b: any) => (Number(b.avg_bid_amount_cents) || Number.NEGATIVE_INFINITY) - (Number(a.avg_bid_amount_cents) || Number.NEGATIVE_INFINITY))[0];
+    const highestCompetitiveness = [...leaderboard]
+      .filter((c: any) => (Number(c.total_bids) || 0) > 0 && (Number(c.competitiveness_score) || 0) >= 0)
+      .sort((a: any, b: any) => (Number(b.competitiveness_score) || 0) - (Number(a.competitiveness_score) || 0))[0];
 
     const out: any[] = [];
     if (mostBids) out.push({ metric: 'most_bids', company_name: mostBids.company_name || mostBids.legal_name, user_name: mostBids.user_name, contact_name: mostBids.contact_name, legal_name: mostBids.legal_name, full_name: mostBids.full_name, value: mostBids.total_bids || 0, unit: 'bids' });
@@ -1097,6 +1451,7 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
     if (mostRevenue) out.push({ metric: 'highest_revenue', company_name: mostRevenue.company_name || mostRevenue.legal_name, user_name: mostRevenue.user_name, contact_name: mostRevenue.contact_name, legal_name: mostRevenue.legal_name, full_name: mostRevenue.full_name, value: mostRevenue.total_revenue_cents || 0, unit: 'cents' });
     if (lowestAvgBid) out.push({ metric: 'lowest_avg_bid', company_name: lowestAvgBid.company_name || lowestAvgBid.legal_name, user_name: lowestAvgBid.user_name, contact_name: lowestAvgBid.contact_name, legal_name: lowestAvgBid.legal_name, full_name: lowestAvgBid.full_name, value: lowestAvgBid.avg_bid_amount_cents || 0, unit: 'cents' });
     if (highestAvgBid) out.push({ metric: 'highest_avg_bid', company_name: highestAvgBid.company_name || highestAvgBid.legal_name, user_name: highestAvgBid.user_name, contact_name: highestAvgBid.contact_name, legal_name: highestAvgBid.legal_name, full_name: highestAvgBid.full_name, value: highestAvgBid.avg_bid_amount_cents || 0, unit: 'cents' });
+    if (highestCompetitiveness) out.push({ metric: 'highest_competitiveness', company_name: highestCompetitiveness.company_name || highestCompetitiveness.legal_name, user_name: highestCompetitiveness.user_name, contact_name: highestCompetitiveness.contact_name, legal_name: highestCompetitiveness.legal_name, full_name: highestCompetitiveness.full_name, value: highestCompetitiveness.competitiveness_score || 0, unit: '%' });
     return out;
   })();
 
@@ -1112,12 +1467,40 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
     const byHighestAvgBid = [...groups]
       .filter((g: any) => typeof g.avg_bid_amount_cents === 'number')
       .sort((a: any, b: any) => (b.avg_bid_amount_cents || -Infinity) - (a.avg_bid_amount_cents || -Infinity))[0];
+    const byHighestCompetitiveness = groups.length > 0 ? [...groups]
+      .filter((g: any) => (g.total_bids || 0) > 0)
+      .sort((a: any, b: any) => {
+        // Parse competitiveness_score as number (handle string, number, or null)
+        const parseScore = (score: any): number => {
+          if (score === null || score === undefined) return 0;
+          const parsed = typeof score === 'string' ? parseFloat(score) : score;
+          return typeof parsed === 'number' && !isNaN(parsed) ? parsed : 0;
+        };
+        const aScore = parseScore(a.competitiveness_score);
+        const bScore = parseScore(b.competitiveness_score);
+        return bScore - aScore;
+      })[0] : null;
     const results: any[] = [];
     if (byMostBids) results.push({ metric: 'most_bids', company_name: byMostBids.company_name || byMostBids.top_carrier_name || byMostBids.group_identifier, value: byMostBids.total_bids || 0, unit: 'bids' });
     if (byHighestWin) results.push({ metric: 'highest_win_rate', company_name: byHighestWin.company_name || byHighestWin.top_carrier_name || byHighestWin.group_identifier, value: byHighestWin.win_rate_percentage || 0, unit: '%' });
     if (byRevenue) results.push({ metric: 'highest_revenue', company_name: byRevenue.company_name || byRevenue.top_carrier_name || byRevenue.group_identifier, value: byRevenue.total_revenue_cents || 0, unit: 'cents' });
     if (byLowestAvgBid) results.push({ metric: 'lowest_avg_bid', company_name: byLowestAvgBid.company_name || byLowestAvgBid.top_carrier_name || byLowestAvgBid.group_identifier, value: byLowestAvgBid.avg_bid_amount_cents || 0, unit: 'cents' });
     if (byHighestAvgBid) results.push({ metric: 'highest_avg_bid', company_name: byHighestAvgBid.company_name || byHighestAvgBid.top_carrier_name || byHighestAvgBid.group_identifier, value: byHighestAvgBid.avg_bid_amount_cents || 0, unit: 'cents' });
+    if (byHighestCompetitiveness) {
+      // Parse competitiveness_score as number (handle string, number, or null)
+      const parseScore = (score: any): number => {
+        if (score === null || score === undefined) return 0;
+        const parsed = typeof score === 'string' ? parseFloat(score) : score;
+        return typeof parsed === 'number' && !isNaN(parsed) ? parsed : 0;
+      };
+      const competitivenessValue = parseScore(byHighestCompetitiveness.competitiveness_score);
+      results.push({ 
+        metric: 'highest_competitiveness', 
+        company_name: byHighestCompetitiveness.company_name || byHighestCompetitiveness.top_carrier_name || byHighestCompetitiveness.group_identifier || 'N/A', 
+        value: competitivenessValue, 
+        unit: '%' 
+      });
+    }
     return results;
   })();
 
@@ -1129,6 +1512,7 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
       case 'highest_avg_bid': return 'Highest avg bid';
       case 'lowest_avg_bid': return 'Lowest avg bid';
       case 'best_avg_bid': return 'Best avg bid';
+      case 'highest_competitiveness': return 'Highest competitiveness';
       default: return humanizeMetric(metric);
     }
   };
@@ -1152,7 +1536,6 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
       case 'total_bids': return 'Total Bids';
       case 'win_rate': return 'Win Rate';
       case 'avg_bid': return 'Avg Bid';
-      case 'total_value': return 'Total Value';
       case 'recent_activity': return 'Recent Activity';
       case 'wins': return 'Total Wins';
       case 'revenue': return 'Total Revenue';
@@ -1259,6 +1642,7 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="all">All</SelectItem>
                 <SelectItem value="7">Last 7 days</SelectItem>
                 <SelectItem value="30">Last 30 days</SelectItem>
                 <SelectItem value="90">Last 90 days</SelectItem>
@@ -1277,7 +1661,6 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
                 <SelectItem value="total_bids">Total Bids</SelectItem>
                 <SelectItem value="win_rate">Win Rate</SelectItem>
                 <SelectItem value="avg_bid">Average Bid</SelectItem>
-                <SelectItem value="total_value">Total Value</SelectItem>
                 <SelectItem value="recent_activity">Recent Activity</SelectItem>
                 <SelectItem value="wins">Total Wins</SelectItem>
                 <SelectItem value="revenue">Total Revenue</SelectItem>
@@ -1293,6 +1676,7 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="all">All</SelectItem>
                 <SelectItem value="10">Top 10</SelectItem>
                 <SelectItem value="20">Top 20</SelectItem>
                 <SelectItem value="50">Top 50</SelectItem>
@@ -1374,7 +1758,7 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
         topPerformersIndividual.length > 0 && (
           <Glass className="p-6">
             <h3 className="text-lg font-semibold mb-4">Top Performers</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {topPerformersIndividual.map((performer: any, index: number) => (
                 <Glass key={index} className="p-4">
                     <div className="flex items-center gap-2 mb-2">
@@ -1396,7 +1780,7 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
         topPerformersGrouped.length > 0 && (
           <Glass className="p-6">
             <h3 className="text-lg font-semibold mb-4">Top Performers (Groups)</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {topPerformersGrouped.map((performer: any, index: number) => (
                 <Glass key={index} className="p-4">
                     <div className="flex items-center gap-2 mb-2">
@@ -1420,7 +1804,7 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
       <Glass className="p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold">
-            {viewMode === 'grouped' ? `Grouped by ${groupBy === 'mc' ? 'MC' : 'DOT'} - ` : ''}Leaderboard - {getSortLabel(sortBy)} ({timeframe} days)
+            {viewMode === 'grouped' ? `Grouped by ${groupBy === 'mc' ? 'MC' : 'DOT'} - ` : ''}Leaderboard - {getSortLabel(sortBy)} ({timeframe === 'all' ? 'All Time' : `${timeframe} days`})
           </h3>
         </div>
         
@@ -1486,6 +1870,12 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
                     <div className="p-3 rounded-lg bg-muted/30"><p className="text-xs text-muted-foreground mb-1">Win Rate</p><p className="text-xl font-bold" style={{ color: accentColor }}>{group.win_rate_percentage}%</p></div>
                     <div className="p-3 rounded-lg bg-muted/30"><p className="text-xs text-muted-foreground mb-1">Avg Bid</p><p className="text-xl font-bold">{formatMoney(group.avg_bid_amount_cents)}</p></div>
                     <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/20"><p className="text-xs text-muted-foreground mb-1">Revenue</p><p className="text-xl font-bold text-green-600">{formatMoney(group.total_revenue_cents || 0)}</p></div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 mb-4">
+                    <div className="p-3 rounded-lg bg-muted/20"><p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+                      Competitiveness
+                      <Info className="w-3 h-3 text-muted-foreground/70 cursor-help" title="Competitiveness Score: The percentage of bids that are within 5% of the lowest bid for each auction. Calculated as: (Bids within 5% of lowest / Total bids) × 100. A higher score indicates the carrier consistently bids competitively close to the market rate." />
+                    </p><p className="text-xl font-bold">{group.competitiveness_score || 0}%</p></div>
                   </div>
                   {(() => {
                     const carriersInGroup = (Array.isArray(group.carriers) && group.carriers.length > 0)
@@ -1620,7 +2010,7 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
                         </p>
                         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                           <span className="px-2 py-0.5 rounded bg-muted/40 border border-border/50">MC: {carrier.mc_number || 'N/A'}</span>
-                          <span className="px-2 py-0.5 rounded bg-muted/40 border border-border/50">Fleet: {carrier.fleet_size || 1}</span>
+                          <span className="px-2 py-0.5 rounded bg-muted/40 border border-border/50">Fleet: {carrier.fleet_size ?? 0}</span>
                           {(() => {
                             const active = isActiveNow(carrier);
                             const last = getLastSeenDate(carrier);
@@ -1649,7 +2039,6 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
                         {sortBy === 'total_bids' && carrier.total_bids}
                         {sortBy === 'win_rate' && `${carrier.win_rate_percentage}%`}
                         {sortBy === 'avg_bid' && formatMoney(carrier.avg_bid_amount_cents)}
-                        {sortBy === 'total_value' && formatMoney(carrier.total_bid_value_cents)}
                         {sortBy === 'recent_activity' && carrier.bids_last_7_days}
                         {sortBy === 'wins' && carrier.total_wins}
                         {sortBy === 'revenue' && formatMoney(carrier.total_revenue_cents || 0)}
@@ -1756,11 +2145,18 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
                 </Button>
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                 <Glass className="p-4"><p className="text-xs text-muted-foreground">Total Bids</p><p className="text-2xl font-bold">{selectedGroup.total_bids || 0}</p></Glass>
                 <Glass className="p-4"><p className="text-xs text-muted-foreground">Win Rate</p><p className="text-2xl font-bold" style={{ color: accentColor }}>{selectedGroup.win_rate_percentage || 0}%</p></Glass>
                 <Glass className="p-4"><p className="text-xs text-muted-foreground">Avg Bid</p><p className="text-2xl font-bold">{formatMoney(selectedGroup.avg_bid_amount_cents || 0)}</p></Glass>
                 <Glass className="p-4"><p className="text-xs text-muted-foreground">Revenue</p><p className="text-2xl font-bold text-green-600">{formatMoney(selectedGroup.total_revenue_cents || 0)}</p></Glass>
+                <Glass className="p-4">
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    Competitiveness
+                    <Info className="w-3 h-3 text-muted-foreground/70 cursor-help" title="Competitiveness Score: The percentage of bids that are within 5% of the lowest bid for each auction. Calculated as: (Bids within 5% of lowest / Total bids) × 100. A higher score indicates the carrier consistently bids competitively close to the market rate." />
+                  </p>
+                  <p className="text-2xl font-bold">{selectedGroup.competitiveness_score || 0}%</p>
+                </Glass>
               </div>
 
               <GroupCarriersTable 
@@ -1890,7 +2286,7 @@ function CarrierDetailConsole({
               <div className="flex justify-between items-center">
                 <span className="text-muted-foreground flex items-center gap-1">
                   Competitiveness
-                  <Info className="w-3.5 h-3.5 text-muted-foreground/70" title="Estimated percent competitiveness based on recent bidding performance: mix of win rate, proximity of bids to winning prices, and activity in the selected timeframe." />
+                  <Info className="w-3.5 h-3.5 text-muted-foreground/70 cursor-help" title="Competitiveness Score: The percentage of bids that are within 5% of the lowest bid for each auction. Calculated as: (Bids within 5% of lowest / Total bids) × 100. A higher score indicates the carrier consistently bids competitively close to the market rate." />
                 </span>
                 <span className="font-medium">{carrier.competitiveness_score || 0}%</span>
               </div>
@@ -2011,6 +2407,752 @@ function GroupCarriersTable({ selectedGroup, groupBy, accentColor }: { selectedG
   );
 }
 
+// Re-Award Dialog Component
+function ReAwardDialog({
+  bidNumber,
+  accentColor,
+  onClose,
+  onReAwarded
+}: {
+  bidNumber: string;
+  accentColor: string;
+  onClose: () => void;
+  onReAwarded: () => void;
+}) {
+  const [bidDetails, setBidDetails] = useState<any>(null);
+  const [reAwarding, setReAwarding] = useState(false);
+  const [selectedWinner, setSelectedWinner] = useState<string | null>(null);
+  const [adminNotes, setAdminNotes] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [bidsPerPage] = useState(5);
+
+  const { data: bidData, error: bidDataError, mutate: mutateBidData } = useSWR(
+    bidNumber ? `/api/admin/bids/${bidNumber}/award` : null,
+    fetcher,
+    { refreshInterval: 30000 }
+  );
+
+  useEffect(() => {
+    if (bidData?.data) {
+      setBidDetails(bidData.data);
+    }
+  }, [bidData]);
+
+  const handleReAward = async () => {
+    if (!selectedWinner || !bidNumber) return;
+
+    if (!confirm(`Are you sure you want to re-award Bid #${bidNumber}? This will remove the current award and assign it to the new carrier.`)) {
+      return;
+    }
+
+    setReAwarding(true);
+    try {
+      const response = await fetch(`/api/admin/bids/${bidNumber}/re-award`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          winnerUserId: selectedWinner,
+          adminNotes: adminNotes.trim() || null
+        })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        toast.success(`🎉 Bid #${bidNumber} re-awarded successfully!`, {
+          description: `New Winner: ${result.winnerName} - $${result.winnerAmount}`,
+          duration: 5000,
+        });
+        
+        mutateBidData();
+        onReAwarded();
+        onClose();
+      } else {
+        toast.error(result.error || 'Failed to re-award bid');
+      }
+    } catch (error) {
+      toast.error('Failed to re-award bid');
+    } finally {
+      setReAwarding(false);
+    }
+  };
+
+  const totalBids = bidDetails?.bids?.length || 0;
+  const totalPages = Math.ceil(totalBids / bidsPerPage);
+  const startIndex = (currentPage - 1) * bidsPerPage;
+  const endIndex = startIndex + bidsPerPage;
+  const currentBids = bidDetails?.bids?.slice(startIndex, endIndex) || [];
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    setSelectedWinner(null);
+  };
+
+  return (
+    <Dialog open={true} onOpenChange={onClose}>
+      <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden bg-gradient-to-br from-slate-950 via-violet-950 to-indigo-950 border-violet-500/30 backdrop-blur-xl flex flex-col">
+        <DialogHeader className="pb-4 border-b border-violet-500/20 flex-shrink-0">
+          <DialogTitle className="flex items-center gap-3 text-xl font-bold">
+            <div className="p-2 bg-gradient-to-br from-orange-500/20 to-red-600/20 rounded-lg border border-orange-500/30">
+              <RefreshCw className="w-5 h-5 text-orange-300" />
+            </div>
+            <span className="bg-gradient-to-r from-orange-200 to-red-200 bg-clip-text text-transparent">
+              Re-Award Bid
+            </span>
+            <Badge className="bg-orange-500/20 text-orange-300 border-orange-500/30 px-2 py-1 text-xs">
+              #{bidNumber}
+            </Badge>
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="flex-1 overflow-y-auto space-y-4 pr-2 min-h-0 p-6">
+          {!bidDetails ? (
+            <div className="text-center py-8">
+              <RefreshCw className="w-8 h-8 text-violet-400 animate-spin mx-auto mb-3" />
+              <p className="text-muted-foreground">Loading carrier bids...</p>
+            </div>
+          ) : !bidDetails?.bids || bidDetails?.bids?.length === 0 ? (
+            <div className="text-center py-8">
+              <Users className="w-12 h-12 text-muted-foreground mx-auto mb-3 opacity-50" />
+              <p className="text-muted-foreground">No carrier bids found</p>
+            </div>
+          ) : (
+            <>
+              <div className="mb-4 p-4 bg-orange-500/10 border border-orange-500/30 rounded-lg">
+                <p className="text-sm text-orange-200">
+                  <strong>Warning:</strong> Re-awarding this bid will remove the current award from the existing winner and assign it to the selected carrier. The previous winner will be notified.
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                {currentBids.map((carrierBid: any, index: number) => (
+                  <div
+                    key={carrierBid.id}
+                    className={`p-4 rounded-lg border transition-all duration-300 ${
+                      selectedWinner === carrierBid.supabase_user_id
+                        ? 'border-violet-500/60 bg-gradient-to-r from-violet-500/10 to-purple-500/10 shadow-lg shadow-violet-500/10'
+                        : bidDetails?.award?.supabase_winner_user_id === carrierBid.supabase_user_id
+                        ? 'border-orange-500/60 bg-gradient-to-r from-orange-500/10 to-red-500/10'
+                        : 'border-slate-600/40 bg-gradient-to-r from-slate-700/30 to-slate-800/30 hover:border-slate-500/50'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                            selectedWinner === carrierBid.supabase_user_id
+                              ? 'border-violet-400 bg-violet-500/20'
+                              : 'border-slate-500 hover:border-violet-400'
+                          }`}>
+                            <input
+                              type="radio"
+                              id={`reaward-${carrierBid.id}`}
+                              name="reaward-winner"
+                              value={carrierBid.supabase_user_id}
+                              checked={selectedWinner === carrierBid.supabase_user_id}
+                              onChange={(e) => setSelectedWinner(e.target.value)}
+                              className="w-3 h-3 text-violet-500 focus:ring-violet-500/20"
+                            />
+                          </div>
+                          <label htmlFor={`reaward-${carrierBid.id}`} className="cursor-pointer">
+                            <div className="flex items-center gap-2">
+                              <div>
+                                <h3 className="font-bold text-white text-base">
+                                  {carrierBid.carrier_legal_name || carrierBid.carrier_company_name || 'Unknown Carrier'}
+                                </h3>
+                                <div className="flex items-center gap-3 text-xs text-slate-400 mt-0.5">
+                                  <span>MC: {carrierBid.carrier_mc_number || 'N/A'}</span>
+                                  <span>DOT: {carrierBid.carrier_dot_number || 'N/A'}</span>
+                                </div>
+                              </div>
+                              <div className="flex gap-1.5">
+                                {bidDetails?.award?.supabase_winner_user_id === carrierBid.supabase_user_id && (
+                                  <Badge className="bg-orange-500/20 text-orange-300 border-orange-500/30 px-1.5 py-0.5 text-xs">
+                                    Current Winner
+                                  </Badge>
+                                )}
+                                {startIndex + index === 0 && (
+                                  <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/30 px-1.5 py-0.5 text-xs">
+                                    Lowest Bid
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+                          </label>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-2xl font-bold text-white mb-0.5">{formatMoney(carrierBid.amount_cents)}</div>
+                        <div className="text-xs text-slate-400">
+                          {new Date(carrierBid.created_at).toLocaleString()}
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {carrierBid.notes && (
+                      <div className="mt-3 p-2 bg-slate-700/30 rounded-lg border border-slate-600/30">
+                        <p className="text-xs text-slate-300">
+                          <strong className="text-white">Notes:</strong> {carrierBid.notes}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                ))}
+                
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-center gap-2 pt-3 border-t border-slate-600/30">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handlePageChange(currentPage - 1)}
+                      disabled={currentPage === 1}
+                    >
+                      Previous
+                    </Button>
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                        <Button
+                          key={page}
+                          variant={page === currentPage ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => handlePageChange(page)}
+                          className="w-8 h-8 p-0 text-xs"
+                        >
+                          {page}
+                        </Button>
+                      ))}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handlePageChange(currentPage + 1)}
+                      disabled={currentPage === totalPages}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                )}
+              </div>
+
+              <Card className="mt-4 bg-gradient-to-br from-slate-800/40 to-slate-900/40 border-slate-600/30">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg">Admin Notes</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Textarea
+                    placeholder="Add notes about this re-award decision..."
+                    value={adminNotes}
+                    onChange={(e) => setAdminNotes(e.target.value)}
+                    className="min-h-[80px] bg-slate-800/50 border-slate-600/50"
+                  />
+                </CardContent>
+              </Card>
+            </>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between pt-4 border-t border-violet-500/20 flex-shrink-0 px-6 pb-6">
+          <Button variant="outline" onClick={onClose} disabled={reAwarding}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleReAward}
+            disabled={!selectedWinner || reAwarding}
+            className="bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700"
+          >
+            {reAwarding ? (
+              <>
+                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                Re-Awarding...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Re-Award Bid
+              </>
+            )}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Adjudication Console Component - Shows all bids with carrier bids
+function AdjudicationConsole({ 
+  accentColor, 
+  onClose, 
+  onSelectBid 
+}: { 
+  accentColor: string; 
+  onClose: () => void;
+  onSelectBid: (bid: TelegramBid) => void;
+}) {
+  const [reAwardBidNumber, setReAwardBidNumber] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [dateFilter, setDateFilter] = useState<string>("all"); // "all", "today", "week", "month", "custom"
+  const [customDateFrom, setCustomDateFrom] = useState("");
+  const [customDateTo, setCustomDateTo] = useState("");
+  const [sortBy, setSortBy] = useState<"expired_at" | "bid_number" | "carrier_count" | "lowest_bid">("expired_at");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
+  
+  const { data, isLoading, mutate } = useSWR(
+    '/api/admin/bids-with-carrier-bids',
+    fetcher,
+    { refreshInterval: 10000 }
+  );
+
+  const bidsWithCarrierBids = data?.data || [];
+
+  // Filter and sort bids
+  const filteredAndSortedBids = React.useMemo(() => {
+    let filtered = [...bidsWithCarrierBids];
+
+    // Search filter
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter((bid: any) => {
+        const bidNumber = bid.bid_number?.toLowerCase() || "";
+        const tag = bid.telegram_bid?.tag?.toLowerCase() || "";
+        const winnerName = bid.award?.winner_name?.toLowerCase() || "";
+        const winnerCompany = bid.award?.winner_company_name?.toLowerCase() || "";
+        const mcNumber = bid.award?.winner_mc_number?.toLowerCase() || "";
+        
+        return bidNumber.includes(query) ||
+               tag.includes(query) ||
+               winnerName.includes(query) ||
+               winnerCompany.includes(query) ||
+               mcNumber.includes(query);
+      });
+    }
+
+    // Date filter
+    if (dateFilter !== "all") {
+      const now = new Date();
+      let startDate: Date;
+      
+      switch (dateFilter) {
+        case "today":
+          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          break;
+        case "week":
+          startDate = new Date(now);
+          startDate.setDate(startDate.getDate() - 7);
+          break;
+        case "month":
+          startDate = new Date(now);
+          startDate.setMonth(startDate.getMonth() - 1);
+          break;
+        case "custom":
+          if (customDateFrom || customDateTo) {
+            filtered = filtered.filter((bid: any) => {
+              const expiredAt = bid.telegram_bid?.expires_at_25 ? new Date(bid.telegram_bid.expires_at_25) : null;
+              if (!expiredAt) return false;
+              
+              const expiredDate = new Date(expiredAt.getFullYear(), expiredAt.getMonth(), expiredAt.getDate());
+              
+              if (customDateFrom && customDateTo) {
+                const fromDate = new Date(customDateFrom);
+                const toDate = new Date(customDateTo);
+                return expiredDate >= fromDate && expiredDate <= toDate;
+              } else if (customDateFrom) {
+                const fromDate = new Date(customDateFrom);
+                return expiredDate >= fromDate;
+              } else if (customDateTo) {
+                const toDate = new Date(customDateTo);
+                return expiredDate <= toDate;
+              }
+              return true;
+            });
+          }
+          break;
+      }
+      
+      if (dateFilter !== "custom") {
+        filtered = filtered.filter((bid: any) => {
+          const expiredAt = bid.telegram_bid?.expires_at_25 ? new Date(bid.telegram_bid.expires_at_25) : null;
+          if (!expiredAt) return false;
+          const expiredDate = new Date(expiredAt.getFullYear(), expiredAt.getMonth(), expiredAt.getDate());
+          return expiredDate >= startDate;
+        });
+      }
+    }
+
+    // Sort
+    filtered.sort((a: any, b: any) => {
+      let comparison = 0;
+      
+      switch (sortBy) {
+        case "expired_at":
+          const aExpired = a.telegram_bid?.expires_at_25 ? new Date(a.telegram_bid.expires_at_25).getTime() : 0;
+          const bExpired = b.telegram_bid?.expires_at_25 ? new Date(b.telegram_bid.expires_at_25).getTime() : 0;
+          comparison = aExpired - bExpired;
+          break;
+        case "bid_number":
+          comparison = (a.bid_number || "").localeCompare(b.bid_number || "");
+          break;
+        case "carrier_count":
+          comparison = (a.carrier_bid_count || 0) - (b.carrier_bid_count || 0);
+          break;
+        case "lowest_bid":
+          comparison = (a.lowest_bid_cents || 0) - (b.lowest_bid_cents || 0);
+          break;
+      }
+      
+      return sortDirection === "desc" ? -comparison : comparison;
+    });
+
+    return filtered;
+  }, [bidsWithCarrierBids, searchQuery, dateFilter, customDateFrom, customDateTo, sortBy, sortDirection]);
+
+  const handleCardClick = (bidData: any) => {
+    if (bidData.telegram_bid) {
+      // Convert the telegram_bid data to TelegramBid format
+      const telegramBid: TelegramBid = {
+        bid_number: bidData.telegram_bid.bid_number,
+        distance_miles: bidData.telegram_bid.distance_miles,
+        pickup_timestamp: bidData.telegram_bid.pickup_timestamp,
+        delivery_timestamp: bidData.telegram_bid.delivery_timestamp,
+        stops: bidData.telegram_bid.stops,
+        tag: bidData.telegram_bid.tag,
+        source_channel: bidData.telegram_bid.source_channel,
+        received_at: bidData.telegram_bid.received_at,
+        expires_at_25: bidData.telegram_bid.expires_at_25,
+        is_expired: bidData.telegram_bid.is_expired,
+        bids_count: bidData.carrier_bid_count,
+        time_left_seconds: 0
+      };
+      onSelectBid(telegramBid);
+    } else {
+      // If no telegram_bid, we still need to create a minimal TelegramBid for the adjudication console
+      // The adjudication console will fetch the full data via the API
+      const telegramBid: TelegramBid = {
+        bid_number: bidData.bid_number,
+        distance_miles: null,
+        pickup_timestamp: null,
+        delivery_timestamp: null,
+        stops: null,
+        tag: null,
+        source_channel: null,
+        received_at: null,
+        expires_at_25: null,
+        is_expired: true,
+        bids_count: bidData.carrier_bid_count,
+        time_left_seconds: 0
+      };
+      onSelectBid(telegramBid);
+    }
+  };
+
+  return (
+    <Dialog open={true} onOpenChange={onClose}>
+      <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden bg-background dark:bg-gradient-to-br dark:from-slate-950 dark:via-violet-950 dark:to-indigo-950 border-border dark:border-violet-500/30 backdrop-blur-xl flex flex-col">
+        <DialogHeader className="pb-4 border-b border-border dark:border-violet-500/20 flex-shrink-0">
+          <DialogTitle className="flex items-center gap-3 text-xl font-bold">
+            <div className="p-2 bg-violet-100 dark:bg-gradient-to-br dark:from-violet-500/20 dark:to-purple-600/20 rounded-lg border border-violet-300 dark:border-violet-500/30">
+              <Gavel className="w-5 h-5 text-violet-700 dark:text-violet-300" />
+            </div>
+            <span className="text-foreground dark:bg-gradient-to-r dark:from-violet-200 dark:to-purple-200 dark:bg-clip-text dark:text-transparent">
+              Adjudication Console
+            </span>
+            <Badge className="bg-violet-100 dark:bg-violet-500/20 text-violet-700 dark:text-violet-300 border-violet-300 dark:border-violet-500/30 px-2 py-1 text-xs">
+              {filteredAndSortedBids.length} Bids
+            </Badge>
+          </DialogTitle>
+        </DialogHeader>
+
+        {/* Filters and Search */}
+        <div className="px-6 pt-4 pb-4 border-b border-border dark:border-violet-500/20 flex-shrink-0">
+          <div className="space-y-4">
+            {/* Search */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                type="text"
+                placeholder="Search by bid number, tag, winner name, or MC number..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+
+            {/* Filters Row */}
+            <div className={`grid gap-4 ${
+              dateFilter === "custom" 
+                ? "grid-cols-1 md:grid-cols-2 lg:grid-cols-4" 
+                : "grid-cols-1 md:grid-cols-2 lg:grid-cols-3"
+            }`}>
+              {/* Date Filter */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Date Range</label>
+                <Select value={dateFilter} onValueChange={setDateFilter}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Time</SelectItem>
+                    <SelectItem value="today">Today</SelectItem>
+                    <SelectItem value="week">Last 7 Days</SelectItem>
+                    <SelectItem value="month">Last 30 Days</SelectItem>
+                    <SelectItem value="custom">Custom Range</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Custom Date Range */}
+              {dateFilter === "custom" && (
+                <>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">From Date</label>
+                    <Input
+                      type="date"
+                      value={customDateFrom}
+                      onChange={(e) => setCustomDateFrom(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">To Date</label>
+                    <Input
+                      type="date"
+                      value={customDateTo}
+                      onChange={(e) => setCustomDateTo(e.target.value)}
+                    />
+                  </div>
+                </>
+              )}
+
+              {/* Sort By */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Sort By</label>
+                <div className="flex gap-2">
+                  <Select value={sortBy} onValueChange={(value) => setSortBy(value as any)}>
+                    <SelectTrigger className="flex-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="expired_at">Expired At</SelectItem>
+                      <SelectItem value="bid_number">Bid Number</SelectItem>
+                      <SelectItem value="carrier_count">Carrier Count</SelectItem>
+                      <SelectItem value="lowest_bid">Lowest Bid</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setSortDirection(sortDirection === "asc" ? "desc" : "asc")}
+                    className="shrink-0"
+                    title={`Sort ${sortDirection === "asc" ? "Ascending" : "Descending"}`}
+                  >
+                    {sortDirection === "asc" ? (
+                      <ArrowUpRight className="w-4 h-4" />
+                    ) : (
+                      <ArrowDownRight className="w-4 h-4" />
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <RefreshCw className="w-6 h-6 animate-spin text-violet-600 dark:text-violet-400" />
+            </div>
+          ) : bidsWithCarrierBids.length === 0 ? (
+            <div className="text-center py-12">
+              <Gavel className="w-12 h-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+              <p className="text-muted-foreground">No bids with carrier bids found</p>
+            </div>
+          ) : filteredAndSortedBids.length === 0 ? (
+            <div className="text-center py-12">
+              <Search className="w-12 h-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+              <p className="text-muted-foreground">No bids match your filters</p>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setSearchQuery("");
+                  setDateFilter("all");
+                  setCustomDateFrom("");
+                  setCustomDateTo("");
+                }}
+                className="mt-4"
+              >
+                Clear Filters
+              </Button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredAndSortedBids.map((bidData: any) => {
+                const telegramBid = bidData.telegram_bid;
+                const award = bidData.award;
+                const stops = parseStops(telegramBid?.stops);
+                
+                return (
+                  <Card
+                    key={bidData.bid_number}
+                    className="cursor-pointer hover:border-violet-500/50 dark:hover:border-violet-500/50 transition-all bg-card border-border shadow-sm hover:shadow-md dark:bg-gradient-to-br dark:from-slate-900/50 dark:to-slate-800/50 dark:border-slate-700/50 backdrop-blur-xl"
+                    onClick={() => handleCardClick(bidData)}
+                  >
+                    <CardHeader className="pb-3">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <CardTitle className="text-lg font-bold flex items-center gap-2">
+                            <span className="text-foreground dark:text-violet-300">#{bidData.bid_number}</span>
+                            {award && (
+                              <Badge className="bg-emerald-500/20 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/30">
+                                <Crown className="w-3 h-3 mr-1" />
+                                Awarded
+                              </Badge>
+                            )}
+                          </CardTitle>
+                          {telegramBid?.tag && (
+                            <Badge variant="outline" className="mt-2 text-xs border-border">
+                              {telegramBid.tag}
+                            </Badge>
+                          )}
+                        </div>
+                        {award && (
+                          <CheckCircle className="w-5 h-5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+                        )}
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {/* Bid Summary */}
+                      <div className="space-y-2">
+                        {telegramBid ? (
+                          <>
+                            {telegramBid.distance_miles && (
+                              <div className="flex items-center gap-2 text-sm">
+                                <Navigation className="w-4 h-4 text-muted-foreground" />
+                                <span className="text-foreground">{formatDistance(telegramBid.distance_miles)}</span>
+                              </div>
+                            )}
+                            {stops.length > 0 && (
+                              <div className="flex items-start gap-2 text-sm">
+                                <MapPin className="w-4 h-4 text-muted-foreground mt-0.5" />
+                                <span className="text-foreground">{formatStops(stops)}</span>
+                              </div>
+                            )}
+                            {telegramBid.pickup_timestamp && (
+                              <div className="flex items-center gap-2 text-sm">
+                                <Calendar className="w-4 h-4 text-muted-foreground" />
+                                <span className="text-foreground">{formatPickupDateTime(telegramBid.pickup_timestamp)}</span>
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <div className="text-sm text-muted-foreground">
+                            Bid details not available
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Carrier Bids Info */}
+                      <div className="pt-2 border-t border-border dark:border-slate-700/50">
+                        <div className="flex items-center justify-between text-sm mb-2">
+                          <div className="flex items-center gap-2">
+                            <Users className="w-4 h-4 text-muted-foreground" />
+                            <span className="text-foreground">{bidData.carrier_bid_count} Carrier{bidData.carrier_bid_count !== 1 ? 's' : ''}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <DollarSign className="w-4 h-4 text-muted-foreground" />
+                            <span className="font-semibold text-foreground">
+                              {formatMoney(bidData.lowest_bid_cents)}
+                            </span>
+                          </div>
+                        </div>
+                        {/* Expired At */}
+                        {telegramBid?.expires_at_25 && (
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground pt-1 border-t border-border dark:border-slate-700/30">
+                            <Clock className="w-3 h-3" />
+                            <span>Expired: {new Date(telegramBid.expires_at_25).toLocaleString()}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Awarded Winner */}
+                      {award && (
+                        <div className="pt-2 border-t border-emerald-500/30 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/5 rounded-lg p-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <Crown className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                              <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">Winner</span>
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setReAwardBidNumber(bidData.bid_number);
+                              }}
+                              className="h-7 text-xs border-orange-500/50 dark:border-orange-500/30 text-orange-700 dark:text-orange-300 hover:bg-orange-100 dark:hover:bg-orange-500/20"
+                            >
+                              <RefreshCw className="w-3 h-3 mr-1" />
+                              Re-Award
+                            </Button>
+                          </div>
+                          <div className="space-y-1 text-sm">
+                            <div className="font-medium text-foreground">
+                              {award.winner_name || award.winner_company_name || 'Unknown Carrier'}
+                            </div>
+                            {award.winner_mc_number && (
+                              <div className="text-muted-foreground text-xs">
+                                MC: {award.winner_mc_number}
+                              </div>
+                            )}
+                            <div className="text-emerald-700 dark:text-emerald-300 font-semibold">
+                              {formatMoney(award.winner_amount_cents)}
+                            </div>
+                            {award.awarded_at && (
+                              <div className="text-xs text-muted-foreground">
+                                Awarded {new Date(award.awarded_at).toLocaleDateString()}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between pt-4 border-t border-border dark:border-violet-500/20 flex-shrink-0">
+          <Button
+            variant="outline"
+            onClick={() => mutate()}
+            disabled={isLoading}
+            className="flex items-center gap-2"
+          >
+            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+          <Button variant="outline" onClick={onClose}>
+            Close
+          </Button>
+        </div>
+      </DialogContent>
+
+      {/* Re-Award Dialog */}
+      {reAwardBidNumber && (
+        <ReAwardDialog
+          bidNumber={reAwardBidNumber}
+          accentColor={accentColor}
+          onClose={() => setReAwardBidNumber(null)}
+          onReAwarded={() => {
+            mutate(); // Refresh the adjudication console
+            setReAwardBidNumber(null);
+          }}
+        />
+      )}
+    </Dialog>
+  );
+}
+
 export function AdminBiddingConsole() {
   const [q, setQ] = useState("");
   const [tag, setTag] = useState("");
@@ -2024,6 +3166,7 @@ export function AdminBiddingConsole() {
   const [activeTab, setActiveTab] = useState("bids");
   const [adjudicationBid, setAdjudicationBid] = useState<TelegramBid | null>(null);
   const [showAdminSetup, setShowAdminSetup] = useState(false);
+  const [showAdjudicationConsole, setShowAdjudicationConsole] = useState(false);
 
   const { accentColor } = useAccentColor();
 
@@ -2250,6 +3393,15 @@ export function AdminBiddingConsole() {
             >
               <Archive className="w-4 h-4" />
               Archive Bids
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setShowAdjudicationConsole(true)}
+              className="flex items-center gap-2"
+              style={{ borderColor: accentColor, color: accentColor }}
+            >
+              <Gavel className="w-4 h-4" />
+              Adjudication Console
             </Button>
             <Button
               onClick={() => mutate()}
@@ -2622,6 +3774,18 @@ export function AdminBiddingConsole() {
             <AdvancedAnalytics accentColor={accentColor} />
           </TabsContent>
         </Tabs>
+
+        {/* Adjudication Console - Shows all bids with carrier bids */}
+        {showAdjudicationConsole && (
+          <AdjudicationConsole
+            accentColor={accentColor}
+            onClose={() => setShowAdjudicationConsole(false)}
+            onSelectBid={(bid) => {
+              setShowAdjudicationConsole(false);
+              setAdjudicationBid(bid);
+            }}
+          />
+        )}
 
         {/* Bid Adjudication Console */}
         <BidAdjudicationConsole 

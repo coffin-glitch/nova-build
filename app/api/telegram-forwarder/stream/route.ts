@@ -1,13 +1,10 @@
 import { NextRequest } from "next/server";
 
 // Import WebSocket client library
-// In Node.js, we need the 'ws' package for WebSocket client
 let WebSocket: any;
 try {
-  // Try to use ws package (required for Node.js)
   WebSocket = require('ws');
 } catch {
-  // ws package not installed
   console.error('WebSocket library not found. Please install: npm install ws');
   WebSocket = null;
 }
@@ -15,6 +12,12 @@ try {
 /**
  * Server-Sent Events (SSE) endpoint for streaming Telegram forwarder logs and status
  * This connects to the Railway service WebSocket and streams data to the client
+ * 
+ * Best practices:
+ * - Send heartbeat every 30 seconds to keep connection alive
+ * - Handle reconnection automatically
+ * - Provide clear error messages
+ * - Stream JSON messages in SSE format
  */
 export async function GET(request: NextRequest) {
   if (!WebSocket) {
@@ -29,11 +32,23 @@ export async function GET(request: NextRequest) {
 
   // Set up SSE headers
   const encoder = new TextEncoder();
+  let heartbeatInterval: NodeJS.Timeout | null = null;
+  let ws: any = null;
+  let reconnectTimeout: NodeJS.Timeout | null = null;
+  let isClosing = false;
+  let reconnectAttempts = 0;
+  const MAX_RECONNECT_ATTEMPTS = 10;
+
   const stream = new ReadableStream({
     async start(controller) {
-      let ws: any = null;
-      let reconnectTimeout: NodeJS.Timeout | null = null;
-      let isClosing = false;
+      // Send initial connection message
+      controller.enqueue(
+        encoder.encode(`data: ${JSON.stringify({
+          type: 'system',
+          level: 'info',
+          message: 'Initializing connection to Railway service...'
+        })}\n\n`)
+      );
 
       const connectToRailway = async () => {
         if (isClosing) return;
@@ -46,6 +61,7 @@ export async function GET(request: NextRequest) {
             controller.enqueue(
               encoder.encode(`data: ${JSON.stringify({
                 type: 'error',
+                level: 'error',
                 message: 'Railway URL not configured. Please set RAILWAY_URL or NEXT_PUBLIC_RAILWAY_URL environment variable.'
               })}\n\n`)
             );
@@ -53,33 +69,64 @@ export async function GET(request: NextRequest) {
           }
 
           // Construct WebSocket URL
-          // Railway URL should be like: https://your-service.railway.app
-          // Convert to WebSocket URL: wss://your-service.railway.app/telegram-forwarder
           const wsProtocol = railwayUrl.startsWith('https://') ? 'wss://' : 'ws://';
           const wsHost = railwayUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
           const wsUrl = `${wsProtocol}${wsHost}/telegram-forwarder`;
 
-          console.log(`[SSE] Connecting to Railway WebSocket: ${wsUrl}`);
+          console.log(`[SSE] Connecting to Railway WebSocket: ${wsUrl} (attempt ${reconnectAttempts + 1})`);
 
-          // Create WebSocket connection using ws package
-          ws = new WebSocket(wsUrl);
+          // Create WebSocket connection
+          ws = new WebSocket(wsUrl, {
+            // Add timeout for connection
+            handshakeTimeout: 10000,
+          });
 
           ws.onopen = () => {
             console.log('[SSE] Connected to Railway WebSocket');
+            reconnectAttempts = 0; // Reset on successful connection
+            
             controller.enqueue(
               encoder.encode(`data: ${JSON.stringify({
-                type: 'log',
+                type: 'system',
                 level: 'success',
                 message: 'Connected to Railway telegram forwarder service'
               })}\n\n`)
             );
+
+            // Start heartbeat to keep connection alive
+            heartbeatInterval = setInterval(() => {
+              if (ws && ws.readyState === WebSocket.OPEN) {
+                try {
+                  // Send ping to keep connection alive
+                  ws.ping();
+                } catch (error) {
+                  console.error('[SSE] Heartbeat ping error:', error);
+                }
+              }
+            }, 30000); // Every 30 seconds
           };
 
-          ws.onmessage = (event) => {
+          ws.onmessage = (event: any) => {
             try {
               const data = event.data.toString();
-              // Forward the message as-is to the client
-              controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+              
+              // Try to parse as JSON first
+              try {
+                const jsonData = JSON.parse(data);
+                // Forward the message as-is
+                controller.enqueue(
+                  encoder.encode(`data: ${JSON.stringify(jsonData)}\n\n`)
+                );
+              } catch {
+                // If not JSON, wrap it as a log message
+                controller.enqueue(
+                  encoder.encode(`data: ${JSON.stringify({
+                    type: 'log',
+                    level: 'info',
+                    message: data
+                  })}\n\n`)
+                );
+              }
             } catch (error) {
               console.error('[SSE] Error processing WebSocket message:', error);
             }
@@ -88,92 +135,125 @@ export async function GET(request: NextRequest) {
           ws.onerror = (error: any) => {
             console.error('[SSE] WebSocket error:', error);
             
-            // Extract error message
             let errorMessage = 'WebSocket connection error';
             if (error?.error?.message) {
               errorMessage = error.error.message;
             } else if (error?.message) {
               errorMessage = error.message;
+            } else if (typeof error === 'string') {
+              errorMessage = error;
             }
             
-            // Handle 502 Bad Gateway specifically
+            // Handle specific error types
             if (errorMessage.includes('502') || errorMessage.includes('Bad Gateway')) {
-              errorMessage = 'Railway service returned 502 Bad Gateway. The service may be down or crashed. Please check your Railway dashboard.';
+              errorMessage = 'Railway service returned 502 Bad Gateway. The service may be down or crashed.';
+            } else if (errorMessage.includes('ECONNREFUSED') || errorMessage.includes('connection refused')) {
+              errorMessage = 'Connection refused. Railway service is not running or not accessible.';
             }
             
             controller.enqueue(
               encoder.encode(`data: ${JSON.stringify({
                 type: 'error',
-                message: errorMessage,
-                level: 'error'
+                level: 'error',
+                message: errorMessage
               })}\n\n`)
             );
           };
 
-          ws.onclose = (event) => {
+          ws.onclose = (event: any) => {
             console.log(`[SSE] WebSocket closed: ${event.code} ${event.reason || 'No reason provided'}`);
             
+            // Clear heartbeat
+            if (heartbeatInterval) {
+              clearInterval(heartbeatInterval);
+              heartbeatInterval = null;
+            }
+            
             if (!isClosing) {
+              reconnectAttempts++;
+              
               // Handle different close codes
-              let reconnectDelay = 5000;
-              let message = 'Disconnected from Railway service. Reconnecting...';
+              let reconnectDelay = 3000;
+              let message = 'Disconnected from Railway service.';
               
               if (event.code === 1006) {
-                // Abnormal closure - usually means 502 Bad Gateway
-                message = 'Railway service returned 502 Bad Gateway. The service may still be deploying or is not running. Waiting before reconnect...';
-                reconnectDelay = 10000; // Wait longer for deployment
+                message = 'Connection lost (abnormal closure). Railway service may be down.';
+                reconnectDelay = 5000;
               } else if (event.code === 1000) {
-                // Normal closure
-                message = 'Connection closed normally. Reconnecting...';
+                message = 'Connection closed normally.';
+                reconnectDelay = 3000;
               } else if (event.code === 1001) {
-                // Going away
-                message = 'Railway service is going away (possibly redeploying). Reconnecting...';
+                message = 'Railway service is going away (possibly redeploying).';
                 reconnectDelay = 10000;
+              } else if (event.code === 1002) {
+                message = 'Protocol error. Check Railway service configuration.';
+                reconnectDelay = 5000;
+              } else if (event.code === 1003) {
+                message = 'Unsupported data type. Railway service may have incompatible version.';
+                reconnectDelay = 5000;
               }
               
-              controller.enqueue(
-                encoder.encode(`data: ${JSON.stringify({
-                  type: 'log',
-                  level: 'warning',
-                  message: message,
-                  code: event.code,
-                  reason: event.reason || 'No reason provided'
-                })}\n\n`)
-              );
+              if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+                message += ` Reconnecting in ${reconnectDelay / 1000}s... (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`;
+                
+                controller.enqueue(
+                  encoder.encode(`data: ${JSON.stringify({
+                    type: 'system',
+                    level: 'warning',
+                    message: message
+                  })}\n\n`)
+                );
 
-              // Reconnect after delay
-              reconnectTimeout = setTimeout(() => {
-                connectToRailway();
-              }, reconnectDelay);
+                reconnectTimeout = setTimeout(() => {
+                  connectToRailway();
+                }, reconnectDelay);
+              } else {
+                controller.enqueue(
+                  encoder.encode(`data: ${JSON.stringify({
+                    type: 'error',
+                    level: 'error',
+                    message: `Max reconnection attempts (${MAX_RECONNECT_ATTEMPTS}) reached. Please check Railway service manually.`
+                  })}\n\n`)
+                );
+              }
             }
           };
+
+          ws.on('ping', () => {
+            // Respond to ping with pong
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              ws.pong();
+            }
+          });
 
         } catch (error: any) {
           console.error('[SSE] Error connecting to Railway:', error);
           
-          let errorMessage = `Failed to connect: ${error.message}`;
-          let reconnectDelay = 10000; // Wait longer if connection failed
+          reconnectAttempts++;
+          let errorMessage = `Failed to connect: ${error.message || 'Unknown error'}`;
+          let reconnectDelay = 5000;
           
-          // Provide more helpful error messages
           if (error.message?.includes('502') || error.message?.includes('Bad Gateway')) {
-            errorMessage = 'Railway service returned 502 Bad Gateway. The service may still be deploying. Please check Railway dashboard for deployment status. Will retry in 10 seconds...';
+            errorMessage = 'Railway service returned 502 Bad Gateway. The service may still be deploying.';
+            reconnectDelay = 10000;
           } else if (error.message?.includes('ECONNREFUSED') || error.message?.includes('connection refused')) {
-            errorMessage = 'Connection refused. Railway service is not running or not accessible. Please check Railway dashboard.';
+            errorMessage = 'Connection refused. Railway service is not running or not accessible.';
+            reconnectDelay = 5000;
           } else if (error.message?.includes('ENOTFOUND') || error.message?.includes('getaddrinfo')) {
-            errorMessage = `Could not resolve Railway service URL. Please verify RAILWAY_URL is correct: ${railwayUrl}`;
-            reconnectDelay = 30000; // Wait even longer for DNS issues
+            errorMessage = `Could not resolve Railway service URL. Please verify RAILWAY_URL is correct.`;
+            reconnectDelay = 30000;
           }
           
           controller.enqueue(
             encoder.encode(`data: ${JSON.stringify({
               type: 'error',
-              message: errorMessage,
-              level: 'error'
+              level: 'error',
+              message: errorMessage
             })}\n\n`)
           );
 
           // Try to reconnect after error
-          if (!isClosing) {
+          if (!isClosing && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
             reconnectTimeout = setTimeout(() => {
               connectToRailway();
             }, reconnectDelay);
@@ -181,17 +261,26 @@ export async function GET(request: NextRequest) {
         }
       };
 
-      // Start connection
+      // Start initial connection
       connectToRailway();
 
       // Cleanup on client disconnect
       request.signal.addEventListener('abort', () => {
+        console.log('[SSE] Client disconnected, cleaning up...');
         isClosing = true;
+        
+        if (heartbeatInterval) {
+          clearInterval(heartbeatInterval);
+        }
         if (reconnectTimeout) {
           clearTimeout(reconnectTimeout);
         }
         if (ws) {
-          ws.close();
+          try {
+            ws.close();
+          } catch (error) {
+            console.error('[SSE] Error closing WebSocket:', error);
+          }
         }
         controller.close();
       });
@@ -201,10 +290,11 @@ export async function GET(request: NextRequest) {
   return new Response(stream, {
     headers: {
       'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
+      'Cache-Control': 'no-cache, no-transform',
       'Connection': 'keep-alive',
       'X-Accel-Buffering': 'no',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET',
     },
   });
 }
-

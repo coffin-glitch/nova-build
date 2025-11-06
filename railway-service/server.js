@@ -6,6 +6,12 @@ const { spawn } = require('child_process');
 const path = require('path');
 require('dotenv').config();
 
+// Log startup info
+console.log('🚀 Starting Railway Telegram Forwarder Service...');
+console.log(`📦 Node version: ${process.version}`);
+console.log(`📁 Working directory: ${__dirname}`);
+console.log(`🔧 Environment: PORT=${process.env.PORT || 'not set'}, HOST=${process.env.HOST || 'not set'}, NODE_ENV=${process.env.NODE_ENV || 'development'}`);
+
 const app = express();
 const server = http.createServer(app);
 

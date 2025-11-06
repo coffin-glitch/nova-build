@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
         ) as last_message_sender_type
       FROM conversations c
       LEFT JOIN conversation_messages cm ON cm.conversation_id = c.id
-      LEFT JOIN message_reads mr ON mr.message_id = cm.id AND mr.user_id = ${userId}
+      LEFT JOIN message_reads mr ON mr.message_id = cm.id AND mr.supabase_user_id = ${userId}
       WHERE c.supabase_carrier_user_id = ${userId}
       AND c.conversation_type = 'appeal'
       GROUP BY c.id, c.admin_user_id, c.last_message_at, c.created_at, c.updated_at

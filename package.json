@@ -60,6 +60,7 @@
     "@types/better-sqlite3": "^7.6.13",
     "@types/mapbox-gl": "^3.4.1",
     "@types/papaparse": "^5.3.16",
+    "axios": "^1.13.2",
     "better-sqlite3": "^12.3.0",
     "cheerio": "^1.1.2",
     "class-variance-authority": "^0.7.1",
@@ -87,6 +88,7 @@
     "tailwind-merge": "^3.3.1",
     "tailwindcss-animate": "^1.0.7",
     "vaul": "^1.1.2",
+    "ws": "^8.18.3",
     "xlsx": "^0.18.5",
     "zod": "^4.1.11"
   },
@@ -97,6 +99,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/ws": "^8.18.1",
     "autoprefixer": "^10.4.21",
     "dotenv": "^17.2.2",
     "eslint": "^9",

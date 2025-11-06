@@ -189,7 +189,7 @@ export default function CarrierActiveBidsClient() {
     setIsCancelling(true);
     try {
       // This would need to be implemented in the API
-      const response = await fetch(`/api/carrier/bids/${cancelBidDialog.id}`, {
+      const response = await fetch(`/api/carrier/bids/cancel/${cancelBidDialog.id}`, {
         method: "DELETE",
       });
 

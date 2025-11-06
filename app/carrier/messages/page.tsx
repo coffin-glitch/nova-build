@@ -49,17 +49,27 @@ export default function CarrierMessagesPage() {
     { refreshInterval: 30000 }
   );
 
+  // Fetch carrier conversations to check for existing chats and get unread counts
+  const { data: conversationsData } = useSWR(
+    user ? "/api/carrier/conversations" : null,
+    fetcher,
+    { refreshInterval: 10000 }
+  );
+
   const messages = messagesData?.data || [];
   const responses = responsesData?.data || [];
   const admins = Array.isArray(adminsData) ? adminsData : [];
+  const conversations = conversationsData?.data || [];
 
   // Get unique admin user IDs for user info fetching
+  // Include admins from messages, responses, AND the full admins list for "Start New Chat"
   const adminUserIds = Array.from(new Set([
     ...messages.map((msg: any) => msg.admin_user_id),
     ...responses.map((response: any) => {
       const message = messages.find((msg: any) => msg.id === response.message_id);
       return message?.admin_user_id;
-    }).filter(Boolean)
+    }).filter(Boolean),
+    ...admins.map((admin: any) => admin.user_id).filter(Boolean)
   ]));
 
   // Fetch user information for all admins
@@ -82,32 +92,43 @@ export default function CarrierMessagesPage() {
     return userId;
   };
 
-  // Calculate stats
+  // Calculate stats from conversations (new unified system)
+  // Use conversations data for accurate unread count
+  const totalUnreadMessages = conversations.reduce((sum: number, conv: any) => {
+    // Ensure unread_count is a number (handle string cases)
+    const unreadCount = typeof conv.unread_count === 'string' 
+      ? parseInt(conv.unread_count, 10) || 0
+      : (conv.unread_count || 0);
+    return sum + unreadCount;
+  }, 0);
+  
+  // Fallback to old system if no conversations exist
+  const unreadMessages = conversations.length > 0 
+    ? totalUnreadMessages 
+    : messages.filter((msg: any) => !msg.is_read).length;
+  
   const totalMessages = messages.length;
-  const unreadMessages = messages.filter((msg: any) => !msg.is_read).length;
   const readMessages = totalMessages - unreadMessages;
-  const activeConversations = adminUserIds.length;
+  const activeConversations = conversations.length > 0 ? conversations.length : adminUserIds.length;
 
-  // Calculate average response time (simplified)
-  const calculateAvgResponseTime = () => {
-    if (responses.length === 0) return "0m";
-    // This is a simplified calculation - in reality you'd calculate actual response times
-    return "2.3m";
-  };
-
-  // Get admins without existing chats
+  // Get admins without existing chats (check both old messages and new conversations)
   const adminsWithoutChats = admins.filter((admin: any) => {
-    const hasExistingChat = messages.some((msg: any) => 
+    // Check old admin_messages system
+    const hasOldChat = messages.some((msg: any) => 
       msg.admin_user_id === admin.user_id
     );
-    return !hasExistingChat;
+    // Check new conversations system
+    const hasNewChat = conversations.some((conv: any) =>
+      conv.admin_user_id === admin.user_id
+    );
+    return !hasOldChat && !hasNewChat;
   });
 
   // Function to start a new chat
   const startNewChat = async (adminId: string) => {
     try {
-      // Create a new carrier chat message to start the conversation
-      const response = await fetch('/api/carrier/start-chat', {
+      // Create a new conversation using the conversation API
+      const response = await fetch('/api/carrier/conversations', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -119,9 +140,17 @@ export default function CarrierMessagesPage() {
       });
 
       if (response.ok) {
+        const data = await response.json();
         toast.success(`New chat started with ${getDisplayName(adminId)}!`);
         // Close the new chat panel
         setShowNewChat(false);
+        
+        // Refresh conversations list if visible
+        if (showConversations) {
+          // Trigger a refresh by toggling
+          setShowConversations(false);
+          setTimeout(() => setShowConversations(true), 100);
+        }
         
         // Open the floating chat console
         const chatButton = document.querySelector('[data-testid="carrier-floating-messages-button"]') as HTMLElement;
@@ -198,7 +227,7 @@ export default function CarrierMessagesPage() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card className="hover:shadow-md transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Active Chats</CardTitle>
@@ -218,22 +247,9 @@ export default function CarrierMessagesPage() {
               <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{unreadMessages}</div>
+              <div className="text-2xl font-bold">{unreadMessages.toString()}</div>
               <p className="text-xs text-muted-foreground">
                 Requires attention
-              </p>
-            </CardContent>
-          </Card>
-          
-          <Card className="hover:shadow-md transition-shadow">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Avg Response Time</CardTitle>
-              <Clock className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{calculateAvgResponseTime()}</div>
-              <p className="text-xs text-muted-foreground">
-                Average response time
               </p>
             </CardContent>
           </Card>
@@ -263,51 +279,108 @@ export default function CarrierMessagesPage() {
           </Card>
         </div>
 
-        {/* Main Content */}
-        <Card className="border-2 border-dashed border-muted-foreground/25">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <MessageCircle className="h-5 w-5" />
-              Floating Chat Console
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-center py-12">
-              <div className="relative mb-6">
-                <MessageCircle className="h-20 w-20 mx-auto text-muted-foreground opacity-30" />
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
-                    <Zap className="h-6 w-6 text-primary" />
+        {/* Main Content - Split Layout */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Floating Chat Console - Left Side, Half Size */}
+          <Card className="border-2 border-dashed border-muted-foreground/25 md:col-span-1">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <MessageCircle className="h-5 w-5" />
+                Floating Chat Console
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-center py-6">
+                <div className="relative mb-4">
+                  <MessageCircle className="h-12 w-12 mx-auto text-muted-foreground opacity-30" />
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+                      <Zap className="h-4 w-4 text-primary" />
+                    </div>
                   </div>
                 </div>
+                <h3 className="text-lg font-semibold mb-2">Innovative Chat Experience</h3>
+                <p className="text-sm text-muted-foreground mb-4 max-w-xs mx-auto">
+                  Click the floating chat button in the bottom-right corner to access our modern, 
+                  efficient chat console. Features include profile photos, real-time typing indicators, 
+                  and smart conversation management.
+                </p>
+                <div className="flex flex-col gap-2 justify-center">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    className="flex items-center gap-2"
+                    onClick={() => setShowConversations(!showConversations)}
+                  >
+                    <Users className="h-4 w-4" />
+                    View All Conversations
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    className="flex items-center gap-2"
+                    onClick={() => setShowNewChat(!showNewChat)}
+                  >
+                    <MessageCircle className="h-4 w-4" />
+                    Start New Chat
+                  </Button>
+                </div>
               </div>
-              <h3 className="text-xl font-semibold mb-3">Innovative Chat Experience</h3>
-              <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-                Click the floating chat button in the bottom-right corner to access our modern, 
-                efficient chat console. Features include profile photos, real-time typing indicators, 
-                and smart conversation management.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                <Button 
-                  variant="outline" 
-                  className="flex items-center gap-2"
-                  onClick={() => setShowConversations(!showConversations)}
-                >
-                  <Users className="h-4 w-4" />
-                  View All Conversations
-                </Button>
-                <Button 
-                  variant="outline" 
-                  className="flex items-center gap-2"
-                  onClick={() => setShowNewChat(!showNewChat)}
-                >
-                  <MessageCircle className="h-4 w-4" />
+            </CardContent>
+          </Card>
+
+          {/* Start New Chat Panel - Right Side */}
+          {showNewChat && (
+            <Card className="md:col-span-1">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <MessageCircle className="h-5 w-5" />
                   Start New Chat
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {admins.length === 0 ? (
+                    <div className="text-center py-4">
+                      <p className="text-muted-foreground mb-2">No administrators available</p>
+                      <p className="text-sm text-muted-foreground">
+                        Administrators need to be registered before you can start chats with them
+                      </p>
+                    </div>
+                  ) : adminsWithoutChats.length === 0 ? (
+                    <div className="text-center py-4">
+                      <p className="text-muted-foreground mb-2">No administrators available for new chats</p>
+                      <p className="text-sm text-muted-foreground">
+                        All administrators already have active conversations
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {adminsWithoutChats.map((admin: any) => (
+                        <div key={admin.user_id} className="flex items-center gap-3 p-3 border rounded-lg hover:bg-muted/50">
+                          <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                            <User className="h-5 w-5 text-primary" />
+                          </div>
+                          <div className="flex-1">
+                            <p className="font-medium">{getDisplayName(admin.user_id)}</p>
+                            <p className="text-sm text-muted-foreground">Administrator</p>
+                          </div>
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            onClick={() => startNewChat(admin.user_id)}
+                          >
+                            Start Chat
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
 
         {/* Conversations List */}
         {showConversations && (
@@ -364,59 +437,6 @@ export default function CarrierMessagesPage() {
                         </div>
                       );
                     })}
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* New Chat Selection */}
-        {showNewChat && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <MessageCircle className="h-5 w-5" />
-                Start New Chat
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {admins.length === 0 ? (
-                  <div className="text-center py-4">
-                    <p className="text-muted-foreground mb-2">No administrators available</p>
-                    <p className="text-sm text-muted-foreground">
-                      Administrators need to be registered before you can start chats with them
-                    </p>
-                  </div>
-                ) : adminsWithoutChats.length === 0 ? (
-                  <div className="text-center py-4">
-                    <p className="text-muted-foreground mb-2">No administrators available for new chats</p>
-                    <p className="text-sm text-muted-foreground">
-                      All administrators already have active conversations
-                    </p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {adminsWithoutChats.map((admin: any) => (
-                      <div key={admin.user_id} className="flex items-center gap-3 p-3 border rounded-lg hover:bg-muted/50">
-                        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                          <User className="h-5 w-5 text-primary" />
-                        </div>
-                        <div className="flex-1">
-                          <p className="font-medium">{getDisplayName(admin.user_id)}</p>
-                          <p className="text-sm text-muted-foreground">Administrator</p>
-                          <p className="text-xs text-muted-foreground">{admin.user_id}</p>
-                        </div>
-                        <Button 
-                          size="sm" 
-                          variant="outline"
-                          onClick={() => startNewChat(admin.user_id)}
-                        >
-                          Start Chat
-                        </Button>
-                      </div>
-                    ))}
                   </div>
                 )}
               </div>

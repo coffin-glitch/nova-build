@@ -2,49 +2,41 @@ import sql from '@/lib/db';
 import { NextRequest, NextResponse } from "next/server";
 
 /**
- * ARCHIVE END OF DAY BUTTON - SCHEME & LOGIC
+ * ARCHIVE END OF DAY BUTTON - SCHEME & LOGIC (SIMPLE UTC-BASED)
  * 
  * HOW IT WORKS:
  * 
  * 1. STORAGE (Database - UTC):
  *    - All timestamps stored in UTC (best practice)
- *    - archived_at = received_at + 1 day + 04:59:59 UTC
- *    - Example: Oct 25, 2025 received_at → archived_at = Oct 26 04:59:59 UTC
+ *    - archived_at = target_date + 1 day + 04:59:59 UTC (always)
+ *    - Example: Nov 3, 2025 received_at → archived_at = Nov 4 04:59:59 UTC
  * 
- * 2. TIMEZONE CONVERSION (CDT Display):
- *    - CDTT = UTC-5 (Central Daylight Time)
- *    - Oct 26 04:59:59 UTC = Oct 25 23:59:59 CDT (previous day)
- *    - archived_at represents END OF DAY in CDT timezone
- * 
- * 3. ARCHIVING LOGIC (Two-part process):
+ * 2. ARCHIVING LOGIC (Simple UTC boundaries):
  *    - Part 1: Archive bids with received_at::date = targetDate
- *              Sets archived_at = (targetDate + 1 day + 04:59:59 UTC)
+ *              Sets archived_at = targetDate + 1 day + 04:59:59 UTC
  *    
  *    - Part 2: ALSO archive bids with received_at::date = (targetDate + 1) 
- *              AND received_at::time < '05:00:00 UTC'
- *              These are bids from 00:00-04:59 UTC next day, still same day in CDT
+ *              AND received_at::time < 05:00:00 UTC
+ *              These are bids from next UTC day that are still from targetDate
+ *              Example: received_at = 2025-11-04 04:59:59 UTC → archive with 2025-11-03
+ *              Example: received_at = 2025-11-04 05:00:20 UTC → archive with 2025-11-04
  * 
- * 4. EXAMPLE - Archiving Oct 25, 2025:
- *    ✅ Archive: received_at = 2025-10-25 12:00:00 UTC → archived_at = 2025-10-26 04:59:59 UTC
- *    ✅ Archive: received_at = 2025-10-26 01:17:50 UTC → archived_at = 2025-10-26 04:59:59 UTC
- *       (This is Oct 25 20:17:50 CDT - still Oct 25)
- *    
- *    ✗ Skip: received_at = 2025-10-26 05:00:00 UTC → NOT archived
- *       (This is already Oct 26 in CDT)
+ * 3. EXAMPLES:
+ *    - Archiving Nov 3, 2025:
+ *      ✅ received_at = 2025-11-03 12:00:00 UTC → archived_at = 2025-11-04 04:59:59 UTC
+ *      ✅ received_at = 2025-11-04 04:59:59 UTC → archived_at = 2025-11-04 04:59:59 UTC (paired with Nov 3)
+ *      ✅ received_at = 2025-11-04 05:00:20 UTC → archived_at = 2025-11-05 04:59:59 UTC (paired with Nov 4)
  * 
- * 5. DISPLAY (Frontend):
- *    - When displaying archived_at in CDT: Shows as Oct 25, 2025 at 11:59:59 PM
- *    - When filtering by Oct 25: Uses (archived_at AT TIME ZONE 'America/Chicago')::date
- * 
- * 6. RESET LOGIC:
- *    - Same two-part process as archiving
- *    - Resets ALL bids that would be archived together
+ * 4. RULES:
+ *    - UTC never has DST, so this is simple and consistent
+ *    - Cutoff is always 05:00:00 UTC
+ *    - archived_at always uses 04:59:59 UTC
  * 
  * BEST PRACTICES APPLIED:
  * ✅ Store timestamps in UTC (database)
- * ✅ Convert to CDT only for display (frontend)
- * ✅ Convert to CDT only for filtering (backend queries)
- * ✅ Handle timezone boundary edge cases (00:00-04:59 UTC)
+ * ✅ Use simple UTC boundaries (no DST complexity)
+ * ✅ Convert to Chicago only for display (frontend)
+ * ✅ Convert to Chicago only for filtering (backend queries)
  */
 
 export async function POST(request: NextRequest) {
@@ -56,23 +48,18 @@ export async function POST(request: NextRequest) {
     let updatedCount = 0;
 
     if (targetDate) {
-      // Archive bids for a specific date using UTC best practices
-      // Logic: 
-      // 1. For bids received on targetDate (in any timezone), set archived_at to (targetDate + 1 day + 04:59:59 UTC)
-      // 2. ALSO archive bids received on (targetDate + 1 day) with time between 00:00:00 and 04:59:59 UTC
-      //    These are bids from the same day in CDT (since CDT is UTC-5, 04:59:59 UTC = 23:59:59 CDT previous day)
-      // 
-      // Example for archiving Oct 25, 2025:
-      //   - Archive bids with received_at::date = '2025-10-25' → archived_at = 2025-10-26 04:59:59 UTC
-      //   - Archive bids with received_at::date = '2025-10-26' AND received_at::time < 05:00:00 → archived_at = 2025-10-26 04:59:59 UTC
-      //   These are bids received between Oct 25 00:00:00 CDT and Oct 26 04:59:59 UTC (which is still Oct 25 in CDT)
+      // Archive bids for a specific date using simple UTC boundaries
+      // - Bids received on targetDate (UTC) → archive with targetDate
+      // - Bids received on (targetDate + 1) before 05:00:00 UTC → also archive with targetDate
+      // - Always use 04:59:59 UTC as archived_at timestamp
       
-      const targetDateTime = new Date(targetDate);
-      const nextDate = new Date(targetDateTime);
+      const targetDateObj = new Date(targetDate);
+      const nextDate = new Date(targetDateObj);
       nextDate.setDate(nextDate.getDate() + 1);
       const nextDateStr = nextDate.toISOString().split('T')[0];
       
-      // Part 1: Archive bids received on the target date
+      // Part 1: Archive bids received on the target date (UTC)
+      // archived_at = targetDate + 1 day + 04:59:59 UTC
       result = await sql`
         UPDATE telegram_bids
         SET 
@@ -84,18 +71,18 @@ export async function POST(request: NextRequest) {
       `;
       updatedCount = result.length;
       
-      // Part 2: ALSO archive bids received on the next day (targetDate + 1) if they were received 
-      // between 00:00:00 and 04:59:59 UTC (i.e., before 04:59:59)
-      // These bids are from the same day in CDT timezone
+      // Part 2: ALSO archive bids received on the next day (UTC) before 05:00:00 UTC
+      // These are still from targetDate (before the 05:00:00 UTC cutoff)
+      // archived_at = targetDate + 1 day + 04:59:59 UTC
       const result2 = await sql`
         UPDATE telegram_bids
         SET 
-          archived_at = ${targetDate}::date + INTERVAL '1 day' + INTERVAL '4 hours 59 minutes 59 seconds',
+          archived_at = (${targetDate}::date + INTERVAL '1 day' + INTERVAL '4 hours 59 minutes 59 seconds'),
           is_archived = true
         WHERE received_at::date = ${nextDateStr}::date
           AND archived_at IS NULL
           AND is_archived = false
-          AND received_at::time < '05:00:00'
+          AND received_at::time < '05:00:00'::time
         RETURNING id
       `;
       updatedCount += result2.length;

@@ -12,15 +12,20 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const timeframe = searchParams.get("timeframe") || "30";
-    const limit = Math.min(parseInt(searchParams.get("limit") || "50"), 100);
+    const limitParam = searchParams.get("limit") || "50";
+    const limit = limitParam === "all" ? 1000 : Math.min(parseInt(limitParam), 1000);
     const sortBy = searchParams.get("sortBy") || "total_bids";
     const groupBy = searchParams.get("groupBy") || "mc"; // "mc" or "dot"
     const minCarriers = parseInt(searchParams.get("minCarriers") || "1");
 
-    const daysAgo = parseInt(timeframe);
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - daysAgo);
-    startDate.setHours(0, 0, 0, 0);
+    let startDate: Date | null = null;
+    let daysAgo: number = 0;
+    if (timeframe !== "all") {
+      daysAgo = parseInt(timeframe);
+      startDate = new Date();
+      startDate.setDate(startDate.getDate() - daysAgo);
+      startDate.setHours(0, 0, 0, 0);
+    }
 
     // Build query based on groupBy - postgres.js doesn't support dynamic columns
     let groupedData;
@@ -42,7 +47,7 @@ export async function GET(request: NextRequest) {
           SELECT 
             cg.group_identifier,
             COUNT(cb.id) as total_bids,
-            COUNT(CASE WHEN cb.created_at >= ${startDate} THEN 1 END) as bids_in_timeframe,
+            ${startDate ? sql`COUNT(CASE WHEN cb.created_at >= ${startDate} THEN 1 END)` : sql`COUNT(cb.id)`} as bids_in_timeframe,
             COUNT(DISTINCT cb.bid_number) as unique_auctions,
             COUNT(DISTINCT cg.supabase_user_id) as carriers_count,
             COALESCE(AVG(cb.amount_cents), 0)::INTEGER as avg_bid_amount_cents,
@@ -56,12 +61,45 @@ export async function GET(request: NextRequest) {
           SELECT 
             cg.group_identifier,
             COUNT(aa.id) as total_wins,
-            COUNT(CASE WHEN aa.awarded_at >= ${startDate} THEN 1 END) as wins_in_timeframe,
+            ${startDate ? sql`COUNT(CASE WHEN aa.awarded_at >= ${startDate} THEN 1 END)` : sql`COUNT(aa.id)`} as wins_in_timeframe,
             COALESCE(AVG(aa.winner_amount_cents), 0)::INTEGER as avg_winning_bid_cents,
             COALESCE(SUM(aa.winner_amount_cents), 0) as total_revenue_cents
           FROM carrier_groups cg
-          LEFT JOIN auction_awards aa ON cg.supabase_user_id = aa.winner_user_id
+          LEFT JOIN auction_awards aa ON cg.supabase_user_id = aa.supabase_winner_user_id
           GROUP BY cg.group_identifier
+        ),
+        individual_competitiveness AS (
+          SELECT 
+            cb.supabase_user_id,
+            COUNT(*) as total_bids,
+            COUNT(CASE 
+              WHEN cb.amount_cents <= (
+                SELECT MIN(cb2.amount_cents) * 1.05
+                FROM carrier_bids cb2
+                WHERE cb2.bid_number = cb.bid_number
+              ) THEN 1
+            END) as bids_within_5_percent
+          FROM carrier_bids cb
+          GROUP BY cb.supabase_user_id
+        ),
+        carrier_competitiveness_scores AS (
+          SELECT 
+            cg.group_identifier,
+            cg.supabase_user_id,
+            CASE 
+              WHEN ic.total_bids > 0 
+              THEN ROUND((COALESCE(ic.bids_within_5_percent, 0)::DECIMAL / ic.total_bids * 100), 2)
+              ELSE 0 
+            END as competitiveness_score
+          FROM carrier_groups cg
+          LEFT JOIN individual_competitiveness ic ON cg.supabase_user_id = ic.supabase_user_id
+        ),
+        group_competitiveness_stats AS (
+          SELECT 
+            ccs.group_identifier,
+            COALESCE(AVG(ccs.competitiveness_score), 0)::DECIMAL as avg_competitiveness_score
+          FROM carrier_competitiveness_scores ccs
+          GROUP BY ccs.group_identifier
         ),
         top_carrier_per_group AS (
           SELECT DISTINCT ON (cg.group_identifier)
@@ -72,7 +110,7 @@ export async function GET(request: NextRequest) {
             COUNT(CASE WHEN aa.id IS NOT NULL THEN 1 END) as carrier_wins,
             COALESCE(SUM(aa.winner_amount_cents), 0) as carrier_revenue
           FROM carrier_groups cg
-          LEFT JOIN auction_awards aa ON cg.supabase_user_id = aa.winner_user_id
+          LEFT JOIN auction_awards aa ON cg.supabase_user_id = aa.supabase_winner_user_id
           GROUP BY cg.group_identifier, cg.supabase_user_id, cg.company_name, cg.legal_name
           ORDER BY cg.group_identifier, carrier_wins DESC, carrier_revenue DESC
         ),
@@ -97,9 +135,11 @@ export async function GET(request: NextRequest) {
               WHEN gbs.total_bids > 0 
               THEN ROUND((COALESCE(gws.total_wins, 0)::DECIMAL / gbs.total_bids * 100), 2)
               ELSE 0 
-            END as win_rate_percentage
+            END as win_rate_percentage,
+            ROUND(COALESCE(gcs.avg_competitiveness_score, 0), 2) as competitiveness_score
           FROM group_bid_stats gbs
           LEFT JOIN group_win_stats gws ON gbs.group_identifier = gws.group_identifier
+          LEFT JOIN group_competitiveness_stats gcs ON gbs.group_identifier = gcs.group_identifier
           LEFT JOIN top_carrier_per_group tcp ON gbs.group_identifier = tcp.group_identifier
           WHERE gbs.total_bids > 0
         )
@@ -130,7 +170,7 @@ export async function GET(request: NextRequest) {
           SELECT 
             cg.group_identifier,
             COUNT(cb.id) as total_bids,
-            COUNT(CASE WHEN cb.created_at >= ${startDate} THEN 1 END) as bids_in_timeframe,
+            ${startDate ? sql`COUNT(CASE WHEN cb.created_at >= ${startDate} THEN 1 END)` : sql`COUNT(cb.id)`} as bids_in_timeframe,
             COUNT(DISTINCT cb.bid_number) as unique_auctions,
             COUNT(DISTINCT cg.supabase_user_id) as carriers_count,
             COALESCE(AVG(cb.amount_cents), 0)::INTEGER as avg_bid_amount_cents,
@@ -144,12 +184,45 @@ export async function GET(request: NextRequest) {
           SELECT 
             cg.group_identifier,
             COUNT(aa.id) as total_wins,
-            COUNT(CASE WHEN aa.awarded_at >= ${startDate} THEN 1 END) as wins_in_timeframe,
+            ${startDate ? sql`COUNT(CASE WHEN aa.awarded_at >= ${startDate} THEN 1 END)` : sql`COUNT(aa.id)`} as wins_in_timeframe,
             COALESCE(AVG(aa.winner_amount_cents), 0)::INTEGER as avg_winning_bid_cents,
             COALESCE(SUM(aa.winner_amount_cents), 0) as total_revenue_cents
           FROM carrier_groups cg
-          LEFT JOIN auction_awards aa ON cg.supabase_user_id = aa.winner_user_id
+          LEFT JOIN auction_awards aa ON cg.supabase_user_id = aa.supabase_winner_user_id
           GROUP BY cg.group_identifier
+        ),
+        individual_competitiveness AS (
+          SELECT 
+            cb.supabase_user_id,
+            COUNT(*) as total_bids,
+            COUNT(CASE 
+              WHEN cb.amount_cents <= (
+                SELECT MIN(cb2.amount_cents) * 1.05
+                FROM carrier_bids cb2
+                WHERE cb2.bid_number = cb.bid_number
+              ) THEN 1
+            END) as bids_within_5_percent
+          FROM carrier_bids cb
+          GROUP BY cb.supabase_user_id
+        ),
+        carrier_competitiveness_scores AS (
+          SELECT 
+            cg.group_identifier,
+            cg.supabase_user_id,
+            CASE 
+              WHEN ic.total_bids > 0 
+              THEN ROUND((COALESCE(ic.bids_within_5_percent, 0)::DECIMAL / ic.total_bids * 100), 2)
+              ELSE 0 
+            END as competitiveness_score
+          FROM carrier_groups cg
+          LEFT JOIN individual_competitiveness ic ON cg.supabase_user_id = ic.supabase_user_id
+        ),
+        group_competitiveness_stats AS (
+          SELECT 
+            ccs.group_identifier,
+            COALESCE(AVG(ccs.competitiveness_score), 0)::DECIMAL as avg_competitiveness_score
+          FROM carrier_competitiveness_scores ccs
+          GROUP BY ccs.group_identifier
         ),
         top_carrier_per_group AS (
           SELECT DISTINCT ON (cg.group_identifier)
@@ -160,7 +233,7 @@ export async function GET(request: NextRequest) {
             COUNT(CASE WHEN aa.id IS NOT NULL THEN 1 END) as carrier_wins,
             COALESCE(SUM(aa.winner_amount_cents), 0) as carrier_revenue
           FROM carrier_groups cg
-          LEFT JOIN auction_awards aa ON cg.supabase_user_id = aa.winner_user_id
+          LEFT JOIN auction_awards aa ON cg.supabase_user_id = aa.supabase_winner_user_id
           GROUP BY cg.group_identifier, cg.supabase_user_id, cg.company_name, cg.legal_name
           ORDER BY cg.group_identifier, carrier_wins DESC, carrier_revenue DESC
         ),
@@ -185,9 +258,11 @@ export async function GET(request: NextRequest) {
               WHEN gbs.total_bids > 0 
               THEN ROUND((COALESCE(gws.total_wins, 0)::DECIMAL / gbs.total_bids * 100), 2)
               ELSE 0 
-            END as win_rate_percentage
+            END as win_rate_percentage,
+            ROUND(COALESCE(gcs.avg_competitiveness_score, 0), 2) as competitiveness_score
           FROM group_bid_stats gbs
           LEFT JOIN group_win_stats gws ON gbs.group_identifier = gws.group_identifier
+          LEFT JOIN group_competitiveness_stats gcs ON gbs.group_identifier = gcs.group_identifier
           LEFT JOIN top_carrier_per_group tcp ON gbs.group_identifier = tcp.group_identifier
           WHERE gbs.total_bids > 0
         )
@@ -221,7 +296,7 @@ export async function GET(request: NextRequest) {
               COALESCE(SUM(aa.winner_amount_cents), 0)::BIGINT as carrier_revenue
             FROM carrier_profiles cp
             LEFT JOIN carrier_bids cb ON cp.supabase_user_id = cb.supabase_user_id
-            LEFT JOIN auction_awards aa ON cp.supabase_user_id = aa.winner_user_id
+            LEFT JOIN auction_awards aa ON cp.supabase_user_id = aa.supabase_winner_user_id
             WHERE cp.dot_number = ${groupIdentifier}
             GROUP BY cp.supabase_user_id, cp.company_name, cp.legal_name, cp.mc_number, cp.dot_number
             ORDER BY carrier_wins DESC, carrier_revenue DESC
@@ -239,7 +314,7 @@ export async function GET(request: NextRequest) {
               COALESCE(SUM(aa.winner_amount_cents), 0)::BIGINT as carrier_revenue
             FROM carrier_profiles cp
             LEFT JOIN carrier_bids cb ON cp.supabase_user_id = cb.supabase_user_id
-            LEFT JOIN auction_awards aa ON cp.supabase_user_id = aa.winner_user_id
+            LEFT JOIN auction_awards aa ON cp.supabase_user_id = aa.supabase_winner_user_id
             WHERE cp.mc_number = ${groupIdentifier}
             GROUP BY cp.supabase_user_id, cp.company_name, cp.legal_name, cp.mc_number, cp.dot_number
             ORDER BY carrier_wins DESC, carrier_revenue DESC
@@ -260,7 +335,7 @@ export async function GET(request: NextRequest) {
         groupBy: groupBy,
         timeframe: {
           days: daysAgo,
-          startDate: startDate.toISOString(),
+          startDate: startDate?.toISOString() || 'all time',
           endDate: new Date().toISOString()
         },
         sortBy: sortBy,

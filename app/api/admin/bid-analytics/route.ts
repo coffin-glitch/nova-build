@@ -10,17 +10,24 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const timeframe = searchParams.get("timeframe") || "30"; // days
     const action = searchParams.get("action") || "overview";
+    const hourlyTimeframe = searchParams.get("hourlyTimeframe") || "today"; // for hourly trends
 
     // Calculate date range
-    const daysAgo = parseInt(timeframe);
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - daysAgo);
+    let startDate: Date;
+    if (timeframe === "all") {
+      // Set a very early date for "all time" - using year 2000 as a safe early date
+      startDate = new Date('2000-01-01T00:00:00.000Z');
+    } else {
+      const daysAgo = parseInt(timeframe);
+      startDate = new Date();
+      startDate.setDate(startDate.getDate() - daysAgo);
+    }
 
     switch (action) {
       case "overview":
         return await getBidOverview(startDate);
       case "trends":
-        return await getBidTrends(startDate);
+        return await getBidTrends(startDate, hourlyTimeframe);
       case "performance":
         return await getPerformanceMetrics(startDate);
       case "carrier_activity":
@@ -50,14 +57,14 @@ async function getBidOverview(startDate: Date) {
     WITH bid_stats AS (
       SELECT 
         COUNT(tb.id) as total_auctions,
-        COUNT(CASE WHEN tb.is_expired = false THEN 1 END) as active_auctions,
-        COUNT(CASE WHEN tb.is_expired = true THEN 1 END) as expired_auctions,
+        COUNT(CASE WHEN NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes') THEN 1 END) as active_auctions,
+        COUNT(CASE WHEN NOW() > (tb.received_at::timestamp + INTERVAL '25 minutes') THEN 1 END) as expired_auctions,
         COUNT(CASE WHEN tb.received_at >= ${startDate.toISOString()} THEN 1 END) as recent_auctions,
         
         -- Today's specific counts
         COUNT(CASE WHEN tb.received_at::date = CURRENT_DATE THEN 1 END) as total_auctions_today,
-        COUNT(CASE WHEN tb.received_at::date = CURRENT_DATE AND tb.is_expired = false THEN 1 END) as active_auctions_today,
-        COUNT(CASE WHEN tb.received_at::date = CURRENT_DATE AND tb.is_expired = true THEN 1 END) as expired_auctions_today,
+        COUNT(CASE WHEN tb.received_at::date = CURRENT_DATE AND NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes') THEN 1 END) as active_auctions_today,
+        COUNT(CASE WHEN tb.received_at::date = CURRENT_DATE AND NOW() > (tb.received_at::timestamp + INTERVAL '25 minutes') THEN 1 END) as expired_auctions_today,
         
         COUNT(cb.id) as total_carrier_bids,
         COUNT(CASE WHEN cb.created_at >= ${startDate.toISOString()} THEN 1 END) as recent_carrier_bids,
@@ -79,17 +86,11 @@ async function getBidOverview(startDate: Date) {
     
     winning_stats AS (
       SELECT 
-        COUNT(*) as total_wins,
-        COALESCE(AVG(cb.amount_cents), 0) as avg_winning_bid,
-        COALESCE(SUM(cb.amount_cents), 0) as total_winnings_value
-      FROM carrier_bids cb
-      INNER JOIN telegram_bids tb ON cb.bid_number = tb.bid_number
-      WHERE cb.amount_cents = (
-        SELECT MIN(cb2.amount_cents) 
-        FROM carrier_bids cb2 
-        WHERE cb2.bid_number = cb.bid_number
-      )
-      AND tb.is_expired = true
+        COUNT(aa.id) as total_wins,
+        COALESCE(AVG(aa.winner_amount_cents), 0) as avg_winning_bid,
+        COALESCE(SUM(aa.winner_amount_cents), 0) as total_winnings_value
+      FROM auction_awards aa
+      INNER JOIN telegram_bids tb ON aa.bid_number = tb.bid_number
     ),
     
     competition_stats AS (
@@ -124,7 +125,7 @@ async function getBidOverview(startDate: Date) {
       END as win_rate_percentage,
       
       CASE 
-        WHEN bs.total_carrier_bids > 0 THEN ROUND((bs.total_carrier_bids::DECIMAL / bs.total_auctions), 2)
+        WHEN bs.total_auctions > 0 THEN ROUND((bs.total_carrier_bids::DECIMAL / NULLIF(bs.total_auctions, 0)), 2)
         ELSE 0 
       END as avg_bids_per_auction_calc
       
@@ -146,7 +147,86 @@ async function getBidOverview(startDate: Date) {
   });
 }
 
-async function getBidTrends(startDate: Date) {
+// Helper function to calculate date range for hourly trends
+function getHourlyTrendsDateRange(timeframe: string): { startDate: Date; endDate: Date } {
+  const now = new Date();
+  const startDate = new Date();
+  const endDate = new Date();
+  
+  switch (timeframe) {
+    case "today":
+      startDate.setHours(0, 0, 0, 0);
+      endDate.setHours(23, 59, 59, 999);
+      break;
+    case "yesterday":
+      startDate.setDate(startDate.getDate() - 1);
+      startDate.setHours(0, 0, 0, 0);
+      endDate.setDate(endDate.getDate() - 1);
+      endDate.setHours(23, 59, 59, 999);
+      break;
+    case "this_week":
+      const dayOfWeek = now.getDay();
+      startDate.setDate(now.getDate() - dayOfWeek);
+      startDate.setHours(0, 0, 0, 0);
+      endDate.setHours(23, 59, 59, 999);
+      break;
+    case "last_week":
+      const lastWeekStart = new Date(now);
+      lastWeekStart.setDate(now.getDate() - now.getDay() - 7);
+      lastWeekStart.setHours(0, 0, 0, 0);
+      const lastWeekEnd = new Date(lastWeekStart);
+      lastWeekEnd.setDate(lastWeekStart.getDate() + 6);
+      lastWeekEnd.setHours(23, 59, 59, 999);
+      startDate.setTime(lastWeekStart.getTime());
+      endDate.setTime(lastWeekEnd.getTime());
+      break;
+    case "this_month":
+      startDate.setDate(1);
+      startDate.setHours(0, 0, 0, 0);
+      endDate.setHours(23, 59, 59, 999);
+      break;
+    case "last_month":
+      startDate.setMonth(now.getMonth() - 1);
+      startDate.setDate(1);
+      startDate.setHours(0, 0, 0, 0);
+      endDate.setMonth(now.getMonth());
+      endDate.setDate(0);
+      endDate.setHours(23, 59, 59, 999);
+      break;
+    case "last_3_months":
+      startDate.setMonth(now.getMonth() - 3);
+      startDate.setDate(1);
+      startDate.setHours(0, 0, 0, 0);
+      endDate.setHours(23, 59, 59, 999);
+      break;
+    case "this_year":
+      startDate.setMonth(0, 1);
+      startDate.setHours(0, 0, 0, 0);
+      endDate.setHours(23, 59, 59, 999);
+      break;
+    case "last_year":
+      startDate.setFullYear(now.getFullYear() - 1);
+      startDate.setMonth(0, 1);
+      startDate.setHours(0, 0, 0, 0);
+      endDate.setFullYear(now.getFullYear() - 1);
+      endDate.setMonth(11, 31);
+      endDate.setHours(23, 59, 59, 999);
+      break;
+    case "all_time":
+      startDate.setFullYear(2020, 0, 1);
+      startDate.setHours(0, 0, 0, 0);
+      endDate.setHours(23, 59, 59, 999);
+      break;
+    default:
+      // Default to today
+      startDate.setHours(0, 0, 0, 0);
+      endDate.setHours(23, 59, 59, 999);
+  }
+  
+  return { startDate, endDate };
+}
+
+async function getBidTrends(startDate: Date, hourlyTimeframe: string = "today") {
   // Get daily bid trends
   const dailyTrends = await sql`
     SELECT 
@@ -164,7 +244,8 @@ async function getBidTrends(startDate: Date) {
     LIMIT 30
   `;
 
-  // Get hourly trends for today
+  // Get hourly trends based on timeframe
+  const { startDate: hourlyStartDate, endDate: hourlyEndDate } = getHourlyTrendsDateRange(hourlyTimeframe);
   const hourlyTrends = await sql`
     SELECT 
       EXTRACT(HOUR FROM tb.received_at) as hour,
@@ -172,7 +253,8 @@ async function getBidTrends(startDate: Date) {
       COUNT(cb.id) as bids_placed
     FROM telegram_bids tb
     LEFT JOIN carrier_bids cb ON tb.bid_number = cb.bid_number
-    WHERE DATE(tb.received_at) = CURRENT_DATE
+    WHERE tb.received_at >= ${hourlyStartDate.toISOString()}
+      AND tb.received_at <= ${hourlyEndDate.toISOString()}
     GROUP BY EXTRACT(HOUR FROM tb.received_at)
     ORDER BY hour
   `;
@@ -225,7 +307,7 @@ async function getPerformanceMetrics(startDate: Date) {
     WHERE tb.received_at >= ${startDate.toISOString()}
     GROUP BY tb.tag
     ORDER BY auction_count DESC
-    LIMIT 20
+    LIMIT 100
   `;
 
   const timePerformance = await sql`
@@ -274,11 +356,7 @@ async function getCarrierActivity(startDate: Date) {
       MIN(cb.created_at) as first_bid_at,
       MAX(cb.created_at) as last_bid_at,
       COALESCE(AVG(cb.amount_cents), 0) as avg_bid_amount,
-      COUNT(CASE WHEN cb.amount_cents = (
-        SELECT MIN(cb2.amount_cents) 
-        FROM carrier_bids cb2 
-        WHERE cb2.bid_number = cb.bid_number
-      ) THEN 1 END) as winning_bids,
+      COUNT(aa.id) as winning_bids,
       
       -- Activity metrics
       COUNT(DISTINCT DATE(cb.created_at)) as active_days,
@@ -292,6 +370,8 @@ async function getCarrierActivity(startDate: Date) {
       
     FROM carrier_profiles cp
     INNER JOIN carrier_bids cb ON cp.supabase_user_id = cb.supabase_user_id
+    LEFT JOIN auction_awards aa ON aa.bid_number = cb.bid_number 
+      AND aa.supabase_winner_user_id = cp.supabase_user_id
     WHERE cb.created_at >= ${startDate.toISOString()}
     GROUP BY cp.supabase_user_id, cp.company_name, cp.legal_name, cp.mc_number
     ORDER BY recent_bids DESC
@@ -325,11 +405,11 @@ async function getAuctionInsights(startDate: Date) {
         COALESCE(MAX(cb.amount_cents), 0) as highest_bid_amount,
         COALESCE(AVG(cb.amount_cents), 0) as avg_bid_amount,
         COUNT(DISTINCT cb.supabase_user_id) as unique_carriers,
-        tb.is_expired
+        (NOW() > (tb.received_at::timestamp + INTERVAL '25 minutes')) as is_expired
       FROM telegram_bids tb
       LEFT JOIN carrier_bids cb ON tb.bid_number = cb.bid_number
       WHERE tb.received_at >= ${startDate.toISOString()}
-      GROUP BY tb.bid_number, tb.distance_miles, tb.tag, tb.received_at, tb.is_expired
+      GROUP BY tb.bid_number, tb.distance_miles, tb.tag, tb.received_at
     )
     
     SELECT 

@@ -4,6 +4,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useUnifiedRole } from "@/hooks/useUnifiedRole";
 import { useUnifiedUser } from "@/hooks/useUnifiedUser";
 import { Clock, MessageCircle, User, Users, Zap } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -14,30 +15,47 @@ const fetcher = (url: string) => fetch(url).then(r => r.json());
 
 export default function AdminMessagesPage() {
   const { user, isLoaded } = useUnifiedUser();
+  const { isAdmin, isLoading: roleLoading } = useUnifiedRole();
   const router = useRouter();
-  const [isAdmin, setIsAdmin] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [showConversations, setShowConversations] = useState(false);
   const [showNewChat, setShowNewChat] = useState(false);
 
-  // Fetch chat data for stats
-  const { data: chatMessagesData } = useSWR("/api/admin/all-chat-messages", fetcher);
-  const { data: adminMessagesData } = useSWR("/api/admin/all-messages", fetcher);
-  const { data: carriersData } = useSWR("/api/admin/carriers", fetcher);
+  // Fetch conversations data (new unified system)
+  const { data: conversationsData } = useSWR(
+    user && isAdmin ? "/api/admin/conversations" : null,
+    fetcher,
+    { refreshInterval: 10000 }
+  );
+  const { data: carriersData } = useSWR(
+    user && isAdmin ? "/api/admin/carriers" : null,
+    fetcher,
+    { refreshInterval: 30000 }
+  );
+  const { data: adminsData } = useSWR(
+    user && isAdmin ? "/api/admin/admins" : null,
+    fetcher,
+    { refreshInterval: 30000 }
+  );
+  // Fetch average response time
+  const { data: responseTimeData } = useSWR(
+    user && isAdmin ? "/api/admin/conversations/stats" : null,
+    fetcher,
+    { refreshInterval: 30000 }
+  );
 
-  const chatMessages = chatMessagesData?.data || [];
-  const adminMessages = adminMessagesData?.data || [];
+  const conversations = conversationsData?.data || [];
   const carriers = Array.isArray(carriersData) ? carriersData : [];
+  const admins = Array.isArray(adminsData) ? adminsData.filter((admin: any) => admin.user_id !== user?.id) : [];
 
-  // Get unique carrier user IDs for user info fetching
-  const carrierUserIds = Array.from(new Set([
-    ...chatMessages.map((msg: any) => msg.carrier_user_id),
-    ...adminMessages.map((msg: any) => msg.carrier_user_id)
-  ]));
+  // Get unique user IDs from conversations (both carriers and admins)
+  const allUserIds = Array.from(new Set(
+    conversations.map((conv: any) => conv.other_user_id || conv.carrier_user_id).filter(Boolean)
+  ));
 
-  // Fetch user information for all carriers
+  // Fetch user information for all users (carriers and admins)
   const { data: userInfos = {} } = useSWR(
-    carrierUserIds.length > 0 ? `/api/users/batch?ids=${carrierUserIds.join(',')}` : null,
+    allUserIds.length > 0 ? `/api/users/batch?ids=${allUserIds.join(',')}` : null,
     fetcher
   );
 
@@ -55,90 +73,108 @@ export default function AdminMessagesPage() {
     return userId;
   };
 
-  // Calculate stats
-  const activeChats = new Set([
-    ...chatMessages.map((msg: any) => msg.carrier_user_id),
-    ...adminMessages.map((msg: any) => msg.carrier_user_id)
-  ]).size;
+  // Calculate stats from conversations
+  const activeChats = conversations.length;
 
-  const unreadMessages = chatMessages.filter((msg: any) => !msg.is_read).length;
+  const unreadMessages = conversations.reduce((sum: number, conv: any) => {
+    // Ensure unread_count is a number (handle string "00" or "01" cases)
+    const unreadCount = typeof conv.unread_count === 'string' 
+      ? parseInt(conv.unread_count, 10) || 0
+      : (conv.unread_count || 0);
+    return sum + unreadCount;
+  }, 0);
 
-  // Calculate average response time (simplified)
+  // Calculate average response time from API
+  const avgResponseTimeMinutes = responseTimeData?.avg_response_minutes || 0;
   const calculateAvgResponseTime = () => {
-    if (adminMessages.length === 0) return "0m";
-    // This is a simplified calculation - in reality you'd calculate actual response times
-    return "2.3m";
+    if (avgResponseTimeMinutes === 0 || conversations.length === 0) return "0m";
+    if (avgResponseTimeMinutes < 60) {
+      return `${Math.round(avgResponseTimeMinutes)}m`;
+    }
+    const hours = Math.floor(avgResponseTimeMinutes / 60);
+    const minutes = Math.round(avgResponseTimeMinutes % 60);
+    return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
   };
 
-  // Get carriers without existing chats
+  // Get carriers without existing chats (check conversations)
   const carriersWithoutChats = carriers.filter((carrier: any) => {
-    const hasExistingChat = [...chatMessages, ...adminMessages].some((msg: any) => 
-      msg.carrier_user_id === carrier.user_id
+    const carrierId = carrier.user_id || carrier.id;
+    const hasExistingChat = conversations.some((conv: any) => 
+      (conv.other_user_id || conv.carrier_user_id) === carrierId
     );
     return !hasExistingChat;
   });
 
-  // Function to start a new chat
-  const startNewChat = async (carrierId: string) => {
+  // Get admins without existing chats (check conversations)
+  const adminsWithoutChats = admins.filter((admin: any) => {
+    const adminId = admin.user_id || admin.id;
+    const hasExistingChat = conversations.some((conv: any) => 
+      (conv.other_user_id || conv.carrier_user_id) === adminId
+    );
+    return !hasExistingChat;
+  });
+
+  // Function to start a new chat using conversation system
+  const startNewChat = async (userId: string) => {
     try {
-      // Create a new admin message to start the conversation
-      const response = await fetch('/api/admin/messages', {
+      // Create a new conversation using the conversation API
+      const response = await fetch('/api/admin/conversations', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          carrier_user_id: carrierId,
-          subject: 'New Chat Started',
-          message: 'Hello! I\'m starting a new conversation with you.',
+          user_id: userId,
         }),
       });
 
       if (response.ok) {
+        const data = await response.json();
         // Close the new chat panel
         setShowNewChat(false);
         
-        // Open the floating chat console and select the new conversation
-        const chatButton = document.querySelector('[data-testid="floating-chat-button"]') as HTMLElement;
+        // Refresh conversations list if visible
+        if (showConversations) {
+          // Trigger a refresh by toggling
+          setShowConversations(false);
+          setTimeout(() => setShowConversations(true), 100);
+        }
+        
+        // Open the floating chat console
+        const chatButton = document.querySelector('[data-testid="admin-chat-button"]') as HTMLElement;
         if (chatButton) {
           chatButton.click();
-          
-          // Wait a bit for the chat console to open, then select the conversation
-          setTimeout(() => {
-            // This would ideally trigger the conversation selection in the floating chat
-            // For now, we'll just show a success message
-            alert(`New chat started with ${getDisplayName(carrierId)}! Check the floating chat console.`);
-          }, 500);
         }
       } else {
-        throw new Error('Failed to create new chat');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to create new chat');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error starting new chat:', error);
-      alert('Failed to start new chat. Please try again.');
+      alert(error.message || 'Failed to start new chat. Please try again.');
     }
   };
 
   useEffect(() => {
-    if (!isLoaded) return;
+    if (!isLoaded || roleLoading) return;
 
     if (!user) {
       router.push('/sign-in');
       return;
     }
 
-    // Check if user is admin
-    const role = (user.publicMetadata?.role as string)?.toLowerCase();
-    const adminStatus = role === "admin";
-    
-    if (!adminStatus) {
+    // Check if user is admin - useUnifiedRole handles this with Supabase auth
+    // Wait for role to load before checking
+    if (!roleLoading && !isAdmin) {
       router.push('/forbidden');
       return;
     }
 
-    setIsAdmin(true);
-    setIsLoading(false);
-  }, [user, isLoaded, router]);
+    // Only set loading to false if we have a user and role is loaded
+    if (user && !roleLoading) {
+      setIsLoading(false);
+    }
+  }, [user, isLoaded, isAdmin, roleLoading, router]);
 
   if (!isLoaded || isLoading) {
     return (
@@ -198,7 +234,7 @@ export default function AdminMessagesPage() {
               <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{unreadMessages}</div>
+              <div className="text-2xl font-bold">{unreadMessages.toString()}</div>
               <p className="text-xs text-muted-foreground">
                 Requires attention
               </p>
@@ -229,7 +265,11 @@ export default function AdminMessagesPage() {
                   <User className="h-4 w-4 text-primary" />
                 </div>
                 <div>
-                  <div className="text-sm font-medium">{user?.fullName || user?.firstName || 'Admin'}</div>
+                  <div className="text-sm font-medium">
+                    {user?.firstName && user?.lastName 
+                      ? `${user.firstName} ${user.lastName}` 
+                      : user?.firstName || user?.email || 'Admin'}
+                  </div>
                   <p className="text-xs text-muted-foreground">
                     Online
                   </p>
@@ -300,29 +340,29 @@ export default function AdminMessagesPage() {
                   <p className="text-muted-foreground text-center py-4">No active conversations</p>
                 ) : (
                   <div className="space-y-2">
-                    {Array.from(new Set([
-                      ...chatMessages.map((msg: any) => msg.carrier_user_id),
-                      ...adminMessages.map((msg: any) => msg.carrier_user_id)
-                    ])).map((carrierId: string) => {
-                      const carrierMessages = chatMessages.filter((msg: any) => msg.carrier_user_id === carrierId);
-                      const adminMessagesForCarrier = adminMessages.filter((msg: any) => msg.carrier_user_id === carrierId);
-                      const unreadCount = carrierMessages.filter((msg: any) => !msg.is_read).length;
-                      const latestMessage = [...carrierMessages, ...adminMessagesForCarrier]
-                        .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-                        .pop();
-                      const displayName = getDisplayName(carrierId);
+                    {conversations.map((conv: any) => {
+                      const otherUserId = conv.other_user_id || conv.carrier_user_id;
+                      const displayName = getDisplayName(otherUserId);
+                      const unreadCount = conv.unread_count || 0;
+                      const conversationType = conv.conversation_with_type || 'carrier';
                       
                       return (
-                        <div key={carrierId} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50">
+                        <div key={conv.conversation_id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50">
                           <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
                               <User className="h-5 w-5 text-primary" />
                             </div>
                             <div>
                               <p className="font-medium">{displayName}</p>
-                              <p className="text-xs text-muted-foreground">{carrierId}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {conversationType === 'admin' ? 'Admin' : 'Carrier'} • {otherUserId}
+                              </p>
                               <p className="text-sm text-muted-foreground">
-                                {latestMessage ? latestMessage.message.substring(0, 50) + '...' : 'No messages'}
+                                {conv.last_message ? (
+                                  (conv.last_message_sender_type === 'admin' && conv.supabase_admin_user_id === user?.id) || 
+                                  (conv.last_message_sender_type === 'carrier' && conversationType === 'admin' && conv.carrier_user_id === user?.id)
+                                    ? 'You: ' : ''
+                                ) + conv.last_message.substring(0, 50) + '...' : 'No messages'}
                               </p>
                             </div>
                           </div>
@@ -333,7 +373,9 @@ export default function AdminMessagesPage() {
                               </div>
                             )}
                             <p className="text-xs text-muted-foreground">
-                              {latestMessage ? new Date(latestMessage.created_at).toLocaleTimeString() : ''}
+                              {conv.last_message_timestamp || conv.last_message_at 
+                                ? new Date(conv.last_message_timestamp || conv.last_message_at).toLocaleTimeString() 
+                                : ''}
                             </p>
                           </div>
                         </div>
@@ -357,41 +399,83 @@ export default function AdminMessagesPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {carriers.length === 0 ? (
+                {(carriers.length === 0 && admins.length === 0) ? (
                   <div className="text-center py-4">
-                    <p className="text-muted-foreground mb-2">No carriers registered yet</p>
+                    <p className="text-muted-foreground mb-2">No users available</p>
                     <p className="text-sm text-muted-foreground">
-                      Carriers need to register and create profiles before you can start chats with them
+                      No carriers or admins registered yet
                     </p>
                   </div>
-                ) : carriersWithoutChats.length === 0 ? (
+                ) : (carriersWithoutChats.length === 0 && adminsWithoutChats.length === 0) ? (
                   <div className="text-center py-4">
-                    <p className="text-muted-foreground mb-2">No carriers available for new chats</p>
+                    <p className="text-muted-foreground mb-2">No users available for new chats</p>
                     <p className="text-sm text-muted-foreground">
-                      All carriers already have active conversations
+                      All users already have active conversations
                     </p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {carriersWithoutChats.map((carrier: any) => (
-                      <div key={carrier.user_id} className="flex items-center gap-3 p-3 border rounded-lg hover:bg-muted/50">
-                        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                          <User className="h-5 w-5 text-primary" />
+                  <div className="space-y-4">
+                    {/* Admins Section */}
+                    {adminsWithoutChats.length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-semibold mb-2 text-muted-foreground">Admins</h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          {adminsWithoutChats.map((admin: any) => {
+                            const adminId = admin.user_id || admin.id;
+                            return (
+                              <div key={adminId} className="flex items-center gap-3 p-3 border rounded-lg hover:bg-muted/50">
+                                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                                  <User className="h-5 w-5 text-primary" />
+                                </div>
+                                <div className="flex-1">
+                                  <p className="font-medium">{getDisplayName(adminId)}</p>
+                                  <p className="text-sm text-muted-foreground">{admin.email || 'Admin'}</p>
+                                </div>
+                                <Button 
+                                  size="sm" 
+                                  variant="outline"
+                                  onClick={() => startNewChat(adminId)}
+                                >
+                                  Start Chat
+                                </Button>
+                              </div>
+                            );
+                          })}
                         </div>
-                        <div className="flex-1">
-                          <p className="font-medium">{carrier.company_name}</p>
-                          <p className="text-sm text-muted-foreground">{carrier.contact_name}</p>
-                          <p className="text-xs text-muted-foreground">{carrier.user_id}</p>
-                        </div>
-                        <Button 
-                          size="sm" 
-                          variant="outline"
-                          onClick={() => startNewChat(carrier.user_id)}
-                        >
-                          Start Chat
-                        </Button>
                       </div>
-                    ))}
+                    )}
+                    
+                    {/* Carriers Section */}
+                    {carriersWithoutChats.length > 0 && (
+                      <div>
+                        {adminsWithoutChats.length > 0 && (
+                          <h4 className="text-sm font-semibold mb-2 mt-4 text-muted-foreground">Carriers</h4>
+                        )}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          {carriersWithoutChats.map((carrier: any) => {
+                            const carrierId = carrier.user_id || carrier.id;
+                            return (
+                              <div key={carrierId} className="flex items-center gap-3 p-3 border rounded-lg hover:bg-muted/50">
+                                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                                  <User className="h-5 w-5 text-primary" />
+                                </div>
+                                <div className="flex-1">
+                                  <p className="font-medium">{carrier.company_name || getDisplayName(carrierId)}</p>
+                                  <p className="text-sm text-muted-foreground">{carrier.contact_name || 'Carrier'}</p>
+                                </div>
+                                <Button 
+                                  size="sm" 
+                                  variant="outline"
+                                  onClick={() => startNewChat(carrierId)}
+                                >
+                                  Start Chat
+                                </Button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

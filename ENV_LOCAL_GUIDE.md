@@ -95,6 +95,21 @@ TARGET_GROUP_ID=-1001234567890
 
 ---
 
+### Highway API (Carrier Health Check)
+
+Required for the carrier health check feature on `/admin/users`:
+
+```bash
+HIGHWAY_API_KEY=your_highway_staging_api_key_here
+```
+
+**Where to get:**
+- Contact Highway support or access your Highway staging account
+- The API key should be a JWT token for the staging environment
+- Make sure to remove any spaces when pasting the key
+
+---
+
 ### Application URLs
 
 ```bash

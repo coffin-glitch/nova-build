@@ -47,10 +47,11 @@ export async function GET(request: NextRequest) {
       // Then enrich each conversation with message data
       conversations = await Promise.all(basicConversations.map(async (conv: any) => {
         // Get unread count
+        // Note: message_reads table uses supabase_user_id, not user_id
         const unreadResult = await sql`
           SELECT COUNT(*) as unread_count
           FROM conversation_messages cm
-          LEFT JOIN message_reads mr ON mr.message_id = cm.id AND (mr.supabase_user_id = ${userId} OR mr.user_id = ${userId})
+          LEFT JOIN message_reads mr ON mr.message_id = cm.id AND mr.supabase_user_id = ${userId}
           WHERE cm.conversation_id = ${conv.conversation_id}
           AND cm.sender_type = 'admin'
           AND mr.id IS NULL
@@ -189,24 +190,53 @@ export async function POST(request: NextRequest) {
       conversationId = existingConversation[0].id;
     } else {
       // Create new conversation (Supabase-only)
-      // Only insert columns that definitely exist in the conversations table
-      const conversationResult = await sql`
-        INSERT INTO conversations (
-          supabase_carrier_user_id,
-          admin_user_id,
-          conversation_type,
-          created_at,
-          updated_at
-        ) VALUES (
-          ${userId},
-          ${targetAdminId}, 
-          'regular', 
-          CURRENT_TIMESTAMP, 
-          CURRENT_TIMESTAMP
-        )
-        RETURNING id
-      `;
-      conversationId = conversationResult[0].id;
+      // Try with subject/status first, fallback to minimal columns if they don't exist
+      try {
+        const conversationResult = await sql`
+          INSERT INTO conversations (
+            supabase_carrier_user_id,
+            supabase_admin_user_id,
+            subject,
+            status,
+            conversation_type,
+            created_at,
+            updated_at
+          ) VALUES (
+            ${userId},
+            ${targetAdminId},
+            'Carrier Chat',
+            'active',
+            'regular',
+            CURRENT_TIMESTAMP,
+            CURRENT_TIMESTAMP
+          )
+          RETURNING id
+        `;
+        conversationId = conversationResult[0].id;
+      } catch (insertError: any) {
+        // If subject/status columns don't exist, try without them
+        if (insertError?.code === '42703' || insertError?.message?.includes('column') || insertError?.message?.includes('does not exist')) {
+          const conversationResult = await sql`
+            INSERT INTO conversations (
+              supabase_carrier_user_id,
+              supabase_admin_user_id,
+              conversation_type,
+              created_at,
+              updated_at
+            ) VALUES (
+              ${userId},
+              ${targetAdminId},
+              'regular',
+              CURRENT_TIMESTAMP,
+              CURRENT_TIMESTAMP
+            )
+            RETURNING id
+          `;
+          conversationId = conversationResult[0].id;
+        } else {
+          throw insertError;
+        }
+      }
     }
 
     // Create the initial message

@@ -22,8 +22,24 @@ export function BidAnalytics({ stats, bids }: BidAnalyticsProps) {
   // Calculate additional metrics from real-time data
   const acceptanceRate = stats.totalAwarded > 0 ? (stats.completedBids / stats.totalAwarded) * 100 : 0;
   const averageRevenuePerBid = stats.totalAwarded > 0 ? stats.totalRevenue / stats.totalAwarded : 0;
-  const averageDistancePerBid = bids.length > 0 
-    ? bids.reduce((sum, bid) => sum + (bid.distance_miles || 0), 0) / bids.length 
+  
+  // Calculate average distance from ALL bids in the My Bids section
+  // Use distance_miles field (which is the correct field from the API)
+  // Filter out bids with invalid distance values (null, undefined, 0, or negative)
+  const allBids = bids || [];
+  const bidsWithDistance = allBids.filter(bid => {
+    const distance = bid.distance_miles;
+    return distance != null && distance !== undefined && distance > 0 && isFinite(distance);
+  });
+  
+  // Calculate sum and average
+  const totalDistance = bidsWithDistance.reduce((sum, bid) => {
+    const distance = Number(bid.distance_miles);
+    return sum + (isFinite(distance) ? distance : 0);
+  }, 0);
+  
+  const averageDistancePerBid = bidsWithDistance.length > 0
+    ? totalDistance / bidsWithDistance.length
     : 0;
 
   // Calculate monthly trends from real-time data

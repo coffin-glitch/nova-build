@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
     const conversations = await sql`
       SELECT 
         c.id as conversation_id,
-        c.carrier_user_id,
+        c.supabase_carrier_user_id as carrier_user_id,
         c.last_message_at,
         c.created_at,
         c.updated_at,
@@ -33,9 +33,9 @@ export async function GET(request: NextRequest) {
         ) as last_message_sender_type
       FROM conversations c
       LEFT JOIN conversation_messages cm ON cm.conversation_id = c.id
-      LEFT JOIN message_reads mr ON mr.message_id = cm.id AND mr.user_id = ${userId}
-      WHERE c.conversation_type = 'appeal' AND (c.admin_user_id = ${userId} OR c.admin_user_id = 'admin_system')
-      GROUP BY c.id, c.carrier_user_id, c.last_message_at, c.created_at, c.updated_at
+      LEFT JOIN message_reads mr ON mr.message_id = cm.id AND mr.supabase_user_id = ${userId}
+      WHERE c.conversation_type = 'appeal' AND (c.supabase_admin_user_id = ${userId} OR c.supabase_admin_user_id IS NULL)
+      GROUP BY c.id, c.supabase_carrier_user_id, c.last_message_at, c.created_at, c.updated_at
       ORDER BY c.last_message_at DESC
     `;
 
@@ -69,20 +69,20 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Check if appeal conversation already exists (either with current admin or admin_system)
+    // Check if appeal conversation already exists (either with current admin or unassigned)
     const existingConversation = await sql`
-      SELECT id, admin_user_id FROM conversations 
+      SELECT id, supabase_admin_user_id FROM conversations 
       WHERE supabase_carrier_user_id = ${carrier_user_id} 
       AND conversation_type = 'appeal'
-      AND (admin_user_id = ${userId} OR admin_user_id = 'admin_system')
+      AND (supabase_admin_user_id = ${userId} OR supabase_admin_user_id IS NULL)
     `;
 
     if (existingConversation.length > 0) {
-      // If the conversation exists with admin_system, update it to use current admin
-      if (existingConversation[0].admin_user_id === 'admin_system') {
+      // If the conversation exists unassigned, update it to use current admin
+      if (existingConversation[0].supabase_admin_user_id === null) {
         await sql`
           UPDATE conversations 
-          SET admin_user_id = ${userId}
+          SET supabase_admin_user_id = ${userId}
           WHERE id = ${existingConversation[0].id}
         `;
         console.log(`Updated appeal conversation ${existingConversation[0].id} to use current admin`);
@@ -101,13 +101,11 @@ export async function POST(request: NextRequest) {
     const result = await sql`
       INSERT INTO conversations (
         supabase_carrier_user_id,
-        admin_user_id,
+        supabase_admin_user_id,
         conversation_type,
-        subject,
-        status,
         created_at,
         updated_at
-      ) VALUES (${carrier_user_id}, ${userId}, 'appeal', 'Appeal Conversation', 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      ) VALUES (${carrier_user_id}, ${userId}, 'appeal', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
       RETURNING id
     `;
     console.log('Appeal conversation created:', result);

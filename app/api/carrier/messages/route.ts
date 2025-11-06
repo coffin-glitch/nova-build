@@ -23,8 +23,8 @@ export async function GET(request: NextRequest) {
       messages = await sql`
         SELECT 
           id,
-          carrier_user_id,
-          admin_user_id,
+          supabase_carrier_user_id as carrier_user_id,
+          supabase_admin_user_id as admin_user_id,
           subject,
           message,
           is_read,
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
           created_at,
           updated_at
         FROM admin_messages 
-        WHERE supabase_user_id = ${userId}
+        WHERE supabase_carrier_user_id = ${userId}
         ORDER BY created_at DESC
       `;
     } else {
@@ -41,8 +41,8 @@ export async function GET(request: NextRequest) {
       const adminMessages = await sql`
         SELECT 
           id,
-          carrier_user_id,
-          admin_user_id,
+          supabase_carrier_user_id as carrier_user_id,
+          supabase_admin_user_id as admin_user_id,
           subject,
           message,
           is_read,
@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
           created_at,
           updated_at
         FROM admin_messages 
-        WHERE supabase_user_id = ${userId}
+        WHERE supabase_carrier_user_id = ${userId}
         ORDER BY created_at DESC
       `;
 
@@ -58,8 +58,8 @@ export async function GET(request: NextRequest) {
       const appealConversations = await sql`
         SELECT 
           c.id as conversation_id,
-          c.admin_user_id,
-          c.carrier_user_id,
+          c.supabase_admin_user_id as admin_user_id,
+          c.supabase_carrier_user_id as carrier_user_id,
           cm.message,
           cm.created_at,
           cm.id as message_id,
@@ -68,7 +68,7 @@ export async function GET(request: NextRequest) {
           cm.created_at as updated_at
         FROM conversations c
         JOIN conversation_messages cm ON cm.conversation_id = c.id
-        LEFT JOIN message_reads mr ON mr.message_id = cm.id AND mr.user_id = ${userId}
+        LEFT JOIN message_reads mr ON mr.message_id = cm.id AND (mr.supabase_user_id = ${userId} OR mr.user_id = ${userId})
         WHERE c.supabase_carrier_user_id = ${userId}
           AND c.conversation_type = 'appeal'
           AND cm.sender_type = 'admin'

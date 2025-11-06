@@ -201,8 +201,8 @@ export default function RoleNavigation({ role }: RoleNavigationProps) {
             );
           })}
 
-          {/* Loads Dropdown */}
-          <DropdownMenu>
+          {/* Loads Dropdown - Hidden for now */}
+          {/* <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
                 variant="ghost"
@@ -234,7 +234,7 @@ export default function RoleNavigation({ role }: RoleNavigationProps) {
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>
-          </DropdownMenu>
+          </DropdownMenu> */}
 
           {/* Bids Dropdown */}
           <DropdownMenu>

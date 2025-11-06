@@ -36,7 +36,12 @@ export async function GET(
         second_driver_license_number,
         second_driver_license_state,
         second_truck_number,
-        second_trailer_number
+        second_trailer_number,
+        check_in_time,
+        pickup_time,
+        departure_time,
+        check_in_delivery_time,
+        delivery_time
       FROM bid_lifecycle_events
       WHERE bid_id = ${bidNumber}
       ORDER BY timestamp ASC

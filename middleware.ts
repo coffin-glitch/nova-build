@@ -393,30 +393,50 @@ async function resolveUserRole(userId: string): Promise<UserRole> {
     // Use Supabase client to query user_roles_cache
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
+    // First, try to get role from user_roles_cache table
     const { data, error } = await supabase
       .from('user_roles_cache')
       .select('role')
       .eq('supabase_user_id', userId)
       .limit(1)
-      .single();
+      .maybeSingle();
 
-    if (error || !data) {
-      // Default to carrier for authenticated users if no role found
-      const defaultRole: UserRole = "carrier";
-      roleCache.set(userId, { role: defaultRole, timestamp: Date.now() });
-      
-      // Log warning if it's a real error (not just "no rows")
-      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
-        console.warn("[middleware] Error resolving user role:", error.message);
-      }
-      
-      return defaultRole;
+    if (data && data.role) {
+      const role = (data.role as UserRole) || "carrier";
+      // Cache the result
+      roleCache.set(userId, { role, timestamp: Date.now() });
+      return role;
     }
 
-    const role = (data.role as UserRole) || "carrier";
-    // Cache the result
-    roleCache.set(userId, { role, timestamp: Date.now() });
-    return role;
+    // Fallback: Check user metadata for role (useful for admin accounts)
+    try {
+      const { data: userData, error: userError } = await supabase.auth.admin.getUserById(userId);
+      if (!userError && userData?.user?.user_metadata?.role) {
+        const metadataRole = userData.user.user_metadata.role as UserRole;
+        if (metadataRole === "admin" || metadataRole === "carrier") {
+          // Cache the result
+          roleCache.set(userId, { role: metadataRole, timestamp: Date.now() });
+          return metadataRole;
+        }
+      }
+    } catch (metadataError) {
+      // Ignore metadata lookup errors
+      console.warn("[middleware] Error checking user metadata:", metadataError);
+    }
+
+    // Default to carrier for authenticated users if no role found
+    const defaultRole: UserRole = "carrier";
+    roleCache.set(userId, { role: defaultRole, timestamp: Date.now() });
+    
+    // Log warning if it's a real error (not just "no rows")
+    if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
+      console.warn("[middleware] Error resolving user role:", error.message);
+    } else if (!data) {
+      // Log if no role found in cache or metadata
+      console.log(`[middleware] No role found for user ${userId.substring(0, 8)}..., defaulting to carrier`);
+    }
+    
+    return defaultRole;
   } catch (error: any) {
     console.error("[middleware] Error resolving user role:", error?.message || error);
     const defaultRole: UserRole = "carrier";

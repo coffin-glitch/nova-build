@@ -10,13 +10,17 @@ import {
     ArrowDown,
     ArrowUp,
     CheckCircle,
+    ChevronDown,
     ChevronLeft,
     ChevronRight,
     Clock,
+    FileText,
     MapPin,
     Navigation,
+    Paperclip,
     Search,
-    Truck
+    Truck,
+    User
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import useSWR from "swr";
@@ -29,8 +33,28 @@ interface BidLifecycleEvent {
   event_type: string;
   event_data: any;
   timestamp: string;
-  notes: string;
-  documents: string[];
+  notes?: string;
+  documents?: string[];
+  location?: string;
+  driver_name?: string;
+  driver_phone?: string;
+  driver_email?: string;
+  driver_license_number?: string;
+  driver_license_state?: string;
+  truck_number?: string;
+  trailer_number?: string;
+  second_driver_name?: string;
+  second_driver_phone?: string;
+  second_driver_email?: string;
+  second_driver_license_number?: string;
+  second_driver_license_state?: string;
+  second_truck_number?: string;
+  second_trailer_number?: string;
+  check_in_time?: string;
+  pickup_time?: string;
+  departure_time?: string;
+  check_in_delivery_time?: string;
+  delivery_time?: string;
 }
 
 interface AwardedBid {
@@ -155,30 +179,86 @@ export default function AdminBidLifecycleViewer({ bidId, onBidSelect }: AdminBid
   };
 
   const getEventIcon = (eventType: string) => {
-    switch (eventType) {
-      case "bid_awarded":
-        return <CheckCircle className="h-4 w-4 text-blue-600" />;
-      case "load_assigned":
-        return <Truck className="h-4 w-4 text-green-600" />;
-      case "checked_in":
-        return <MapPin className="h-4 w-4 text-yellow-600" />;
-      case "picked_up":
-        return <Navigation className="h-4 w-4 text-purple-600" />;
-      case "departed":
-        return <Navigation className="h-4 w-4 text-indigo-600" />;
-      case "in_transit":
-        return <Truck className="h-4 w-4 text-blue-600" />;
-      case "delivered":
-        return <CheckCircle className="h-4 w-4 text-green-600" />;
-      case "completed":
-        return <CheckCircle className="h-4 w-4 text-gray-600" />;
-      default:
-        return <Clock className="h-4 w-4 text-gray-600" />;
-    }
+    if (!eventType) return Clock;
+    
+    const iconMap: Record<string, any> = {
+      bid_awarded: CheckCircle,
+      load_assigned: Truck,
+      driver_info_update: User,
+      checked_in_origin: User,
+      checked_in: MapPin,
+      picked_up: MapPin,
+      departed_origin: Navigation,
+      departed: Navigation,
+      in_transit: Truck,
+      checked_in_destination: User,
+      delivered: CheckCircle,
+      completed: CheckCircle
+    };
+    return iconMap[eventType] || Clock;
   };
 
   const formatEventType = (eventType: string) => {
     return eventType.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  };
+
+  const [expandedEvents, setExpandedEvents] = useState<Set<string>>(new Set());
+
+  const toggleEventExpansion = (eventId: string) => {
+    const newExpanded = new Set(expandedEvents);
+    if (newExpanded.has(eventId)) {
+      newExpanded.delete(eventId);
+    } else {
+      newExpanded.add(eventId);
+    }
+    setExpandedEvents(newExpanded);
+  };
+
+  const formatTime = (timeString: string) => {
+    if (!timeString) return 'Not set';
+    return new Date(timeString).toLocaleTimeString([], { 
+      hour: '2-digit', 
+      minute: '2-digit' 
+    });
+  };
+
+  const formatDateTime = (dateString: string) => {
+    if (!dateString) return 'Not set';
+    return new Date(dateString).toLocaleString();
+  };
+
+  const getStatusSpecificDateTime = (event: BidLifecycleEvent) => {
+    switch (event.event_type) {
+      case 'checked_in_origin':
+        return event.check_in_time;
+      case 'picked_up':
+        return event.pickup_time;
+      case 'departed_origin':
+        return event.departure_time;
+      case 'checked_in_destination':
+        return event.check_in_delivery_time;
+      case 'delivered':
+        return event.delivery_time;
+      default:
+        return null;
+    }
+  };
+
+  const getStatusSpecificDateTimeLabel = (eventType: string) => {
+    switch (eventType) {
+      case 'checked_in_origin':
+        return 'Check-in Time';
+      case 'picked_up':
+        return 'Pickup Time';
+      case 'departed_origin':
+        return 'Departure Time';
+      case 'checked_in_destination':
+        return 'Check-in Time (Destination)';
+      case 'delivered':
+        return 'Delivery Time';
+      default:
+        return null;
+    }
   };
 
   if (bidsError) {
@@ -318,34 +398,217 @@ export default function AdminBidLifecycleViewer({ bidId, onBidSelect }: AdminBid
               No lifecycle events found
             </div>
           ) : (
-            <div className="space-y-4">
-              {eventsData.map((event, index) => (
-                <div key={event.id} className="flex items-start gap-3 p-4 border rounded-lg">
-                  <div className="flex-shrink-0 mt-1">
-                    {getEventIcon(event.event_type)}
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between">
-                      <div className="font-medium">
-                        {formatEventType(event.event_type)}
-                      </div>
-                      <div className="text-sm text-muted-foreground">
-                        {new Date(event.timestamp).toLocaleString()}
-                      </div>
-                    </div>
-                    {event.notes && (
-                      <div className="text-sm text-muted-foreground mt-1">
-                        {event.notes}
-                      </div>
+            <div className="space-y-3">
+              {eventsData.map((event, index) => {
+                const isExpanded = expandedEvents.has(event.id);
+                const Icon = getEventIcon(event.event_type);
+                const isLast = index === eventsData.length - 1;
+                
+                return (
+                  <div key={event.id} className="relative">
+                    {/* Timeline Line */}
+                    {!isLast && (
+                      <div className="absolute left-4 top-8 w-0.5 h-8 bg-border" />
                     )}
-                    {event.documents && event.documents.length > 0 && (
-                      <div className="text-sm text-muted-foreground mt-1">
-                        Documents: {event.documents.length}
-                      </div>
-                    )}
+                    
+                    <Card className="ml-8">
+                      <CardHeader 
+                        className="pb-3 cursor-pointer hover:bg-muted/50 transition-colors"
+                        onClick={() => toggleEventExpansion(event.id)}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full flex items-center justify-center bg-muted">
+                              <Icon className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <h4 className="font-semibold">{formatEventType(event.event_type)}</h4>
+                              <p className="text-sm text-muted-foreground">
+                                {new Date(event.timestamp).toLocaleString()}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {isExpanded ? (
+                              <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                            ) : (
+                              <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                            )}
+                          </div>
+                        </div>
+                      </CardHeader>
+                      
+                      {isExpanded && (
+                        <CardContent className="pt-0">
+                          <div className="space-y-4 border-t pt-4">
+                            {/* Event Details */}
+                            <div className="grid grid-cols-2 gap-4 text-sm">
+                              <div>
+                                <span className="text-muted-foreground">Event Created:</span>
+                                <p className="font-medium">{formatDateTime(event.timestamp)}</p>
+                              </div>
+                              {event.location && (
+                                <div>
+                                  <span className="text-muted-foreground">Location:</span>
+                                  <p className="font-medium">{event.location}</p>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Status-Specific Date/Time */}
+                            {getStatusSpecificDateTime(event) && (
+                              <div>
+                                <span className="text-muted-foreground text-sm">{getStatusSpecificDateTimeLabel(event.event_type)}:</span>
+                                <p className="text-sm mt-1 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg font-medium">
+                                  {formatDateTime(getStatusSpecificDateTime(event)!)}
+                                </p>
+                              </div>
+                            )}
+
+                            {/* Notes */}
+                            {event.notes && (
+                              <div>
+                                <span className="text-muted-foreground text-sm">Notes:</span>
+                                <p className="text-sm mt-1 p-3 bg-muted rounded-lg">{event.notes}</p>
+                              </div>
+                            )}
+
+                            {/* Driver Information */}
+                            {(event.driver_name || event.driver_phone || event.driver_email || event.driver_license_number || event.driver_license_state || event.truck_number || event.trailer_number || event.second_driver_name || event.second_driver_phone || event.second_driver_email || event.second_driver_license_number || event.second_driver_license_state || event.second_truck_number || event.second_trailer_number) && (
+                              <div>
+                                <div className="flex items-center gap-2 mb-3">
+                                  <User className="w-4 h-4 text-muted-foreground" />
+                                  <span className="text-sm font-medium text-muted-foreground">Driver Information</span>
+                                </div>
+                                
+                                {/* Primary Driver */}
+                                {(event.driver_name || event.driver_phone || event.driver_email || event.driver_license_number || event.driver_license_state || event.truck_number || event.trailer_number) && (
+                                  <div className="mb-4">
+                                    <h5 className="text-sm font-medium mb-2 text-muted-foreground">Primary Driver</h5>
+                                    <div className="grid grid-cols-2 gap-4 text-sm">
+                                      {event.driver_name && (
+                                        <div>
+                                          <span className="text-muted-foreground">Driver:</span>
+                                          <p className="font-medium">{event.driver_name}</p>
+                                        </div>
+                                      )}
+                                      {event.driver_phone && (
+                                        <div>
+                                          <span className="text-muted-foreground">Phone:</span>
+                                          <p className="font-medium">{event.driver_phone}</p>
+                                        </div>
+                                      )}
+                                      {event.driver_email && (
+                                        <div>
+                                          <span className="text-muted-foreground">Email:</span>
+                                          <p className="font-medium">{event.driver_email}</p>
+                                        </div>
+                                      )}
+                                      {event.driver_license_number && (
+                                        <div>
+                                          <span className="text-muted-foreground">License #:</span>
+                                          <p className="font-medium">{event.driver_license_number}</p>
+                                        </div>
+                                      )}
+                                      {event.driver_license_state && (
+                                        <div>
+                                          <span className="text-muted-foreground">License State:</span>
+                                          <p className="font-medium">{event.driver_license_state}</p>
+                                        </div>
+                                      )}
+                                      {event.truck_number && (
+                                        <div>
+                                          <span className="text-muted-foreground">Truck:</span>
+                                          <p className="font-medium">{event.truck_number}</p>
+                                        </div>
+                                      )}
+                                      {event.trailer_number && (
+                                        <div>
+                                          <span className="text-muted-foreground">Trailer:</span>
+                                          <p className="font-medium">{event.trailer_number}</p>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Secondary Driver */}
+                                {(event.second_driver_name || event.second_driver_phone || event.second_driver_email || event.second_driver_license_number || event.second_driver_license_state || event.second_truck_number || event.second_trailer_number) && (
+                                  <div>
+                                    <h5 className="text-sm font-medium mb-2 text-muted-foreground">Secondary Driver</h5>
+                                    <div className="grid grid-cols-2 gap-4 text-sm">
+                                      {event.second_driver_name && (
+                                        <div>
+                                          <span className="text-muted-foreground">Driver:</span>
+                                          <p className="font-medium">{event.second_driver_name}</p>
+                                        </div>
+                                      )}
+                                      {event.second_driver_phone && (
+                                        <div>
+                                          <span className="text-muted-foreground">Phone:</span>
+                                          <p className="font-medium">{event.second_driver_phone}</p>
+                                        </div>
+                                      )}
+                                      {event.second_driver_email && (
+                                        <div>
+                                          <span className="text-muted-foreground">Email:</span>
+                                          <p className="font-medium">{event.second_driver_email}</p>
+                                        </div>
+                                      )}
+                                      {event.second_driver_license_number && (
+                                        <div>
+                                          <span className="text-muted-foreground">License #:</span>
+                                          <p className="font-medium">{event.second_driver_license_number}</p>
+                                        </div>
+                                      )}
+                                      {event.second_driver_license_state && (
+                                        <div>
+                                          <span className="text-muted-foreground">License State:</span>
+                                          <p className="font-medium">{event.second_driver_license_state}</p>
+                                        </div>
+                                      )}
+                                      {event.second_truck_number && (
+                                        <div>
+                                          <span className="text-muted-foreground">Truck:</span>
+                                          <p className="font-medium">{event.second_truck_number}</p>
+                                        </div>
+                                      )}
+                                      {event.second_trailer_number && (
+                                        <div>
+                                          <span className="text-muted-foreground">Trailer:</span>
+                                          <p className="font-medium">{event.second_trailer_number}</p>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Documents */}
+                            {event.documents && event.documents.length > 0 && (
+                              <div>
+                                <div className="flex items-center gap-2 mb-3">
+                                  <Paperclip className="w-4 h-4 text-muted-foreground" />
+                                  <span className="text-sm font-medium text-muted-foreground">Documents</span>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  {event.documents.map((doc: string, idx: number) => (
+                                    <div key={idx} className="flex items-center gap-2 p-2 bg-muted rounded-lg">
+                                      <FileText className="w-4 h-4" />
+                                      <span className="text-sm">Document {idx + 1}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </CardContent>
+                      )}
+                    </Card>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </TabsContent>

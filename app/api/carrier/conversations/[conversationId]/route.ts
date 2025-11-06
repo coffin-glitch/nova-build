@@ -1,6 +1,7 @@
 import sql from "@/lib/db";
 import { requireApiCarrier } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
+import { getSupabaseService } from "@/lib/supabase";
 
 export async function GET(
   request: NextRequest,
@@ -26,14 +27,19 @@ export async function GET(
     const messages = await sql`
       SELECT 
         cm.id,
-        cm.sender_id,
+        cm.conversation_id,
+        cm.supabase_sender_id as sender_id,
         cm.sender_type,
         cm.message,
+        cm.attachment_url,
+        cm.attachment_type,
+        cm.attachment_name,
+        cm.attachment_size,
         cm.created_at,
         cm.updated_at,
         CASE WHEN mr.id IS NOT NULL THEN true ELSE false END as is_read
       FROM conversation_messages cm
-      LEFT JOIN message_reads mr ON mr.message_id = cm.id AND mr.user_id = ${userId}
+      LEFT JOIN message_reads mr ON mr.message_id = cm.id AND mr.supabase_user_id = ${userId}
       WHERE cm.conversation_id = ${conversationId}
       ORDER BY cm.created_at ASC
     `;
@@ -60,14 +66,6 @@ export async function POST(
     const userId = auth.userId;
 
     const { conversationId } = await params;
-    const body = await request.json();
-    const { message } = body;
-
-    if (!message) {
-      return NextResponse.json({ 
-        error: "Missing required field: message" 
-      }, { status: 400 });
-    }
 
     // Verify the user has access to this conversation
     const conversation = await sql`
@@ -79,6 +77,128 @@ export async function POST(
       return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
     }
 
+    // Check if request has FormData (file upload) or JSON (text message)
+    const contentType = request.headers.get('content-type') || '';
+    let message = '';
+    let attachmentUrl: string | null = null;
+    let attachmentType: string | null = null;
+    let attachmentName: string | null = null;
+    let attachmentSize: number | null = null;
+
+    if (contentType.includes('multipart/form-data')) {
+      // Handle file upload
+      const formData = await request.formData();
+      const file = formData.get('file') as File | null;
+      message = (formData.get('message') as string) || '';
+
+      if (!file && !message.trim()) {
+        return NextResponse.json({ 
+          error: "Either a message or file is required" 
+        }, { status: 400 });
+      }
+
+      if (file) {
+        // Validate file size (max 10MB)
+        const maxSize = 10 * 1024 * 1024; // 10MB
+        if (file.size > maxSize) {
+          return NextResponse.json(
+            { error: "File size exceeds 10MB limit" },
+            { status: 400 }
+          );
+        }
+
+        // Validate file type
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf'];
+        if (!allowedTypes.includes(file.type)) {
+          return NextResponse.json(
+            { error: "Invalid file type. Only JPEG, PNG, and PDF are allowed" },
+            { status: 400 }
+          );
+        }
+
+        // Upload file to Supabase Storage
+        const supabase = getSupabaseService();
+        
+        // Sanitize filename - remove/replace special characters that cause issues
+        const sanitizedFileName = file.name
+          .replace(/[^a-zA-Z0-9._-]/g, '_') // Replace special chars with underscore
+          .replace(/\s+/g, '_') // Replace spaces with underscore
+          .replace(/_{2,}/g, '_') // Replace multiple underscores with single
+          .toLowerCase();
+        
+        const fileName = `${conversationId}/${userId}/${Date.now()}_${sanitizedFileName}`;
+        const filePath = fileName; // Don't include bucket name - .from() handles that
+
+        // Ensure bucket exists
+        try {
+          const { data: buckets, error: listError } = await supabase.storage.listBuckets();
+          if (listError) {
+            console.error('Error listing buckets:', listError);
+            throw listError;
+          }
+          
+          const bucketExists = buckets?.some(b => b.name === 'chat-attachments');
+          if (!bucketExists) {
+            const { error: createError } = await supabase.storage.createBucket('chat-attachments', {
+              public: true,
+              fileSizeLimit: 10485760, // 10MB
+              allowedMimeTypes: ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf']
+            });
+            if (createError) {
+              console.error('Error creating bucket:', createError);
+              // If bucket already exists (race condition), that's okay
+              if (!createError.message.includes('already exists')) {
+                throw createError;
+              }
+            }
+          }
+        } catch (bucketError: any) {
+          console.error('Error checking/creating bucket:', bucketError);
+          return NextResponse.json(
+            { error: `Failed to setup storage bucket: ${bucketError.message || 'Unknown error'}` },
+            { status: 500 }
+          );
+        }
+
+        // Upload file
+        const fileBuffer = await file.arrayBuffer();
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('chat-attachments')
+          .upload(filePath, fileBuffer, {
+            contentType: file.type,
+            upsert: false
+          });
+
+        if (uploadError) {
+          console.error('Error uploading file:', uploadError);
+          return NextResponse.json(
+            { error: `Failed to upload file: ${uploadError.message || 'Unknown error'}` },
+            { status: 500 }
+          );
+        }
+
+        // Get public URL
+        const { data: urlData } = supabase.storage
+          .from('chat-attachments')
+          .getPublicUrl(filePath);
+
+        attachmentUrl = urlData.publicUrl;
+        attachmentType = file.type;
+        attachmentName = file.name;
+        attachmentSize = file.size;
+      }
+    } else {
+      // Handle text-only message
+      const body = await request.json();
+      message = body.message || '';
+
+      if (!message.trim()) {
+        return NextResponse.json({ 
+          error: "Missing required field: message" 
+        }, { status: 400 });
+      }
+    }
+
     // Create new message (Supabase-only)
     const result = await sql`
       INSERT INTO conversation_messages (
@@ -86,13 +206,21 @@ export async function POST(
         supabase_sender_id,
         sender_type,
         message,
+        attachment_url,
+        attachment_type,
+        attachment_name,
+        attachment_size,
         created_at,
         updated_at
       ) VALUES (
         ${conversationId}, 
         ${userId},
         'carrier', 
-        ${message}, 
+        ${message || ''}, 
+        ${attachmentUrl}, 
+        ${attachmentType}, 
+        ${attachmentName}, 
+        ${attachmentSize}, 
         CURRENT_TIMESTAMP, 
         CURRENT_TIMESTAMP
       )
@@ -105,10 +233,12 @@ export async function POST(
       data: result[0]
     });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error sending message:", error);
+    const errorMessage = error?.message || "Failed to send message";
     return NextResponse.json({ 
-      error: "Failed to send message" 
+      error: errorMessage,
+      details: process.env.NODE_ENV === 'development' ? error?.stack : undefined
     }, { status: 500 });
   }
 }

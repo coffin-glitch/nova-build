@@ -16,7 +16,7 @@ export async function POST(
     // Verify the admin has access to this appeal conversation
     const conversation = await sql`
       SELECT id FROM conversations 
-      WHERE id = ${conversationId} AND (admin_user_id = ${userId} OR admin_user_id = 'admin_system') AND conversation_type = 'appeal'
+      WHERE id = ${conversationId} AND (supabase_admin_user_id = ${userId} OR supabase_admin_user_id IS NULL) AND conversation_type = 'appeal'
     `;
 
     if (conversation.length === 0) {
@@ -24,19 +24,34 @@ export async function POST(
     }
 
     // Mark all unread carrier messages in this appeal conversation as read by the admin
-    await sql`
-      INSERT INTO message_reads (message_id, user_id, read_at)
-      SELECT 
-        cm.id,
-        ${userId},
-        CURRENT_TIMESTAMP
+    // Note: message_reads uses supabase_user_id, not user_id
+    const unreadMessages = await sql`
+      SELECT cm.id as message_id
       FROM conversation_messages cm
-      LEFT JOIN message_reads mr ON mr.message_id = cm.id AND mr.user_id = ${userId}
       WHERE cm.conversation_id = ${conversationId}
         AND cm.sender_type = 'carrier'
-        AND mr.id IS NULL
-      ON CONFLICT (message_id, user_id) DO NOTHING
+        AND NOT EXISTS (
+          SELECT 1 FROM message_reads mr 
+          WHERE mr.message_id = cm.id AND mr.supabase_user_id = ${userId}
+        )
     `;
+
+    // Insert read records for each unread message
+    if (unreadMessages.length > 0) {
+      for (const msg of unreadMessages) {
+        try {
+          await sql`
+            INSERT INTO message_reads (message_id, supabase_user_id, read_at)
+            VALUES (${msg.message_id}, ${userId}, CURRENT_TIMESTAMP)
+          `;
+        } catch (err: any) {
+          // Ignore duplicate key errors (in case constraint exists)
+          if (err?.code !== '23505' && err?.code !== '42P10') {
+            console.error('Error inserting read record:', err);
+          }
+        }
+      }
+    }
 
     return NextResponse.json({ 
       ok: true, 

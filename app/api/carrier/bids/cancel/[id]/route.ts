@@ -2,7 +2,7 @@ import sql from "@/lib/db";
 import { requireApiCarrier } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
-// DELETE /api/carrier/bids/[id] - Cancel/delete a bid
+// DELETE /api/carrier/bids/cancel/[id] - Cancel/delete a bid
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -71,3 +71,4 @@ export async function DELETE(
     );
   }
 }
+

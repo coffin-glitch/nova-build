@@ -481,6 +481,110 @@ export async function awardAuction({
   }
 }
 
+export async function reAwardAuction({
+  bid_number,
+  winner_user_id,
+  awarded_by,
+  admin_notes,
+}: {
+  bid_number: string;
+  winner_user_id: string;
+  awarded_by: string;
+  admin_notes?: string;
+}): Promise<AuctionAward> {
+  try {
+    // Verify the winner has a bid for this auction (Supabase-only)
+    const winnerBid = await sql`
+      SELECT amount_cents
+      FROM public.carrier_bids
+      WHERE bid_number = ${bid_number} AND supabase_user_id = ${winner_user_id}
+    `;
+
+    if (winnerBid.length === 0) {
+      throw new Error('Winner must have an existing bid for this auction');
+    }
+
+    // Get existing award to find the old winner
+    const existingAward = await sql`
+      SELECT id, supabase_winner_user_id, winner_amount_cents
+      FROM public.auction_awards 
+      WHERE bid_number = ${bid_number}
+    `;
+
+    if (existingAward.length === 0) {
+      throw new Error('No existing award found to re-award');
+    }
+
+    const oldWinnerUserId = existingAward[0].supabase_winner_user_id;
+
+    // Delete the existing award
+    await sql`
+      DELETE FROM public.auction_awards 
+      WHERE bid_number = ${bid_number}
+    `;
+
+    // Reset carrier_bid status for the old winner (if it exists)
+    await sql`
+      UPDATE public.carrier_bids
+      SET status = 'pending', bid_outcome = 'pending'
+      WHERE bid_number = ${bid_number} AND supabase_user_id = ${oldWinnerUserId}
+    `;
+
+    // Delete notifications related to the old award (optional - can be done via cleanup)
+    // We'll create new notifications below
+
+    // Create the new award with admin notes if provided
+    const award = await sql`
+      INSERT INTO public.auction_awards (bid_number, supabase_winner_user_id, winner_amount_cents, supabase_awarded_by, admin_notes)
+      VALUES (${bid_number}, ${winner_user_id}, ${winnerBid[0].amount_cents}, ${awarded_by}, ${admin_notes || null})
+      RETURNING *
+    `;
+
+    // Create notification for new winner
+    const winnerMessage = `Congratulations! You won Bid #${bid_number} for ${formatMoney(winnerBid[0].amount_cents)}. Check your My Loads for next steps.`;
+    await sql`
+      INSERT INTO public.notifications (user_id, type, title, message)
+      VALUES (${winner_user_id}, 'success', 'Auction Won!', ${winnerMessage})
+    `;
+
+    // Create notification for old winner that award was removed
+    const removedMessage = `Bid #${bid_number} has been re-awarded to another carrier.`;
+    await sql`
+      INSERT INTO public.notifications (user_id, type, title, message)
+      VALUES (${oldWinnerUserId}, 'warning', 'Award Removed', ${removedMessage})
+    `;
+
+    // Create notifications for other bidders (excluding old and new winners)
+    const otherBidders = await sql`
+      SELECT DISTINCT supabase_user_id 
+      FROM public.carrier_bids 
+      WHERE bid_number = ${bid_number} 
+        AND supabase_user_id != ${winner_user_id}
+        AND supabase_user_id != ${oldWinnerUserId}
+    `;
+
+    for (const bidder of otherBidders) {
+      const lostMessage = `Bid #${bid_number} was awarded to another carrier.`;
+      await sql`
+        INSERT INTO public.notifications (user_id, type, title, message)
+        VALUES (${bidder.supabase_user_id}, 'info', 'Auction Awarded', ${lostMessage})
+      `;
+    }
+
+    // Update load assignment for the new winner
+    await sql`
+      UPDATE public.loads 
+      SET status_code = 'awarded'
+      WHERE rr_number = ${bid_number}
+    `;
+
+    return award[0];
+  } catch (error) {
+    console.error('Database error in reAwardAuction:', error);
+    throw error; // Re-throw to maintain API contract
+  }
+}
+
 export async function listAwardsForUser(userId: string): Promise<AuctionAward[]> {
   try {
     // Supabase-only: Use supabase_winner_user_id if available, fallback to winner_user_id for compatibility

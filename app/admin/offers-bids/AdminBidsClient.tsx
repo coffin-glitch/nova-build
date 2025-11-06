@@ -3,6 +3,7 @@
 import AdminBidLifecycleViewer from "@/components/admin/AdminBidLifecycleViewer";
 import { DriverInfoDialog } from "@/components/admin/DriverInfoDialog";
 import { BidMessageConsole } from "@/components/bid-message/BidMessageConsole";
+import { DocumentViewerDialog } from "./DocumentViewerDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -26,7 +27,9 @@ import {
     Shield,
     TrendingUp,
     XCircle,
-    Zap
+    Zap,
+    File,
+    Download
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
@@ -82,6 +85,7 @@ export default function AdminBidsClient() {
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [dateRangeFilter, setDateRangeFilter] = useState("all");
   const [amountRangeFilter, setAmountRangeFilter] = useState("all");
+  const [documentViewerBid, setDocumentViewerBid] = useState<string | null>(null);
   const { theme } = useTheme();
   const { accentColor } = useAccentColor();
 
@@ -619,6 +623,14 @@ export default function AdminBidsClient() {
                         >
                           Driver Info
                         </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setDocumentViewerBid(bid.bid_number)}
+                        >
+                          <File className="h-4 w-4 mr-2" />
+                          Documents
+                        </Button>
                       </div>
                     </div>
 
@@ -713,6 +725,14 @@ export default function AdminBidsClient() {
                         >
                           Driver Info
                         </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setDocumentViewerBid(bid.bid_number)}
+                        >
+                          <File className="h-4 w-4 mr-2" />
+                          Documents
+                        </Button>
                       </div>
                     </div>
 
@@ -806,6 +826,14 @@ export default function AdminBidsClient() {
                           onClick={() => handleViewDriverInfo(bid)}
                         >
                           Driver Info
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setDocumentViewerBid(bid.bid_number)}
+                        >
+                          <File className="h-4 w-4 mr-2" />
+                          Documents
                         </Button>
                       </div>
                     </div>
@@ -909,6 +937,15 @@ export default function AdminBidsClient() {
           userRole="admin"
           userId={user.id}
           onClose={handleCloseMessage}
+        />
+      )}
+
+      {/* Document Viewer Dialog */}
+      {documentViewerBid && (
+        <DocumentViewerDialog
+          bidNumber={documentViewerBid}
+          isOpen={!!documentViewerBid}
+          onClose={() => setDocumentViewerBid(null)}
         />
       )}
     </div>

@@ -11,10 +11,12 @@ import { cn } from "@/lib/utils";
 import { useUnifiedUser } from "@/hooks/useUnifiedUser";
 import {
     ArrowLeft,
+    FileText,
     Maximize2,
     MessageCircle,
     Minimize2,
     MoreVertical,
+    Paperclip,
     Search,
     Send,
     Users,
@@ -42,6 +44,10 @@ interface Message {
   sender_id: string;
   sender_type: 'admin' | 'carrier';
   message: string;
+  attachment_url?: string;
+  attachment_type?: string;
+  attachment_name?: string;
+  attachment_size?: number;
   created_at: string;
   updated_at: string;
   is_read: boolean;
@@ -74,6 +80,8 @@ export default function FloatingCarrierChatButton() {
   const [newMessage, setNewMessage] = useState("");
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -162,33 +170,55 @@ export default function FloatingCarrierChatButton() {
 
   // Handle send message
   const handleSendMessage = useCallback(async () => {
-    if (!selectedConversation || !newMessage.trim() || isSendingMessage) return;
+    if (!selectedConversation || (!newMessage.trim() && !selectedFile) || isSendingMessage) return;
 
     setIsSendingMessage(true);
 
     try {
-      const response = await fetch(`/api/carrier/conversations/${selectedConversation.conversation_id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: newMessage.trim() })
-      });
+      let response;
+      
+      if (selectedFile) {
+        // Send file with optional message
+        const formData = new FormData();
+        if (newMessage.trim()) {
+          formData.append('message', newMessage.trim());
+        }
+        formData.append('file', selectedFile);
+
+        response = await fetch(`/api/carrier/conversations/${selectedConversation.conversation_id}`, {
+          method: 'POST',
+          body: formData
+        });
+      } else {
+        // Send text-only message
+        response = await fetch(`/api/carrier/conversations/${selectedConversation.conversation_id}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: newMessage.trim() })
+        });
+      }
 
       if (response.ok) {
         setNewMessage("");
+        setSelectedFile(null);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
         mutateMessages();
         mutateConversations();
         setTimeout(scrollToBottom, 100);
         toast.success("Message sent successfully!");
       } else {
-        throw new Error('Failed to send message');
+        const errorData = await response.json().catch(() => ({ error: 'Failed to send message' }));
+        throw new Error(errorData.error || 'Failed to send message');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error sending message:', error);
-      toast.error("Failed to send message. Please try again.");
+      toast.error(error.message || "Failed to send message. Please try again.");
     } finally {
       setIsSendingMessage(false);
     }
-  }, [selectedConversation, newMessage, isSendingMessage, mutateMessages, mutateConversations, scrollToBottom]);
+  }, [selectedConversation, newMessage, selectedFile, isSendingMessage, mutateMessages, mutateConversations, scrollToBottom]);
 
   // Handle key press
   const handleKeyPress = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -197,6 +227,26 @@ export default function FloatingCarrierChatButton() {
       handleSendMessage();
     }
   }, [handleSendMessage]);
+
+  // Handle file selection
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validate file size (max 10MB)
+      const maxSize = 10 * 1024 * 1024;
+      if (file.size > maxSize) {
+        toast.error('File size exceeds 10MB limit');
+        return;
+      }
+      // Validate file type
+      const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf'];
+      if (!allowedTypes.includes(file.type)) {
+        toast.error('Invalid file type. Only JPEG, PNG, and PDF are allowed');
+        return;
+      }
+      setSelectedFile(file);
+    }
+  }, []);
 
   // Mark conversation as read
   const markConversationAsRead = useCallback(async (conversationId: string) => {
@@ -483,9 +533,6 @@ export default function FloatingCarrierChatButton() {
                                         </Badge>
                                       )}
                                     </div>
-                                    <p className="text-xs text-muted-foreground truncate">
-                                      {conversation.admin_user_id}
-                                    </p>
                                     <p className="text-xs text-muted-foreground truncate mt-1">
                                       {conversation.last_message_sender_type === 'carrier' ? 'You: ' : ''}
                                       {conversation.last_message}
@@ -531,9 +578,6 @@ export default function FloatingCarrierChatButton() {
                                   <p className="font-medium text-sm">
                                     {displayName}
                                   </p>
-                                  <p className="text-xs text-muted-foreground">
-                                    {selectedConversation.admin_user_id}
-                                  </p>
                                 </div>
                               </div>
                               <div className="flex items-center gap-1">
@@ -558,7 +602,59 @@ export default function FloatingCarrierChatButton() {
                                           : 'bg-muted'
                                       }`}
                                     >
-                                      <p className="text-sm">{message.message}</p>
+                                      {/* Attachment */}
+                                      {message.attachment_url && (
+                                        <div className="mb-2">
+                                          {message.attachment_type?.startsWith('image/') ? (
+                                            <a 
+                                              href={message.attachment_url} 
+                                              target="_blank" 
+                                              rel="noopener noreferrer"
+                                              className="block rounded-lg overflow-hidden border border-border/50 hover:opacity-90 transition-opacity max-w-xs"
+                                            >
+                                              <img 
+                                                src={message.attachment_url} 
+                                                alt={message.attachment_name || 'Attachment'} 
+                                                className="max-w-full max-h-64 w-auto h-auto object-contain rounded"
+                                                onError={(e) => {
+                                                  // Fallback if image fails to load
+                                                  const target = e.target as HTMLImageElement;
+                                                  target.style.display = 'none';
+                                                  const parent = target.parentElement;
+                                                  if (parent) {
+                                                    parent.innerHTML = `
+                                                      <div class="flex items-center gap-2 p-2 rounded border bg-muted/50">
+                                                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                                        </svg>
+                                                        <span class="text-sm">${message.attachment_name || 'Image'}</span>
+                                                      </div>
+                                                    `;
+                                                  }
+                                                }}
+                                              />
+                                            </a>
+                                          ) : (
+                                            <a
+                                              href={message.attachment_url}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className={`flex items-center gap-2 p-2 rounded border ${
+                                                message.sender_type === 'carrier'
+                                                  ? 'bg-primary/20 border-primary/30'
+                                                  : 'bg-muted/50 border-border/50'
+                                              } hover:opacity-80 transition-opacity max-w-xs`}
+                                            >
+                                              <FileText className="h-4 w-4 flex-shrink-0" />
+                                              <span className="text-sm truncate">{message.attachment_name || 'Document'}</span>
+                                            </a>
+                                          )}
+                                        </div>
+                                      )}
+                                      {/* Message text */}
+                                      {message.message && (
+                                        <p className="text-sm">{message.message}</p>
+                                      )}
                                       <p className={`text-xs mt-1 ${
                                         message.sender_type === 'carrier' 
                                           ? 'text-primary-foreground/70' 
@@ -575,7 +671,43 @@ export default function FloatingCarrierChatButton() {
 
                             {/* Message Input */}
                             <div className="p-4 border-t">
+                              {/* Selected file preview */}
+                              {selectedFile && (
+                                <div className="mb-2 flex items-center gap-2 p-2 bg-muted rounded-lg">
+                                  <Paperclip className="h-4 w-4 text-muted-foreground" />
+                                  <span className="text-sm flex-1 truncate">{selectedFile.name}</span>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => {
+                                      setSelectedFile(null);
+                                      if (fileInputRef.current) {
+                                        fileInputRef.current.value = '';
+                                      }
+                                    }}
+                                    className="h-6 w-6 p-0"
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </Button>
+                                </div>
+                              )}
                               <div className="flex gap-2">
+                                <input
+                                  ref={fileInputRef}
+                                  type="file"
+                                  accept="image/jpeg,image/png,image/jpg,application/pdf"
+                                  onChange={handleFileSelect}
+                                  className="hidden"
+                                />
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => fileInputRef.current?.click()}
+                                  disabled={isSendingMessage}
+                                  className="shrink-0"
+                                >
+                                  <Paperclip className="h-4 w-4" />
+                                </Button>
                                 <Input
                                   ref={inputRef}
                                   value={newMessage}
@@ -587,7 +719,7 @@ export default function FloatingCarrierChatButton() {
                                 />
                                 <Button
                                   onClick={handleSendMessage}
-                                  disabled={!newMessage.trim() || isSendingMessage}
+                                  disabled={(!newMessage.trim() && !selectedFile) || isSendingMessage}
                                   size="sm"
                                   className="bg-blue-600 hover:bg-blue-700"
                                 >

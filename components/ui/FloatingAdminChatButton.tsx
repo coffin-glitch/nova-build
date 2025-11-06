@@ -5,18 +5,26 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useUnifiedRole } from "@/hooks/useUnifiedRole";
 import { cn } from "@/lib/utils";
 import { useUnifiedUser } from "@/hooks/useUnifiedUser";
 import {
     ArrowLeft,
+    Building2,
+    FileText,
+    Image,
+    Mail,
     Maximize2,
     MessageCircle,
     Minimize2,
     MoreVertical,
+    Paperclip,
+    Phone,
     Search,
     Send,
+    User,
     Users,
     X
 } from "lucide-react";
@@ -31,6 +39,7 @@ interface Conversation {
   carrier_user_id: string;
   admin_user_id: string;
   last_message_at: string;
+  last_message_timestamp?: string;
   created_at: string;
   updated_at: string;
   last_message: string;
@@ -44,6 +53,10 @@ interface ConversationMessage {
   sender_id: string;
   sender_type: 'admin' | 'carrier';
   message: string;
+  attachment_url?: string;
+  attachment_type?: string;
+  attachment_name?: string;
+  attachment_size?: number;
   created_at: string;
   is_read: boolean;
 }
@@ -75,8 +88,13 @@ export default function FloatingAdminChatButton() {
   const [newMessage, setNewMessage] = useState("");
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  
+  // Carrier profile preview state
+  const [isProfilePopoverOpen, setIsProfilePopoverOpen] = useState(false);
 
   // Set initial position on client side
   useEffect(() => {
@@ -164,33 +182,55 @@ export default function FloatingAdminChatButton() {
 
   // Handle send message
   const handleSendMessage = useCallback(async () => {
-    if (!selectedConversationId || !newMessage.trim() || isSendingMessage) return;
+    if (!selectedConversationId || (!newMessage.trim() && !selectedFile) || isSendingMessage) return;
 
     setIsSendingMessage(true);
 
     try {
-      const response = await fetch(`/api/admin/conversations/${selectedConversationId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: newMessage.trim() })
-      });
+      let response;
+      
+      if (selectedFile) {
+        // Send file with optional message
+        const formData = new FormData();
+        if (newMessage.trim()) {
+          formData.append('message', newMessage.trim());
+        }
+        formData.append('file', selectedFile);
+
+        response = await fetch(`/api/admin/conversations/${selectedConversationId}`, {
+          method: 'POST',
+          body: formData
+        });
+      } else {
+        // Send text-only message
+        response = await fetch(`/api/admin/conversations/${selectedConversationId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: newMessage.trim() })
+        });
+      }
 
       if (response.ok) {
         setNewMessage("");
+        setSelectedFile(null);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
         mutateMessages(); // Refresh messages in current conversation
         mutateConversations(); // Refresh conversations list (for last_message_at update)
         setTimeout(scrollToBottom, 100);
+        toast.success("Message sent successfully!");
       } else {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({ error: 'Failed to send message' }));
         throw new Error(errorData.error || 'Failed to send message');
       }
     } catch (error: any) {
       console.error('Error sending message:', error);
-      toast.error(`Error: ${error.message}`);
+      toast.error(error.message || "Failed to send message. Please try again.");
     } finally {
       setIsSendingMessage(false);
     }
-  }, [selectedConversationId, newMessage, isSendingMessage, mutateMessages, mutateConversations, scrollToBottom]);
+  }, [selectedConversationId, newMessage, selectedFile, isSendingMessage, mutateMessages, mutateConversations, scrollToBottom]);
 
   // Handle key press
   const handleKeyPress = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -199,6 +239,26 @@ export default function FloatingAdminChatButton() {
       handleSendMessage();
     }
   }, [handleSendMessage]);
+
+  // Handle file selection
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validate file size (max 10MB)
+      const maxSize = 10 * 1024 * 1024;
+      if (file.size > maxSize) {
+        toast.error('File size exceeds 10MB limit');
+        return;
+      }
+      // Validate file type
+      const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf'];
+      if (!allowedTypes.includes(file.type)) {
+        toast.error('Invalid file type. Only JPEG, PNG, and PDF are allowed');
+        return;
+      }
+      setSelectedFile(file);
+    }
+  }, []);
 
   // Mark conversation as read
   const markConversationAsRead = useCallback(async (convId: string) => {
@@ -336,10 +396,21 @@ export default function FloatingAdminChatButton() {
     };
   }, []);
 
-  if (!isLoaded || !user || !isAdmin) return null;
-
   const selectedConversation = conversations.find(c => c.conversation_id === selectedConversationId);
   const carrierDisplayName = selectedConversation ? getDisplayName(selectedConversation.carrier_user_id) : "Carrier";
+  const carrierUserId = selectedConversation?.carrier_user_id;
+
+  // Fetch carrier profile for preview (must be before any conditional returns)
+  const { data: carrierProfileData } = useSWR(
+    user && isAdmin && carrierUserId && isProfilePopoverOpen 
+      ? `/api/admin/carriers/${carrierUserId}` 
+      : null,
+    fetcher
+  );
+
+  const carrierProfile = carrierProfileData?.data || null;
+
+  if (!isLoaded || !user || !isAdmin) return null;
 
   return (
     <>
@@ -495,9 +566,9 @@ export default function FloatingAdminChatButton() {
                                     )}
                                   </div>
                                   
-                                  {conv.last_message_at && (
+                                  {(conv.last_message_timestamp || conv.last_message_at) && (
                                     <div className="text-xs text-muted-foreground">
-                                      {formatTime(conv.last_message_at)}
+                                      {formatTime(conv.last_message_timestamp || conv.last_message_at)}
                                     </div>
                                   )}
                                 </div>
@@ -539,9 +610,91 @@ export default function FloatingAdminChatButton() {
                                 </div>
                               </div>
                               <div className="flex items-center gap-1">
-                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                                  <MoreVertical className="h-4 w-4" />
-                                </Button>
+                                <Popover open={isProfilePopoverOpen} onOpenChange={setIsProfilePopoverOpen}>
+                                  <PopoverTrigger asChild>
+                                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                      <MoreVertical className="h-4 w-4" />
+                                    </Button>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-80 p-0" align="end">
+                                    <div className="p-4">
+                                      <div className="flex items-center gap-3 mb-4 pb-4 border-b">
+                                        <Avatar className="h-12 w-12">
+                                          <AvatarImage src={undefined} />
+                                          <AvatarFallback>
+                                            {getInitials(carrierDisplayName)}
+                                          </AvatarFallback>
+                                        </Avatar>
+                                        <div>
+                                          <p className="font-semibold text-sm">
+                                            {carrierProfile?.legal_name || carrierProfile?.company_name || carrierDisplayName}
+                                          </p>
+                                          <p className="text-xs text-muted-foreground">
+                                            Carrier Profile
+                                          </p>
+                                        </div>
+                                      </div>
+                                      
+                                      {carrierProfile ? (
+                                        <div className="space-y-3">
+                                          {carrierProfile.contact_name && (
+                                            <div className="flex items-start gap-3">
+                                              <User className="h-4 w-4 text-muted-foreground mt-0.5" />
+                                              <div>
+                                                <p className="text-xs text-muted-foreground">Contact Name</p>
+                                                <p className="text-sm font-medium">{carrierProfile.contact_name}</p>
+                                              </div>
+                                            </div>
+                                          )}
+                                          
+                                          {carrierProfile.mc_number && (
+                                            <div className="flex items-start gap-3">
+                                              <Building2 className="h-4 w-4 text-muted-foreground mt-0.5" />
+                                              <div>
+                                                <p className="text-xs text-muted-foreground">MC Number</p>
+                                                <p className="text-sm font-medium">{carrierProfile.mc_number}</p>
+                                              </div>
+                                            </div>
+                                          )}
+                                          
+                                          {carrierProfile.dot_number && (
+                                            <div className="flex items-start gap-3">
+                                              <Building2 className="h-4 w-4 text-muted-foreground mt-0.5" />
+                                              <div>
+                                                <p className="text-xs text-muted-foreground">DOT Number</p>
+                                                <p className="text-sm font-medium">{carrierProfile.dot_number}</p>
+                                              </div>
+                                            </div>
+                                          )}
+                                          
+                                          {carrierProfile.email && carrierProfile.email !== 'N/A' && (
+                                            <div className="flex items-start gap-3">
+                                              <Mail className="h-4 w-4 text-muted-foreground mt-0.5" />
+                                              <div>
+                                                <p className="text-xs text-muted-foreground">Email</p>
+                                                <p className="text-sm font-medium break-all">{carrierProfile.email}</p>
+                                              </div>
+                                            </div>
+                                          )}
+                                          
+                                          {carrierProfile.phone && (
+                                            <div className="flex items-start gap-3">
+                                              <Phone className="h-4 w-4 text-muted-foreground mt-0.5" />
+                                              <div>
+                                                <p className="text-xs text-muted-foreground">Phone</p>
+                                                <p className="text-sm font-medium">{carrierProfile.phone}</p>
+                                              </div>
+                                            </div>
+                                          )}
+                                        </div>
+                                      ) : (
+                                        <div className="text-center py-4">
+                                          <p className="text-sm text-muted-foreground">Loading profile...</p>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </PopoverContent>
+                                </Popover>
                               </div>
                             </div>
 
@@ -560,7 +713,59 @@ export default function FloatingAdminChatButton() {
                                           : 'bg-muted'
                                       }`}
                                     >
-                                      <p className="text-sm">{message.message}</p>
+                                      {/* Attachment */}
+                                      {message.attachment_url && (
+                                        <div className="mb-2">
+                                          {message.attachment_type?.startsWith('image/') ? (
+                                            <a 
+                                              href={message.attachment_url} 
+                                              target="_blank" 
+                                              rel="noopener noreferrer"
+                                              className="block rounded-lg overflow-hidden border border-border/50 hover:opacity-90 transition-opacity max-w-xs"
+                                            >
+                                              <img 
+                                                src={message.attachment_url} 
+                                                alt={message.attachment_name || 'Attachment'} 
+                                                className="max-w-full max-h-64 w-auto h-auto object-contain rounded"
+                                                onError={(e) => {
+                                                  // Fallback if image fails to load
+                                                  const target = e.target as HTMLImageElement;
+                                                  target.style.display = 'none';
+                                                  const parent = target.parentElement;
+                                                  if (parent) {
+                                                    parent.innerHTML = `
+                                                      <div class="flex items-center gap-2 p-2 rounded border bg-muted/50">
+                                                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                                        </svg>
+                                                        <span class="text-sm">${message.attachment_name || 'Image'}</span>
+                                                      </div>
+                                                    `;
+                                                  }
+                                                }}
+                                              />
+                                            </a>
+                                          ) : (
+                                            <a
+                                              href={message.attachment_url}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className={`flex items-center gap-2 p-2 rounded border ${
+                                                message.sender_id === user?.id
+                                                  ? 'bg-primary/20 border-primary/30'
+                                                  : 'bg-muted/50 border-border/50'
+                                              } hover:opacity-80 transition-opacity max-w-xs`}
+                                            >
+                                              <FileText className="h-4 w-4 flex-shrink-0" />
+                                              <span className="text-sm truncate">{message.attachment_name || 'Document'}</span>
+                                            </a>
+                                          )}
+                                        </div>
+                                      )}
+                                      {/* Message text */}
+                                      {message.message && (
+                                        <p className="text-sm">{message.message}</p>
+                                      )}
                                       <p className={`text-xs mt-1 ${
                                         message.sender_id === user?.id 
                                           ? 'text-primary-foreground/70' 
@@ -577,7 +782,43 @@ export default function FloatingAdminChatButton() {
 
                             {/* Message Input */}
                             <div className="p-4 border-t">
+                              {/* Selected file preview */}
+                              {selectedFile && (
+                                <div className="mb-2 flex items-center gap-2 p-2 bg-muted rounded-lg">
+                                  <Paperclip className="h-4 w-4 text-muted-foreground" />
+                                  <span className="text-sm flex-1 truncate">{selectedFile.name}</span>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => {
+                                      setSelectedFile(null);
+                                      if (fileInputRef.current) {
+                                        fileInputRef.current.value = '';
+                                      }
+                                    }}
+                                    className="h-6 w-6 p-0"
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </Button>
+                                </div>
+                              )}
                               <div className="flex gap-2">
+                                <input
+                                  ref={fileInputRef}
+                                  type="file"
+                                  accept="image/jpeg,image/png,image/jpg,application/pdf"
+                                  onChange={handleFileSelect}
+                                  className="hidden"
+                                />
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => fileInputRef.current?.click()}
+                                  disabled={isSendingMessage}
+                                  className="shrink-0"
+                                >
+                                  <Paperclip className="h-4 w-4" />
+                                </Button>
                                 <Input
                                   ref={inputRef}
                                   value={newMessage}
@@ -589,7 +830,7 @@ export default function FloatingAdminChatButton() {
                                 />
                                 <Button
                                   onClick={handleSendMessage}
-                                  disabled={!newMessage.trim() || isSendingMessage}
+                                  disabled={(!newMessage.trim() && !selectedFile) || isSendingMessage}
                                   size="sm"
                                   className="bg-emerald-600 hover:bg-emerald-700"
                                 >

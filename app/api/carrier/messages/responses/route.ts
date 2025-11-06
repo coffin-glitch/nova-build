@@ -1,5 +1,5 @@
-import sql from "@/lib/db";
 import { requireApiCarrier } from "@/lib/auth-api-helper";
+import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
@@ -8,6 +8,7 @@ export async function GET(request: NextRequest) {
     const userId = auth.userId;
 
     // Fetch carrier responses
+    // Note: carrier_responses may only have carrier_user_id, not supabase_user_id
     const responses = await sql`
       SELECT 
         cr.id,
@@ -19,7 +20,7 @@ export async function GET(request: NextRequest) {
         cr.created_at,
         cr.updated_at
       FROM carrier_responses cr
-      WHERE cr.supabase_user_id = ${userId}
+      WHERE cr.carrier_user_id = ${userId}
       ORDER BY cr.created_at DESC
     `;
 
@@ -53,11 +54,12 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Create carrier response (Supabase-only)
+    // Create carrier response
+    // Note: carrier_responses uses carrier_user_id (stores Supabase user ID)
     const result = await sql`
       INSERT INTO carrier_responses (
         message_id,
-        supabase_user_id,
+        carrier_user_id,
         response,
         created_at,
         updated_at

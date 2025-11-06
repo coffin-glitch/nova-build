@@ -27,7 +27,8 @@ import {
     XCircle,
     Zap,
     Eye,
-    Navigation
+    Navigation,
+    Upload
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
@@ -35,6 +36,7 @@ import useSWR from "swr";
 import { BidAnalytics } from "./BidAnalytics";
 import { BidDetailsDialog } from "./BidDetailsDialog";
 import { BidLifecycleManager } from "./BidLifecycleManager";
+import { DocumentUploadDialog } from "./DocumentUploadDialog";
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
@@ -125,6 +127,7 @@ export function CarrierBidsConsole() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedBidForDialog, setSelectedBidForDialog] = useState<AwardedBid | null>(null);
   const [viewLoadDetailsBid, setViewLoadDetailsBid] = useState<any | null>(null);
+  const [documentUploadBid, setDocumentUploadBid] = useState<string | null>(null);
   const [advancedFilters, setAdvancedFilters] = useState<FilterState>({
     searchTerm: '',
     status: [],
@@ -600,7 +603,7 @@ export function CarrierBidsConsole() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <BidDetailsDialog bid={bid} />
                       <Button 
                         variant="outline" 
@@ -609,6 +612,14 @@ export function CarrierBidsConsole() {
                       >
                         <MessageSquare className="w-4 h-4 mr-2" />
                         Message
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => setDocumentUploadBid(bid.bid_number)}
+                      >
+                        <Upload className="w-4 h-4 mr-2" />
+                        Submit Documents
                       </Button>
                       {bid.status === 'awarded' && (
                         <Button 
@@ -808,7 +819,7 @@ export function CarrierBidsConsole() {
         </TabsContent>
 
         <TabsContent value="analytics">
-          <BidAnalytics stats={stats} bids={filteredBids} />
+          <BidAnalytics stats={stats} bids={awardedBids} />
         </TabsContent>
       </Tabs>
 
@@ -944,6 +955,16 @@ export function CarrierBidsConsole() {
         userId={user?.id || ""}
         onClose={() => setSelectedMessageBid(null)}
       />
+
+      {/* Document Upload Dialog */}
+      {documentUploadBid && (
+        <DocumentUploadDialog
+          bidNumber={documentUploadBid}
+          isOpen={!!documentUploadBid}
+          onClose={() => setDocumentUploadBid(null)}
+          onUploaded={() => mutateBids()}
+        />
+      )}
     </div>
   );
 }

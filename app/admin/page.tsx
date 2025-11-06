@@ -1,4 +1,3 @@
-import { TelegramForwarderConsole } from "@/components/admin/TelegramForwarderConsole";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { getAdminStats } from "@/lib/actions";
@@ -7,7 +6,6 @@ import {
   FileText,
   TrendingUp,
   Truck,
-  Upload,
   Users
 } from "lucide-react";
 import Link from "next/link";
@@ -118,21 +116,6 @@ export default async function AdminDashboard() {
           <Card className="card-premium p-6 hover-lift">
             <div className="space-y-4">
               <div className="flex items-center gap-3">
-                <Upload className="w-5 h-5 text-primary" />
-                <h3 className="text-lg font-semibold color: hsl(var(--foreground))">EAX Updater</h3>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Update load data from EAX system or upload Excel files.
-              </p>
-              <Button asChild className="w-full btn-primary">
-                <Link href="/admin/eax-updater">EAX Updater</Link>
-              </Button>
-            </div>
-          </Card>
-
-          <Card className="card-premium p-6 hover-lift">
-            <div className="space-y-4">
-              <div className="flex items-center gap-3">
                 <Users className="w-5 h-5 text-primary" />
                 <h3 className="text-lg font-semibold color: hsl(var(--foreground))">Manage Carriers</h3>
               </div>
@@ -146,9 +129,6 @@ export default async function AdminDashboard() {
           </Card>
         </div>
       </div>
-
-      {/* Telegram Forwarder Console */}
-      <TelegramForwarderConsole />
     </div>
   );
 }

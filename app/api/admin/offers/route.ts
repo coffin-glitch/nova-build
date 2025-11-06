@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
         l.delivery_date,
         l.customer_name
       FROM load_offers lo
-      JOIN loads l ON lo.load_rr_number = l.rr_number
+      LEFT JOIN loads l ON lo.load_rr_number = l.rr_number
       ORDER BY lo.created_at DESC
     `;
 
