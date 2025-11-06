@@ -2,6 +2,7 @@ import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-s
 import { requireApiCarrier, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
+import { clearCarrierRelatedCaches } from "@/lib/cache-invalidation";
 
 export async function GET(request: NextRequest) {
   try {
@@ -154,9 +155,13 @@ export async function POST(request: NextRequest) {
             submitted_at = NOW(),
             edits_enabled = false,
             profile_completed_at = COALESCE(profile_completed_at, NOW()),
-            is_first_login = false
+            is_first_login = false,
+            updated_at = NOW()
           WHERE supabase_user_id = ${userId}
         `;
+        
+        // Clear caches to ensure updated data appears immediately
+        clearCarrierRelatedCaches(userId);
       } else {
         // Regular update - only update if edits are enabled
         await sql`
@@ -166,9 +171,13 @@ export async function POST(request: NextRequest) {
             mc_number = ${mcNumber},
             dot_number = ${dotNumber},
             contact_name = ${contactName},
-            phone = ${formattedPhone}
+            phone = ${formattedPhone},
+            updated_at = NOW()
           WHERE supabase_user_id = ${userId} AND edits_enabled = true
         `;
+        
+        // Clear caches to ensure updated data appears immediately
+        clearCarrierRelatedCaches(userId);
       }
     } else {
       // Create new profile (Supabase-only)
@@ -206,6 +215,34 @@ export async function POST(request: NextRequest) {
     const message = submit_for_approval
       ? (existingProfile ? "Profile submitted for approval!" : "Profile created and submitted for approval!")
       : (existingProfile ? "Profile updated successfully!" : "Profile created successfully!");
+
+    // Notify all admins about profile submission
+    if (submit_for_approval) {
+      try {
+        const { notifyAllAdmins } = await import('@/lib/notifications');
+        
+        const companyName = formData.company_name || formData.legal_name || 'Unknown Company';
+        const mcNumber = formData.mc_number || 'N/A';
+        const dotNumber = formData.dot_number || null;
+        
+        await notifyAllAdmins(
+          'profile_submission',
+          '📋 New Profile Submission',
+          `${companyName} (MC: ${mcNumber})${dotNumber ? `, DOT: ${dotNumber}` : ''} submitted their profile for approval`,
+          {
+            carrier_user_id: userId,
+            company_name: companyName,
+            legal_name: formData.legal_name || companyName,
+            mc_number: mcNumber,
+            dot_number: dotNumber,
+            submitted_at: new Date().toISOString()
+          }
+        );
+      } catch (notificationError) {
+        console.error('Failed to create admin notification for profile submission:', notificationError);
+        // Don't throw - profile submission should still succeed
+      }
+    }
 
     logSecurityEvent('carrier_profile_updated', userId, { 
       action: existingProfile ? 'update' : 'create',

@@ -34,6 +34,44 @@ export async function GET(request: NextRequest) {
         try {
           // Get user info from Supabase
           const userInfo = await getSupabaseUserInfo(userId.trim());
+          
+          // If user is an admin, check for display name from admin_profiles
+          if (userInfo.role === 'admin') {
+            try {
+              const adminProfile = await sql`
+                SELECT 
+                  ap.display_name,
+                  ap.display_email,
+                  ur.email as system_email
+                FROM user_roles_cache ur
+                LEFT JOIN admin_profiles ap ON ur.supabase_user_id = ap.supabase_user_id
+                WHERE ur.supabase_user_id = ${userId.trim()}
+                  AND ur.role = 'admin'
+                LIMIT 1
+              `;
+              
+              if (adminProfile.length > 0) {
+                const admin = adminProfile[0];
+                // Override fullName with display name (with fallback chain)
+                const displayName = admin.display_name 
+                  || admin.display_email 
+                  || admin.system_email 
+                  || userInfo.fullName;
+                
+                userInfo.fullName = displayName;
+                // Also update firstName/lastName if display_name exists
+                if (admin.display_name) {
+                  const nameParts = admin.display_name.split(' ');
+                  userInfo.firstName = nameParts[0] || null;
+                  userInfo.lastName = nameParts.slice(1).join(' ') || null;
+                }
+              }
+            } catch (adminError) {
+              console.error(`Error fetching admin profile for ${userId}:`, adminError);
+              // Continue with original userInfo if admin profile fetch fails
+            }
+          }
+          
           userInfos[userId.trim()] = userInfo;
           } catch (error) {
           console.error(`Error fetching user info from Supabase for ${userId}:`, error);

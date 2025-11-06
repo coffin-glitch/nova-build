@@ -31,31 +31,28 @@ export async function GET(request: NextRequest) {
     const offset = parseInt(searchParams.get('offset') || '0');
     const unreadOnly = searchParams.get('unread_only') === 'true';
 
-    // Get notifications - check both supabase_user_id and carrier_user_id for compatibility
-    // Note: carrier_notifications table has: carrier_user_id (required), supabase_user_id (optional), type (not notification_type), read (not is_read), timestamp (not sent_at), load_id (not bid_number)
+    // Get notifications from main notifications table (unified with admin notifications)
     const notifications = await sql`
       SELECT 
-        id,
+        id::text as id,
         type,
         title,
         message,
-        priority,
         read,
-        timestamp,
         created_at,
-        COALESCE(load_id::text, NULL) as load_id
-      FROM carrier_notifications
-      WHERE (supabase_user_id = ${userId} OR carrier_user_id = ${userId})
+        data
+      FROM notifications
+      WHERE user_id = ${userId}
       ${unreadOnly ? sql`AND read = false` : sql``}
-      ORDER BY timestamp DESC
+      ORDER BY created_at DESC
       LIMIT ${limit} OFFSET ${offset}
     `;
 
     // Get total count
     const countResult = await sql`
       SELECT COUNT(*) as count 
-      FROM carrier_notifications 
-      WHERE (supabase_user_id = ${userId} OR carrier_user_id = ${userId})
+      FROM notifications 
+      WHERE user_id = ${userId}
       ${unreadOnly ? sql`AND read = false` : sql``}
     `;
     

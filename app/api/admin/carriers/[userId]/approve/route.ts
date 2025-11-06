@@ -1,6 +1,7 @@
 import sql from "@/lib/db";
 import { requireApiAdmin, unauthorizedResponse, forbiddenResponse } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
+import { clearCarrierRelatedCaches } from "@/lib/cache-invalidation";
 
 export async function POST(
   request: NextRequest,
@@ -55,9 +56,13 @@ export async function POST(
         reviewed_at = NOW(),
         reviewed_by = ${adminUserId},
         review_notes = ${review_notes || null},
-        edits_enabled = false
+        edits_enabled = false,
+        updated_at = NOW()
       WHERE supabase_user_id = ${profileUserId}
     `;
+    
+    // Clear caches to ensure updated data appears immediately
+    clearCarrierRelatedCaches(profileUserId);
 
     // Create history record for approval
     await sql`
@@ -81,6 +86,30 @@ export async function POST(
         (SELECT COALESCE(MAX(version_number), 0) + 1 FROM carrier_profile_history WHERE carrier_user_id = ${profileUserId})
       )
     `;
+
+    // Notify carrier about profile approval
+    try {
+      const { createNotification } = await import('@/lib/notifications');
+      
+      const companyName = currentProfile[0]?.legal_name || currentProfile[0]?.company_name || 'Your company';
+      
+      await createNotification(
+        profileUserId,
+        'profile_approved',
+        '✅ Profile Approved',
+        `Your profile has been approved! You can now place bids and access all carrier features.${review_notes ? ` Notes: ${review_notes}` : ''}`,
+        {
+          carrier_user_id: profileUserId,
+          company_name: companyName,
+          reviewed_by: adminUserId,
+          review_notes: review_notes || null,
+          reviewed_at: new Date().toISOString()
+        }
+      );
+    } catch (notificationError) {
+      console.error('Failed to create carrier notification for profile approval:', notificationError);
+      // Don't throw - profile approval should still succeed
+    }
 
     // Get updated profile to return in response (for client cache update)
     const updatedProfile = await sql`

@@ -3,6 +3,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Countdown } from "@/components/ui/Countdown";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Glass } from "@/components/ui/glass";
@@ -83,6 +84,8 @@ function BidAdjudicationConsole({ bid, accentColor, onClose, onAwarded }: {
   const [adminNotes, setAdminNotes] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [bidsPerPage] = useState(5); // Show 5 bids per page
+  const [noContestConfirmed, setNoContestConfirmed] = useState(false);
+  const [markingNoContest, setMarkingNoContest] = useState(false);
 
   const { data: bidData, error: bidDataError, mutate: mutateBidData } = useSWR(
     bid ? `/api/admin/bids/${bid.bid_number}/award` : null,
@@ -163,6 +166,41 @@ function BidAdjudicationConsole({ bid, accentColor, onClose, onAwarded }: {
       toast.error('Failed to award bid');
     } finally {
       setAwarding(false);
+    }
+  };
+
+  const handleNoContest = async () => {
+    if (!bid || !noContestConfirmed) return;
+
+    setMarkingNoContest(true);
+    try {
+      const response = await fetch(`/api/admin/bids/${bid.bid_number}/no-contest`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          admin_notes: `Marked as "No Contest" by admin`
+        }),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        toast.success(`✅ Bid #${bid.bid_number} marked as "No Contest". All carriers have been notified.`, {
+          duration: 5000,
+        });
+        
+        // Refresh the bid data
+        mutateBidData();
+        onAwarded();
+        setNoContestConfirmed(false);
+      } else {
+        toast.error(result.error || 'Failed to mark bid as no contest');
+      }
+    } catch (error) {
+      console.error('Error marking bid as no contest:', error);
+      toast.error('Failed to mark bid as no contest');
+    } finally {
+      setMarkingNoContest(false);
     }
   };
 
@@ -450,36 +488,52 @@ function BidAdjudicationConsole({ bid, accentColor, onClose, onAwarded }: {
 
           {/* Award Summary */}
           {bidDetails?.award && (
-            <Card className="bg-gradient-to-br from-emerald-500/10 to-green-500/10 border-emerald-500/30 backdrop-blur-sm">
+            <Card className={`bg-gradient-to-br ${bidDetails.award.supabase_winner_user_id ? 'from-emerald-500/10 to-green-500/10 border-emerald-500/30' : 'from-red-500/10 to-orange-500/10 border-red-500/30'} backdrop-blur-sm`}>
               <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-lg text-emerald-300">
-                  <div className="p-1.5 bg-gradient-to-br from-emerald-500/20 to-green-600/20 rounded-lg border border-emerald-500/30">
-                    <CheckCircle className="w-4 h-4" />
+                <CardTitle className={`flex items-center gap-2 text-lg ${bidDetails.award.supabase_winner_user_id ? 'text-emerald-300' : 'text-red-300'}`}>
+                  <div className={`p-1.5 bg-gradient-to-br ${bidDetails.award.supabase_winner_user_id ? 'from-emerald-500/20 to-green-600/20 border-emerald-500/30' : 'from-red-500/20 to-orange-600/20 border-red-500/30'} rounded-lg border`}>
+                    {bidDetails.award.supabase_winner_user_id ? <CheckCircle className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
                   </div>
-                  Award Summary
+                  {bidDetails.award.supabase_winner_user_id ? 'Award Summary' : 'No Contest - Bid Finalized'}
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div className="p-3 bg-gradient-to-r from-slate-700/50 to-slate-800/50 rounded-lg border border-slate-600/30">
-                      <p className="text-xs text-slate-400">Winner</p>
-                      <p className="font-semibold text-white text-sm">{bidDetails.award.winner_legal_name || 'Unknown Carrier'}</p>
-                      <p className="text-xs text-slate-400">MC: {bidDetails.award.winner_mc_number || 'N/A'}</p>
+                  {bidDetails.award.supabase_winner_user_id ? (
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="p-3 bg-gradient-to-r from-slate-700/50 to-slate-800/50 rounded-lg border border-slate-600/30">
+                          <p className="text-xs text-slate-400">Winner</p>
+                          <p className="font-semibold text-white text-sm">{bidDetails.award.winner_legal_name || 'Unknown Carrier'}</p>
+                          <p className="text-xs text-slate-400">MC: {bidDetails.award.winner_mc_number || 'N/A'}</p>
+                        </div>
+                        <div className="p-3 bg-gradient-to-r from-slate-700/50 to-slate-800/50 rounded-lg border border-slate-600/30">
+                          <p className="text-xs text-slate-400">Awarded Amount</p>
+                          <p className="text-xl font-bold text-emerald-300">{formatMoney(bidDetails.award.winner_amount_cents)}</p>
+                        </div>
+                        <div className="p-3 bg-gradient-to-r from-slate-700/50 to-slate-800/50 rounded-lg border border-slate-600/30">
+                          <p className="text-xs text-slate-400">Awarded At</p>
+                          <p className="font-semibold text-white text-sm">{new Date(bidDetails.award.awarded_at).toLocaleString()}</p>
+                        </div>
+                        <div className="p-3 bg-gradient-to-r from-slate-700/50 to-slate-800/50 rounded-lg border border-slate-600/30">
+                          <p className="text-xs text-slate-400">Awarded By</p>
+                          <p className="font-semibold text-white text-sm">Admin - {bidDetails.award.awarded_by_name || 'System'}</p>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div className="p-3 bg-gradient-to-r from-slate-700/50 to-slate-800/50 rounded-lg border border-slate-600/30">
+                        <p className="text-xs text-slate-400">Status</p>
+                        <p className="font-semibold text-white text-sm">No Contest - Bid Finalized</p>
+                        <p className="text-xs text-slate-400">All carriers have been notified</p>
+                      </div>
+                      <div className="p-3 bg-gradient-to-r from-slate-700/50 to-slate-800/50 rounded-lg border border-slate-600/30">
+                        <p className="text-xs text-slate-400">Finalized At</p>
+                        <p className="font-semibold text-white text-sm">{new Date(bidDetails.award.awarded_at).toLocaleString()}</p>
+                      </div>
                     </div>
-                    <div className="p-3 bg-gradient-to-r from-slate-700/50 to-slate-800/50 rounded-lg border border-slate-600/30">
-                      <p className="text-xs text-slate-400">Awarded Amount</p>
-                      <p className="text-xl font-bold text-emerald-300">{formatMoney(bidDetails.award.winner_amount_cents)}</p>
-                    </div>
-                    <div className="p-3 bg-gradient-to-r from-slate-700/50 to-slate-800/50 rounded-lg border border-slate-600/30">
-                      <p className="text-xs text-slate-400">Awarded At</p>
-                      <p className="font-semibold text-white text-sm">{new Date(bidDetails.award.awarded_at).toLocaleString()}</p>
-                    </div>
-                    <div className="p-3 bg-gradient-to-r from-slate-700/50 to-slate-800/50 rounded-lg border border-slate-600/30">
-                      <p className="text-xs text-slate-400">Awarded By</p>
-                      <p className="font-semibold text-white text-sm">Admin - {bidDetails.award.awarded_by_name || 'System'}</p>
-                    </div>
-                  </div>
+                  )}
                   {bidDetails.award.admin_notes && (
                     <div className="p-3 bg-gradient-to-r from-slate-700/50 to-slate-800/50 rounded-lg border border-slate-600/30">
                       <p className="text-xs text-slate-400 mb-1">Admin Notes</p>
@@ -492,33 +546,73 @@ function BidAdjudicationConsole({ bid, accentColor, onClose, onAwarded }: {
           )}
 
           {/* Actions */}
-          <div className="flex justify-end gap-3 pb-4">
-            <Button 
-              variant="outline" 
-              onClick={onClose}
-              className="border-slate-600/50 text-slate-300 hover:bg-slate-700/50 hover:border-slate-500/50 transition-all duration-300 px-4"
-            >
-              Close
-            </Button>
+          <div className="flex items-center justify-between gap-3 pb-4">
+            {/* Left side: No Contest button */}
             {!bidDetails?.award && bidDetails?.bids?.length > 0 && (
-              <Button
-                onClick={handleAwardBid}
-                disabled={!selectedWinner || awarding}
-                className="flex items-center gap-2 bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700 shadow-lg hover:shadow-violet-500/25 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed px-4"
-              >
-                {awarding ? (
-                  <>
-                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
-                    Awarding...
-                  </>
-                ) : (
-                  <>
-                    <Award className="w-3 h-3 drop-shadow-sm" />
-                    Award Bid
-                  </>
-                )}
-              </Button>
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="no-contest-confirm"
+                    checked={noContestConfirmed}
+                    onCheckedChange={(checked) => setNoContestConfirmed(checked === true)}
+                    className="border-slate-500 data-[state=checked]:bg-red-500 data-[state=checked]:border-red-500"
+                  />
+                  <label
+                    htmlFor="no-contest-confirm"
+                    className="text-sm text-slate-300 cursor-pointer select-none"
+                  >
+                    Confirm No Contest
+                  </label>
+                </div>
+                <Button
+                  onClick={handleNoContest}
+                  disabled={!noContestConfirmed || markingNoContest}
+                  className="flex items-center gap-2 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 shadow-lg hover:shadow-red-500/25 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed px-4"
+                >
+                  {markingNoContest ? (
+                    <>
+                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+                      Marking...
+                    </>
+                  ) : (
+                    <>
+                      <XCircle className="w-3 h-3 drop-shadow-sm" />
+                      No Contest
+                    </>
+                  )}
+                </Button>
+              </div>
             )}
+            
+            {/* Right side: Close and Award Bid buttons */}
+            <div className="flex gap-3 ml-auto">
+              <Button 
+                variant="outline" 
+                onClick={onClose}
+                className="border-slate-600/50 text-slate-300 hover:bg-slate-700/50 hover:border-slate-500/50 transition-all duration-300 px-4"
+              >
+                Close
+              </Button>
+              {!bidDetails?.award && bidDetails?.bids?.length > 0 && (
+                <Button
+                  onClick={handleAwardBid}
+                  disabled={!selectedWinner || awarding}
+                  className="flex items-center gap-2 bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700 shadow-lg hover:shadow-violet-500/25 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed px-4"
+                >
+                  {awarding ? (
+                    <>
+                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+                      Awarding...
+                    </>
+                  ) : (
+                    <>
+                      <Award className="w-3 h-3 drop-shadow-sm" />
+                      Award Bid
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       </DialogContent>
@@ -1363,7 +1457,7 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
     {
       refreshInterval: 31500,
       keepPreviousData: true,
-      revalidateOnFocus: false,
+      revalidateOnFocus: true, // Refresh when user returns to tab - ensures profile updates appear immediately
       refreshWhenHidden: false,
       dedupingInterval: 15000,
       onErrorRetry: (error, _key, _config, revalidate, { retryCount }) => {
@@ -1382,7 +1476,7 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
     {
       refreshInterval: 30000,
       keepPreviousData: true,
-      revalidateOnFocus: false,
+      revalidateOnFocus: true, // Refresh when user returns to tab - ensures profile updates appear immediately
       refreshWhenHidden: false,
       dedupingInterval: 15000,
       onErrorRetry: (error, _key, _config, revalidate, { retryCount }) => {
@@ -2182,10 +2276,22 @@ function CarrierDetailConsole({
   accentColor: string;
   onClose: () => void;
 }) {
-  const { data: carrierData, isLoading } = useSWR(
-    carrierId ? `/api/admin/carrier-leaderboard?carrierId=${carrierId}` : null,
-    fetcher
+  const { data: carrierData, isLoading, mutate: mutateCarrierData } = useSWR(
+    carrierId ? `/api/admin/carrier-leaderboard?carrierId=${carrierId}&timeframe=3650&limit=1` : null,
+    fetcher,
+    {
+      revalidateOnFocus: true, // Refresh when dialog opens to get latest profile data
+      refreshInterval: 0, // Don't auto-refresh, but refresh on focus
+      dedupingInterval: 5000 // Short dedupe to allow manual refresh
+    }
   );
+  
+  // Refresh data when dialog opens to ensure we have latest profile info
+  React.useEffect(() => {
+    if (carrierId) {
+      mutateCarrierData();
+    }
+  }, [carrierId, mutateCarrierData]);
 
   const carrier = carrierData?.data?.leaderboard?.[0] || null;
 
@@ -2699,7 +2805,10 @@ function AdjudicationConsole({
   const { data, isLoading, mutate } = useSWR(
     '/api/admin/bids-with-carrier-bids',
     fetcher,
-    { refreshInterval: 10000 }
+    { 
+      refreshInterval: 10000,
+      revalidateOnFocus: true // Refresh when user returns to tab - ensures profile updates appear immediately
+    }
   );
 
   const bidsWithCarrierBids = data?.data || [];
@@ -3113,6 +3222,7 @@ function AdjudicationConsole({
                           </div>
                         </div>
                       )}
+
                     </CardContent>
                   </Card>
                 );

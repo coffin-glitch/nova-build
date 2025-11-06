@@ -191,8 +191,14 @@ export function BidMessageConsole({ bidNumber, userRole, userId, onClose }: BidM
           ) : (
             <div className="space-y-6">
               {messages.map((msg: any, index: number) => {
-                const isOwn = msg.sender_id === userId;
                 const isAdmin = msg.sender_role === 'admin';
+                // For carriers: their messages on right, admin messages on left
+                // For admins: their messages on right, carrier messages on left
+                // Note: API uses supabase_sender_id (migration 078 removed sender_id)
+                const senderId = msg.supabase_sender_id || msg.sender_id;
+                const isOwn = userRole === 'carrier' 
+                  ? senderId === userId  // Carrier's own messages
+                  : isAdmin && senderId === userId;  // Admin's own messages
                 
                 return (
                   <React.Fragment key={msg.id || `msg-${index}`}>

@@ -2,6 +2,11 @@ import { requireApiAdmin } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
+// Lightweight in-memory cache (30s TTL) to collapse bursts
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const g: any = globalThis as any;
+g.__grouped_leader_cache = g.__grouped_leader_cache || new Map<string, { t: number; v: any }>();
+
 /**
  * API endpoint for carrier leaderboard grouped by MC/DOT number
  * Provides aggregate analytics for companies/fleets with multiple carriers

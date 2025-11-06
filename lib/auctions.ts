@@ -1,5 +1,6 @@
 import sql from './db';
 import { formatCountdown } from './format';
+import { isNewLowestBid, notifyAllAdmins, getCarrierProfileInfo } from './notifications';
 
 // Types
 export interface TelegramBid {
@@ -329,8 +330,38 @@ export async function upsertCarrierBid({
       RETURNING *
     `;
 
-    // Create admin notifications for new bids
+    // Create admin notifications for new bids and new lowest bids
     try {
+      // Check if this is a new lowest bid
+      const { isNewLowest, previousLowestCents } = await isNewLowestBid(bid_number, amount_cents);
+      
+      if (isNewLowest) {
+        // Get carrier profile info
+        const carrierProfile = await getCarrierProfileInfo(userId);
+        const carrierName = carrierProfile?.legalName || carrierProfile?.companyName || 'Unknown Carrier';
+        const mcNumber = carrierProfile?.mcNumber || 'N/A';
+        const amountDollars = (amount_cents / 100).toFixed(2);
+        const previousLowestDollars = previousLowestCents ? (previousLowestCents / 100).toFixed(2) : null;
+
+        // Notify all admins about new lowest bid
+        await notifyAllAdmins(
+          'new_lowest_bid',
+          '🎯 New Lowest Bid',
+          `${carrierName} (MC: ${mcNumber}) placed a new lowest bid of $${amountDollars} on Bid #${bid_number}${previousLowestDollars ? ` (previous: $${previousLowestDollars})` : ''}`,
+          {
+            bid_number,
+            carrier_user_id: userId,
+            carrier_name: carrierName,
+            mc_number: mcNumber,
+            amount_cents,
+            amount_dollars: amountDollars,
+            previous_lowest_cents: previousLowestCents,
+            previous_lowest_dollars: previousLowestDollars
+          }
+        );
+      }
+
+      // Also create general bid notification (existing behavior)
       await createAdminBidNotifications(bid_number, userId, amount_cents);
     } catch (notificationError) {
       console.error('Failed to create admin notifications:', notificationError);
@@ -446,8 +477,15 @@ export async function awardAuction({
     // Create notification for winner
     const winnerMessage = `Congratulations! You won Bid #${bid_number} for ${formatMoney(winnerBid[0].amount_cents)}. Check your My Loads for next steps.`;
     await sql`
-      INSERT INTO public.notifications (user_id, type, title, message)
-      VALUES (${winner_user_id}, 'success', 'Auction Won!', ${winnerMessage})
+      INSERT INTO public.notifications (user_id, type, title, message, data, read)
+      VALUES (
+        ${winner_user_id}, 
+        'bid_won', 
+        '🎉 Bid Won!', 
+        ${winnerMessage},
+        ${JSON.stringify({ bid_number, amount_cents: winnerBid[0].amount_cents, amount_dollars: formatMoney(winnerBid[0].amount_cents) })},
+        false
+      )
     `;
 
     // Create notifications for other bidders (Supabase-only)
@@ -460,8 +498,15 @@ export async function awardAuction({
     for (const bidder of otherBidders) {
       const lostMessage = `Bid #${bid_number} was awarded to another carrier.`;
       await sql`
-        INSERT INTO public.notifications (user_id, type, title, message)
-        VALUES (${bidder.supabase_user_id}, 'info', 'Auction Awarded', ${lostMessage})
+        INSERT INTO public.notifications (user_id, type, title, message, data, read)
+        VALUES (
+          ${bidder.supabase_user_id}, 
+          'bid_lost', 
+          'Bid Lost', 
+          ${lostMessage},
+          ${JSON.stringify({ bid_number })},
+          false
+        )
       `;
     }
 
@@ -543,15 +588,29 @@ export async function reAwardAuction({
     // Create notification for new winner
     const winnerMessage = `Congratulations! You won Bid #${bid_number} for ${formatMoney(winnerBid[0].amount_cents)}. Check your My Loads for next steps.`;
     await sql`
-      INSERT INTO public.notifications (user_id, type, title, message)
-      VALUES (${winner_user_id}, 'success', 'Auction Won!', ${winnerMessage})
+      INSERT INTO public.notifications (user_id, type, title, message, data, read)
+      VALUES (
+        ${winner_user_id}, 
+        'bid_won', 
+        '🎉 Bid Won!', 
+        ${winnerMessage},
+        ${JSON.stringify({ bid_number, amount_cents: winnerBid[0].amount_cents, amount_dollars: formatMoney(winnerBid[0].amount_cents) })},
+        false
+      )
     `;
 
     // Create notification for old winner that award was removed
     const removedMessage = `Bid #${bid_number} has been re-awarded to another carrier.`;
     await sql`
-      INSERT INTO public.notifications (user_id, type, title, message)
-      VALUES (${oldWinnerUserId}, 'warning', 'Award Removed', ${removedMessage})
+      INSERT INTO public.notifications (user_id, type, title, message, data, read)
+      VALUES (
+        ${oldWinnerUserId}, 
+        'bid_lost', 
+        'Award Removed', 
+        ${removedMessage},
+        ${JSON.stringify({ bid_number, re_awarded: true })},
+        false
+      )
     `;
 
     // Create notifications for other bidders (excluding old and new winners)
@@ -566,8 +625,15 @@ export async function reAwardAuction({
     for (const bidder of otherBidders) {
       const lostMessage = `Bid #${bid_number} was awarded to another carrier.`;
       await sql`
-        INSERT INTO public.notifications (user_id, type, title, message)
-        VALUES (${bidder.supabase_user_id}, 'info', 'Auction Awarded', ${lostMessage})
+        INSERT INTO public.notifications (user_id, type, title, message, data, read)
+        VALUES (
+          ${bidder.supabase_user_id}, 
+          'bid_lost', 
+          'Bid Lost', 
+          ${lostMessage},
+          ${JSON.stringify({ bid_number })},
+          false
+        )
       `;
     }
 
@@ -581,6 +647,118 @@ export async function reAwardAuction({
     return award[0];
   } catch (error) {
     console.error('Database error in reAwardAuction:', error);
+    throw error; // Re-throw to maintain API contract
+  }
+}
+
+export async function markBidAsNoContest({
+  bid_number,
+  awarded_by,
+  admin_notes,
+}: {
+  bid_number: string;
+  awarded_by: string;
+  admin_notes?: string;
+}): Promise<void> {
+  try {
+    // Check if already awarded - if so, remove the award first
+    const existingAward = await sql`
+      SELECT id, supabase_winner_user_id 
+      FROM public.auction_awards 
+      WHERE bid_number = ${bid_number}
+    `;
+
+    if (existingAward.length > 0) {
+      const oldWinnerUserId = existingAward[0].supabase_winner_user_id;
+      
+      // Delete the existing award
+      await sql`
+        DELETE FROM public.auction_awards 
+        WHERE bid_number = ${bid_number}
+      `;
+
+      // Notify the old winner that the award was removed
+      // Use the same message as when a bid is awarded to another carrier (don't mention "no contest")
+      if (oldWinnerUserId) {
+        const removedMessage = `Bid #${bid_number} was awarded to another carrier.`;
+        await sql`
+          INSERT INTO public.notifications (user_id, type, title, message, data, read)
+          VALUES (
+            ${oldWinnerUserId}, 
+            'bid_lost', 
+            'Bid Lost', 
+            ${removedMessage},
+            ${JSON.stringify({ bid_number })},
+            false
+          )
+        `;
+      }
+    }
+
+    // Get all carriers who bid on this auction
+    const allBidders = await sql`
+      SELECT DISTINCT supabase_user_id 
+      FROM public.carrier_bids 
+      WHERE bid_number = ${bid_number}
+    `;
+
+    if (allBidders.length === 0) {
+      throw new Error('No carriers have bid on this auction');
+    }
+
+    // Send bid_lost notifications to all bidders
+    // Use the same message as when a bid is awarded to another carrier (don't mention "no contest")
+    const lostMessage = `Bid #${bid_number} was awarded to another carrier.`;
+    for (const bidder of allBidders) {
+      // Skip if we already notified this bidder (the old winner)
+      if (existingAward.length > 0 && existingAward[0].supabase_winner_user_id === bidder.supabase_user_id) {
+        continue;
+      }
+      
+      await sql`
+        INSERT INTO public.notifications (user_id, type, title, message, data, read)
+        VALUES (
+          ${bidder.supabase_user_id}, 
+          'bid_lost', 
+          'Bid Lost', 
+          ${lostMessage},
+          ${JSON.stringify({ bid_number })},
+          false
+        )
+      `;
+    }
+
+    // Create a special award record to finalize the auction
+    // This prevents the notification system from sending "award needed" notifications
+    // Use NULL for winner_user_id to indicate "no contest" (no actual winner)
+    // Use 0 for winner_amount_cents since there's no actual winner
+    // Note: We already deleted any existing award above, so we can safely INSERT
+    const noContestNotes = admin_notes || 'No Contest - Bid finalized without award';
+    await sql`
+      INSERT INTO public.auction_awards (
+        bid_number, 
+        supabase_winner_user_id, 
+        winner_amount_cents, 
+        supabase_awarded_by, 
+        admin_notes
+      )
+      VALUES (
+        ${bid_number}, 
+        NULL, 
+        0, 
+        ${awarded_by}, 
+        ${noContestNotes}
+      )
+    `;
+
+    // Update load status if it exists
+    await sql`
+      UPDATE public.loads 
+      SET status_code = 'no_contest'
+      WHERE rr_number = ${bid_number}
+    `;
+  } catch (error) {
+    console.error('Database error in markBidAsNoContest:', error);
     throw error; // Re-throw to maintain API contract
   }
 }
@@ -711,11 +889,15 @@ export async function updateCarrierProfile({
 }): Promise<CarrierProfile> {
   try {
     const updates: any = {};
-    if (legal_name) updates.legal_name = legal_name;
+    if (legal_name) {
+      updates.legal_name = legal_name;
+      updates.company_name = legal_name; // Keep company_name in sync with legal_name
+    }
     if (mc_number) updates.mc_number = mc_number;
     if (dot_number !== undefined) updates.dot_number = dot_number;
     if (phone !== undefined) updates.phone = phone;
     if (contact_name !== undefined) updates.contact_name = contact_name;
+    updates.updated_at = new Date();
 
     const setClause = Object.keys(updates)
       .map(key => `${key} = $${key}`)
@@ -727,6 +909,15 @@ export async function updateCarrierProfile({
       WHERE supabase_user_id = ${userId}
       RETURNING *
     `;
+
+    // Clear caches to ensure updated data appears immediately
+    try {
+      const { clearCarrierRelatedCaches } = await import('@/lib/cache-invalidation');
+      clearCarrierRelatedCaches(userId);
+    } catch (cacheError) {
+      console.error('Error clearing caches:', cacheError);
+      // Don't throw - cache clearing is best effort
+    }
 
     return result[0];
   } catch (error) {

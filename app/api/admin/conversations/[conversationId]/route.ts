@@ -245,6 +245,35 @@ export async function POST(
       RETURNING id, created_at
     `;
 
+    // Notify carrier about new admin message
+    try {
+      const { getConversationDetails, createNotification } = await import('@/lib/notifications');
+      
+      const conversationDetails = await getConversationDetails(conversationId);
+      if (conversationDetails?.carrierUserId) {
+        // Create message preview (first 100 chars)
+        const messagePreview = message 
+          ? (message.length > 100 ? message.substring(0, 100) + '...' : message)
+          : (attachmentName ? `Sent ${attachmentName}` : 'Sent an attachment');
+        
+        await createNotification(
+          conversationDetails.carrierUserId,
+          'admin_message',
+          '💬 New Message from Admin',
+          `Admin sent: ${messagePreview}`,
+          {
+            conversation_id: conversationId,
+            admin_user_id: userId,
+            message_id: result[0].id,
+            has_attachment: !!attachmentUrl
+          }
+        );
+      }
+    } catch (notificationError) {
+      console.error('Failed to create carrier notification for admin message:', notificationError);
+      // Don't throw - message sending should still succeed
+    }
+
     return NextResponse.json({ 
       ok: true, 
       message: "Message sent successfully",

@@ -1,6 +1,7 @@
 import sql from "@/lib/db";
 import { requireApiAdmin, unauthorizedResponse, forbiddenResponse } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
+import { clearCarrierRelatedCaches } from "@/lib/cache-invalidation";
 
 export async function POST(
   request: NextRequest,
@@ -74,7 +75,8 @@ export async function POST(
           reviewed_by = ${adminUserId},
           review_notes = ${review_notes || null},
           decline_reason = NULL,
-          edits_enabled = false
+          edits_enabled = false,
+          updated_at = NOW()
         WHERE supabase_user_id = ${profileUserId}
       `;
     } else if (new_status === 'declined') {
@@ -86,10 +88,14 @@ export async function POST(
           reviewed_by = ${adminUserId},
           review_notes = ${review_notes || null},
           decline_reason = ${reason || null},
-          edits_enabled = false
+          edits_enabled = false,
+          updated_at = NOW()
         WHERE supabase_user_id = ${profileUserId}
       `;
     }
+    
+    // Clear caches to ensure updated data appears immediately
+    clearCarrierRelatedCaches(profileUserId);
 
     console.log("Profile updated successfully");
 

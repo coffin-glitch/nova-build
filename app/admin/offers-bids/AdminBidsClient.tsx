@@ -29,10 +29,13 @@ import {
     XCircle,
     Zap,
     File,
-    Download
+    Download,
+    Calendar as CalendarIcon,
+    ChevronLeft,
+    ChevronRight
 } from "lucide-react";
 import { useTheme } from "next-themes";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { toast } from "sonner";
 
 interface AwardedBid {
@@ -86,6 +89,9 @@ export default function AdminBidsClient() {
   const [dateRangeFilter, setDateRangeFilter] = useState("all");
   const [amountRangeFilter, setAmountRangeFilter] = useState("all");
   const [documentViewerBid, setDocumentViewerBid] = useState<string | null>(null);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [selectedDateBids, setSelectedDateBids] = useState<AwardedBid[]>([]);
+  const [showDateDialog, setShowDateDialog] = useState(false);
   const { theme } = useTheme();
   const { accentColor } = useAccentColor();
 
@@ -248,6 +254,45 @@ export default function AdminBidsClient() {
       hour: "2-digit",
       minute: "2-digit"
     });
+  };
+
+  const formatDateOnly = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    });
+  };
+
+  // Group bids by date
+  const groupBidsByDate = (bids: AwardedBid[]) => {
+    const grouped: Record<string, AwardedBid[]> = {};
+    bids.forEach(bid => {
+      const dateKey = formatDateOnly(bid.created_at);
+      if (!grouped[dateKey]) {
+        grouped[dateKey] = [];
+      }
+      grouped[dateKey].push(bid);
+    });
+    return grouped;
+  };
+
+  // Get all unique dates from bids, sorted
+  const getSortedDates = (bids: AwardedBid[]) => {
+    const dates = new Set<string>();
+    bids.forEach(bid => {
+      dates.add(formatDateOnly(bid.created_at));
+    });
+    return Array.from(dates).sort((a, b) => {
+      return new Date(b).getTime() - new Date(a).getTime(); // Newest first
+    });
+  };
+
+  const handleDateClick = (date: string, bids: AwardedBid[]) => {
+    setSelectedDate(date);
+    setSelectedDateBids(bids);
+    setShowDateDialog(true);
   };
 
   const getStatusBadge = (status: string) => {
@@ -584,8 +629,152 @@ export default function AdminBidsClient() {
               </div>
             </Card>
           ) : (
+            <BidCalendarView 
+              bids={awardedBids}
+              onDateClick={handleDateClick}
+              accentColor={accentColor}
+            />
+          )}
+        </TabsContent>
+
+        <TabsContent value="active" className="space-y-4">
+          {activeBids.length === 0 ? (
+            <Card className="p-8 text-center">
+              <div className="space-y-4">
+                <div className="w-16 h-16 mx-auto bg-green-100 dark:bg-green-900/50 rounded-full flex items-center justify-center">
+                  <CheckCircle2 className="h-8 w-8 text-green-600 dark:text-green-400" />
+                </div>
+                <h3 className="text-lg font-semibold text-foreground">No active bids</h3>
+                <p className="text-muted-foreground">
+                  No bids are currently active. Check the awarded bids tab for bids that need action.
+                </p>
+              </div>
+            </Card>
+          ) : (
+            <BidCalendarView 
+              bids={activeBids}
+              onDateClick={handleDateClick}
+              accentColor={accentColor}
+            />
+          )}
+        </TabsContent>
+
+        <TabsContent value="completed" className="space-y-4">
+          {completedBids.length === 0 ? (
+            <Card className="p-8 text-center">
+              <div className="space-y-4">
+                <div className="w-16 h-16 mx-auto bg-gray-100 dark:bg-gray-900/50 rounded-full flex items-center justify-center">
+                  <Shield className="h-8 w-8 text-gray-600 dark:text-gray-400" />
+                </div>
+                <h3 className="text-lg font-semibold text-foreground">No completed bids</h3>
+                <p className="text-muted-foreground">
+                  No bids have been completed yet. Check back later for finished deliveries.
+                </p>
+              </div>
+            </Card>
+          ) : (
+            <BidCalendarView 
+              bids={completedBids}
+              onDateClick={handleDateClick}
+              accentColor={accentColor}
+            />
+          )}
+        </TabsContent>
+
+        <TabsContent value="analytics" className="space-y-4">
+          <Card className="p-8 text-center">
             <div className="space-y-4">
-              {awardedBids.map((bid, index) => (
+              <div className="w-16 h-16 mx-auto bg-purple-100 dark:bg-purple-900/50 rounded-full flex items-center justify-center">
+                <BarChart3 className="h-8 w-8 text-purple-600 dark:text-purple-400" />
+              </div>
+              <h3 className="text-lg font-semibold text-foreground">Analytics Coming Soon</h3>
+              <p className="text-muted-foreground">
+                Bid analytics and reporting features will be available soon.
+              </p>
+            </div>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="history" className="space-y-4">
+          <Card className="p-8 text-center">
+            <div className="space-y-4">
+              <div className="w-16 h-16 mx-auto bg-gray-100 dark:bg-gray-900/50 rounded-full flex items-center justify-center">
+                <History className="h-8 w-8 text-gray-600 dark:text-gray-400" />
+              </div>
+              <h3 className="text-lg font-semibold text-foreground">History Coming Soon</h3>
+              <p className="text-muted-foreground">
+                Bid history and audit trail features will be available soon.
+              </p>
+            </div>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      {/* Driver Info Dialog */}
+      {selectedBid && (
+        <DriverInfoDialog
+          open={showDriverInfoDialog}
+          onOpenChange={setShowDriverInfoDialog}
+          offer={selectedBid}
+          isBid={true}
+        />
+      )}
+
+      {/* Lifecycle Dialog */}
+      <Dialog open={showLifecycleDialog} onOpenChange={setShowLifecycleDialog}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {selectedBid ? `Bid Lifecycle - #${selectedBid.bid_number}` : 'Bid Lifecycle Management'}
+            </DialogTitle>
+          </DialogHeader>
+          <AdminBidLifecycleViewer 
+            bidId={selectedBid?.bid_number} 
+            onBidSelect={(bid) => setSelectedBid(bid)}
+          />
+        </DialogContent>
+      </Dialog>
+
+      {/* Bid Message Console */}
+      {messageBidNumber && user?.id && (
+        <BidMessageConsole
+          bidNumber={messageBidNumber}
+          userRole="admin"
+          userId={user.id}
+          onClose={handleCloseMessage}
+        />
+      )}
+
+      {/* Document Viewer Dialog */}
+      {documentViewerBid && (
+        <DocumentViewerDialog
+          bidNumber={documentViewerBid}
+          isOpen={!!documentViewerBid}
+          onClose={() => setDocumentViewerBid(null)}
+        />
+      )}
+
+      {/* Date Detail Dialog */}
+      <Dialog open={showDateDialog} onOpenChange={setShowDateDialog}>
+        <DialogContent className="max-w-6xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CalendarIcon className="h-5 w-5" />
+              Bids for {selectedDate ? new Date(selectedDate).toLocaleDateString("en-US", {
+                weekday: "long",
+                year: "numeric",
+                month: "long",
+                day: "numeric"
+              }) : ""}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 mt-4">
+            {selectedDateBids.length === 0 ? (
+              <Card className="p-8 text-center">
+                <p className="text-muted-foreground">No bids found for this date.</p>
+              </Card>
+            ) : (
+              selectedDateBids.map((bid, index) => (
                 <Card key={`${bid.bid_number}-${bid.id}-${index}`} className="hover:shadow-md transition-shadow">
                   <CardContent className="p-6">
                     <div className="flex items-center justify-between mb-4">
@@ -667,286 +856,244 @@ export default function AdminBidsClient() {
                     </div>
                   </CardContent>
                 </Card>
-              ))}
-            </div>
-          )}
-        </TabsContent>
-
-        <TabsContent value="active" className="space-y-4">
-          {activeBids.length === 0 ? (
-            <Card className="p-8 text-center">
-              <div className="space-y-4">
-                <div className="w-16 h-16 mx-auto bg-green-100 dark:bg-green-900/50 rounded-full flex items-center justify-center">
-                  <CheckCircle2 className="h-8 w-8 text-green-600 dark:text-green-400" />
-                </div>
-                <h3 className="text-lg font-semibold text-foreground">No active bids</h3>
-                <p className="text-muted-foreground">
-                  No bids are currently active. Check the awarded bids tab for bids that need action.
-                </p>
-              </div>
-            </Card>
-          ) : (
-            <div className="space-y-4">
-              {activeBids.map((bid) => (
-                <Card key={bid.id} className="hover:shadow-md transition-shadow">
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-4">
-                        <div>
-                          <h3 className="text-lg font-semibold">Bid #{bid.bid_number}</h3>
-                          <div className="flex items-center gap-2 mt-1">
-                            {getStatusBadge(bid.status)}
-                            <span className="text-sm text-muted-foreground">
-                              {formatDate(bid.created_at)}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleOpenMessage(bid)}
-                        >
-                          <MessageSquare className="h-4 w-4 mr-2" />
-                          Message
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleViewLifecycle(bid)}
-                        >
-                          View Lifecycle
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleViewDriverInfo(bid)}
-                        >
-                          Driver Info
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setDocumentViewerBid(bid.bid_number)}
-                        >
-                          <File className="h-4 w-4 mr-2" />
-                          Documents
-                        </Button>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                      <div>
-                        <Label className="text-sm font-medium text-muted-foreground">Carrier</Label>
-                        <div className="mt-1">
-                          <div className="font-medium">{bid.carrier_name}</div>
-                          <div className="text-xs text-muted-foreground">ID: {bid.carrier_id}</div>
-                        </div>
-                      </div>
-                      <div>
-                        <Label className="text-sm font-medium text-muted-foreground">Route</Label>
-                        <div className="mt-1">
-                          {bid.stops && Array.isArray(bid.stops) && bid.stops.length >= 2 ? (
-                            <>
-                              <div>{bid.stops[0]}</div>
-                              <div className="text-sm text-muted-foreground">→ {bid.stops[bid.stops.length - 1]}</div>
-                            </>
-                          ) : (
-                            <div className="text-muted-foreground">Route not available</div>
-                          )}
-                        </div>
-                      </div>
-                      <div>
-                        <Label className="text-sm font-medium text-muted-foreground">Bid Details</Label>
-                        <div className="mt-1">
-                          <div className="font-semibold text-lg">{formatPrice(bid.bid_amount)}</div>
-                          <div className="text-sm text-muted-foreground">
-                            {bid.equipment_type} • {bid.miles ? `${bid.miles.toLocaleString()} mi` : 'N/A'}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </TabsContent>
-
-        <TabsContent value="completed" className="space-y-4">
-          {completedBids.length === 0 ? (
-            <Card className="p-8 text-center">
-              <div className="space-y-4">
-                <div className="w-16 h-16 mx-auto bg-gray-100 dark:bg-gray-900/50 rounded-full flex items-center justify-center">
-                  <Shield className="h-8 w-8 text-gray-600 dark:text-gray-400" />
-                </div>
-                <h3 className="text-lg font-semibold text-foreground">No completed bids</h3>
-                <p className="text-muted-foreground">
-                  No bids have been completed yet. Check back later for finished deliveries.
-                </p>
-              </div>
-            </Card>
-          ) : (
-            <div className="space-y-4">
-              {completedBids.map((bid) => (
-                <Card key={bid.id} className="hover:shadow-md transition-shadow">
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-4">
-                        <div>
-                          <h3 className="text-lg font-semibold">Bid #{bid.bid_number}</h3>
-                          <div className="flex items-center gap-2 mt-1">
-                            {getStatusBadge(bid.status)}
-                            <span className="text-sm text-muted-foreground">
-                              {formatDate(bid.created_at)}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleOpenMessage(bid)}
-                        >
-                          <MessageSquare className="h-4 w-4 mr-2" />
-                          Message
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleViewLifecycle(bid)}
-                        >
-                          View Lifecycle
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleViewDriverInfo(bid)}
-                        >
-                          Driver Info
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setDocumentViewerBid(bid.bid_number)}
-                        >
-                          <File className="h-4 w-4 mr-2" />
-                          Documents
-                        </Button>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                      <div>
-                        <Label className="text-sm font-medium text-muted-foreground">Carrier</Label>
-                        <div className="mt-1">
-                          <div className="font-medium">{bid.carrier_name}</div>
-                          <div className="text-xs text-muted-foreground">ID: {bid.carrier_id}</div>
-                        </div>
-                      </div>
-                      <div>
-                        <Label className="text-sm font-medium text-muted-foreground">Route</Label>
-                        <div className="mt-1">
-                          {bid.stops && Array.isArray(bid.stops) && bid.stops.length >= 2 ? (
-                            <>
-                              <div>{bid.stops[0]}</div>
-                              <div className="text-sm text-muted-foreground">→ {bid.stops[bid.stops.length - 1]}</div>
-                            </>
-                          ) : (
-                            <div className="text-muted-foreground">Route not available</div>
-                          )}
-                        </div>
-                      </div>
-                      <div>
-                        <Label className="text-sm font-medium text-muted-foreground">Bid Details</Label>
-                        <div className="mt-1">
-                          <div className="font-semibold text-lg">{formatPrice(bid.bid_amount)}</div>
-                          <div className="text-sm text-muted-foreground">
-                            {bid.equipment_type} • {bid.miles ? `${bid.miles.toLocaleString()} mi` : 'N/A'}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </TabsContent>
-
-        <TabsContent value="analytics" className="space-y-4">
-          <Card className="p-8 text-center">
-            <div className="space-y-4">
-              <div className="w-16 h-16 mx-auto bg-purple-100 dark:bg-purple-900/50 rounded-full flex items-center justify-center">
-                <BarChart3 className="h-8 w-8 text-purple-600 dark:text-purple-400" />
-              </div>
-              <h3 className="text-lg font-semibold text-foreground">Analytics Coming Soon</h3>
-              <p className="text-muted-foreground">
-                Bid analytics and reporting features will be available soon.
-              </p>
-            </div>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="history" className="space-y-4">
-          <Card className="p-8 text-center">
-            <div className="space-y-4">
-              <div className="w-16 h-16 mx-auto bg-gray-100 dark:bg-gray-900/50 rounded-full flex items-center justify-center">
-                <History className="h-8 w-8 text-gray-600 dark:text-gray-400" />
-              </div>
-              <h3 className="text-lg font-semibold text-foreground">History Coming Soon</h3>
-              <p className="text-muted-foreground">
-                Bid history and audit trail features will be available soon.
-              </p>
-            </div>
-          </Card>
-        </TabsContent>
-      </Tabs>
-
-      {/* Driver Info Dialog */}
-      {selectedBid && (
-        <DriverInfoDialog
-          open={showDriverInfoDialog}
-          onOpenChange={setShowDriverInfoDialog}
-          offer={selectedBid}
-          isBid={true}
-        />
-      )}
-
-      {/* Lifecycle Dialog */}
-      <Dialog open={showLifecycleDialog} onOpenChange={setShowLifecycleDialog}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              {selectedBid ? `Bid Lifecycle - #${selectedBid.bid_number}` : 'Bid Lifecycle Management'}
-            </DialogTitle>
-          </DialogHeader>
-          <AdminBidLifecycleViewer 
-            bidId={selectedBid?.bid_number} 
-            onBidSelect={(bid) => setSelectedBid(bid)}
-          />
+              ))
+            )}
+          </div>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
 
-      {/* Bid Message Console */}
-      {messageBidNumber && user?.id && (
-        <BidMessageConsole
-          bidNumber={messageBidNumber}
-          userRole="admin"
-          userId={user.id}
-          onClose={handleCloseMessage}
-        />
-      )}
+// Calendar View Component
+function BidCalendarView({ 
+  bids, 
+  onDateClick, 
+  accentColor 
+}: { 
+  bids: AwardedBid[]; 
+  onDateClick: (date: string, bids: AwardedBid[]) => void;
+  accentColor: string;
+}) {
+  const [currentMonth, setCurrentMonth] = useState<Date>(() => {
+    // Initialize to the month of the most recent bid, or current month
+    if (bids.length > 0) {
+      const dates = bids.map(bid => new Date(bid.created_at));
+      const latestDate = new Date(Math.max(...dates.map(d => d.getTime())));
+      return new Date(latestDate.getFullYear(), latestDate.getMonth(), 1);
+    }
+    return new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  });
 
-      {/* Document Viewer Dialog */}
-      {documentViewerBid && (
-        <DocumentViewerDialog
-          bidNumber={documentViewerBid}
-          isOpen={!!documentViewerBid}
-          onClose={() => setDocumentViewerBid(null)}
-        />
+  const formatDateOnly = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    });
+  };
+
+  const groupBidsByDate = (bids: AwardedBid[]) => {
+    const grouped: Record<string, AwardedBid[]> = {};
+    bids.forEach(bid => {
+      const dateKey = formatDateOnly(bid.created_at);
+      if (!grouped[dateKey]) {
+        grouped[dateKey] = [];
+      }
+      grouped[dateKey].push(bid);
+    });
+    return grouped;
+  };
+
+  const getSortedDates = (bids: AwardedBid[], monthFilter?: Date) => {
+    const dates = new Set<string>();
+    bids.forEach(bid => {
+      const bidDate = new Date(bid.created_at);
+      if (!monthFilter || 
+          (bidDate.getFullYear() === monthFilter.getFullYear() && 
+           bidDate.getMonth() === monthFilter.getMonth())) {
+        dates.add(formatDateOnly(bid.created_at));
+      }
+    });
+    return Array.from(dates).sort((a, b) => {
+      return new Date(b).getTime() - new Date(a).getTime(); // Newest first
+    });
+  };
+
+  const navigateMonth = (direction: 'prev' | 'next') => {
+    setCurrentMonth(prev => {
+      const newDate = new Date(prev);
+      if (direction === 'prev') {
+        newDate.setMonth(prev.getMonth() - 1);
+      } else {
+        newDate.setMonth(prev.getMonth() + 1);
+      }
+      return newDate;
+    });
+  };
+
+  const bidsByDate = groupBidsByDate(bids);
+  const sortedDates = getSortedDates(bids, currentMonth);
+  
+  // Get all available months from bids
+  const availableMonths = useMemo(() => {
+    const months = new Set<string>();
+    bids.forEach(bid => {
+      const date = new Date(bid.created_at);
+      const monthKey = `${date.getFullYear()}-${date.getMonth()}`;
+      months.add(monthKey);
+    });
+    return Array.from(months)
+      .map(key => {
+        const [year, month] = key.split('-').map(Number);
+        return new Date(year, month, 1);
+      })
+      .sort((a, b) => b.getTime() - a.getTime());
+  }, [bids]);
+
+  const currentMonthLabel = currentMonth.toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric"
+  });
+
+  // Format date for display
+  const formatDateDisplay = (dateStr: string) => {
+    const date = new Date(dateStr);
+    return {
+      day: date.getDate(),
+      month: date.toLocaleDateString("en-US", { month: "short" }),
+      year: date.getFullYear(),
+      weekday: date.toLocaleDateString("en-US", { weekday: "short" }),
+      full: date.toLocaleDateString("en-US", {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric"
+      })
+    };
+  };
+
+  const formatPrice = (amount: number) => {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount / 100);
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Month/Year Navigation Bar */}
+      <Card className="p-4">
+        <div className="flex items-center justify-between">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigateMonth('prev')}
+            className="flex items-center gap-2"
+          >
+            <ChevronLeft className="h-4 w-4" />
+            Previous
+          </Button>
+          
+          <div className="flex items-center gap-4">
+            <select
+              value={`${currentMonth.getFullYear()}-${currentMonth.getMonth()}`}
+              onChange={(e) => {
+                const [year, month] = e.target.value.split('-').map(Number);
+                setCurrentMonth(new Date(year, month, 1));
+              }}
+              className="px-4 py-2 border border-border rounded-md bg-background text-foreground font-semibold text-lg cursor-pointer hover:bg-accent transition-colors"
+              style={{ color: accentColor }}
+            >
+              {availableMonths.map(month => {
+                const key = `${month.getFullYear()}-${month.getMonth()}`;
+                const label = month.toLocaleDateString("en-US", {
+                  month: "long",
+                  year: "numeric"
+                });
+                return (
+                  <option key={key} value={key}>
+                    {label}
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigateMonth('next')}
+            className="flex items-center gap-2"
+            disabled={currentMonth.getTime() >= new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime()}
+          >
+            Next
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      </Card>
+
+      {sortedDates.length === 0 ? (
+        <Card className="p-8 text-center">
+          <div className="space-y-4">
+            <CalendarIcon className="h-12 w-12 mx-auto text-muted-foreground" />
+            <h3 className="text-lg font-semibold text-foreground">No bids for {currentMonthLabel}</h3>
+            <p className="text-muted-foreground">
+              Select a different month to view bids.
+            </p>
+          </div>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+        {sortedDates.map((dateStr) => {
+          const dateBids = bidsByDate[dateStr] || [];
+          const dateInfo = formatDateDisplay(dateStr);
+          const bidCount = dateBids.length;
+          const totalRevenue = dateBids.reduce((sum, bid) => sum + bid.bid_amount, 0) / 100;
+
+          return (
+            <Card
+              key={dateStr}
+              className="hover:shadow-lg transition-all duration-200 cursor-pointer border-2 hover:border-opacity-50"
+              style={{ 
+                borderColor: accentColor,
+                borderOpacity: 0.3
+              }}
+              onClick={() => onDateClick(dateStr, dateBids)}
+            >
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex flex-col">
+                    <span className="text-xs text-muted-foreground uppercase tracking-wide">
+                      {dateInfo.weekday}
+                    </span>
+                    <span className="text-2xl font-bold" style={{ color: accentColor }}>
+                      {dateInfo.day}
+                    </span>
+                  </div>
+                  <CalendarIcon className="h-5 w-5 text-muted-foreground" />
+                </div>
+                <div className="space-y-1">
+                  <div className="text-sm font-medium">{dateInfo.month} {dateInfo.year}</div>
+                  <div className="flex items-center justify-between pt-2 border-t">
+                    <span className="text-xs text-muted-foreground">Bids:</span>
+                    <span className="text-sm font-semibold">{bidCount}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground">Revenue:</span>
+                    <span className="text-sm font-semibold text-green-600">
+                      ${totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                    </span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+        </div>
       )}
     </div>
   );

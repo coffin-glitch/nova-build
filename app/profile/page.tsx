@@ -1,6 +1,7 @@
 import { requireSignedIn } from "@/lib/auth";
 import { getSupabaseUserInfo } from "@/lib/auth-unified";
 import sql from "@/lib/db";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
@@ -68,6 +69,12 @@ async function getCarrierProfile(userId: string) {
 export default async function ProfilePage() {
   const userId = await requireSignedIn();
   const role = await getRole(userId);
+  
+  // Redirect admins to admin profile page
+  if (role === 'admin') {
+    redirect('/admin/profile');
+  }
+  
   const stats = await getStats(userId, role);
   const userInfo = await getSupabaseUserInfo(userId);
   const carrierProfile = role === 'carrier' ? await getCarrierProfile(userId) : null;

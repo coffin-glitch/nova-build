@@ -1,6 +1,7 @@
 import { requireApiAdmin } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
+import { clearCarrierRelatedCaches } from "@/lib/cache-invalidation";
 
 export async function GET(
   request: NextRequest,
@@ -106,12 +107,17 @@ export async function PUT(
     await sql`
       UPDATE carrier_profiles SET
         legal_name = ${company_name},
+        company_name = ${company_name},
         mc_number = ${mc_number},
         dot_number = ${dot_number},
         contact_name = ${contact_name},
-        phone = ${phone}
+        phone = ${phone},
+        updated_at = NOW()
       WHERE supabase_user_id = ${carrierUserId}
     `;
+
+    // Clear caches to ensure updated data appears immediately
+    clearCarrierRelatedCaches(carrierUserId);
 
     return NextResponse.json({ 
       ok: true, 

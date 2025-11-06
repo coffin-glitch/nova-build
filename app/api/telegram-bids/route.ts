@@ -1,5 +1,6 @@
 import sql from '@/lib/db';
 import { NextRequest, NextResponse } from "next/server";
+import { notifyAdminsAboutExpiredBidsNeedingAward } from '@/lib/notifications';
 
 // Cache for frequently accessed data
 const cache = new Map();
@@ -125,6 +126,14 @@ export async function GET(request: NextRequest) {
       }
       LIMIT ${limit} OFFSET ${offset}
     `;
+
+    // If admin is viewing expired bids, check for expired bids needing awards and notify
+    // Run this asynchronously so it doesn't block the API response
+    if (isAdmin && showExpired) {
+      notifyAdminsAboutExpiredBidsNeedingAward().catch(error => {
+        console.error('Error in background notification check for expired bids:', error);
+      });
+    }
 
     // Add time_left_seconds to each row and normalize stops field
     const bids = rows.map(row => {

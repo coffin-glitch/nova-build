@@ -12,11 +12,11 @@ export async function POST(
 
     const { notificationId } = await params;
 
-    // Mark notification as read
+    // Mark notification as read (using main notifications table)
     const result = await sql`
-      UPDATE carrier_notifications 
-      SET read = true, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ${notificationId} AND supabase_user_id = ${userId}
+      UPDATE notifications 
+      SET read = true
+      WHERE id = ${notificationId}::integer AND user_id = ${userId}
       RETURNING id
     `;
 

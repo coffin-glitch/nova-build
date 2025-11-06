@@ -30,6 +30,7 @@ export async function GET(request: NextRequest) {
     const sortBy = searchParams.get("sortBy") || "total_bids";
     const equipmentType = searchParams.get("equipmentType") || null;
     const minBids = parseInt(searchParams.get("minBids") || "0");
+    const carrierId = searchParams.get("carrierId") || null; // Support filtering by specific carrier
 
     // Calculate date range - if timeframe is "all", don't filter by date
     let startDate: Date | null = null;
@@ -44,13 +45,15 @@ export async function GET(request: NextRequest) {
     console.log('[Carrier Leaderboard] Starting query execution...');
 
     // Lightweight in-memory cache (30s TTL) to collapse bursts
+    // Skip cache if filtering by specific carrierId (always get fresh data for details view)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const g: any = globalThis as any;
     g.__leader_cache = g.__leader_cache || new Map<string, { t: number; v: any }>();
-    const cacheKey = `leader:${timeframe}:${sortBy}:${limit}:${equipmentType || 'all'}:${minBids}`;
+    const cacheKey = `leader:${timeframe}:${sortBy}:${limit}:${equipmentType || 'all'}:${minBids}:${carrierId || 'all'}`;
     const now = Date.now();
     const hit = g.__leader_cache.get(cacheKey);
-    if (hit && now - hit.t < 30_000) {
+    // Don't use cache for carrierId-specific queries to ensure fresh data
+    if (!carrierId && hit && now - hit.t < 30_000) {
       return NextResponse.json(hit.v);
     }
 
@@ -59,7 +62,7 @@ export async function GET(request: NextRequest) {
     try {
       leaderboardData = await sql`
       WITH 
-      -- Base carrier profile data
+      -- Base carrier profile data (uses current profile data - reflects latest updates)
       carrier_profiles_data AS (
         SELECT 
           cp.supabase_user_id,
@@ -74,6 +77,7 @@ export async function GET(request: NextRequest) {
           false as is_verified, -- is_verified doesn't exist, default to false
           cp.created_at as profile_created_at
         FROM carrier_profiles cp
+        ${carrierId ? sql`WHERE cp.supabase_user_id = ${carrierId}` : sql``}
         -- Note: equipment_types column doesn't exist in carrier_profiles, so filtering is disabled for now
       ),
       
@@ -223,11 +227,11 @@ export async function GET(request: NextRequest) {
         LEFT JOIN win_stats ws ON cpd.supabase_user_id = ws.supabase_user_id
         LEFT JOIN competitiveness_stats cs ON cpd.supabase_user_id = cs.supabase_user_id
         LEFT JOIN recent_activity ra ON cpd.supabase_user_id = ra.supabase_user_id
-        WHERE COALESCE(bs.total_bids, 0) >= ${minBids}
+        WHERE ${carrierId ? sql`1=1` : sql`COALESCE(bs.total_bids, 0) >= ${minBids}`} -- Skip minBids filter when filtering by carrierId
       )
       
       SELECT * FROM combined_stats
-      WHERE total_bids > 0
+      WHERE ${carrierId ? sql`1=1` : sql`total_bids > 0`} -- If filtering by carrierId, show even if no bids (for details view)
       ORDER BY 
         CASE WHEN ${sortBy} = 'total_bids' THEN total_bids END DESC,
         CASE WHEN ${sortBy} = 'win_rate' THEN win_rate_percentage END DESC,

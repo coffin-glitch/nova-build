@@ -121,7 +121,12 @@ export default function FloatingCarrierChatButton() {
   );
 
   // Helper function to get display name
-  const getDisplayName = useCallback((userId: string): string => {
+  // Priority: admin_display_name from API > batch API > fallback
+  const getDisplayName = useCallback((userId: string, adminDisplayName?: string): string => {
+    // First check if admin_display_name is provided from the API
+    if (adminDisplayName) return adminDisplayName;
+    
+    // Fallback to batch API
     const userInfo = userInfos[userId] as UserInfo;
     if (!userInfo) return "Admin";
     
@@ -144,7 +149,7 @@ export default function FloatingCarrierChatButton() {
     if (!searchTerm) return conversations;
     
     return conversations.filter((conv: Conversation) => {
-      const displayName = getDisplayName(conv.admin_user_id);
+      const displayName = getDisplayName(conv.admin_user_id, conv.admin_display_name);
       const searchLower = searchTerm.toLowerCase();
       return (
         displayName.toLowerCase().includes(searchLower) ||
@@ -507,7 +512,7 @@ export default function FloatingCarrierChatButton() {
                             </div>
                           ) : (
                             filteredConversations.map((conversation: Conversation) => {
-                              const displayName = getDisplayName(conversation.admin_user_id);
+                              const displayName = getDisplayName(conversation.admin_user_id, conversation.admin_display_name);
                               
                               return (
                                 <div
@@ -553,7 +558,7 @@ export default function FloatingCarrierChatButton() {
                     // Chat Interface
                     <div className="flex flex-col h-full">
                       {(() => {
-                        const displayName = getDisplayName(selectedConversation.admin_user_id);
+                        const displayName = getDisplayName(selectedConversation.admin_user_id, selectedConversation.admin_display_name);
                         
                         return (
                           <>

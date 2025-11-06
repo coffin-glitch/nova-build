@@ -1,6 +1,7 @@
 import { forbiddenResponse, requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
+import { clearCarrierRelatedCaches } from "@/lib/cache-invalidation";
 
 export async function POST(
   request: NextRequest,
@@ -63,9 +64,13 @@ export async function POST(
         reviewed_by = ${adminUserId},
         review_notes = ${review_notes || null},
         decline_reason = ${decline_reason},
-        edits_enabled = false
+        edits_enabled = false,
+        updated_at = NOW()
       WHERE supabase_user_id = ${profileUserId}
     `;
+    
+    // Clear caches to ensure updated data appears immediately
+    clearCarrierRelatedCaches(profileUserId);
 
     // Create history record for decline
     await sql`
@@ -91,6 +96,31 @@ export async function POST(
         (SELECT COALESCE(MAX(version_number), 0) + 1 FROM carrier_profile_history WHERE carrier_user_id = ${profileUserId})
       )
     `;
+
+    // Notify carrier about profile decline
+    try {
+      const { createNotification } = await import('@/lib/notifications');
+      
+      const companyName = currentProfile[0]?.legal_name || currentProfile[0]?.company_name || 'Your company';
+      
+      await createNotification(
+        profileUserId,
+        'profile_declined',
+        '❌ Profile Declined',
+        `Your profile has been declined. Reason: ${decline_reason}${review_notes ? ` Additional notes: ${review_notes}` : ''}. Please update your profile and resubmit.`,
+        {
+          carrier_user_id: profileUserId,
+          company_name: companyName,
+          reviewed_by: adminUserId,
+          decline_reason: decline_reason,
+          review_notes: review_notes || null,
+          reviewed_at: new Date().toISOString()
+        }
+      );
+    } catch (notificationError) {
+      console.error('Failed to create carrier notification for profile decline:', notificationError);
+      // Don't throw - profile decline should still succeed
+    }
 
     return NextResponse.json({ 
       success: true, 

@@ -276,6 +276,48 @@ export async function POST(
       RETURNING id
     `;
 
+    // Notify admins when carrier accepts a bid
+    if (status === 'bid_awarded') {
+      try {
+        const { notifyAllAdmins, getCarrierProfileInfo } = await import('@/lib/notifications');
+        
+        // Get carrier profile info
+        const carrierProfile = await getCarrierProfileInfo(userId);
+        const carrierName = carrierProfile?.legalName || carrierProfile?.companyName || 'Unknown Carrier';
+        const mcNumber = carrierProfile?.mcNumber || 'N/A';
+        
+        // Get bid award details for amount
+        const awardDetails = await sql`
+          SELECT winner_amount_cents
+          FROM auction_awards
+          WHERE bid_number = ${bidNumber}
+          LIMIT 1
+        `;
+        
+        const amountCents = awardDetails[0]?.winner_amount_cents || 0;
+        const amountDollars = (amountCents / 100).toFixed(2);
+        
+        // Notify all admins
+        await notifyAllAdmins(
+          'bid_accepted',
+          '✅ Bid Accepted',
+          `${carrierName} (MC: ${mcNumber}) accepted Bid #${bidNumber} for $${amountDollars}`,
+          {
+            bid_number: bidNumber,
+            carrier_user_id: userId,
+            carrier_name: carrierName,
+            mc_number: mcNumber,
+            amount_cents: amountCents,
+            amount_dollars: amountDollars,
+            accepted_at: new Date().toISOString()
+          }
+        );
+      } catch (notificationError) {
+        console.error('Failed to create admin notification for bid acceptance:', notificationError);
+        // Don't throw - bid acceptance should still succeed
+      }
+    }
+
     // Update the bid status in carrier_bids table
     // For driver_info_update, don't change the main status, just update driver info
     if (status === 'driver_info_update') {

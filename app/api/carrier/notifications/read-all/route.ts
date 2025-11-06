@@ -7,19 +7,16 @@ export async function POST(request: NextRequest) {
     const auth = await requireApiCarrier(request);
     const userId = auth.userId;
 
-    // Mark all notifications as read for the carrier
-    const result = await sql`
-      UPDATE carrier_notifications 
-      SET read = true, updated_at = CURRENT_TIMESTAMP
-      WHERE supabase_user_id = ${userId} AND read = false
-      RETURNING COUNT(*) as updated_count
+    // Mark all notifications as read for the carrier (using main notifications table)
+    await sql`
+      UPDATE notifications 
+      SET read = true
+      WHERE user_id = ${userId} AND read = false
     `;
 
     return NextResponse.json({
       ok: true,
-      data: {
-        updatedCount: result[0]?.updated_count || 0
-      }
+      message: "All notifications marked as read"
     });
 
   } catch (error) {

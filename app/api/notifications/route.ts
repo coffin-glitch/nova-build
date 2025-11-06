@@ -8,10 +8,13 @@ export async function GET(request: NextRequest) {
     const auth = await requireApiAuth(request);
     const userId = auth.userId;
 
+    console.log('[Notifications API] Fetching notifications for userId:', userId);
+    console.log('[Notifications API] Auth result:', { userId, userRole: auth.userRole, fromHeader: auth.fromHeader });
+
     // Get notifications for the current user (Supabase-only)
     const notifications = await sql`
       SELECT 
-        n.id,
+        n.id::text as id,
         n.type,
         n.title,
         n.message,
@@ -19,17 +22,21 @@ export async function GET(request: NextRequest) {
         n.created_at,
         n.data
       FROM notifications n
-      WHERE n.supabase_user_id = ${userId}
+      WHERE n.user_id = ${userId}
       ORDER BY n.created_at DESC
       LIMIT 50
     `;
+
+    console.log('[Notifications API] Found notifications:', notifications.length);
 
     // Count unread notifications
     const unreadCount = await sql`
       SELECT COUNT(*) as count
       FROM notifications n
-      WHERE n.supabase_user_id = ${userId} AND n.read = false
+      WHERE n.user_id = ${userId} AND n.read = false
     `;
+
+    console.log('[Notifications API] Unread count:', parseInt(unreadCount[0].count));
 
     return NextResponse.json({
       success: true,
@@ -69,7 +76,7 @@ export async function POST(request: NextRequest) {
 
     // Create notification (Supabase-only)
     const notification = await sql`
-      INSERT INTO notifications (supabase_user_id, type, title, message, data)
+      INSERT INTO notifications (user_id, type, title, message, data)
       VALUES (${userId}, ${type}, ${title}, ${message}, ${data ? JSON.stringify(data) : null})
       RETURNING *
     `;
@@ -108,7 +115,7 @@ async function handleBidAwardNotifications(body: any) {
         title: isWinner ? '🎉 Bid Won!' : 'Bid Lost',
         message: isWinner 
           ? `Congratulations! You won Bid #${bidNumber} for $${winnerAmount}`
-          : `Bid #${bidNumber} was awarded to ${winnerName} for $${winnerAmount}`,
+          : `Bid #${bidNumber} was awarded to another carrier.`,
         data: {
           bidNumber,
           winnerUserId,
@@ -120,7 +127,7 @@ async function handleBidAwardNotifications(body: any) {
       
       // Create notification for this carrier (Supabase-only)
       const result = await sql`
-        INSERT INTO notifications (supabase_user_id, type, title, message, data, read)
+        INSERT INTO notifications (user_id, type, title, message, data, read)
         VALUES (${carrier.supabase_user_id}, ${notification.type}, ${notification.title}, ${notification.message}, ${JSON.stringify(notification.data)}, false)
         RETURNING *
       `;
@@ -161,7 +168,7 @@ export async function PUT(request: NextRequest) {
     await sql`
       UPDATE notifications 
       SET read = ${read}
-      WHERE id = ${notificationId} AND supabase_user_id = ${userId}
+      WHERE id = ${notificationId} AND user_id = ${userId}
     `;
 
     return NextResponse.json({

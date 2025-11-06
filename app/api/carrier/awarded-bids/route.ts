@@ -19,6 +19,7 @@ export async function GET(request: NextRequest) {
         aa.supabase_winner_user_id as winner_user_id,
         aa.winner_amount_cents,
         aa.supabase_awarded_by as awarded_by,
+        COALESCE(ap.display_name, ap.display_email, ur.email, aa.supabase_awarded_by::text) as awarded_by_name,
         aa.awarded_at,
         tb.distance_miles,
         tb.pickup_timestamp,
@@ -33,6 +34,8 @@ export async function GET(request: NextRequest) {
       LEFT JOIN telegram_bids tb ON aa.bid_number = tb.bid_number
       LEFT JOIN carrier_bids cb ON aa.bid_number = cb.bid_number 
         AND cb.supabase_user_id = aa.supabase_winner_user_id
+      LEFT JOIN user_roles_cache ur ON aa.supabase_awarded_by = ur.supabase_user_id
+      LEFT JOIN admin_profiles ap ON aa.supabase_awarded_by = ap.supabase_user_id
       WHERE aa.supabase_winner_user_id = ${userId}
       ORDER BY aa.awarded_at DESC
     `;

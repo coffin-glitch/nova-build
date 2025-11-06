@@ -227,6 +227,39 @@ export async function POST(
       RETURNING id, created_at
     `;
 
+    // Notify admin about new carrier message
+    try {
+      const { getConversationDetails, getCarrierProfileInfo, createNotification } = await import('@/lib/notifications');
+      
+      const conversationDetails = await getConversationDetails(conversationId);
+      if (conversationDetails?.adminUserId) {
+        const carrierProfile = await getCarrierProfileInfo(userId);
+        const carrierName = carrierProfile?.legalName || carrierProfile?.companyName || 'Unknown Carrier';
+        
+        // Create message preview (first 100 chars)
+        const messagePreview = message 
+          ? (message.length > 100 ? message.substring(0, 100) + '...' : message)
+          : (attachmentName ? `Sent ${attachmentName}` : 'Sent an attachment');
+        
+        await createNotification(
+          conversationDetails.adminUserId,
+          'carrier_message',
+          '💬 New Message from Carrier',
+          `${carrierName} sent: ${messagePreview}`,
+          {
+            conversation_id: conversationId,
+            carrier_user_id: userId,
+            carrier_name: carrierName,
+            message_id: result[0].id,
+            has_attachment: !!attachmentUrl
+          }
+        );
+      }
+    } catch (notificationError) {
+      console.error('Failed to create admin notification for carrier message:', notificationError);
+      // Don't throw - message sending should still succeed
+    }
+
     return NextResponse.json({ 
       ok: true, 
       message: "Message sent successfully",

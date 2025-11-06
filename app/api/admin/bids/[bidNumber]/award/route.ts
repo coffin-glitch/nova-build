@@ -46,9 +46,10 @@ export async function POST(
           SELECT 
             aa.*,
             cp.legal_name as winner_legal_name,
+            cp.company_name as winner_company_name,
             cp.mc_number as winner_mc_number,
             cp.phone as winner_phone,
-            cp.dispatch_email as winner_email,
+            cp.contact_name as winner_contact_name,
             tb.distance_miles,
             tb.stops,
             tb.tag,

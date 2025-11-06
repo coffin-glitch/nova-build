@@ -37,9 +37,12 @@ export async function GET(request: NextRequest) {
         SELECT 
           c.id as conversation_id,
           c.supabase_admin_user_id as admin_user_id,
+          COALESCE(ap.display_name, ap.display_email, ur.email, c.supabase_admin_user_id::text) as admin_display_name,
           c.created_at,
           c.updated_at
         FROM conversations c
+        LEFT JOIN user_roles_cache ur ON c.supabase_admin_user_id = ur.supabase_user_id
+        LEFT JOIN admin_profiles ap ON c.supabase_admin_user_id = ap.supabase_user_id
         WHERE c.supabase_carrier_user_id = ${userId}
         ORDER BY c.updated_at DESC
       `;

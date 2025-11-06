@@ -79,9 +79,15 @@ export default function CarrierMessagesPage() {
   );
 
   // Helper function to get display name
-  const getDisplayName = (userId: string): string => {
+  // Priority: display_name from API > batch API > fallback
+  // Never returns raw user ID - always returns a masked name
+  const getDisplayName = (userId: string, displayName?: string): string => {
+    // First check if display_name is provided from the API (e.g., from /api/carrier/admins)
+    if (displayName) return displayName;
+    
+    // Fallback to batch API
     const userInfo = userInfos[userId];
-    if (!userInfo) return userId;
+    if (!userInfo) return 'Admin';
     
     if (userInfo.fullName) return userInfo.fullName;
     if (userInfo.firstName && userInfo.lastName) return `${userInfo.firstName} ${userInfo.lastName}`;
@@ -89,7 +95,8 @@ export default function CarrierMessagesPage() {
     if (userInfo.username) return userInfo.username;
     if (userInfo.emailAddresses?.[0]?.emailAddress) return userInfo.emailAddresses[0].emailAddress;
     
-    return userId;
+    // Final fallback - never show raw user ID
+    return 'Admin';
   };
 
   // Calculate stats from conversations (new unified system)
@@ -362,7 +369,7 @@ export default function CarrierMessagesPage() {
                             <User className="h-5 w-5 text-primary" />
                           </div>
                           <div className="flex-1">
-                            <p className="font-medium">{getDisplayName(admin.user_id)}</p>
+                            <p className="font-medium">{getDisplayName(admin.user_id, admin.display_name)}</p>
                             <p className="text-sm text-muted-foreground">Administrator</p>
                           </div>
                           <Button 
@@ -408,7 +415,9 @@ export default function CarrierMessagesPage() {
                       const latestMessage = allMessages
                         .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
                         .pop();
-                      const displayName = getDisplayName(adminId);
+                      // Check if any message has admin_display_name, use the first one found
+                      const firstMessage = adminMessages.find((msg: any) => msg.admin_display_name);
+                      const displayName = getDisplayName(adminId, firstMessage?.admin_display_name);
                       
                       return (
                         <div key={adminId} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50">
@@ -418,7 +427,6 @@ export default function CarrierMessagesPage() {
                             </div>
                             <div>
                               <p className="font-medium">{displayName}</p>
-                              <p className="text-xs text-muted-foreground">{adminId}</p>
                               <p className="text-sm text-muted-foreground">
                                 {latestMessage ? (latestMessage.message || latestMessage.response || '').substring(0, 50) + '...' : 'No messages'}
                               </p>

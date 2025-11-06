@@ -8,12 +8,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatDistance, formatMoney, formatStops, formatPickupDateTime, formatStopCount } from "@/lib/format";
 import { useUnifiedUser } from "@/hooks/useUnifiedUser";
+import { useAccentColor } from "@/hooks/useAccentColor";
 import { Countdown } from "@/components/ui/Countdown";
 import {
     Calendar,
     CheckCircle,
     ChevronDown,
     ChevronRight,
+    ChevronLeft,
     Clock,
     DollarSign,
     Grid3X3,
@@ -28,9 +30,10 @@ import {
     Zap,
     Eye,
     Navigation,
-    Upload
+    Upload,
+    Calendar as CalendarIcon
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
 import { BidAnalytics } from "./BidAnalytics";
@@ -128,6 +131,10 @@ export function CarrierBidsConsole() {
   const [selectedBidForDialog, setSelectedBidForDialog] = useState<AwardedBid | null>(null);
   const [viewLoadDetailsBid, setViewLoadDetailsBid] = useState<any | null>(null);
   const [documentUploadBid, setDocumentUploadBid] = useState<string | null>(null);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [selectedDateBids, setSelectedDateBids] = useState<AwardedBid[]>([]);
+  const [showDateDialog, setShowDateDialog] = useState(false);
+  const { accentColor } = useAccentColor();
   const [advancedFilters, setAdvancedFilters] = useState<FilterState>({
     searchTerm: '',
     status: [],
@@ -189,10 +196,14 @@ export function CarrierBidsConsole() {
   const allBids: any[] = activeBidsData?.data || [];
   const activeBidsList = allBids.filter((bid: any) => bid.bidStatus === 'active' && !bid.isExpired);
   
-  // Combine stats: Active bids = active bids on bid-board + awarded bids that are active (awarded/accepted/in_progress)
-  const activeAwardedBids = awardedBids.filter(bid => 
-    ['awarded', 'accepted', 'in_progress'].includes(bid.status || 'awarded')
-  ).length;
+  // Active awarded bids: Any bid that is in the "bid_awarded" lifecycle until marked "completed"
+  // This includes: awarded, bid_awarded, load_assigned, checked_in_origin, picked_up, 
+  // departed_origin, in_transit, checked_in_destination, delivered, accepted, in_progress
+  // Excludes: completed, cancelled
+  const activeAwardedBids = awardedBids.filter(bid => {
+    const status = bid.status || 'awarded';
+    return status !== 'completed' && status !== 'cancelled';
+  }).length;
   
   const stats: BidStats = {
     totalAwarded: serverStats.totalAwarded,
@@ -241,6 +252,32 @@ export function CarrierBidsConsole() {
     
     const Icon = icons[status as keyof typeof icons] || Package;
     return <Icon className="w-4 h-4" />;
+  };
+
+  // Date formatting and grouping functions
+  const formatDateOnly = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    });
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit"
+    });
+  };
+
+  const handleDateClick = (date: string, bids: AwardedBid[]) => {
+    setSelectedDate(date);
+    setSelectedDateBids(bids);
+    setShowDateDialog(true);
   };
 
   if (!isLoaded) {
@@ -529,6 +566,33 @@ export function CarrierBidsConsole() {
         </TabsContent>
 
         <TabsContent value="my-bids" className="space-y-4">
+          {filteredBids.length === 0 ? (
+            <Card>
+              <CardContent className="p-12 text-center">
+                <Package className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+                <h3 className="text-xl font-semibold mb-2">No Awarded Bids</h3>
+                <p className="text-muted-foreground mb-6">
+                  {searchTerm || statusFilter !== "all" 
+                    ? "Try adjusting your search criteria"
+                    : "Your awarded bids will appear here once you win auctions"
+                  }
+                </p>
+                <Button asChild>
+                  <a href="/bid-board">View Live Auctions</a>
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <CarrierBidCalendarView 
+              bids={filteredBids}
+              onDateClick={handleDateClick}
+              accentColor={accentColor}
+            />
+          )}
+        </TabsContent>
+
+        {/* Legacy list view - keeping for reference but hidden */}
+        <div className="hidden">
           <div className="grid gap-4">
             {filteredBids.map((bid) => (
               <Card key={bid.id}>
@@ -684,7 +748,7 @@ export function CarrierBidsConsole() {
               </Card>
             )}
           </div>
-        </TabsContent>
+        </div>
 
         <TabsContent value="lifecycle" className="space-y-4">
           {awardedBids.length === 0 ? (
@@ -699,36 +763,170 @@ export function CarrierBidsConsole() {
             </Card>
           ) : (
             <div className="space-y-6">
-              {/* View Toggle */}
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold">Bid Lifecycle</h3>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground">View:</span>
-                  <div className="flex border rounded-lg p-1">
-                    <Button
-                      variant={viewMode === 'list' ? 'default' : 'ghost'}
-                      size="sm"
-                      onClick={() => setViewMode('list')}
-                      className="h-8 px-3"
-                    >
-                      <List className="w-4 h-4 mr-1" />
-                      List
-                    </Button>
-                    <Button
-                      variant={viewMode === 'card' ? 'default' : 'ghost'}
-                      size="sm"
-                      onClick={() => setViewMode('card')}
-                      className="h-8 px-3"
-                    >
-                      <Grid3X3 className="w-4 h-4 mr-1" />
-                      Card
-                    </Button>
+              {/* Calendar View */}
+              <div>
+                <h3 className="text-lg font-semibold mb-4">Calendar View</h3>
+                <CarrierBidCalendarView 
+                  bids={awardedBids}
+                  onDateClick={handleDateClick}
+                  accentColor={accentColor}
+                />
+              </div>
+
+              {/* Original Lifecycle View */}
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold">Bid Lifecycle</h3>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground">View:</span>
+                    <div className="flex border rounded-lg p-1">
+                      <Button
+                        variant={viewMode === 'list' ? 'default' : 'ghost'}
+                        size="sm"
+                        onClick={() => setViewMode('list')}
+                        className="h-8 px-3"
+                      >
+                        <List className="w-4 h-4 mr-1" />
+                        List
+                      </Button>
+                      <Button
+                        variant={viewMode === 'card' ? 'default' : 'ghost'}
+                        size="sm"
+                        onClick={() => setViewMode('card')}
+                        className="h-8 px-3"
+                      >
+                        <Grid3X3 className="w-4 h-4 mr-1" />
+                        Card
+                      </Button>
+                    </div>
                   </div>
                 </div>
+                
+                <div className={viewMode === 'card' ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6' : 'space-y-6'}>
+                  {awardedBids.map((bid) => {
+                    const isExpanded = expandedBids.has(bid.bid_number);
+                    return (
+                      <Card key={bid.id} className={viewMode === 'card' ? 'h-fit' : ''}>
+                        <CardHeader>
+                          <CardTitle className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <Truck className="w-5 h-5" />
+                              Bid {bid.bid_number}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline">
+                                {(bid.status || 'awarded').replace('_', ' ').toUpperCase()}
+                              </Badge>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  if (viewMode === 'card') {
+                                    setSelectedBidForDialog(bid);
+                                    setDialogOpen(true);
+                                  } else {
+                                    toggleBidExpansion(bid.bid_number);
+                                  }
+                                }}
+                                className="h-8 w-8 p-0"
+                              >
+                                {isExpanded ? (
+                                  <ChevronDown className="h-4 w-4" />
+                                ) : (
+                                  <ChevronRight className="h-4 w-4" />
+                                )}
+                              </Button>
+                            </div>
+                          </CardTitle>
+                          
+                          {/* Progress Bar Preview */}
+                          <div className="mt-3">
+                            <div className="flex items-center justify-between text-sm text-muted-foreground mb-2">
+                              <span>Progress</span>
+                              <span>{getProgressForStatus(bid.status || 'awarded')}%</span>
+                            </div>
+                            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                              <div 
+                                className="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-in-out"
+                                style={{ width: `${getProgressForStatus(bid.status || 'awarded')}%` }}
+                              />
+                            </div>
+                            <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                              <span>Bid Awarded</span>
+                              <span>Completed</span>
+                            </div>
+                          </div>
+                          
+                          {/* State Tag and Miles Preview */}
+                          <div className="mt-4 flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <div className="px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 rounded-md text-xs font-medium">
+                                {bid.tag || 'N/A'}
+                              </div>
+                              <div className="flex items-center gap-1 text-muted-foreground">
+                                <MapPin className="w-3 h-3" />
+                                <span className="text-xs font-medium">
+                                  {bid.distance_miles ? `${bid.distance_miles} mi` : 'N/A'}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-lg font-semibold text-green-600">
+                                ${bid.winner_amount_cents ? (bid.winner_amount_cents / 100).toFixed(2) : '0.00'}
+                              </p>
+                            </div>
+                          </div>
+                        </CardHeader>
+                        {isExpanded && viewMode === 'list' && (
+                          <CardContent>
+                            <BidLifecycleManager 
+                              bidId={bid.bid_number} 
+                              bidData={bid}
+                            />
+                          </CardContent>
+                        )}
+                      </Card>
+                    );
+                  })}
+                </div>
               </div>
-              
-              <div className={viewMode === 'card' ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6' : 'space-y-6'}>
-                {awardedBids.map((bid) => {
+            </div>
+          )}
+        </TabsContent>
+
+        {/* Legacy lifecycle view - keeping for reference but hidden */}
+        <div className="hidden">
+          <div className="space-y-6">
+            {/* View Toggle */}
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold">Bid Lifecycle</h3>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">View:</span>
+                <div className="flex border rounded-lg p-1">
+                  <Button
+                    variant={viewMode === 'list' ? 'default' : 'ghost'}
+                    size="sm"
+                    onClick={() => setViewMode('list')}
+                    className="h-8 px-3"
+                  >
+                    <List className="w-4 h-4 mr-1" />
+                    List
+                  </Button>
+                  <Button
+                    variant={viewMode === 'card' ? 'default' : 'ghost'}
+                    size="sm"
+                    onClick={() => setViewMode('card')}
+                    className="h-8 px-3"
+                  >
+                    <Grid3X3 className="w-4 h-4 mr-1" />
+                    Card
+                  </Button>
+                </div>
+              </div>
+            </div>
+            
+            <div className={viewMode === 'card' ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6' : 'space-y-6'}>
+              {awardedBids.map((bid) => {
                   const isExpanded = expandedBids.has(bid.bid_number);
                   return (
                     <Card key={bid.id} className={viewMode === 'card' ? 'h-fit' : ''}>
@@ -815,11 +1013,17 @@ export function CarrierBidsConsole() {
               })}
               </div>
             </div>
-          )}
-        </TabsContent>
+        </div>
 
-        <TabsContent value="analytics">
-          <BidAnalytics stats={stats} bids={awardedBids} />
+        <TabsContent value="analytics" className="space-y-4">
+          <CarrierBidCalendarView 
+            bids={awardedBids}
+            onDateClick={handleDateClick}
+            accentColor={accentColor}
+          />
+          <div className="mt-6">
+            <BidAnalytics stats={stats} bids={awardedBids} />
+          </div>
         </TabsContent>
       </Tabs>
 
@@ -964,6 +1168,373 @@ export function CarrierBidsConsole() {
           onClose={() => setDocumentUploadBid(null)}
           onUploaded={() => mutateBids()}
         />
+      )}
+
+      {/* Date Detail Dialog */}
+      <Dialog open={showDateDialog} onOpenChange={setShowDateDialog}>
+        <DialogContent className="max-w-6xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CalendarIcon className="h-5 w-5" />
+              Bids for {selectedDate ? new Date(selectedDate).toLocaleDateString("en-US", {
+                weekday: "long",
+                year: "numeric",
+                month: "long",
+                day: "numeric"
+              }) : ""}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 mt-4">
+            {selectedDateBids.length === 0 ? (
+              <Card className="p-8 text-center">
+                <p className="text-muted-foreground">No bids found for this date.</p>
+              </Card>
+            ) : (
+              selectedDateBids.map((bid, index) => (
+                <Card 
+                  key={`${bid.bid_number}-${bid.id}-${index}`} 
+                  className="hover:shadow-md transition-shadow cursor-pointer"
+                  onClick={() => {
+                    setSelectedBidForDialog(bid);
+                    setDialogOpen(true);
+                    setShowDateDialog(false);
+                  }}
+                >
+                  <CardContent className="p-6">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-3">
+                          <h3 className="text-lg font-semibold">#{bid.bid_number}</h3>
+                          {getStatusBadge(bid.status || 'awarded')}
+                        </div>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                          <div>
+                            <p className="text-sm text-muted-foreground">Distance</p>
+                            <p className="font-medium">
+                              {bid.distance_miles ? formatDistance(bid.distance_miles) : 'N/A'}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-sm text-muted-foreground">Pickup</p>
+                            <p className="font-medium">
+                              {bid.pickup_timestamp ? new Date(bid.pickup_timestamp).toLocaleString() : 'N/A'}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-sm text-muted-foreground">Delivery</p>
+                            <p className="font-medium">
+                              {bid.delivery_timestamp ? new Date(bid.delivery_timestamp).toLocaleString() : 'N/A'}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-sm text-muted-foreground">State Tag</p>
+                            <p className="font-medium">{bid.tag || 'N/A'}</p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-4 mb-4">
+                          <div className="flex items-center gap-2">
+                            <DollarSign className="w-4 h-4 text-green-500" />
+                            <span className="font-semibold text-lg">{formatMoney(bid.winner_amount_cents)}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <MapPin className="w-4 h-4 text-blue-500" />
+                            <span>{bid.distance_miles ? formatDistance(bid.distance_miles) : 'N/A'}</span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                          <div className="flex items-center gap-2">
+                            <Calendar className="w-4 h-4" />
+                            <span>Awarded: {new Date(bid.awarded_at).toLocaleDateString()}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div 
+                        className="flex items-center gap-2 flex-wrap ml-4"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Button 
+                          variant="default" 
+                          size="sm"
+                          onClick={() => {
+                            setSelectedBidForDialog(bid);
+                            setDialogOpen(true);
+                            setShowDateDialog(false);
+                          }}
+                        >
+                          <Truck className="w-4 h-4 mr-2" />
+                          View Lifecycle
+                        </Button>
+                        <div onClick={(e) => e.stopPropagation()}>
+                          <BidDetailsDialog bid={bid} />
+                        </div>
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => {
+                            setSelectedMessageBid(bid.bid_number);
+                            setShowDateDialog(false);
+                          }}
+                        >
+                          <MessageSquare className="w-4 h-4 mr-2" />
+                          Message
+                        </Button>
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => {
+                            setDocumentUploadBid(bid.bid_number);
+                            setShowDateDialog(false);
+                          }}
+                        >
+                          <Upload className="w-4 h-4 mr-2" />
+                          Documents
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// Carrier Calendar View Component
+function CarrierBidCalendarView({ 
+  bids, 
+  onDateClick, 
+  accentColor 
+}: { 
+  bids: AwardedBid[]; 
+  onDateClick: (date: string, bids: AwardedBid[]) => void;
+  accentColor: string;
+}) {
+  const [currentMonth, setCurrentMonth] = useState<Date>(() => {
+    // Initialize to the month of the most recent bid, or current month
+    if (bids.length > 0) {
+      const dates = bids.map(bid => new Date(bid.awarded_at));
+      const latestDate = new Date(Math.max(...dates.map(d => d.getTime())));
+      return new Date(latestDate.getFullYear(), latestDate.getMonth(), 1);
+    }
+    return new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  });
+
+  const formatDateOnly = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    });
+  };
+
+  const groupBidsByDate = (bids: AwardedBid[]) => {
+    const grouped: Record<string, AwardedBid[]> = {};
+    bids.forEach(bid => {
+      const dateKey = formatDateOnly(bid.awarded_at);
+      if (!grouped[dateKey]) {
+        grouped[dateKey] = [];
+      }
+      grouped[dateKey].push(bid);
+    });
+    return grouped;
+  };
+
+  const getSortedDates = (bids: AwardedBid[], monthFilter?: Date) => {
+    const dates = new Set<string>();
+    bids.forEach(bid => {
+      const bidDate = new Date(bid.awarded_at);
+      if (!monthFilter || 
+          (bidDate.getFullYear() === monthFilter.getFullYear() && 
+           bidDate.getMonth() === monthFilter.getMonth())) {
+        dates.add(formatDateOnly(bid.awarded_at));
+      }
+    });
+    return Array.from(dates).sort((a, b) => {
+      return new Date(b).getTime() - new Date(a).getTime(); // Newest first
+    });
+  };
+
+  const navigateMonth = (direction: 'prev' | 'next') => {
+    setCurrentMonth(prev => {
+      const newDate = new Date(prev);
+      if (direction === 'prev') {
+        newDate.setMonth(prev.getMonth() - 1);
+      } else {
+        newDate.setMonth(prev.getMonth() + 1);
+      }
+      return newDate;
+    });
+  };
+
+  const bidsByDate = groupBidsByDate(bids);
+  const sortedDates = getSortedDates(bids, currentMonth);
+  
+  // Get all available months from bids
+  const availableMonths = useMemo(() => {
+    const months = new Set<string>();
+    bids.forEach(bid => {
+      const date = new Date(bid.awarded_at);
+      const monthKey = `${date.getFullYear()}-${date.getMonth()}`;
+      months.add(monthKey);
+    });
+    return Array.from(months)
+      .map(key => {
+        const [year, month] = key.split('-').map(Number);
+        return new Date(year, month, 1);
+      })
+      .sort((a, b) => b.getTime() - a.getTime());
+  }, [bids]);
+
+  const currentMonthLabel = currentMonth.toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric"
+  });
+
+  // Format date for display
+  const formatDateDisplay = (dateStr: string) => {
+    const date = new Date(dateStr);
+    return {
+      day: date.getDate(),
+      month: date.toLocaleDateString("en-US", { month: "short" }),
+      year: date.getFullYear(),
+      weekday: date.toLocaleDateString("en-US", { weekday: "short" }),
+      full: date.toLocaleDateString("en-US", {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric"
+      })
+    };
+  };
+
+  const formatPrice = (amount: number) => {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount / 100);
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Month/Year Navigation Bar */}
+      <Card className="p-4">
+        <div className="flex items-center justify-between">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigateMonth('prev')}
+            className="flex items-center gap-2"
+          >
+            <ChevronLeft className="h-4 w-4" />
+            Previous
+          </Button>
+          
+          <div className="flex items-center gap-4">
+            <select
+              value={`${currentMonth.getFullYear()}-${currentMonth.getMonth()}`}
+              onChange={(e) => {
+                const [year, month] = e.target.value.split('-').map(Number);
+                setCurrentMonth(new Date(year, month, 1));
+              }}
+              className="px-4 py-2 border border-border rounded-md bg-background text-foreground font-semibold text-lg cursor-pointer hover:bg-accent transition-colors"
+              style={{ color: accentColor }}
+            >
+              {availableMonths.map(month => {
+                const key = `${month.getFullYear()}-${month.getMonth()}`;
+                const label = month.toLocaleDateString("en-US", {
+                  month: "long",
+                  year: "numeric"
+                });
+                return (
+                  <option key={key} value={key}>
+                    {label}
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigateMonth('next')}
+            className="flex items-center gap-2"
+            disabled={currentMonth.getTime() >= new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime()}
+          >
+            Next
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      </Card>
+
+      {sortedDates.length === 0 ? (
+        <Card className="p-8 text-center">
+          <div className="space-y-4">
+            <CalendarIcon className="h-12 w-12 mx-auto text-muted-foreground" />
+            <h3 className="text-lg font-semibold text-foreground">No bids for {currentMonthLabel}</h3>
+            <p className="text-muted-foreground">
+              Select a different month to view bids.
+            </p>
+          </div>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+          {sortedDates.map((dateStr) => {
+            const dateBids = bidsByDate[dateStr] || [];
+            const dateInfo = formatDateDisplay(dateStr);
+            const bidCount = dateBids.length;
+            const totalRevenue = dateBids.reduce((sum, bid) => sum + (bid.winner_amount_cents || 0), 0) / 100;
+
+            return (
+              <Card
+                key={dateStr}
+                className="hover:shadow-lg transition-all duration-200 cursor-pointer border-2 hover:border-opacity-50"
+                style={{ 
+                  borderColor: accentColor,
+                  borderOpacity: 0.3
+                }}
+                onClick={() => onDateClick(dateStr, dateBids)}
+              >
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex flex-col">
+                      <span className="text-xs text-muted-foreground uppercase tracking-wide">
+                        {dateInfo.weekday}
+                      </span>
+                      <span className="text-2xl font-bold" style={{ color: accentColor }}>
+                        {dateInfo.day}
+                      </span>
+                    </div>
+                    <CalendarIcon className="h-5 w-5 text-muted-foreground" />
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-sm font-medium">{dateInfo.month} {dateInfo.year}</div>
+                    <div className="flex items-center justify-between pt-2 border-t">
+                      <span className="text-xs text-muted-foreground">Bids:</span>
+                      <span className="text-sm font-semibold">{bidCount}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">Revenue:</span>
+                      <span className="text-sm font-semibold text-green-600">
+                        ${totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                      </span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
       )}
     </div>
   );

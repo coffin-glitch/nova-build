@@ -191,7 +191,7 @@ export function BidDetailsDialog({ bid, children }: BidDetailsDialogProps) {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <Label className="text-sm font-medium text-muted-foreground">Awarded By</Label>
-                    <p className="text-lg font-semibold">{bid.awarded_by}</p>
+                    <p className="text-lg font-semibold">{bid.awarded_by_name || bid.awarded_by}</p>
                   </div>
                   <div>
                     <Label className="text-sm font-medium text-muted-foreground">Awarded At</Label>

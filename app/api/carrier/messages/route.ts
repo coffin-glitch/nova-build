@@ -22,36 +22,42 @@ export async function GET(request: NextRequest) {
       // For approved carriers, only show regular admin messages (not appeal messages)
       messages = await sql`
         SELECT 
-          id,
-          supabase_carrier_user_id as carrier_user_id,
-          supabase_admin_user_id as admin_user_id,
-          subject,
-          message,
-          is_read,
-          read_at,
-          created_at,
-          updated_at
-        FROM admin_messages 
-        WHERE supabase_carrier_user_id = ${userId}
-        ORDER BY created_at DESC
+          am.id,
+          am.supabase_carrier_user_id as carrier_user_id,
+          am.supabase_admin_user_id as admin_user_id,
+          COALESCE(ap.display_name, ap.display_email, ur.email, am.supabase_admin_user_id::text) as admin_display_name,
+          am.subject,
+          am.message,
+          am.is_read,
+          am.read_at,
+          am.created_at,
+          am.updated_at
+        FROM admin_messages am
+        LEFT JOIN user_roles_cache ur ON am.supabase_admin_user_id = ur.supabase_user_id
+        LEFT JOIN admin_profiles ap ON am.supabase_admin_user_id = ap.supabase_user_id
+        WHERE am.supabase_carrier_user_id = ${userId}
+        ORDER BY am.created_at DESC
       `;
     } else {
       // For non-approved carriers, show all messages including appeal messages
       // This includes both admin_messages and appeal conversations converted to admin_messages format
       const adminMessages = await sql`
         SELECT 
-          id,
-          supabase_carrier_user_id as carrier_user_id,
-          supabase_admin_user_id as admin_user_id,
-          subject,
-          message,
-          is_read,
-          read_at,
-          created_at,
-          updated_at
-        FROM admin_messages 
-        WHERE supabase_carrier_user_id = ${userId}
-        ORDER BY created_at DESC
+          am.id,
+          am.supabase_carrier_user_id as carrier_user_id,
+          am.supabase_admin_user_id as admin_user_id,
+          COALESCE(ap.display_name, ap.display_email, ur.email, am.supabase_admin_user_id::text) as admin_display_name,
+          am.subject,
+          am.message,
+          am.is_read,
+          am.read_at,
+          am.created_at,
+          am.updated_at
+        FROM admin_messages am
+        LEFT JOIN user_roles_cache ur ON am.supabase_admin_user_id = ur.supabase_user_id
+        LEFT JOIN admin_profiles ap ON am.supabase_admin_user_id = ap.supabase_user_id
+        WHERE am.supabase_carrier_user_id = ${userId}
+        ORDER BY am.created_at DESC
       `;
 
       // Get appeal conversations and convert them to admin_messages format
@@ -59,6 +65,7 @@ export async function GET(request: NextRequest) {
         SELECT 
           c.id as conversation_id,
           c.supabase_admin_user_id as admin_user_id,
+          COALESCE(ap.display_name, ap.display_email, ur.email, c.supabase_admin_user_id::text) as admin_display_name,
           c.supabase_carrier_user_id as carrier_user_id,
           cm.message,
           cm.created_at,
@@ -68,6 +75,8 @@ export async function GET(request: NextRequest) {
           cm.created_at as updated_at
         FROM conversations c
         JOIN conversation_messages cm ON cm.conversation_id = c.id
+        LEFT JOIN user_roles_cache ur ON c.supabase_admin_user_id = ur.supabase_user_id
+        LEFT JOIN admin_profiles ap ON c.supabase_admin_user_id = ap.supabase_user_id
         LEFT JOIN message_reads mr ON mr.message_id = cm.id AND (mr.supabase_user_id = ${userId} OR mr.user_id = ${userId})
         WHERE c.supabase_carrier_user_id = ${userId}
           AND c.conversation_type = 'appeal'
@@ -80,6 +89,7 @@ export async function GET(request: NextRequest) {
         id: conv.message_id,
         carrier_user_id: conv.carrier_user_id,
         admin_user_id: conv.admin_user_id,
+        admin_display_name: conv.admin_display_name,
         subject: 'Appeal Decision',
         message: conv.message,
         is_read: conv.is_read,

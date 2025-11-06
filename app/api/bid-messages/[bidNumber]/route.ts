@@ -55,8 +55,9 @@ export async function GET(
         COALESCE(bm.is_internal, false) as is_internal,
         CASE 
           WHEN bm.sender_role = 'admin' THEN (
-            SELECT COALESCE(urc.email, 'Admin') 
+            SELECT COALESCE(ap.display_name, ap.display_email, urc.email, 'Admin')
             FROM user_roles_cache urc
+            LEFT JOIN admin_profiles ap ON urc.supabase_user_id = ap.supabase_user_id
             WHERE urc.supabase_user_id = bm.supabase_sender_id
             LIMIT 1
           )
@@ -216,6 +217,36 @@ export async function POST(
     }
 
     console.log('[Bid Messages] Message inserted successfully:', result[0]?.id);
+
+    // Notify admins about carrier bid messages (not internal messages)
+    if (userRole === 'carrier' && !is_internal) {
+      try {
+        const { notifyAllAdmins, getCarrierProfileInfo } = await import('@/lib/notifications');
+        
+        const carrierProfile = await getCarrierProfileInfo(userId);
+        const carrierName = carrierProfile?.legalName || carrierProfile?.companyName || 'Unknown Carrier';
+        
+        // Create message preview (first 100 chars)
+        const messagePreview = message.trim().length > 100 
+          ? message.trim().substring(0, 100) + '...' 
+          : message.trim();
+        
+        await notifyAllAdmins(
+          'bid_message',
+          '📨 New Bid Message',
+          `${carrierName} sent a message about Bid #${bidNumber}: ${messagePreview}`,
+          {
+            bid_number: bidNumber,
+            carrier_user_id: userId,
+            carrier_name: carrierName,
+            message_id: result[0]?.id
+          }
+        );
+      } catch (notificationError) {
+        console.error('Failed to create admin notification for bid message:', notificationError);
+        // Don't throw - message sending should still succeed
+      }
+    }
 
     return NextResponse.json({
       ok: true,
