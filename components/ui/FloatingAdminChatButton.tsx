@@ -32,12 +32,26 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
 
-const fetcher = (url: string) => fetch(url).then(r => r.json());
+const fetcher = async (url: string) => {
+  const response = await fetch(url);
+  const data = await response.json();
+  // Handle API response structure: { ok: true, data: [...] } or { error: "..." }
+  if (data.ok && data.data) {
+    return data.data;
+  }
+  if (data.error) {
+    console.error(`[FloatingAdminChat] API error for ${url}:`, data.error);
+    return [];
+  }
+  // Fallback: return data directly if it's already an array or object
+  return data.data || data || [];
+};
 
 interface Conversation {
   conversation_id: string;
   carrier_user_id: string;
   admin_user_id: string;
+  other_user_id?: string;
   last_message_at: string;
   last_message_timestamp?: string;
   created_at: string;
@@ -45,6 +59,7 @@ interface Conversation {
   last_message: string;
   last_message_sender_type: 'admin' | 'carrier';
   unread_count: number;
+  conversation_with_type?: 'carrier' | 'admin';
 }
 
 interface ConversationMessage {
@@ -110,7 +125,10 @@ export default function FloatingAdminChatButton() {
     { refreshInterval: 5000 } // Refresh conversations every 5 seconds
   );
 
-  const conversations: Conversation[] = conversationsData?.data || [];
+  // Fetcher already unwraps the data, so use directly
+  const conversations: Conversation[] = Array.isArray(conversationsData) 
+    ? conversationsData 
+    : (conversationsData?.data || []);
 
   // Fetch messages for selected conversation
   const { data: messagesData, mutate: mutateMessages } = useSWR(
@@ -119,7 +137,10 @@ export default function FloatingAdminChatButton() {
     { refreshInterval: 2000 } // Refresh messages every 2 seconds
   );
 
-  const messages: ConversationMessage[] = messagesData?.data || [];
+  // Fetcher already unwraps the data, so use directly
+  const messages: ConversationMessage[] = Array.isArray(messagesData) 
+    ? messagesData 
+    : (messagesData?.data || []);
 
   // Get unique carrier user IDs from conversations
   const carrierUserIds = useMemo(() => {
@@ -165,6 +186,31 @@ export default function FloatingAdminChatButton() {
       );
     });
   }, [conversations, searchTerm, getDisplayName]);
+
+  // Debug logging
+  useEffect(() => {
+    if (conversationsData !== undefined) {
+      console.log('[FloatingAdminChat] Conversations data:', {
+        raw: conversationsData,
+        processed: conversations,
+        count: conversations.length,
+        filteredCount: filteredConversations.length,
+        sample: conversations[0],
+        isArray: Array.isArray(conversationsData),
+        hasData: conversationsData?.data !== undefined
+      });
+    }
+    if (messagesData !== undefined && selectedConversationId) {
+      console.log('[FloatingAdminChat] Messages data:', {
+        conversationId: selectedConversationId,
+        raw: messagesData,
+        processed: messages,
+        count: messages.length,
+        isArray: Array.isArray(messagesData),
+        hasData: messagesData?.data !== undefined
+      });
+    }
+  }, [conversationsData, messagesData, conversations, messages, selectedConversationId, filteredConversations]);
 
   // Scroll to bottom function
   const scrollToBottom = useCallback(() => {
@@ -512,6 +558,8 @@ export default function FloatingAdminChatButton() {
                         <div className="relative">
                           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                           <Input
+                            id="admin-chat-search"
+                            name="admin-chat-search"
                             placeholder="Search conversations..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
@@ -522,10 +570,17 @@ export default function FloatingAdminChatButton() {
                       
                       <ScrollArea className="flex-1">
                         <div className="p-2">
-                          {filteredConversations.length === 0 ? (
+                          {conversations.length === 0 ? (
                             <div className="text-center py-8 text-muted-foreground">
                               <Users className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                              <p>No conversations found</p>
+                              <p>No conversations yet</p>
+                              <p className="text-xs mt-2">Start a conversation to begin chatting</p>
+                            </div>
+                          ) : filteredConversations.length === 0 ? (
+                            <div className="text-center py-8 text-muted-foreground">
+                              <Search className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                              <p>No conversations match your search</p>
+                              <p className="text-xs mt-2">Try a different search term</p>
                             </div>
                           ) : (
                             filteredConversations.map((conv) => {
@@ -804,6 +859,8 @@ export default function FloatingAdminChatButton() {
                               )}
                               <div className="flex gap-2">
                                 <input
+                                  id="admin-chat-file-input"
+                                  name="admin-chat-file-input"
                                   ref={fileInputRef}
                                   type="file"
                                   accept="image/jpeg,image/png,image/jpg,application/pdf"
@@ -820,6 +877,8 @@ export default function FloatingAdminChatButton() {
                                   <Paperclip className="h-4 w-4" />
                                 </Button>
                                 <Input
+                                  id="admin-chat-message-input"
+                                  name="admin-chat-message-input"
                                   ref={inputRef}
                                   value={newMessage}
                                   onChange={(e) => setNewMessage(e.target.value)}

@@ -24,6 +24,7 @@ import {
 import { useAccentColor } from "@/hooks/useAccentColor";
 import { useTheme } from "next-themes";
 import { MapboxMap } from "@/components/ui/MapboxMap";
+import { getButtonTextColor as getTextColor } from "@/lib/utils";
 
 interface Load {
   rr_number: string;
@@ -79,12 +80,9 @@ export default function LoadDetailsDialog({ load }: LoadDetailsDialogProps) {
   const { accentColor } = useAccentColor();
   const { theme } = useTheme();
 
-  // Smart color handling for white accent color
+  // Smart color handling for button text based on background color
   const getButtonTextColor = () => {
-    if (accentColor === 'hsl(0, 0%, 100%)') {
-      return '#000000';
-    }
-    return '#ffffff';
+    return getTextColor(accentColor, theme);
   };
 
   const formatPrice = (amount?: number) => {

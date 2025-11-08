@@ -3,7 +3,7 @@
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { useAccentColor } from "@/hooks/useAccentColor";
-import { cn } from "@/lib/utils";
+import { cn, getButtonTextColor as getTextColor } from "@/lib/utils";
 import { Calendar, Clock, Star, User } from "lucide-react";
 import { useTheme } from "next-themes";
 import LoadDetailsDialog from "./LoadDetailsDialog";
@@ -74,12 +74,9 @@ export default function LoadCard({
   const { accentColor } = useAccentColor();
   const { theme } = useTheme();
   
-  // Smart color handling for white accent color
+  // Smart color handling for button text based on background color
   const getButtonTextColor = () => {
-    if (accentColor === 'hsl(0, 0%, 100%)') {
-      return '#000000';
-    }
-    return '#ffffff';
+    return getTextColor(accentColor, theme);
   };
 
   const formatPrice = (amount?: number) => {

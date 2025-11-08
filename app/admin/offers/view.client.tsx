@@ -27,6 +27,7 @@ import {
 import { toast } from "sonner";
 import { useAccentColor } from "@/hooks/useAccentColor";
 import { useTheme } from "next-themes";
+import { getButtonTextColor as getTextColor } from "@/lib/utils";
 
 interface Offer {
   id: number;
@@ -64,10 +65,7 @@ export default function AdminOffersClient() {
   const { theme } = useTheme();
 
   const getButtonTextColor = () => {
-    if (accentColor === 'hsl(0, 0%, 100%)') {
-      return '#000000';
-    }
-    return '#ffffff';
+    return getTextColor(accentColor, theme);
   };
 
   useEffect(() => {

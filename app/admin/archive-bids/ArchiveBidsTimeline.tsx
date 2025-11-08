@@ -9,6 +9,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Glass } from "@/components/ui/glass";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useAccentColor } from "@/hooks/useAccentColor";
+import { useTheme } from "next-themes";
+import { getButtonTextColor as getTextColor } from "@/lib/utils";
 import {
     Archive,
     Calendar,
@@ -63,6 +66,9 @@ interface DailyActivity {
 }
 
 export function ArchiveBidsTimeline() {
+  const { accentColor } = useAccentColor();
+  const { theme } = useTheme();
+  
   const [bidNumber, setBidNumber] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -80,6 +86,11 @@ export function ArchiveBidsTimeline() {
   const [showBidHistory, setShowBidHistory] = useState(false);
   const [selectedBid, setSelectedBid] = useState<ArchiveBid | null>(null);
   const [showBidDetails, setShowBidDetails] = useState(false);
+  
+  // Smart color handling for button text based on background color
+  const getButtonTextColor = () => {
+    return getTextColor(accentColor, theme);
+  };
 
   // Build query parameters
   const queryParams = new URLSearchParams();
@@ -336,7 +347,11 @@ export function ArchiveBidsTimeline() {
             <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
-          <Button onClick={handleEndOfDayArchive} variant="default">
+          <Button 
+            onClick={handleEndOfDayArchive} 
+            variant="default"
+            style={{ backgroundColor: accentColor, color: getButtonTextColor() }}
+          >
             <Archive className="w-4 h-4 mr-2" />
             Archive End of Day
           </Button>
@@ -528,6 +543,7 @@ export function ArchiveBidsTimeline() {
                     bid={bid}
                     onViewDetails={handleViewDetails}
                     onViewHistory={handleViewHistory}
+                    accentColor={accentColor}
                   />
                 ))}
               </div>
@@ -544,6 +560,7 @@ export function ArchiveBidsTimeline() {
               bid={bid}
               onViewDetails={handleViewDetails}
               onViewHistory={handleViewHistory}
+              accentColor={accentColor}
             />
           ))}
         </div>
@@ -720,6 +737,7 @@ export function ArchiveBidsTimeline() {
                     handleCloseDetails();
                     handleViewHistory(selectedBid);
                   }}
+                  style={{ backgroundColor: accentColor, color: getButtonTextColor() }}
                 >
                   View Bid History
                 </Button>
@@ -778,6 +796,7 @@ export function ArchiveBidsTimeline() {
                 variant={autoArchivingEnabled ? "default" : "outline"}
                 size="sm"
                 onClick={handleToggleAutoArchiving}
+                style={autoArchivingEnabled ? { backgroundColor: accentColor, color: getButtonTextColor() } : undefined}
               >
                 {autoArchivingEnabled ? "ON" : "OFF"}
               </Button>
@@ -805,6 +824,7 @@ export function ArchiveBidsTimeline() {
                 <Button
                   onClick={handleArchiveForDate}
                   disabled={!selectedDate}
+                  style={{ backgroundColor: accentColor, color: getButtonTextColor() }}
                 >
                   <Archive className="w-4 h-4 mr-2" />
                   Archive Bids

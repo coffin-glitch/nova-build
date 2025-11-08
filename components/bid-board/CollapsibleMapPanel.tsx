@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Map, X, Zap, Target, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { cn, getButtonTextColor as getTextColor } from "@/lib/utils";
 import { useAccentColor } from "@/hooks/useAccentColor";
 import { useTheme } from "next-themes";
 
@@ -39,10 +39,7 @@ export default function CollapsibleMapPanel({ className }: CollapsibleMapPanelPr
 
   // Smart color handling for solid background buttons (like close map button)
   const getButtonTextColor = () => {
-    if (accentColor === 'hsl(0, 0%, 100%)') {
-      return '#000000'; // Black text on white background
-    }
-    return '#ffffff'; // White text on colored background
+    return getTextColor(accentColor, theme);
   };
 
   // Smart color handling for logo icon (always black background with white icon, like floating button)

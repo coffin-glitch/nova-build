@@ -12,16 +12,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useAccentColor } from "@/hooks/useAccentColor";
+import { useTheme } from "next-themes";
+import { getButtonTextColor as getTextColor } from "@/lib/utils";
 import { TelegramBid } from "@/lib/auctions";
+import { usStatesSVGPaths } from "@/lib/us-states-svg-paths";
+import { usStatesTextPositions } from "@/lib/us-states-text-positions";
 import { formatDistance, formatMoney, formatPickupDateTime, formatStopCount, formatStops, formatStopsDetailed } from "@/lib/format";
 import {
   Activity,
   Archive,
-  Award,
-  BarChart3,
   ArrowDownRight,
   ArrowUpRight,
-  Info,
+  Award,
+  BarChart3,
   Building2,
   Calendar,
   CheckCircle,
@@ -32,6 +35,7 @@ import {
   FileText,
   Filter,
   Gavel,
+  Info,
   LayoutGrid,
   MapPin,
   Navigation,
@@ -48,7 +52,7 @@ import {
   XCircle,
   Zap
 } from "lucide-react";
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
 
@@ -82,6 +86,7 @@ function BidAdjudicationConsole({ bid, accentColor, onClose, onAwarded }: {
   const [awarding, setAwarding] = useState(false);
   const [selectedWinner, setSelectedWinner] = useState<string | null>(null);
   const [adminNotes, setAdminNotes] = useState("");
+  const [marginCents, setMarginCents] = useState<string>("");
   const [currentPage, setCurrentPage] = useState(1);
   const [bidsPerPage] = useState(5); // Show 5 bids per page
   const [noContestConfirmed, setNoContestConfirmed] = useState(false);
@@ -114,6 +119,13 @@ function BidAdjudicationConsole({ bid, accentColor, onClose, onAwarded }: {
     }
   }, [bidData]);
 
+  // Reset margin when bid changes or dialog closes
+  React.useEffect(() => {
+    if (!bid) {
+      setMarginCents("");
+    }
+  }, [bid]);
+
   const handleAwardBid = async () => {
     if (!selectedWinner || !bid) return;
 
@@ -124,7 +136,8 @@ function BidAdjudicationConsole({ bid, accentColor, onClose, onAwarded }: {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           winnerUserId: selectedWinner,
-          adminNotes: adminNotes.trim() || null
+          adminNotes: adminNotes.trim() || null,
+          marginCents: marginCents ? Math.round(parseFloat(marginCents) * 100) : null
         })
       });
 
@@ -157,6 +170,7 @@ function BidAdjudicationConsole({ bid, accentColor, onClose, onAwarded }: {
         
         // Refresh the bid data to show the award summary
         mutateBidData();
+        setMarginCents(""); // Reset margin input
         onAwarded();
         // Don't close immediately - let user see the award summary
       } else {
@@ -486,6 +500,61 @@ function BidAdjudicationConsole({ bid, accentColor, onClose, onAwarded }: {
             </Card>
           )}
 
+          {/* Margin Input */}
+          {!bidDetails?.award && selectedWinner && (
+            <Card className="bg-gradient-to-br from-emerald-800/40 to-green-900/40 border-emerald-600/30 backdrop-blur-sm hover:border-emerald-500/50 transition-all duration-300">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <div className="p-1.5 bg-gradient-to-br from-emerald-500/20 to-green-600/20 rounded-lg border border-emerald-500/30">
+                    <DollarSign className="w-4 h-4 text-emerald-300" />
+                  </div>
+                  <span className="text-white">Profit Margin</span>
+                  <Badge variant="outline" className="border-emerald-500/30 text-emerald-300 text-xs">Optional</Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="flex items-center gap-3">
+                  <div className="relative flex-1">
+                    <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-emerald-300" />
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="0.00"
+                      value={marginCents}
+                      onChange={(e) => setMarginCents(e.target.value)}
+                      className="pl-9 bg-slate-800/50 border-slate-600/50 text-white placeholder:text-slate-400 focus:border-emerald-500/50 focus:ring-emerald-500/20 transition-all duration-300"
+                    />
+                  </div>
+                  <span className="text-sm text-slate-300 whitespace-nowrap">USD</span>
+                </div>
+                <p className="text-xs text-slate-400">
+                  Enter the profit margin you added when submitting this bid to the actual auction. This helps track profitability.
+                </p>
+                {marginCents && !isNaN(parseFloat(marginCents)) && bidDetails?.bids?.find((b: any) => b.supabase_user_id === selectedWinner) && (
+                  <div className="mt-2 p-2 bg-emerald-500/10 border border-emerald-500/20 rounded-md">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-emerald-300">Carrier Bid:</span>
+                      <span className="text-white font-medium">
+                        ${((bidDetails.bids.find((b: any) => b.supabase_user_id === selectedWinner)?.amount_cents || 0) / 100).toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm mt-1">
+                      <span className="text-emerald-300">Your Margin:</span>
+                      <span className="text-white font-medium">${parseFloat(marginCents).toFixed(2)}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm mt-1 pt-1 border-t border-emerald-500/20">
+                      <span className="text-emerald-200 font-semibold">Submitted Amount:</span>
+                      <span className="text-emerald-100 font-bold">
+                        ${((bidDetails.bids.find((b: any) => b.supabase_user_id === selectedWinner)?.amount_cents || 0) / 100 + parseFloat(marginCents)).toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           {/* Award Summary */}
           {bidDetails?.award && (
             <Card className={`bg-gradient-to-br ${bidDetails.award.supabase_winner_user_id ? 'from-emerald-500/10 to-green-500/10 border-emerald-500/30' : 'from-red-500/10 to-orange-500/10 border-red-500/30'} backdrop-blur-sm`}>
@@ -617,6 +686,588 @@ function BidAdjudicationConsole({ bid, accentColor, onClose, onAwarded }: {
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// Backhaul Analytics Console Component
+function BackhaulAnalyticsConsole({
+  state,
+  stateData,
+  accentColor,
+  onClose,
+  onViewBid,
+  onSelectBackhaul
+}: {
+  state: string;
+  stateData: any;
+  accentColor: string;
+  onClose: () => void;
+  onViewBid?: (bidNumber: string) => void;
+  onSelectBackhaul?: (opp: any) => void;
+}) {
+  if (!stateData || !stateData.backhaulOpportunities) return null;
+
+  const backhaulOpps = stateData.backhaulOpportunities || [];
+  const totalBackhaulBids = backhaulOpps.reduce((sum: number, opp: any) => sum + opp.bidCount, 0);
+  const avgMatchScore = backhaulOpps.length > 0 
+    ? backhaulOpps.reduce((sum: number, opp: any) => sum + opp.matchScore, 0) / backhaulOpps.length 
+    : 0;
+  
+  // Calculate route performance metrics
+  const routePerformance = backhaulOpps
+    .map((opp: any) => ({
+      state: opp.state,
+      bidCount: opp.bidCount,
+      matchScore: opp.matchScore,
+      avgFrequency: opp.laneFrequencies && opp.laneFrequencies.length > 0
+        ? opp.laneFrequencies.reduce((sum: number, lane: any) => sum + lane.expectedFrequencyPerWeek, 0) / opp.laneFrequencies.length
+        : 0,
+      totalLanes: opp.laneFrequencies?.length || 0,
+    }))
+    .sort((a: any, b: any) => b.bidCount - a.bidCount);
+
+  // Get top lanes across all opportunities
+  const allLanes = backhaulOpps
+    .flatMap((opp: any) => 
+      (opp.laneFrequencies || []).map((lane: any) => ({
+        ...lane,
+        originState: opp.state,
+      }))
+    )
+    .sort((a: any, b: any) => b.count - a.count)
+    .slice(0, 10);
+
+  const stateAbbreviations: Record<string, string> = {
+    'AL': 'Alabama', 'AK': 'Alaska', 'AZ': 'Arizona', 'AR': 'Arkansas', 'CA': 'California',
+    'CO': 'Colorado', 'CT': 'Connecticut', 'DE': 'Delaware', 'FL': 'Florida', 'GA': 'Georgia',
+    'HI': 'Hawaii', 'ID': 'Idaho', 'IL': 'Illinois', 'IN': 'Indiana', 'IA': 'Iowa',
+    'KS': 'Kansas', 'KY': 'Kentucky', 'LA': 'Louisiana', 'ME': 'Maine', 'MD': 'Maryland',
+    'MA': 'Massachusetts', 'MI': 'Michigan', 'MN': 'Minnesota', 'MS': 'Mississippi', 'MO': 'Missouri',
+    'MT': 'Montana', 'NE': 'Nebraska', 'NV': 'Nevada', 'NH': 'New Hampshire', 'NJ': 'New Jersey',
+    'NM': 'New Mexico', 'NY': 'New York', 'NC': 'North Carolina', 'ND': 'North Dakota', 'OH': 'Ohio',
+    'OK': 'Oklahoma', 'OR': 'Oregon', 'PA': 'Pennsylvania', 'RI': 'Rhode Island', 'SC': 'South Carolina',
+    'SD': 'South Dakota', 'TN': 'Tennessee', 'TX': 'Texas', 'UT': 'Utah', 'VT': 'Vermont',
+    'VA': 'Virginia', 'WA': 'Washington', 'WV': 'West Virginia', 'WI': 'Wisconsin', 'WY': 'Wyoming'
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+      <div className="relative w-full max-w-7xl max-h-[95vh] bg-background rounded-lg border shadow-2xl overflow-hidden flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b bg-gradient-to-r from-background to-muted/20">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg" style={{ backgroundColor: `${accentColor}20` }}>
+              <BarChart3 className="w-6 h-6" style={{ color: accentColor }} />
+            </div>
+            <div>
+              <h2 className="text-2xl font-bold">Backhaul Analytics Console</h2>
+              <p className="text-sm text-muted-foreground">
+                {stateAbbreviations[state] || state} → Comprehensive Route Analysis
+              </p>
+            </div>
+          </div>
+          <Button variant="ghost" size="icon" onClick={onClose}>
+            <XCircle className="w-5 h-5" />
+          </Button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-6">
+          <div className="space-y-6">
+            {/* Summary Metrics */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <Glass className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg" style={{ backgroundColor: `${accentColor}20` }}>
+                    <Navigation className="w-5 h-5" style={{ color: accentColor }} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Total Routes</p>
+                    <p className="text-2xl font-bold">{backhaulOpps.length}</p>
+                  </div>
+                </div>
+              </Glass>
+              <Glass className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg" style={{ backgroundColor: `${accentColor}20` }}>
+                    <Truck className="w-5 h-5" style={{ color: accentColor }} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Total Backhaul Bids</p>
+                    <p className="text-2xl font-bold">{totalBackhaulBids.toLocaleString()}</p>
+                  </div>
+                </div>
+              </Glass>
+              <Glass className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg" style={{ backgroundColor: `${accentColor}20` }}>
+                    <Target className="w-5 h-5" style={{ color: accentColor }} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Avg Match Score</p>
+                    <p className="text-2xl font-bold" style={{ color: accentColor }}>
+                      {avgMatchScore.toFixed(1)}%
+                    </p>
+                  </div>
+                </div>
+              </Glass>
+              <Glass className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg" style={{ backgroundColor: `${accentColor}20` }}>
+                    <TrendingUp className="w-5 h-5" style={{ color: accentColor }} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Unique Lanes</p>
+                    <p className="text-2xl font-bold">
+                      {backhaulOpps.reduce((sum: number, opp: any) => sum + (opp.laneFrequencies?.length || 0), 0)}
+                    </p>
+                  </div>
+                </div>
+              </Glass>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Route Performance Chart */}
+              <Glass className="p-6">
+                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                  <BarChart3 className="w-5 h-5" style={{ color: accentColor }} />
+                  Route Performance by Bid Volume
+                </h3>
+                <div className="space-y-3">
+                  {routePerformance.slice(0, 8).map((route: any, idx: number) => {
+                    const maxBids = Math.max(...routePerformance.map((r: any) => r.bidCount));
+                    const percentage = (route.bidCount / maxBids) * 100;
+                    return (
+                      <div key={idx} className="space-y-1">
+                        <div className="flex items-center justify-between text-sm mb-1">
+                          <span className="font-medium">{stateAbbreviations[route.state] || route.state}</span>
+                          <div className="flex items-center gap-3">
+                            <span className="text-muted-foreground">{route.bidCount} bids</span>
+                            <Badge variant="outline" className="text-xs">
+                              {route.matchScore.toFixed(1)}% match
+                            </Badge>
+                          </div>
+                        </div>
+                        <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all"
+                            style={{
+                              width: `${percentage}%`,
+                              backgroundColor: accentColor,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Glass>
+
+              {/* Top Performing Lanes */}
+              <Glass className="p-6">
+                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                  <Star className="w-5 h-5" style={{ color: accentColor }} />
+                  Top Performing Lanes
+                </h3>
+                <div className="space-y-3 max-h-96 overflow-y-auto">
+                  {allLanes.map((lane: any, idx: number) => (
+                    <div key={idx} className="p-3 rounded-lg bg-muted/30 border border-border/50">
+                      <div className="flex items-start justify-between gap-3 mb-2">
+                        <div className="flex-1">
+                          <p className="font-semibold text-sm">{lane.lane}</p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            From {stateAbbreviations[lane.originState] || lane.originState}
+                          </p>
+                        </div>
+                        <Badge variant="outline" className="flex-shrink-0">
+                          {lane.count}x
+                        </Badge>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 mt-2 pt-2 border-t border-border/30">
+                        <div>
+                          <p className="text-xs text-muted-foreground">Per Week</p>
+                          <p className="text-sm font-semibold" style={{ color: accentColor }}>
+                            {lane.expectedFrequencyPerWeek.toFixed(1)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">Per Month</p>
+                          <p className="text-sm font-semibold" style={{ color: accentColor }}>
+                            {lane.expectedFrequencyPerMonth.toFixed(1)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">Span</p>
+                          <p className="text-sm font-semibold">{lane.timeSpanDays}d</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Glass>
+            </div>
+
+            {/* Detailed Route Analysis */}
+            <Glass className="p-6">
+              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <MapPin className="w-5 h-5" style={{ color: accentColor }} />
+                Detailed Route Analysis
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {backhaulOpps.map((opp: any, idx: number) => (
+                  <Card 
+                    key={idx} 
+                    className="hover:shadow-lg transition-all cursor-pointer border-border/50"
+                    onClick={() => {
+                      if (onSelectBackhaul) {
+                        onSelectBackhaul(opp);
+                      }
+                    }}
+                  >
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between mb-3">
+                        <div>
+                          <h4 className="font-semibold text-lg">
+                            {stateAbbreviations[opp.state] || opp.state}
+                          </h4>
+                          <p className="text-xs text-muted-foreground">{opp.bidCount} matching bids</p>
+                        </div>
+                        <Badge variant="outline" style={{ borderColor: accentColor, color: accentColor }}>
+                          {Math.round(opp.matchScore)}%
+                        </Badge>
+                      </div>
+                      
+                      <div className="space-y-2 mb-3">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Lowest Bid:</span>
+                          <span className="font-semibold" style={{ color: accentColor }}>
+                            {opp.lowestAwardedBid !== null && opp.lowestAwardedBid !== undefined
+                              ? formatMoney(opp.lowestAwardedBid)
+                              : 'No Bids Yet'}
+                          </span>
+                        </div>
+                        {opp.laneFrequencies && opp.laneFrequencies.length > 0 && (
+                          <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground">Unique Lanes:</span>
+                            <span className="font-semibold">{opp.laneFrequencies.length}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {opp.laneFrequencies && opp.laneFrequencies.length > 0 && (
+                        <div className="pt-3 border-t border-border/30">
+                          <p className="text-xs font-semibold text-muted-foreground mb-2">Top Lanes:</p>
+                          <div className="space-y-1">
+                            {opp.laneFrequencies.slice(0, 2).map((lane: any, laneIdx: number) => (
+                              <div key={laneIdx} className="text-xs">
+                                <p className="font-medium truncate">{lane.lane}</p>
+                                <p className="text-muted-foreground">
+                                  {lane.count}x • ~{lane.expectedFrequencyPerWeek.toFixed(1)}/week
+                                </p>
+                              </div>
+                            ))}
+                            {opp.laneFrequencies.length > 2 && (
+                              <p className="text-xs text-muted-foreground">
+                                +{opp.laneFrequencies.length - 2} more
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </Glass>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// US States Map Grid Component with State Shapes
+function USStatesMapGrid({
+  stateStats,
+  selectedState,
+  onStateClick,
+  getStateColor,
+  accentColor,
+  stateAbbreviations
+}: {
+  stateStats: Array<{ state: string; bidCount: number }>;
+  selectedState: string | null;
+  onStateClick: (state: string) => void;
+  getStateColor: (bidCount: number) => string;
+  accentColor: string;
+  stateAbbreviations: Record<string, string>;
+}) {
+  const stateMap = new Map(stateStats.map(s => [s.state, s.bidCount]));
+  const maxBidCount = Math.max(...Array.from(stateMap.values()), 1);
+
+  // Get color value from class name
+  const getColorValue = (bidCount: number): string => {
+    if (bidCount === 0) return '#e5e7eb';
+    const intensity = Math.min(100, Math.round((bidCount / maxBidCount) * 100));
+    if (intensity >= 80) return '#dc2626';
+    if (intensity >= 60) return '#f97316';
+    if (intensity >= 40) return '#eab308';
+    if (intensity >= 20) return '#22c55e';
+    return '#60a5fa';
+  };
+
+  // Use imported state SVG paths and text positions
+  const statePaths = usStatesSVGPaths;
+  const textPositions = usStatesTextPositions;
+  
+  // Refs for paths to calculate centers dynamically
+  const pathRefs = React.useRef<Record<string, SVGPathElement | null>>({});
+  const stateCenterRefs = React.useRef<Record<string, { x: number; y: number }>>({});
+
+  // Small states that need connecting lines (especially Northeast)
+  const smallStates = new Set(['RI', 'DE', 'CT', 'NH', 'VT', 'MA', 'ME', 'NJ', 'MD', 'DC']);
+  const isSmallState = smallStates.has(selectedState || '');
+
+  // US Map viewBox from react-usa-map: "0 0 959 593"
+  const mapViewBox = { x: 0, y: 0, width: 959, height: 593 };
+  
+  // States that need positioning in lower portion
+  const lowerPositionStates = new Set(['CA', 'LA', 'FL', 'MN', 'MI']);
+  
+  // Fine-tuning adjustments for specific states (offsets from center)
+  // Note: Offsets are in SVG viewBox units (viewBox is 959x593)
+  // Approximate conversion: 1cm ≈ 10 SVG units for this viewBox scale
+  const fineTuneAdjustments: Record<string, { xOffset?: number; yOffset?: number; yPercent?: number }> = {
+    'VA': { yPercent: 0.55, xOffset: 20 }, // Slightly below center, 2cm right
+    'KY': { yPercent: 0.58, xOffset: 10 }, // Slightly below center, 1cm right
+    'ID': { yPercent: 0.45, yOffset: 40 }, // Slightly above center, 4cm down
+    'WV': { yPercent: 0.52, xOffset: -10, yOffset: 10 }, // Slightly below center, 1cm left, 1cm down
+    'MI': { xOffset: 25, yOffset: 20 }, // 3cm right, 3cm down
+    'FL': { xOffset: 40, yOffset: -25 }, // 5cm right, 3cm up (was 2cm, now 1cm more = 3cm total)
+    'TX': { xOffset: 20 }, // 2cm right
+    'MN': { xOffset: -15 }, // 1.5cm left
+    'OK': { xOffset: 25 }, // 2.5cm right
+    'LA': { xOffset: -20, yOffset: -10 }, // 2cm left, 1cm up
+  };
+  
+  // Calculate and update text positions after paths are rendered
+  React.useEffect(() => {
+    Object.entries(pathRefs.current).forEach(([abbr, pathEl]) => {
+      if (pathEl) {
+        try {
+          const bbox = pathEl.getBBox();
+          let centerX = bbox.x + bbox.width / 2;
+          
+          // Store center position for connecting lines (always use center for line)
+          stateCenterRefs.current[abbr] = { x: centerX, y: bbox.y + bbox.height / 2 };
+          
+          // Apply X offset if specified
+          const adjustment = fineTuneAdjustments[abbr];
+          if (adjustment?.xOffset) {
+            centerX += adjustment.xOffset;
+          }
+          
+          // Calculate Y position based on state type
+          let textY: number;
+          if (lowerPositionStates.has(abbr)) {
+            // Position in lower 65% of the state (lower portion)
+            textY = bbox.y + (bbox.height * 0.65);
+            // Apply Y offset if specified (for fine-tuning)
+            if (adjustment?.yOffset) {
+              textY += adjustment.yOffset;
+            }
+          } else if (adjustment?.yPercent) {
+            // Use custom percentage for fine-tuned states
+            textY = bbox.y + (bbox.height * adjustment.yPercent);
+            // Apply additional Y offset if specified
+            if (adjustment.yOffset) {
+              textY += adjustment.yOffset;
+            }
+          } else if (adjustment?.yOffset) {
+            // Use offset from center
+            textY = bbox.y + bbox.height / 2 + adjustment.yOffset;
+          } else {
+            // Center position for other states
+            textY = bbox.y + bbox.height / 2;
+          }
+          
+          // Find and update text elements for this state
+          const textElements = pathEl.parentElement?.querySelectorAll(`text[data-state="${abbr}"]`);
+          textElements?.forEach((textEl, idx) => {
+            if (textEl instanceof SVGTextElement) {
+              textEl.setAttribute('x', centerX.toString());
+              // First text (abbr) at textY - 8, second (count) at textY + 8
+              textEl.setAttribute('y', (textY - 8 + (idx * 16)).toString());
+            }
+          });
+        } catch (e) {
+          // Fallback to calculated position if getBBox fails
+        }
+      }
+    });
+  }, [stateStats, selectedState]);
+
+  // Get center position for selected small state
+  // Use calculated center if available, otherwise fallback to text position
+  const selectedStateCenter = selectedState && isSmallState 
+    ? (stateCenterRefs.current[selectedState] || textPositions[selectedState] || null)
+    : null;
+
+  return (
+    <div 
+      className="relative w-full"
+      style={{ 
+        minHeight: '600px',
+        aspectRatio: '959/593'
+      }}
+    >
+      <svg
+        viewBox={`0 0 ${mapViewBox.width} ${mapViewBox.height}`}
+        className="w-full h-full"
+        preserveAspectRatio="xMidYMid meet"
+      >
+        <defs>
+          <style>{`
+            .state-button-group {
+              transition: all 0.15s ease;
+              cursor: pointer;
+            }
+            .state-button-group:active {
+              filter: none !important;
+              transform: translateY(6px) !important;
+            }
+            .connecting-line {
+              stroke-dasharray: 5,5;
+              animation: dash 1s linear infinite;
+            }
+            @keyframes dash {
+              to {
+                stroke-dashoffset: -10;
+              }
+            }
+          `}</style>
+          {/* Gradient for connecting line */}
+          <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor={accentColor} stopOpacity="0.8" />
+            <stop offset="100%" stopColor={accentColor} stopOpacity="0.3" />
+          </linearGradient>
+          {/* Arrow marker */}
+          <marker
+            id="arrowhead"
+            markerWidth="10"
+            markerHeight="10"
+            refX="9"
+            refY="3"
+            orient="auto"
+          >
+            <polygon
+              points="0 0, 10 3, 0 6"
+              fill={accentColor}
+            />
+          </marker>
+        </defs>
+
+        {Object.entries(statePaths).map(([abbr, stateData]: [string, any]) => {
+          const bidCount = stateMap.get(abbr) || 0;
+          const isSelected = selectedState === abbr;
+          const color = getColorValue(bidCount);
+          const path = stateData.path;
+          
+          if (!path) return null;
+
+          // Get text position from extracted coordinates (will be updated by ref if available)
+          const textPos = textPositions[abbr] || { x: 500, y: 300 };
+          
+          return (
+            <g 
+              key={abbr} 
+              className="state-button-group"
+              style={{
+                filter: `drop-shadow(0 6px 0 rgba(0, 0, 0, 0.2)) ${isSelected ? `drop-shadow(0 0 8px ${accentColor})` : ''}`,
+                transition: 'all 0.15s ease',
+                cursor: 'pointer'
+              }}
+              onClick={() => onStateClick(abbr)}
+              onMouseDown={(e) => {
+                const target = e.currentTarget;
+                target.style.filter = isSelected ? `drop-shadow(0 0 8px ${accentColor})` : 'none';
+                target.style.transform = 'translateY(6px)';
+              }}
+              onMouseUp={(e) => {
+                const target = e.currentTarget;
+                target.style.filter = `drop-shadow(0 6px 0 rgba(0, 0, 0, 0.2)) ${isSelected ? `drop-shadow(0 0 8px ${accentColor})` : ''}`;
+                target.style.transform = 'translateY(0)';
+              }}
+              onMouseLeave={(e) => {
+                const target = e.currentTarget;
+                target.style.filter = `drop-shadow(0 6px 0 rgba(0, 0, 0, 0.2)) ${isSelected ? `drop-shadow(0 0 8px ${accentColor})` : ''}`;
+                target.style.transform = 'translateY(0)';
+              }}
+            >
+              <path
+                ref={(el) => {
+                  pathRefs.current[abbr] = el;
+                }}
+                d={path}
+                fill={color}
+                stroke={isSelected ? accentColor : '#ffffff'}
+                strokeWidth={isSelected ? 2.5 : 1.5}
+                style={{ pointerEvents: 'auto', cursor: 'pointer' }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onStateClick(abbr);
+                }}
+              />
+              <text
+                data-state={abbr}
+                x={textPos.x}
+                y={textPos.y - 8}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                className="pointer-events-none select-none"
+                fill={bidCount > 0 ? '#ffffff' : '#6b7280'}
+                fontSize="12"
+                fontWeight="bold"
+                style={{ textShadow: '0 1px 2px rgba(0,0,0,0.3)' }}
+              >
+                {abbr}
+              </text>
+              {bidCount > 0 && (
+                <text
+                  data-state={abbr}
+                  x={textPos.x}
+                  y={textPos.y + 8}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  className="pointer-events-none select-none"
+                  fill="#ffffff"
+                  fontSize="10"
+                  opacity={0.95}
+                  style={{ textShadow: '0 1px 2px rgba(0,0,0,0.3)' }}
+                >
+                  {bidCount}
+                </text>
+              )}
+            </g>
+          );
+        })}
+
+        {/* Connecting line for small selected states - rendered after states so it appears on top */}
+        {selectedStateCenter && isSmallState && (
+          <line
+            x1={selectedStateCenter.x}
+            y1={selectedStateCenter.y}
+            x2={mapViewBox.width - 20}
+            y2={selectedStateCenter.y}
+            stroke="url(#lineGradient)"
+            strokeWidth="2"
+            className="connecting-line"
+            markerEnd="url(#arrowhead)"
+            style={{ pointerEvents: 'none' }}
+          />
+        )}
+      </svg>
+    </div>
   );
 }
 
@@ -832,19 +1483,75 @@ function TagDetailsView({ data, accentColor }: { data: any; accentColor: string 
 }
 
 // Advanced Analytics Component
-function AdvancedAnalytics({ accentColor }: { accentColor: string }) {
+function AdvancedAnalytics({ 
+  accentColor,
+  onViewBid 
+}: { 
+  accentColor: string;
+  onViewBid?: (bidNumber: string) => void;
+}) {
   const [timeframe, setTimeframe] = useState("30");
   const [analyticsType, setAnalyticsType] = useState("overview");
   const [hourlyTimeframe, setHourlyTimeframe] = useState("today");
   const [tagFilter, setTagFilter] = useState<string>("all");
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [showTagDetails, setShowTagDetails] = useState(false);
+  // Heat map date range state
+  const [heatMapTimeframe, setHeatMapTimeframe] = useState("all"); // Default to "all" to show all bids
+  const [customStartDate, setCustomStartDate] = useState<string>("");
+  const [customEndDate, setCustomEndDate] = useState<string>("");
+  const [useCustomDateRange, setUseCustomDateRange] = useState(false);
+  const [selectedState, setSelectedState] = useState<string | null>(null);
+  const [selectedBackhaul, setSelectedBackhaul] = useState<{
+    state: string;
+    bidCount: number;
+    matchScore: number;
+    lowestAwardedBid?: number | null;
+    bids: Array<{
+      bidNumber: string;
+      distanceMiles: number | null;
+      receivedAt: string;
+      tag: string | null;
+      originCity: string | null;
+      destinationCity: string | null;
+      originState?: string;
+      destinationState?: string;
+      lowestAwardedBidForRoute?: number | null;
+    }>;
+    laneFrequencies?: Array<{
+      lane: string;
+      count: number;
+      firstSeen: string;
+      lastSeen: string;
+      timeSpanDays: number;
+      expectedFrequencyPerDay: number;
+      expectedFrequencyPerWeek: number;
+      expectedFrequencyPerMonth: number;
+    }>;
+  } | null>(null);
+  const [showBackhaulDetails, setShowBackhaulDetails] = useState(false);
+  const [showBackhaulAnalytics, setShowBackhaulAnalytics] = useState(false);
+  const [auctionPage, setAuctionPage] = useState(1);
+
+  // Build heat map API URL with date range support
+  const heatMapUrl = useCustomDateRange && customStartDate && customEndDate
+    ? `/api/admin/bid-analytics/heat-map?timeframe=${heatMapTimeframe}&startDate=${customStartDate}&endDate=${customEndDate}`
+    : `/api/admin/bid-analytics/heat-map?timeframe=${heatMapTimeframe}`;
 
   const { data: analyticsData, mutate: mutateAnalytics, isLoading: analyticsLoading } = useSWR(
-    `/api/admin/bid-analytics?timeframe=${timeframe}&action=${analyticsType}&hourlyTimeframe=${hourlyTimeframe}`,
+    analyticsType === "heat_map" 
+      ? heatMapUrl
+      : `/api/admin/bid-analytics?timeframe=${timeframe}&action=${analyticsType}&hourlyTimeframe=${hourlyTimeframe}`,
     fetcher,
-    { refreshInterval: 60000 }
+    { refreshInterval: analyticsType === "heat_map" ? 0 : 60000 } // Don't auto-refresh heat map
   );
+
+  // Reset auction page when switching away from auction insights
+  useEffect(() => {
+    if (analyticsType !== "auction_insights") {
+      setAuctionPage(1);
+    }
+  }, [analyticsType]);
 
   // Fetch detailed tag analytics when a tag is selected
   const { data: tagDetailsData, isLoading: tagDetailsLoading } = useSWR(
@@ -1269,89 +1976,948 @@ function AdvancedAnalytics({ accentColor }: { accentColor: string }) {
   const renderAuctionInsights = () => {
     const auctionInsights = data.auctionInsights || {};
     const topCompetitiveAuctions = data.topCompetitiveAuctions || [];
+    const peakBiddingHours = data.peakBiddingHours || [];
+    const topRoutesByCompetition = data.topRoutesByCompetition || [];
+    const auctionsPerPage = 10;
+
+    const healthScore = auctionInsights.auction_health_score || 0;
+    const healthColor = healthScore >= 75 ? 'text-emerald-500' : healthScore >= 50 ? 'text-yellow-500' : 'text-red-500';
+    const healthBg = healthScore >= 75 ? 'from-emerald-500/20 to-green-500/20' : healthScore >= 50 ? 'from-yellow-500/20 to-orange-500/20' : 'from-red-500/20 to-pink-500/20';
+
+    // Pagination for top competitive auctions
+    const totalAuctionPages = Math.ceil(topCompetitiveAuctions.length / auctionsPerPage);
+    const paginatedAuctions = topCompetitiveAuctions.slice(
+      (auctionPage - 1) * auctionsPerPage,
+      auctionPage * auctionsPerPage
+    );
+
+    // Format time for peak hours
+    const formatHour = (hour: number) => {
+      const period = hour >= 12 ? 'PM' : 'AM';
+      const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+      return `${displayHour}:00 ${period}`;
+    };
 
     return (
       <div className="space-y-6">
+        {/* Auction Health Score - Prominent Display */}
+        <Glass className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-lg font-semibold mb-1">Auction Health Score</h3>
+              <p className="text-sm text-muted-foreground">Overall auction performance indicator</p>
+            </div>
+            <div className={`text-6xl font-bold ${healthColor}`}>
+              {healthScore}
+            </div>
+          </div>
+          <div className="w-full bg-muted/30 rounded-full h-3 overflow-hidden">
+            <div 
+              className={`h-full bg-gradient-to-r ${healthBg} transition-all duration-1000`}
+              style={{ width: `${Math.min(healthScore, 100)}%` }}
+            />
+          </div>
+          <div className="grid grid-cols-4 gap-4 mt-4 text-xs">
+            <div>
+              <p className="text-muted-foreground">Award Rate</p>
+              <p className="font-semibold">{Number(auctionInsights.award_rate_percentage || 0).toFixed(1)}%</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">Acceptance Rate</p>
+              <p className="font-semibold">{Number(auctionInsights.acceptance_rate_percentage || 0).toFixed(1)}%</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">Competition</p>
+              <p className="font-semibold">{Number(auctionInsights.avg_bids_per_auction || 0).toFixed(1)}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">Engagement</p>
+              <p className="font-semibold">{Number(auctionInsights.avg_bids_per_carrier || 0).toFixed(1)}</p>
+            </div>
+          </div>
+        </Glass>
+
+        {/* Key Metrics Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
+          <Glass className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-500/20 rounded-lg">
                 <Truck className="w-5 h-5 text-blue-500" />
-                <div>
-                  <p className="text-sm text-muted-foreground">No Bid Auctions</p>
-                  <p className="text-2xl font-bold">{auctionInsights.no_bid_auctions || 0}</p>
-                </div>
               </div>
-            </CardContent>
-          </Card>
+              <div className="flex-1">
+                <p className="text-xs text-muted-foreground">No Bid Auctions</p>
+                <p className="text-2xl font-bold">{auctionInsights.no_bid_auctions || 0}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {auctionInsights.total_auctions > 0 
+                    ? ((auctionInsights.no_bid_auctions / auctionInsights.total_auctions) * 100).toFixed(1)
+                    : 0}% of total
+                </p>
+              </div>
+            </div>
+          </Glass>
           
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
+          <Glass className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-green-500/20 rounded-lg">
                 <TrendingUp className="w-5 h-5 text-green-500" />
-                <div>
-                  <p className="text-sm text-muted-foreground">High Competition</p>
-                  <p className="text-2xl font-bold">{auctionInsights.high_competition_auctions || 0}</p>
-                </div>
               </div>
-            </CardContent>
-          </Card>
+              <div className="flex-1">
+                <p className="text-xs text-muted-foreground">High Competition</p>
+                <p className="text-2xl font-bold">{auctionInsights.high_competition_auctions || 0}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {auctionInsights.moderate_competition_auctions || 0} moderate
+                </p>
+              </div>
+            </div>
+          </Glass>
           
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
+          <Glass className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-purple-500/20 rounded-lg">
                 <BarChart3 className="w-5 h-5 text-purple-500" />
-                <div>
-                  <p className="text-sm text-muted-foreground">Avg Bid Spread</p>
-                  <p className="text-2xl font-bold">{formatMoney(auctionInsights.avg_bid_spread || 0)}</p>
-                </div>
               </div>
-            </CardContent>
-          </Card>
+              <div className="flex-1">
+                <p className="text-xs text-muted-foreground">Avg Bid Spread</p>
+                <p className="text-2xl font-bold">{formatMoney(auctionInsights.avg_bid_spread || 0)}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {Number(auctionInsights.avg_price_spread_percentage || 0).toFixed(1)}% spread
+                </p>
+              </div>
+            </div>
+          </Glass>
           
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
+          <Glass className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-orange-500/20 rounded-lg">
                 <Zap className="w-5 h-5 text-orange-500" />
-                <div>
-                  <p className="text-sm text-muted-foreground">Max Bids</p>
-                  <p className="text-2xl font-bold">{auctionInsights.max_bids_per_auction || 0}</p>
-                </div>
               </div>
-            </CardContent>
-          </Card>
+              <div className="flex-1">
+                <p className="text-xs text-muted-foreground">Max Bids</p>
+                <p className="text-2xl font-bold">{auctionInsights.max_bids_per_auction || 0}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {Number(auctionInsights.avg_bids_per_auction || 0).toFixed(1)} avg
+                </p>
+              </div>
+            </div>
+          </Glass>
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Crown className="w-5 h-5" />
-              Most Competitive Auctions
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {topCompetitiveAuctions.slice(0, 10).map((auction: any, index: number) => (
-                <div key={index} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center justify-center w-8 h-8 bg-primary text-primary-foreground rounded-full text-sm font-bold">
-                      {index + 1}
-                    </div>
-                    <div>
-                      <p className="font-semibold">#{auction.bid_number}</p>
-                      <p className="text-sm text-muted-foreground">{auction.tag} • {formatDistance(auction.distance_miles)}</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-semibold">{auction.bid_count} bids</p>
-                    <p className="text-sm text-muted-foreground">{auction.unique_carriers} carriers</p>
-                    <p className="text-xs text-muted-foreground">Spread: {formatMoney(auction.highest_bid_amount - auction.winning_bid_amount)}</p>
+        {/* Bid Timing & Award Metrics */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Bid Timing Patterns */}
+          <Glass className="p-6">
+            <CardHeader className="p-0 mb-4">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Clock className="w-4 h-4" />
+                Bid Timing Patterns
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0 space-y-4">
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <p className="text-xs text-muted-foreground">Avg Time to First Bid</p>
+                  <p className="text-lg font-semibold">
+                    {auctionInsights.avg_minutes_to_first_bid 
+                      ? `${Math.round(auctionInsights.avg_minutes_to_first_bid)} min`
+                      : 'N/A'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Fastest First Bid</p>
+                  <p className="text-lg font-semibold text-green-500">
+                    {auctionInsights.fastest_first_bid_minutes 
+                      ? `${Math.round(auctionInsights.fastest_first_bid_minutes)} min`
+                      : 'N/A'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Avg Time to Award</p>
+                  <p className="text-lg font-semibold">
+                    {auctionInsights.avg_minutes_to_award 
+                      ? `${Math.round(auctionInsights.avg_minutes_to_award)} min`
+                      : 'N/A'}
+                  </p>
+                </div>
+              </div>
+              
+              {peakBiddingHours.length > 0 && (
+                <div>
+                  <p className="text-xs text-muted-foreground mb-2">Peak Bidding Hours</p>
+                  <div className="space-y-2">
+                    {peakBiddingHours.slice(0, 3).map((hour: any, idx: number) => (
+                      <div key={idx} className="flex items-center justify-between">
+                        <span className="text-sm">{formatHour(hour.hour)}</span>
+                        <div className="flex items-center gap-2 flex-1 mx-3">
+                          <div className="flex-1 bg-muted/30 rounded-full h-2 overflow-hidden">
+                            <div 
+                              className="h-full bg-gradient-to-r from-blue-500 to-purple-500"
+                              style={{ 
+                                width: `${(hour.bid_count / peakBiddingHours[0].bid_count) * 100}%` 
+                              }}
+                            />
+                          </div>
+                        </div>
+                        <span className="text-sm font-semibold">{hour.bid_count} bids</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
-              ))}
+              )}
+            </CardContent>
+          </Glass>
+
+          {/* Award & Acceptance Rates */}
+          <Glass className="p-6">
+            <CardHeader className="p-0 mb-4">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Award className="w-4 h-4" />
+                Award & Acceptance
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Awarded</p>
+                  <p className="text-2xl font-bold text-emerald-500">
+                    {auctionInsights.awarded_count || 0}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {Number(auctionInsights.award_rate_percentage || 0).toFixed(1)}% rate
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Accepted</p>
+                  <p className="text-2xl font-bold text-green-500">
+                    {auctionInsights.accepted_count || 0}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {Number(auctionInsights.acceptance_rate_percentage || 0).toFixed(1)}% rate
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">No Contest</p>
+                  <p className="text-2xl font-bold text-red-500">
+                    {auctionInsights.no_contest_count || 0}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Expired w/ Bids</p>
+                  <p className="text-2xl font-bold text-orange-500">
+                    {auctionInsights.expired_with_bids_count || 0}
+                  </p>
+                </div>
+              </div>
+
+              {/* Bid Revisions */}
+              {auctionInsights.auctions_with_revisions > 0 && (
+                <div className="pt-4 border-t border-border/50">
+                  <p className="text-xs text-muted-foreground mb-2">Bid Revisions</p>
+                  <div className="grid grid-cols-3 gap-2 text-sm">
+                    <div>
+                      <p className="font-semibold">{auctionInsights.auctions_with_revisions}</p>
+                      <p className="text-xs text-muted-foreground">Auctions</p>
+                    </div>
+                    <div>
+                      <p className="font-semibold">{auctionInsights.total_revisions}</p>
+                      <p className="text-xs text-muted-foreground">Total Revisions</p>
+                    </div>
+                    <div>
+                      <p className="font-semibold">
+                        {Number(auctionInsights.avg_revisions_per_carrier || 0).toFixed(1)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">Avg per Carrier</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Glass>
+        </div>
+
+        {/* Route Performance */}
+        {topRoutesByCompetition.length > 0 && (
+          <Glass className="p-6">
+            <CardHeader className="p-0 mb-4">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Navigation className="w-4 h-4" />
+                Top Routes by Competition
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="space-y-2">
+                {topRoutesByCompetition.map((route: any, idx: number) => (
+                  <div key={idx} className="flex items-center justify-between p-3 bg-muted/20 rounded-lg hover:bg-muted/30 transition-colors">
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center justify-center w-8 h-8 bg-primary/20 text-primary rounded-full text-sm font-bold">
+                        {idx + 1}
+                      </div>
+                      <div>
+                        <p className="font-semibold">{route.tag || 'Unknown'}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {route.auction_count} auctions
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-semibold">{Number(route.avg_bids_per_auction || 0).toFixed(1)} avg bids</p>
+                      <p className="text-xs text-muted-foreground">
+                        {Number(route.avg_carriers_per_auction || 0).toFixed(1)} carriers
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Glass>
+        )}
+
+        {/* Most Competitive Auctions with Pagination */}
+        <Glass className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <CardHeader className="p-0">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Crown className="w-4 h-4" />
+                Most Competitive Auctions
+              </CardTitle>
+            </CardHeader>
+            {totalAuctionPages > 1 && (
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setAuctionPage(p => Math.max(1, p - 1))}
+                  disabled={auctionPage === 1}
+                >
+                  Previous
+                </Button>
+                <span className="text-sm text-muted-foreground">
+                  Page {auctionPage} of {totalAuctionPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setAuctionPage(p => Math.min(totalAuctionPages, p + 1))}
+                  disabled={auctionPage === totalAuctionPages}
+                >
+                  Next
+                </Button>
+              </div>
+            )}
+          </div>
+          <CardContent className="p-0">
+            <div className="space-y-3">
+              {paginatedAuctions.length > 0 ? (
+                paginatedAuctions.map((auction: any, index: number) => (
+                  <div 
+                    key={index} 
+                    className="flex items-center justify-between p-4 bg-muted/20 rounded-lg hover:bg-muted/30 transition-all border border-border/50"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center justify-center w-10 h-10 bg-gradient-to-br from-primary/20 to-primary/10 text-primary rounded-lg text-sm font-bold">
+                        {(auctionPage - 1) * auctionsPerPage + index + 1}
+                      </div>
+                      <div>
+                        <p className="font-semibold text-base">#{auction.bid_number}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          {auction.tag && (
+                            <Badge variant="outline" className="text-xs">
+                              {auction.tag}
+                            </Badge>
+                          )}
+                          <span className="text-xs text-muted-foreground">
+                            {formatDistance(auction.distance_miles)}
+                          </span>
+                          {auction.minutes_to_first_bid && (
+                            <span className="text-xs text-muted-foreground">
+                              • First bid: {Math.round(auction.minutes_to_first_bid)}m
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-semibold text-lg">{auction.bid_count} bids</p>
+                      <p className="text-sm text-muted-foreground">{auction.unique_carriers} carriers</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Spread: {formatMoney(auction.highest_bid_amount - auction.winning_bid_amount)}
+                      </p>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  No competitive auctions found
+                </div>
+              )}
             </div>
           </CardContent>
-        </Card>
+        </Glass>
+      </div>
+    );
+  };
+
+  const renderHeatMap = () => {
+    // The API returns { success: true, data: {...} }
+    // The fetcher returns the JSON response, so analyticsData is { success: true, data: {...} }
+    const heatMapData = analyticsData?.success ? analyticsData.data : (analyticsData?.data || analyticsData || null);
+
+    // Get max bid count for color scaling
+    const maxBidCount = heatMapData?.stateStats?.length > 0
+      ? Math.max(...heatMapData.stateStats.map((s: any) => s.bidCount))
+      : 1;
+
+    // Helper to get color intensity based on bid count
+    const getStateColor = (bidCount: number) => {
+      if (bidCount === 0) return "bg-gray-200 dark:bg-gray-800";
+      const intensity = Math.min(100, Math.round((bidCount / maxBidCount) * 100));
+      if (intensity >= 80) return "bg-red-600 dark:bg-red-500";
+      if (intensity >= 60) return "bg-orange-500 dark:bg-orange-400";
+      if (intensity >= 40) return "bg-yellow-500 dark:bg-yellow-400";
+      if (intensity >= 20) return "bg-green-400 dark:bg-green-500";
+      return "bg-blue-300 dark:bg-blue-400";
+    };
+
+    // Small states that need connecting lines (especially Northeast)
+    const smallStates = new Set(['RI', 'DE', 'CT', 'NH', 'VT', 'MA', 'ME', 'NJ', 'MD', 'DC']);
+
+    // US State abbreviations mapping
+    const stateAbbreviations: Record<string, string> = {
+      "AL": "Alabama", "AK": "Alaska", "AZ": "Arizona", "AR": "Arkansas", "CA": "California",
+      "CO": "Colorado", "CT": "Connecticut", "DE": "Delaware", "FL": "Florida", "GA": "Georgia",
+      "HI": "Hawaii", "ID": "Idaho", "IL": "Illinois", "IN": "Indiana", "IA": "Iowa",
+      "KS": "Kansas", "KY": "Kentucky", "LA": "Louisiana", "ME": "Maine", "MD": "Maryland",
+      "MA": "Massachusetts", "MI": "Michigan", "MN": "Minnesota", "MS": "Mississippi", "MO": "Missouri",
+      "MT": "Montana", "NE": "Nebraska", "NV": "Nevada", "NH": "New Hampshire", "NJ": "New Jersey",
+      "NM": "New Mexico", "NY": "New York", "NC": "North Carolina", "ND": "North Dakota", "OH": "Ohio",
+      "OK": "Oklahoma", "OR": "Oregon", "PA": "Pennsylvania", "RI": "Rhode Island", "SC": "South Carolina",
+      "SD": "South Dakota", "TN": "Tennessee", "TX": "Texas", "UT": "Utah", "VT": "Vermont",
+      "VA": "Virginia", "WA": "Washington", "WV": "West Virginia", "WI": "Wisconsin", "WY": "Wyoming"
+    };
+
+    const selectedStateData = selectedState
+      ? heatMapData?.stateStats?.find((s: any) => s.state === selectedState)
+      : null;
+
+    return (
+      <div className="space-y-6">
+        {/* Date Range Controls */}
+        <Glass className="p-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Timeframe</label>
+              <Select 
+                value={heatMapTimeframe} 
+                onValueChange={(value) => {
+                  setHeatMapTimeframe(value);
+                  setUseCustomDateRange(false);
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="7">Last 7 days</SelectItem>
+                  <SelectItem value="30">Last 30 days</SelectItem>
+                  <SelectItem value="90">Last 90 days</SelectItem>
+                  <SelectItem value="365">Last year</SelectItem>
+                  <SelectItem value="all">All Time</SelectItem>
+                  <SelectItem value="custom">Custom Range</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {heatMapTimeframe === "custom" && (
+              <>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Start Date</label>
+                  <Input
+                    type="date"
+                    value={customStartDate}
+                    onChange={(e) => setCustomStartDate(e.target.value)}
+                    className="w-full"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">End Date</label>
+                  <Input
+                    type="date"
+                    value={customEndDate}
+                    onChange={(e) => {
+                      setCustomEndDate(e.target.value);
+                      if (customStartDate && e.target.value) {
+                        setUseCustomDateRange(true);
+                      }
+                    }}
+                    className="w-full"
+                  />
+                </div>
+                <div className="space-y-2 flex items-end">
+                  <Button
+                    onClick={() => {
+                      if (customStartDate && customEndDate) {
+                        setUseCustomDateRange(true);
+                        mutateAnalytics();
+                      }
+                    }}
+                    disabled={!customStartDate || !customEndDate}
+                    className="w-full"
+                    style={{ backgroundColor: accentColor }}
+                  >
+                    Apply Range
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        </Glass>
+
+        {/* Summary Stats */}
+        {heatMapData?.summary && (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <Glass className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg" style={{ backgroundColor: `${accentColor}20` }}>
+                  <MapPin className="w-5 h-5" style={{ color: accentColor }} />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">States with Bids</p>
+                  <p className="text-2xl font-bold">{heatMapData.summary.statesWithBids}</p>
+                </div>
+              </div>
+            </Glass>
+            <Glass className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg" style={{ backgroundColor: `${accentColor}20` }}>
+                  <Truck className="w-5 h-5" style={{ color: accentColor }} />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Total Bids</p>
+                  <p className="text-2xl font-bold">{heatMapData.summary.totalBids.toLocaleString()}</p>
+                </div>
+              </div>
+            </Glass>
+            <Glass className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg" style={{ backgroundColor: `${accentColor}20` }}>
+                  <DollarSign className="w-5 h-5" style={{ color: accentColor }} />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Total Revenue</p>
+                  <p className="text-2xl font-bold">{formatMoney(heatMapData.summary.totalRevenue)}</p>
+                </div>
+              </div>
+            </Glass>
+            <Glass className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg" style={{ backgroundColor: `${accentColor}20` }}>
+                  <BarChart3 className="w-5 h-5" style={{ color: accentColor }} />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Avg per State</p>
+                  <p className="text-2xl font-bold">{Math.round(heatMapData.summary.averageBidsPerState)}</p>
+                </div>
+              </div>
+            </Glass>
+          </div>
+        )}
+
+        {/* Heat Map Visualization */}
+        <Glass className="p-6">
+          <div className="mb-4">
+            <h3 className="text-lg font-semibold mb-2">Bid Distribution by State</h3>
+            <p className="text-sm text-muted-foreground">
+              Click on a state to view detailed information including top cities and backhaul opportunities
+            </p>
+          </div>
+
+          {heatMapData?.stateStats && heatMapData.stateStats.length > 0 ? (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* State Grid - US Map Layout */}
+              <div className="lg:col-span-2">
+                <USStatesMapGrid
+                  stateStats={heatMapData.stateStats}
+                  selectedState={selectedState}
+                  onStateClick={setSelectedState}
+                  getStateColor={getStateColor}
+                  accentColor={accentColor}
+                  stateAbbreviations={stateAbbreviations}
+                />
+
+                {/* Color Legend */}
+                <div className="mt-6 flex items-center gap-4 flex-wrap">
+                  <span className="text-sm text-muted-foreground">Intensity:</span>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 rounded bg-blue-300"></div>
+                    <span className="text-xs">Low</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 rounded bg-green-400"></div>
+                    <span className="text-xs">Medium</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 rounded bg-yellow-500"></div>
+                    <span className="text-xs">High</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 rounded bg-orange-500"></div>
+                    <span className="text-xs">Very High</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 rounded bg-red-600"></div>
+                    <span className="text-xs">Highest</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* State Details Panel */}
+              <div className="lg:col-span-1">
+                {selectedStateData ? (
+                  <Card className="h-full">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <MapPin className="w-5 h-5" style={{ color: accentColor }} />
+                        {stateAbbreviations[selectedStateData.state] || selectedStateData.state}
+                        {smallStates.has(selectedStateData.state) && (
+                          <Badge variant="outline" className="ml-2 text-xs" style={{ borderColor: accentColor, color: accentColor }}>
+                            <Navigation className="w-3 h-3 mr-1" />
+                            Connected
+                          </Badge>
+                        )}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="p-3 rounded-lg bg-muted/50">
+                          <p className="text-xs text-muted-foreground">Total Bids</p>
+                          <p className="text-xl font-bold">{selectedStateData.bidCount}</p>
+                        </div>
+                        <div className="p-3 rounded-lg bg-muted/50">
+                          <p className="text-xs text-muted-foreground">Revenue</p>
+                          <p className="text-xl font-bold">{formatMoney(selectedStateData.totalRevenue)}</p>
+                        </div>
+                        <div className="p-3 rounded-lg bg-muted/50">
+                          <p className="text-xs text-muted-foreground">Avg Revenue</p>
+                          <p className="text-xl font-bold">{formatMoney(selectedStateData.averageRevenue)}</p>
+                        </div>
+                        <div className="p-3 rounded-lg bg-muted/50">
+                          <p className="text-xs text-muted-foreground">Cities</p>
+                          <p className="text-xl font-bold">{selectedStateData.totalCities}</p>
+                        </div>
+                      </div>
+
+                      {/* Top Cities */}
+                      {selectedStateData.topCities && selectedStateData.topCities.length > 0 && (
+                        <div>
+                          <h4 className="text-sm font-semibold mb-2">Top Cities</h4>
+                          <div className="space-y-2 max-h-48 overflow-y-auto">
+                            {selectedStateData.topCities.slice(0, 10).map((city: any, idx: number) => (
+                              <div key={idx} className="p-2 rounded bg-muted/30 flex justify-between items-center">
+                                <div>
+                                  <p className="text-sm font-medium">{city.city}</p>
+                                  <p className="text-xs text-muted-foreground">{city.bidCount} bids</p>
+                                </div>
+                                <p className="text-xs font-semibold">{formatMoney(city.totalRevenue)}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Backhaul Opportunities */}
+                      {selectedStateData.backhaulOpportunities && selectedStateData.backhaulOpportunities.length > 0 && (
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <h4 className="text-sm font-semibold">Backhaul Opportunities</h4>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setShowBackhaulAnalytics(true)}
+                              className="h-7 text-xs"
+                              style={{ borderColor: accentColor, color: accentColor }}
+                            >
+                              <BarChart3 className="w-3 h-3 mr-1" />
+                              Analytics
+                            </Button>
+                          </div>
+                          <div className="space-y-2 max-h-32 overflow-y-auto">
+                            {selectedStateData.backhaulOpportunities.map((opp: any, idx: number) => (
+                              <button
+                                key={idx}
+                                onClick={() => {
+                                  setSelectedBackhaul(opp);
+                                  setShowBackhaulDetails(true);
+                                }}
+                                className="w-full p-2 rounded bg-muted/30 hover:bg-muted/50 transition-colors cursor-pointer text-left"
+                              >
+                                <div className="flex justify-between items-start gap-2">
+                                  <div className="flex-1">
+                                    <p className="text-sm font-medium">
+                                      {stateAbbreviations[opp.state] || opp.state}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">{opp.bidCount} matching bids</p>
+                                    <p className="text-xs mt-1">
+                                      <span className="text-muted-foreground">Lowest Bid: </span>
+                                      <span className="font-semibold" style={{ color: accentColor }}>
+                                        {opp.lowestAwardedBid !== null && opp.lowestAwardedBid !== undefined
+                                          ? formatMoney(opp.lowestAwardedBid)
+                                          : 'No Bids Yet'}
+                                      </span>
+                                    </p>
+                                    {/* Lane Frequency Information */}
+                                    {opp.laneFrequencies && opp.laneFrequencies.length > 0 && (
+                                      <div className="mt-2 pt-2 border-t border-border/30">
+                                        <p className="text-xs font-semibold text-muted-foreground mb-1">Top Lanes:</p>
+                                        {opp.laneFrequencies.slice(0, 3).map((lane: any, laneIdx: number) => (
+                                          <div key={laneIdx} className="text-xs mb-1">
+                                            <p className="font-medium">{lane.lane}</p>
+                                            <div className="flex gap-3 text-muted-foreground mt-0.5">
+                                              <span>Seen: {lane.count}x</span>
+                                              {lane.expectedFrequencyPerWeek > 0 && (
+                                                <span>~{lane.expectedFrequencyPerWeek.toFixed(1)}/week</span>
+                                              )}
+                                            </div>
+                                          </div>
+                                        ))}
+                                        {opp.laneFrequencies.length > 3 && (
+                                          <p className="text-xs text-muted-foreground mt-1">
+                                            +{opp.laneFrequencies.length - 3} more lanes
+                                          </p>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                  <Badge 
+                                    variant="outline"
+                                    className="flex-shrink-0"
+                                    style={{ 
+                                      borderColor: accentColor,
+                                      color: accentColor 
+                                    }}
+                                  >
+                                    {Math.round(opp.matchScore)}% match
+                                  </Badge>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <Card className="h-full flex items-center justify-center p-8">
+                    <div className="text-center">
+                      <MapPin className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+                      <p className="text-sm text-muted-foreground">
+                        Select a state to view detailed information
+                      </p>
+                    </div>
+                  </Card>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <MapPin className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
+              <p className="text-lg font-medium mb-2">No bid data available</p>
+              <p className="text-sm text-muted-foreground">
+                Try adjusting your date range or timeframe
+              </p>
+            </div>
+          )}
+        </Glass>
+
+        {/* Backhaul Analytics Console */}
+        {showBackhaulAnalytics && selectedState && heatMapData && (
+          <BackhaulAnalyticsConsole
+            state={selectedState}
+            stateData={heatMapData.stateStats.find((s: any) => s.state === selectedState)}
+            accentColor={accentColor}
+            onClose={() => setShowBackhaulAnalytics(false)}
+            onViewBid={onViewBid}
+            onSelectBackhaul={(opp) => {
+              setSelectedBackhaul(opp);
+              setShowBackhaulDetails(true);
+              setShowBackhaulAnalytics(false);
+            }}
+          />
+        )}
+
+        {/* Backhaul Details Dialog */}
+        <Dialog open={showBackhaulDetails} onOpenChange={setShowBackhaulDetails}>
+          <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Navigation className="w-5 h-5" style={{ color: accentColor }} />
+                Backhaul Details: {selectedBackhaul && (stateAbbreviations[selectedBackhaul.state] || selectedBackhaul.state)} → {selectedState && (stateAbbreviations[selectedState] || selectedState)}
+              </DialogTitle>
+            </DialogHeader>
+            
+            {selectedBackhaul && (
+              <div className="space-y-4 mt-4">
+                {/* Summary */}
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div>
+                        <p className="text-xs text-muted-foreground">Total Matching Bids</p>
+                        <p className="text-2xl font-bold">{selectedBackhaul.bidCount}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Match Score</p>
+                        <p className="text-2xl font-bold" style={{ color: accentColor }}>
+                          {Math.round(selectedBackhaul.matchScore)}%
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Origin State</p>
+                        <p className="text-lg font-semibold">
+                          {stateAbbreviations[selectedBackhaul.state] || selectedBackhaul.state}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Lowest Bid</p>
+                        <p className="text-lg font-semibold" style={{ color: accentColor }}>
+                          {selectedBackhaul.lowestAwardedBid !== null && selectedBackhaul.lowestAwardedBid !== undefined
+                            ? formatMoney(selectedBackhaul.lowestAwardedBid)
+                            : 'No Bids Yet'}
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Lane Frequency Analysis */}
+                {selectedBackhaul.laneFrequencies && selectedBackhaul.laneFrequencies.length > 0 && (
+                  <Card>
+                    <CardContent className="p-4">
+                      <h4 className="text-sm font-semibold mb-3">Lane Frequency Analysis</h4>
+                      <div className="space-y-3 max-h-64 overflow-y-auto">
+                        {selectedBackhaul.laneFrequencies.map((lane: any, idx: number) => (
+                          <div key={idx} className="p-3 rounded-lg bg-muted/30 border border-border/50">
+                            <div className="flex items-start justify-between gap-4 mb-2">
+                              <div className="flex-1">
+                                <p className="font-semibold text-sm">{lane.lane}</p>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  First seen: {new Date(lane.firstSeen).toLocaleDateString()} • 
+                                  Last seen: {new Date(lane.lastSeen).toLocaleDateString()} • 
+                                  Span: {lane.timeSpanDays} day{lane.timeSpanDays !== 1 ? 's' : ''}
+                                </p>
+                              </div>
+                              <Badge variant="outline" className="flex-shrink-0">
+                                {lane.count}x seen
+                              </Badge>
+                            </div>
+                            <div className="grid grid-cols-3 gap-3 mt-2 pt-2 border-t border-border/30">
+                              <div>
+                                <p className="text-xs text-muted-foreground">Per Day</p>
+                                <p className="text-sm font-semibold" style={{ color: accentColor }}>
+                                  {lane.expectedFrequencyPerDay.toFixed(2)}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-xs text-muted-foreground">Per Week</p>
+                                <p className="text-sm font-semibold" style={{ color: accentColor }}>
+                                  {lane.expectedFrequencyPerWeek.toFixed(2)}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-xs text-muted-foreground">Per Month</p>
+                                <p className="text-sm font-semibold" style={{ color: accentColor }}>
+                                  {lane.expectedFrequencyPerMonth.toFixed(2)}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Bid List */}
+                <div>
+                  <h4 className="text-sm font-semibold mb-3">Matching Bids</h4>
+                  <div className="space-y-2 max-h-96 overflow-y-auto">
+                    {selectedBackhaul.bids && selectedBackhaul.bids.length > 0 ? (
+                      selectedBackhaul.bids.map((bid: any, idx: number) => (
+                        <Card key={idx} className="hover:bg-muted/50 transition-colors">
+                          <CardContent className="p-4">
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <span className="font-semibold text-lg">#{bid.bidNumber}</span>
+                                  {bid.tag && (
+                                    <Badge variant="outline" className="text-xs">
+                                      {bid.tag}
+                                    </Badge>
+                                  )}
+                                </div>
+                                <div className="grid grid-cols-2 gap-2 text-sm">
+                                  <div>
+                                    <p className="text-xs text-muted-foreground">Route</p>
+                                    <p className="font-medium">
+                                      {bid.originCity || 'N/A'}, {bid.originState || selectedBackhaul.state} → {bid.destinationCity || 'N/A'}, {bid.destinationState || selectedState}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <p className="text-xs text-muted-foreground">Distance</p>
+                                    <p className="font-medium">
+                                      {bid.distanceMiles ? formatDistance(bid.distanceMiles) : 'N/A'}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <p className="text-xs text-muted-foreground">Received</p>
+                                    <p className="font-medium">
+                                      {new Date(bid.receivedAt).toLocaleDateString()} {new Date(bid.receivedAt).toLocaleTimeString()}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <p className="text-xs text-muted-foreground">Lowest Bid</p>
+                                    <p className="font-medium" style={{ color: accentColor }}>
+                                      {bid.lowestAwardedBidForRoute !== null && bid.lowestAwardedBidForRoute !== undefined
+                                        ? formatMoney(bid.lowestAwardedBidForRoute)
+                                        : 'No Bids Yet'}
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  // Close backhaul dialog first
+                                  setShowBackhaulDetails(false);
+                                  // Then open bid details
+                                  if (onViewBid) {
+                                    // Use setTimeout to ensure dialog closes before opening new one
+                                    setTimeout(() => {
+                                      onViewBid(bid.bidNumber);
+                                    }, 100);
+                                  }
+                                }}
+                                style={{ borderColor: accentColor }}
+                              >
+                                <Eye className="w-4 h-4 mr-1" />
+                                View Bid
+                              </Button>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))
+                    ) : (
+                      <Card>
+                        <CardContent className="p-8 text-center">
+                          <p className="text-muted-foreground">No bid details available</p>
+                        </CardContent>
+                      </Card>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     );
   };
@@ -1365,22 +2931,25 @@ function AdvancedAnalytics({ accentColor }: { accentColor: string }) {
           <h2 className="text-xl font-semibold">Advanced Analytics</h2>
         </div>
         
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Timeframe</label>
-            <Select value={timeframe} onValueChange={setTimeframe}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All</SelectItem>
-                <SelectItem value="7">Last 7 days</SelectItem>
-                <SelectItem value="30">Last 30 days</SelectItem>
-                <SelectItem value="90">Last 90 days</SelectItem>
-                <SelectItem value="365">Last year</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+        <div className={`grid gap-4 ${analyticsType === "heat_map" ? "grid-cols-1 md:grid-cols-2" : "grid-cols-1 md:grid-cols-3"}`}>
+          {/* Only show main timeframe selector when NOT viewing heat map */}
+          {analyticsType !== "heat_map" && (
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Timeframe</label>
+              <Select value={timeframe} onValueChange={setTimeframe}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="7">Last 7 days</SelectItem>
+                  <SelectItem value="30">Last 30 days</SelectItem>
+                  <SelectItem value="90">Last 90 days</SelectItem>
+                  <SelectItem value="365">Last year</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           
           <div className="space-y-2">
             <label className="text-sm font-medium">Analytics Type</label>
@@ -1394,6 +2963,7 @@ function AdvancedAnalytics({ accentColor }: { accentColor: string }) {
                 <SelectItem value="performance">Performance</SelectItem>
                 <SelectItem value="carrier_activity">Carrier Activity</SelectItem>
                 <SelectItem value="auction_insights">Auction Insights</SelectItem>
+                <SelectItem value="heat_map">Geographic Heat Map</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -1431,6 +3001,7 @@ function AdvancedAnalytics({ accentColor }: { accentColor: string }) {
           {analyticsType === "performance" && renderPerformance()}
           {analyticsType === "carrier_activity" && renderCarrierActivity()}
           {analyticsType === "auction_insights" && renderAuctionInsights()}
+          {analyticsType === "heat_map" && renderHeatMap()}
         </>
       )}
     </div>
@@ -2529,6 +4100,7 @@ function ReAwardDialog({
   const [reAwarding, setReAwarding] = useState(false);
   const [selectedWinner, setSelectedWinner] = useState<string | null>(null);
   const [adminNotes, setAdminNotes] = useState("");
+  const [marginCents, setMarginCents] = useState<string>("");
   const [currentPage, setCurrentPage] = useState(1);
   const [bidsPerPage] = useState(5);
 
@@ -2558,7 +4130,8 @@ function ReAwardDialog({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           winnerUserId: selectedWinner,
-          adminNotes: adminNotes.trim() || null
+          adminNotes: adminNotes.trim() || null,
+          marginCents: marginCents ? Math.round(parseFloat(marginCents) * 100) : null
         })
       });
 
@@ -2571,6 +4144,7 @@ function ReAwardDialog({
         });
         
         mutateBidData();
+        setMarginCents(""); // Reset margin input
         onReAwarded();
         onClose();
       } else {
@@ -2753,6 +4327,59 @@ function ReAwardDialog({
                   />
                 </CardContent>
               </Card>
+
+              {/* Margin Input */}
+              {selectedWinner && (
+                <Card className="mt-4 bg-gradient-to-br from-emerald-800/40 to-green-900/40 border-emerald-600/30">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center gap-2 text-lg">
+                      <DollarSign className="w-4 h-4 text-emerald-300" />
+                      Profit Margin
+                      <Badge variant="outline" className="border-emerald-500/30 text-emerald-300 text-xs">Optional</Badge>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    <div className="flex items-center gap-3">
+                      <div className="relative flex-1">
+                        <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-emerald-300" />
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="0.00"
+                          value={marginCents}
+                          onChange={(e) => setMarginCents(e.target.value)}
+                          className="pl-9 bg-slate-800/50 border-slate-600/50 text-white placeholder:text-slate-400 focus:border-emerald-500/50"
+                        />
+                      </div>
+                      <span className="text-sm text-slate-300 whitespace-nowrap">USD</span>
+                    </div>
+                    <p className="text-xs text-slate-400">
+                      Enter the profit margin you added when submitting this bid to the actual auction.
+                    </p>
+                    {marginCents && !isNaN(parseFloat(marginCents)) && bidDetails?.bids?.find((b: any) => b.supabase_user_id === selectedWinner) && (
+                      <div className="mt-2 p-2 bg-emerald-500/10 border border-emerald-500/20 rounded-md">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-emerald-300">Carrier Bid:</span>
+                          <span className="text-white font-medium">
+                            ${((bidDetails.bids.find((b: any) => b.supabase_user_id === selectedWinner)?.amount_cents || 0) / 100).toFixed(2)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm mt-1">
+                          <span className="text-emerald-300">Your Margin:</span>
+                          <span className="text-white font-medium">${parseFloat(marginCents).toFixed(2)}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm mt-1 pt-1 border-t border-emerald-500/20">
+                          <span className="text-emerald-200 font-semibold">Submitted Amount:</span>
+                          <span className="text-emerald-100 font-bold">
+                            ${((bidDetails.bids.find((b: any) => b.supabase_user_id === selectedWinner)?.amount_cents || 0) / 100 + parseFloat(marginCents)).toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
             </>
           )}
         </div>
@@ -3279,6 +4906,7 @@ export function AdminBiddingConsole() {
   const [showAdjudicationConsole, setShowAdjudicationConsole] = useState(false);
 
   const { accentColor } = useAccentColor();
+  const { theme } = useTheme();
 
   const { data, mutate, isLoading } = useSWR(
     `/api/telegram-bids?q=${encodeURIComponent(q)}&tag=${encodeURIComponent(tag)}&limit=1000&showExpired=${showExpired}&isAdmin=true`,
@@ -3508,7 +5136,10 @@ export function AdminBiddingConsole() {
               variant="outline"
               onClick={() => setShowAdjudicationConsole(true)}
               className="flex items-center gap-2"
-              style={{ borderColor: accentColor, color: accentColor }}
+              style={{ 
+                borderColor: accentColor, 
+                color: accentColor === 'hsl(0, 0%, 100%)' && theme !== 'dark' ? '#000000' : accentColor 
+              }}
             >
               <Gavel className="w-4 h-4" />
               Adjudication Console
@@ -3765,7 +5396,7 @@ export function AdminBiddingConsole() {
                           className="border-2"
                           style={{
                             backgroundColor: `${accentColor}15`,
-                            color: accentColor,
+                            color: accentColor === 'hsl(0, 0%, 100%)' && theme !== 'dark' ? '#000000' : accentColor,
                             borderColor: `${accentColor}40`
                           }}
                         >
@@ -3779,7 +5410,7 @@ export function AdminBiddingConsole() {
                         {bid.is_expired ? (
                           <Badge variant="destructive">Expired</Badge>
                         ) : (
-                          <Badge variant="default" style={{ backgroundColor: accentColor }}>
+                          <Badge variant="default" style={{ backgroundColor: accentColor, color: getTextColor(accentColor, theme) }}>
                             Active
                           </Badge>
                         )}
@@ -3881,7 +5512,44 @@ export function AdminBiddingConsole() {
 
           {/* Advanced Analytics Tab */}
           <TabsContent value="analytics">
-            <AdvancedAnalytics accentColor={accentColor} />
+            <AdvancedAnalytics 
+              accentColor={accentColor}
+              onViewBid={(bidNumber) => {
+                // First try to find in current bids list
+                const bid = bids.find((b: TelegramBid) => 
+                  b.bid_number === bidNumber || 
+                  b.bid_number?.toString() === bidNumber?.toString()
+                );
+                
+                if (bid) {
+                  setSelectedBid(bid);
+                  setShowBidDetails(true);
+                } else {
+                  // If not found, query telegram_bids database directly by exact bid_number
+                  fetch(`/api/admin/bids/${encodeURIComponent(bidNumber)}/details`)
+                    .then(r => {
+                      if (!r.ok) {
+                        return r.json().then(err => {
+                          throw new Error(err.error || 'Bid not found');
+                        });
+                      }
+                      return r.json();
+                    })
+                    .then(data => {
+                      if (data?.ok && data?.data) {
+                        setSelectedBid(data.data);
+                        setShowBidDetails(true);
+                      } else {
+                        toast.error(`Bid #${bidNumber} not found`);
+                      }
+                    })
+                    .catch(err => {
+                      console.error('Error fetching bid:', err);
+                      toast.error(err.message || 'Failed to load bid details');
+                    });
+                }
+              }}
+            />
           </TabsContent>
         </Tabs>
 

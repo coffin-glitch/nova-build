@@ -26,11 +26,25 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
 
-const fetcher = (url: string) => fetch(url).then(r => r.json());
+const fetcher = async (url: string) => {
+  const response = await fetch(url);
+  const data = await response.json();
+  // Handle API response structure: { ok: true, data: [...] } or { error: "..." }
+  if (data.ok && data.data) {
+    return data.data;
+  }
+  if (data.error) {
+    console.error(`[FloatingCarrierChat] API error for ${url}:`, data.error);
+    return [];
+  }
+  // Fallback: return data directly if it's already an array or object
+  return data.data || data || [];
+};
 
 interface Conversation {
   conversation_id: string;
   admin_user_id: string;
+  admin_display_name?: string;
   last_message_at: string;
   created_at: string;
   updated_at: string;
@@ -81,6 +95,7 @@ export default function FloatingCarrierChatButton() {
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [showNewChat, setShowNewChat] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -106,12 +121,13 @@ export default function FloatingCarrierChatButton() {
     { refreshInterval: 2000 }
   );
 
-  const conversations = conversationsData?.data || [];
-  const messages = messagesData?.data || [];
+  // Fetcher already unwraps the data, so use directly
+  const conversations = Array.isArray(conversationsData) ? conversationsData : (conversationsData?.data || []);
+  const messages = Array.isArray(messagesData) ? messagesData : (messagesData?.data || []);
 
-  // Get unique admin user IDs
+  // Get unique admin user IDs from conversations
   const adminUserIds = useMemo(() => {
-    return Array.from(new Set(conversations.map((conv: Conversation) => conv.admin_user_id)));
+    return Array.from(new Set(conversations.map((conv: Conversation) => conv.admin_user_id).filter(Boolean)));
   }, [conversations]);
 
   // Fetch admin user information
@@ -139,11 +155,6 @@ export default function FloatingCarrierChatButton() {
     return "Admin";
   }, [userInfos]);
 
-  // Calculate total unread count
-  const totalUnreadCount = useMemo(() => {
-    return conversations.reduce((total: number, conv: Conversation) => total + conv.unread_count, 0);
-  }, [conversations]);
-
   // Filter conversations based on search
   const filteredConversations = useMemo(() => {
     if (!searchTerm) return conversations;
@@ -154,10 +165,60 @@ export default function FloatingCarrierChatButton() {
       return (
         displayName.toLowerCase().includes(searchLower) ||
         conv.admin_user_id.toLowerCase().includes(searchLower) ||
-        conv.last_message.toLowerCase().includes(searchLower)
+        (conv.last_message && conv.last_message.toLowerCase().includes(searchLower))
       );
     });
   }, [conversations, searchTerm, getDisplayName]);
+
+  // Fetch all available admins for "Start New Chat"
+  const { data: adminsData } = useSWR(
+    user ? "/api/carrier/admins" : null,
+    fetcher,
+    { refreshInterval: 30000 }
+  );
+
+  // Get admins without existing conversations
+  const adminsWithoutChats = useMemo(() => {
+    const admins = Array.isArray(adminsData) ? adminsData : (adminsData?.data || []);
+    const existingAdminIds = new Set(conversations.map((conv: Conversation) => conv.admin_user_id));
+    return admins.filter((admin: any) => {
+      const adminId = admin.user_id || admin.supabase_user_id;
+      return adminId && !existingAdminIds.has(adminId);
+    });
+  }, [adminsData, conversations]);
+
+  // Debug logging
+  useEffect(() => {
+    if (conversationsData !== undefined) {
+      console.log('[FloatingCarrierChat] Conversations data:', {
+        raw: conversationsData,
+        processed: conversations,
+        count: conversations.length,
+        filteredCount: filteredConversations.length,
+        searchTerm,
+        sample: conversations[0],
+        isArray: Array.isArray(conversationsData),
+        hasData: conversationsData?.data !== undefined,
+        apiUrl: '/api/carrier/conversations'
+      });
+    }
+    if (messagesData !== undefined && selectedConversation) {
+      console.log('[FloatingCarrierChat] Messages data:', {
+        conversationId: selectedConversation.conversation_id,
+        raw: messagesData,
+        processed: messages,
+        count: messages.length,
+        isArray: Array.isArray(messagesData),
+        hasData: messagesData?.data !== undefined,
+        apiUrl: `/api/carrier/conversations/${selectedConversation.conversation_id}`
+      });
+    }
+  }, [conversationsData, messagesData, conversations, messages, selectedConversation, filteredConversations, searchTerm]);
+
+  // Calculate total unread count
+  const totalUnreadCount = useMemo(() => {
+    return conversations.reduce((total: number, conv: Conversation) => total + conv.unread_count, 0);
+  }, [conversations]);
 
   // Scroll to bottom function
   const scrollToBottom = useCallback(() => {
@@ -224,6 +285,44 @@ export default function FloatingCarrierChatButton() {
       setIsSendingMessage(false);
     }
   }, [selectedConversation, newMessage, selectedFile, isSendingMessage, mutateMessages, mutateConversations, scrollToBottom]);
+
+  // Handle start new chat
+  const handleStartNewChat = useCallback(async (adminId: string, adminDisplayName: string) => {
+    try {
+      const response = await fetch('/api/carrier/conversations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          admin_user_id: adminId,
+          message: 'Hello! I\'m starting a new conversation with you.',
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        toast.success(`New chat started with ${adminDisplayName}!`);
+        setShowNewChat(false);
+        mutateConversations();
+        // Select the new conversation if returned
+        if (data.conversation) {
+          setSelectedConversation(data.conversation);
+        } else {
+          // Refresh and find the new conversation
+          setTimeout(() => {
+            mutateConversations();
+          }, 500);
+        }
+      } else {
+        const errorData = await response.json().catch(() => ({ error: 'Failed to create new chat' }));
+        throw new Error(errorData.error || 'Failed to create new chat');
+      }
+    } catch (error: any) {
+      console.error('Error starting new chat:', error);
+      toast.error(error.message || 'Failed to start new chat. Please try again.');
+    }
+  }, [mutateConversations]);
 
   // Handle key press
   const handleKeyPress = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -495,6 +594,8 @@ export default function FloatingCarrierChatButton() {
                         <div className="relative">
                           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                           <Input
+                            id="carrier-chat-search"
+                            name="carrier-chat-search"
                             placeholder="Search conversations..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
@@ -505,51 +606,137 @@ export default function FloatingCarrierChatButton() {
                       
                       <ScrollArea className="flex-1">
                         <div className="p-2">
-                          {filteredConversations.length === 0 ? (
-                            <div className="text-center py-8 text-muted-foreground">
-                              <Users className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                              <p>No conversations found</p>
+                          {showNewChat ? (
+                            // Start New Chat Section
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between p-2 border-b">
+                                <h3 className="text-sm font-semibold">Start New Chat</h3>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => setShowNewChat(false)}
+                                  className="h-6 w-6 p-0"
+                                >
+                                  <X className="h-3 w-3" />
+                                </Button>
+                              </div>
+                              {adminsWithoutChats.length === 0 ? (
+                                <div className="text-center py-8 text-muted-foreground">
+                                  <Users className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                                  <p>No admins available</p>
+                                  <p className="text-xs mt-2">All admins already have active conversations</p>
+                                </div>
+                              ) : (
+                                adminsWithoutChats.map((admin: any) => {
+                                  const adminId = admin.user_id || admin.supabase_user_id;
+                                  const adminDisplayName = admin.display_name || "Admin";
+                                  return (
+                                    <div
+                                      key={adminId}
+                                      onClick={() => handleStartNewChat(adminId, adminDisplayName)}
+                                      className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
+                                    >
+                                      <Avatar className="h-10 w-10">
+                                        <AvatarImage src={undefined} />
+                                        <AvatarFallback className="text-xs">
+                                          {getInitials(adminDisplayName)}
+                                        </AvatarFallback>
+                                      </Avatar>
+                                      <div className="flex-1 min-w-0">
+                                        <p className="font-medium text-sm truncate">
+                                          {adminDisplayName}
+                                        </p>
+                                        <p className="text-xs text-muted-foreground truncate">
+                                          Click to start chatting
+                                        </p>
+                                      </div>
+                                    </div>
+                                  );
+                                })
+                              )}
                             </div>
                           ) : (
-                            filteredConversations.map((conversation: Conversation) => {
-                              const displayName = getDisplayName(conversation.admin_user_id, conversation.admin_display_name);
-                              
-                              return (
-                                <div
-                                  key={conversation.conversation_id}
-                                  onClick={() => handleConversationSelect(conversation)}
-                                  className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
-                                >
-                                  <Avatar className="h-10 w-10">
-                                    <AvatarImage src={undefined} />
-                                    <AvatarFallback className="text-xs">
-                                      {getInitials(displayName)}
-                                    </AvatarFallback>
-                                  </Avatar>
-                                  
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center justify-between">
-                                      <p className="font-medium text-sm truncate">
-                                        {displayName}
-                                      </p>
-                                      {conversation.unread_count > 0 && (
-                                        <Badge variant="destructive" className="text-xs h-5 px-1.5">
-                                          {conversation.unread_count}
-                                        </Badge>
-                                      )}
-                                    </div>
-                                    <p className="text-xs text-muted-foreground truncate mt-1">
-                                      {conversation.last_message_sender_type === 'carrier' ? 'You: ' : ''}
-                                      {conversation.last_message}
-                                    </p>
-                                  </div>
-                                  
-                                  <div className="text-xs text-muted-foreground">
-                                    {formatTime(conversation.last_message_at)}
-                                  </div>
+                            <>
+                              {conversations.length === 0 ? (
+                                <div className="text-center py-8 text-muted-foreground">
+                                  <Users className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                                  <p>No conversations yet</p>
+                                  <p className="text-xs mt-2">Start a conversation to begin chatting</p>
+                                  {adminsWithoutChats.length > 0 && (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => setShowNewChat(true)}
+                                      className="mt-4"
+                                    >
+                                      <Users className="h-4 w-4 mr-2" />
+                                      Start New Chat
+                                    </Button>
+                                  )}
                                 </div>
-                              );
-                            })
+                              ) : filteredConversations.length === 0 ? (
+                                <div className="text-center py-8 text-muted-foreground">
+                                  <Search className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                                  <p>No conversations match your search</p>
+                                  <p className="text-xs mt-2">Try a different search term</p>
+                                </div>
+                              ) : (
+                                <>
+                                  {adminsWithoutChats.length > 0 && (
+                                    <div className="mb-2 p-2 border-b">
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => setShowNewChat(true)}
+                                        className="w-full"
+                                      >
+                                        <Users className="h-4 w-4 mr-2" />
+                                        Start New Chat ({adminsWithoutChats.length})
+                                      </Button>
+                                    </div>
+                                  )}
+                                  {filteredConversations.map((conversation: Conversation) => {
+                                    const displayName = getDisplayName(conversation.admin_user_id, conversation.admin_display_name);
+                                    
+                                    return (
+                                      <div
+                                        key={conversation.conversation_id}
+                                        onClick={() => handleConversationSelect(conversation)}
+                                        className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
+                                      >
+                                        <Avatar className="h-10 w-10">
+                                          <AvatarImage src={undefined} />
+                                          <AvatarFallback className="text-xs">
+                                            {getInitials(displayName)}
+                                          </AvatarFallback>
+                                        </Avatar>
+                                        
+                                        <div className="flex-1 min-w-0">
+                                          <div className="flex items-center justify-between">
+                                            <p className="font-medium text-sm truncate">
+                                              {displayName}
+                                            </p>
+                                            {conversation.unread_count > 0 && (
+                                              <Badge variant="destructive" className="text-xs h-5 px-1.5">
+                                                {conversation.unread_count}
+                                              </Badge>
+                                            )}
+                                          </div>
+                                          <p className="text-xs text-muted-foreground truncate mt-1">
+                                            {conversation.last_message_sender_type === 'carrier' ? 'You: ' : ''}
+                                            {conversation.last_message}
+                                          </p>
+                                        </div>
+                                        
+                                        <div className="text-xs text-muted-foreground">
+                                          {formatTime(conversation.last_message_at)}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </>
+                              )}
+                            </>
                           )}
                         </div>
                       </ScrollArea>
@@ -698,6 +885,8 @@ export default function FloatingCarrierChatButton() {
                               )}
                               <div className="flex gap-2">
                                 <input
+                                  id="carrier-chat-file-input"
+                                  name="carrier-chat-file-input"
                                   ref={fileInputRef}
                                   type="file"
                                   accept="image/jpeg,image/png,image/jpg,application/pdf"
@@ -714,6 +903,8 @@ export default function FloatingCarrierChatButton() {
                                   <Paperclip className="h-4 w-4" />
                                 </Button>
                                 <Input
+                                  id="carrier-chat-message-input"
+                                  name="carrier-chat-message-input"
                                   ref={inputRef}
                                   value={newMessage}
                                   onChange={(e) => setNewMessage(e.target.value)}

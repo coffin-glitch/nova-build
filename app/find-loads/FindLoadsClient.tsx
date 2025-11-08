@@ -7,6 +7,7 @@ import { Glass } from "@/components/ui/glass";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAccentColor } from "@/hooks/useAccentColor";
+import { getButtonTextColor as getTextColor } from "@/lib/utils";
 import { Filter, MapPin, RefreshCw, Search, Truck } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
@@ -43,12 +44,9 @@ export default function FindLoadsClient() {
   const { accentColor } = useAccentColor();
   const { theme } = useTheme();
   
-  // Smart color handling for white accent color
+  // Smart color handling for button text based on background color
   const getButtonTextColor = () => {
-    if (accentColor === 'hsl(0, 0%, 100%)') {
-      return '#000000';
-    }
-    return '#ffffff';
+    return getTextColor(accentColor, theme);
   };
   
   const [loads, setLoads] = useState<Load[]>([]);

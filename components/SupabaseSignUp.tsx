@@ -9,8 +9,10 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useAccentColor } from "@/hooks/useAccentColor";
+import { useTheme } from "next-themes";
 import { Truck, Mail, Lock, ArrowRight, Sparkles, CheckCircle } from "lucide-react";
 import Link from "next/link";
+import { getButtonTextColor as getTextColor } from "@/lib/utils";
 
 /**
  * Supabase Sign Up Component
@@ -23,6 +25,7 @@ export default function SupabaseSignUp() {
   const { supabase } = useSupabase();
   const router = useRouter();
   const { accentColor } = useAccentColor();
+  const { theme } = useTheme();
   
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -189,10 +192,7 @@ export default function SupabaseSignUp() {
 
   // Get button text color for accent color
   const getButtonTextColor = () => {
-    if (accentColor === 'hsl(0, 0%, 100%)') {
-      return '#000000';
-    }
-    return '#ffffff';
+    return getTextColor(accentColor, theme);
   };
 
   // Password strength indicator

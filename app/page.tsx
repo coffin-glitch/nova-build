@@ -5,6 +5,7 @@ import SectionCard from "@/components/layout/SectionCard";
 import { Button } from "@/components/ui/button";
 import { useAccentColor } from "@/hooks/useAccentColor";
 import { useUnifiedUser } from "@/hooks/useUnifiedUser";
+import { getButtonTextColor as getTextColor } from "@/lib/utils";
 import {
     ArrowRight,
     CheckCircle,
@@ -20,6 +21,12 @@ import Link from "next/link";
 export default function HomePage() {
   const { accentColor } = useAccentColor();
   const { user, isLoaded } = useUnifiedUser();
+  
+  // Smart color handling for button text based on background color
+  // Note: theme not available here, but light mode is default
+  const getButtonTextColor = () => {
+    return getTextColor(accentColor, 'light');
+  };
 
   // 🐛 DEBUG: Log auth state
   console.log('🐛 [HOME PAGE DEBUG] Auth state:');
@@ -105,7 +112,7 @@ export default function HomePage() {
               asChild 
               size="lg" 
               className="text-lg px-8 py-6 group"
-              style={{ backgroundColor: accentColor }}
+              style={{ backgroundColor: accentColor, color: getButtonTextColor() }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.backgroundColor = `${accentColor}dd`;
               }}

@@ -4,6 +4,7 @@ import { MapPin, Search } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useAccentColor } from "@/hooks/useAccentColor";
 import { useTheme } from "next-themes";
+import { getButtonTextColor as getTextColor } from "@/lib/utils";
 
 export default function SearchBar() {
   const sp = useSearchParams();
@@ -11,12 +12,9 @@ export default function SearchBar() {
   const { theme } = useTheme();
   const router = useRouter();
   
-  // Smart color handling for white accent color
+  // Smart color handling for button text based on background color
   const getButtonTextColor = () => {
-    if (accentColor === 'hsl(0, 0%, 100%)') {
-      return '#000000';
-    }
-    return '#ffffff';
+    return getTextColor(accentColor, theme);
   };
   const [origin, setOrigin] = useState(sp.get("origin") || "");
   const [dest, setDest] = useState(sp.get("dest") || "");

@@ -392,7 +392,7 @@ async function getCarrierActivity(startDate: Date) {
 }
 
 async function getAuctionInsights(startDate: Date) {
-  // Get auction-specific insights
+  // Enhanced auction insights with new metrics
   const auctionInsights = await sql`
     WITH auction_competition AS (
       SELECT 
@@ -400,41 +400,173 @@ async function getAuctionInsights(startDate: Date) {
         tb.distance_miles,
         tb.tag,
         tb.received_at,
+        tb.pickup_timestamp,
         COUNT(cb.id) as bid_count,
         COALESCE(MIN(cb.amount_cents), 0) as winning_bid_amount,
         COALESCE(MAX(cb.amount_cents), 0) as highest_bid_amount,
         COALESCE(AVG(cb.amount_cents), 0) as avg_bid_amount,
         COUNT(DISTINCT cb.supabase_user_id) as unique_carriers,
-        (NOW() > (tb.received_at::timestamp + INTERVAL '25 minutes')) as is_expired
+        MIN(cb.created_at) as first_bid_at,
+        MAX(cb.created_at) as last_bid_at,
+        (NOW() > (tb.received_at::timestamp + INTERVAL '25 minutes')) as is_expired,
+        EXTRACT(EPOCH FROM (MIN(cb.created_at) - tb.received_at)) / 60 as minutes_to_first_bid
       FROM telegram_bids tb
       LEFT JOIN carrier_bids cb ON tb.bid_number = cb.bid_number
       WHERE tb.received_at >= ${startDate.toISOString()}
-      GROUP BY tb.bid_number, tb.distance_miles, tb.tag, tb.received_at
+      GROUP BY tb.bid_number, tb.distance_miles, tb.tag, tb.received_at, tb.pickup_timestamp
+    ),
+    
+    auction_outcomes AS (
+      SELECT 
+        ac.bid_number,
+        ac.bid_count,
+        ac.is_expired,
+        ac.first_bid_at,
+        CASE 
+          WHEN aa.id IS NOT NULL AND aa.supabase_winner_user_id IS NULL THEN 'no_contest'
+          WHEN aa.id IS NOT NULL AND aa.supabase_winner_user_id IS NOT NULL THEN 'awarded'
+          WHEN ac.is_expired AND ac.bid_count > 0 THEN 'expired_with_bids'
+          WHEN ac.is_expired AND ac.bid_count = 0 THEN 'expired_no_bids'
+          ELSE 'pending'
+        END as outcome,
+        aa.awarded_at,
+        CASE 
+          WHEN aa.awarded_at IS NOT NULL AND ac.first_bid_at IS NOT NULL 
+          THEN EXTRACT(EPOCH FROM (aa.awarded_at - ac.first_bid_at)) / 60
+          ELSE NULL
+        END as minutes_to_award,
+        cb.status
+      FROM auction_competition ac
+      LEFT JOIN auction_awards aa ON ac.bid_number = aa.bid_number
+      LEFT JOIN carrier_bids cb ON aa.bid_number = cb.bid_number 
+        AND aa.supabase_winner_user_id = cb.supabase_user_id
+    ),
+    
+    bid_timing AS (
+      SELECT 
+        EXTRACT(HOUR FROM cb.created_at) as bid_hour,
+        COUNT(*) as bid_count
+      FROM carrier_bids cb
+      INNER JOIN telegram_bids tb ON cb.bid_number = tb.bid_number
+      WHERE tb.received_at >= ${startDate.toISOString()}
+      GROUP BY EXTRACT(HOUR FROM cb.created_at)
+    ),
+    
+    bid_revisions AS (
+      SELECT 
+        bid_number,
+        supabase_user_id,
+        COUNT(*) as revision_count
+      FROM carrier_bids
+      WHERE created_at >= ${startDate.toISOString()}
+      GROUP BY bid_number, supabase_user_id
+      HAVING COUNT(*) > 1
     )
     
     SELECT 
+      -- Basic competition metrics
       COUNT(*) as total_auctions,
-      COUNT(CASE WHEN bid_count = 0 THEN 1 END) as no_bid_auctions,
-      COUNT(CASE WHEN bid_count = 1 THEN 1 END) as single_bid_auctions,
-      COUNT(CASE WHEN bid_count BETWEEN 2 AND 5 THEN 1 END) as moderate_competition_auctions,
-      COUNT(CASE WHEN bid_count > 5 THEN 1 END) as high_competition_auctions,
+      COUNT(CASE WHEN ac.bid_count = 0 THEN 1 END) as no_bid_auctions,
+      COUNT(CASE WHEN ac.bid_count = 1 THEN 1 END) as single_bid_auctions,
+      COUNT(CASE WHEN ac.bid_count BETWEEN 2 AND 5 THEN 1 END) as moderate_competition_auctions,
+      COUNT(CASE WHEN ac.bid_count > 5 THEN 1 END) as high_competition_auctions,
       
-      COALESCE(AVG(bid_count), 0) as avg_bids_per_auction,
-      COALESCE(MAX(bid_count), 0) as max_bids_per_auction,
+      COALESCE(AVG(ac.bid_count), 0) as avg_bids_per_auction,
+      COALESCE(MAX(ac.bid_count), 0) as max_bids_per_auction,
       
-      COALESCE(AVG(winning_bid_amount), 0) as avg_winning_bid,
-      COALESCE(AVG(highest_bid_amount), 0) as avg_highest_bid,
-      COALESCE(AVG(avg_bid_amount), 0) as avg_bid_amount_overall,
+      COALESCE(AVG(ac.winning_bid_amount), 0) as avg_winning_bid,
+      COALESCE(AVG(ac.highest_bid_amount), 0) as avg_highest_bid,
+      COALESCE(AVG(ac.avg_bid_amount), 0) as avg_bid_amount_overall,
       
-      COALESCE(AVG(distance_miles), 0) as avg_distance,
+      COALESCE(AVG(ac.distance_miles), 0) as avg_distance,
+      COALESCE(AVG(ac.highest_bid_amount - ac.winning_bid_amount), 0) as avg_bid_spread,
       
-      -- Competition intensity
-      COALESCE(AVG(highest_bid_amount - winning_bid_amount), 0) as avg_bid_spread,
+      -- NEW: Bid timing metrics
+      COALESCE(AVG(ac.minutes_to_first_bid), 0) as avg_minutes_to_first_bid,
+      COALESCE(MIN(ac.minutes_to_first_bid), 0) as fastest_first_bid_minutes,
+      COALESCE(MAX(ac.minutes_to_first_bid), 0) as slowest_first_bid_minutes,
       
-      -- Time to first bid
-      COUNT(CASE WHEN bid_count > 0 THEN 1 END) as auctions_with_bids
+      -- NEW: Award metrics
+      COUNT(CASE WHEN ao.outcome = 'awarded' THEN 1 END) as awarded_count,
+      COUNT(CASE WHEN ao.outcome = 'no_contest' THEN 1 END) as no_contest_count,
+      COUNT(CASE WHEN ao.outcome = 'expired_with_bids' THEN 1 END) as expired_with_bids_count,
+      COUNT(CASE WHEN ao.outcome = 'pending' THEN 1 END) as pending_count,
+      COALESCE(AVG(ao.minutes_to_award), 0) as avg_minutes_to_award,
       
-    FROM auction_competition
+      -- NEW: Acceptance metrics
+      COUNT(CASE WHEN ao.outcome = 'awarded' AND ao.status = 'bid_awarded' THEN 1 END) as accepted_count,
+      COUNT(CASE WHEN ao.outcome = 'awarded' AND ao.status = 'awarded' THEN 1 END) as pending_acceptance_count,
+      
+      -- NEW: Engagement depth
+      COALESCE(AVG(ac.bid_count::DECIMAL / NULLIF(ac.unique_carriers, 0)), 0) as avg_bids_per_carrier,
+      
+      -- NEW: Price discovery efficiency (how quickly prices converge)
+      COALESCE(AVG(
+        CASE 
+          WHEN ac.bid_count > 1 AND (ac.highest_bid_amount - ac.winning_bid_amount) > 0
+          THEN (ac.highest_bid_amount - ac.winning_bid_amount) / NULLIF(ac.highest_bid_amount, 0) * 100
+          ELSE 0
+        END
+      ), 0) as avg_price_spread_percentage
+      
+    FROM auction_competition ac
+    LEFT JOIN auction_outcomes ao ON ac.bid_number = ao.bid_number
+  `;
+
+  // Get peak bidding hours
+  const peakBiddingHours = await sql`
+    SELECT 
+      EXTRACT(HOUR FROM cb.created_at)::INTEGER as hour,
+      COUNT(*)::INTEGER as bid_count
+    FROM carrier_bids cb
+    INNER JOIN telegram_bids tb ON cb.bid_number = tb.bid_number
+    WHERE tb.received_at >= ${startDate.toISOString()}
+    GROUP BY EXTRACT(HOUR FROM cb.created_at)
+    ORDER BY COUNT(*) DESC
+    LIMIT 5
+  `;
+
+  // Get bid revision stats
+  const bidRevisionStats = await sql`
+    SELECT 
+      COUNT(DISTINCT bid_number) as auctions_with_revisions,
+      COUNT(*) as total_revisions,
+      AVG(revision_count) as avg_revisions_per_carrier
+    FROM (
+      SELECT 
+        bid_number,
+        supabase_user_id,
+        COUNT(*) as revision_count
+      FROM carrier_bids
+      WHERE created_at >= ${startDate.toISOString()}
+      GROUP BY bid_number, supabase_user_id
+      HAVING COUNT(*) > 1
+    ) revisions
+  `;
+
+  // Get route performance (top routes by competition)
+  const topRoutesByCompetition = await sql`
+    SELECT 
+      tb.tag,
+      COUNT(DISTINCT tb.bid_number) as auction_count,
+      AVG(route_stats.bid_count) as avg_bids_per_auction,
+      AVG(route_stats.unique_carriers) as avg_carriers_per_auction,
+      SUM(route_stats.bid_count) as total_bids
+    FROM telegram_bids tb
+    INNER JOIN (
+      SELECT 
+        bid_number,
+        COUNT(*) as bid_count,
+        COUNT(DISTINCT supabase_user_id) as unique_carriers
+      FROM carrier_bids
+      GROUP BY bid_number
+    ) route_stats ON tb.bid_number = route_stats.bid_number
+    WHERE tb.received_at >= ${startDate.toISOString()}
+      AND tb.tag IS NOT NULL
+    GROUP BY tb.tag
+    HAVING COUNT(DISTINCT tb.bid_number) >= 3
+    ORDER BY AVG(route_stats.bid_count) DESC, SUM(route_stats.bid_count) DESC
+    LIMIT 10
   `;
 
   const topCompetitiveAuctions = await sql`
@@ -447,20 +579,55 @@ async function getAuctionInsights(startDate: Date) {
       COALESCE(MIN(cb.amount_cents), 0) as winning_bid_amount,
       COALESCE(MAX(cb.amount_cents), 0) as highest_bid_amount,
       COALESCE(AVG(cb.amount_cents), 0) as avg_bid_amount,
-      COUNT(DISTINCT cb.supabase_user_id) as unique_carriers
+      COUNT(DISTINCT cb.supabase_user_id) as unique_carriers,
+      MIN(cb.created_at) as first_bid_at,
+      EXTRACT(EPOCH FROM (MIN(cb.created_at) - tb.received_at)) / 60 as minutes_to_first_bid
     FROM telegram_bids tb
     LEFT JOIN carrier_bids cb ON tb.bid_number = cb.bid_number
     WHERE tb.received_at >= ${startDate.toISOString()}
     GROUP BY tb.bid_number, tb.distance_miles, tb.tag, tb.received_at
     HAVING COUNT(cb.id) > 0
     ORDER BY COUNT(cb.id) DESC, (MAX(cb.amount_cents) - MIN(cb.amount_cents)) DESC
-    LIMIT 20
+    LIMIT 50
   `;
+
+  const insights = auctionInsights[0] || {};
+  const revisionStats = bidRevisionStats[0] || {};
+  
+  // Calculate auction health score (0-100)
+  const totalWithBids = (insights.total_auctions || 0) - (insights.no_bid_auctions || 0);
+  const awardRate = totalWithBids > 0 
+    ? ((insights.awarded_count || 0) / totalWithBids) * 100 
+    : 0;
+  const acceptanceRate = (insights.awarded_count || 0) > 0
+    ? ((insights.accepted_count || 0) / (insights.awarded_count || 0)) * 100
+    : 0;
+  const competitionScore = Math.min((insights.avg_bids_per_auction || 0) / 5 * 100, 100);
+  const engagementScore = Math.min((insights.avg_bids_per_carrier || 0) / 2 * 100, 100);
+  
+  const healthScore = (
+    (awardRate * 0.3) +
+    (acceptanceRate * 0.25) +
+    (competitionScore * 0.25) +
+    (engagementScore * 0.2)
+  );
 
   return NextResponse.json({
     success: true,
     data: {
-      auctionInsights: auctionInsights[0] || {},
+      auctionInsights: {
+        ...insights,
+        // Calculated rates
+        award_rate_percentage: awardRate,
+        acceptance_rate_percentage: acceptanceRate,
+        auction_health_score: Math.round(healthScore),
+        // Revision stats
+        auctions_with_revisions: revisionStats.auctions_with_revisions || 0,
+        total_revisions: revisionStats.total_revisions || 0,
+        avg_revisions_per_carrier: revisionStats.avg_revisions_per_carrier || 0,
+      },
+      peakBiddingHours: peakBiddingHours || [],
+      topRoutesByCompetition: topRoutesByCompetition || [],
       topCompetitiveAuctions,
       timeframe: {
         days: Math.floor((new Date().getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)),

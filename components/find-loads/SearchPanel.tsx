@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import SectionCard from "@/components/layout/SectionCard";
 import { useAccentColor } from "@/hooks/useAccentColor";
 import { useTheme } from "next-themes";
+import { getButtonTextColor as getTextColor } from "@/lib/utils";
 
 const equipmentTypes = [
   { value: "all", label: "All Equipment" },
@@ -33,12 +34,9 @@ export default function SearchPanel({ onSearch, loading = false }: SearchPanelPr
   const { accentColor } = useAccentColor();
   const { theme } = useTheme();
   
-  // Smart color handling for white accent color
+  // Smart color handling for button text based on background color
   const getButtonTextColor = () => {
-    if (accentColor === 'hsl(0, 0%, 100%)') {
-      return '#000000';
-    }
-    return '#ffffff';
+    return getTextColor(accentColor, theme);
   };
   
   const [filters, setFilters] = useState<SearchFilters>({

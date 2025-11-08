@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Glass } from "@/components/ui/glass";
 import { formatMoney, formatPickupDateTime } from "@/lib/format";
 import { formatArchiveDate, toLocalTime } from "@/lib/timezone";
+import { useTheme } from "next-themes";
+import { getButtonTextColor as getTextColor } from "@/lib/utils";
 import {
     Archive,
     Clock,
@@ -51,7 +53,13 @@ export function ArchiveBidCard({
   onViewHistory,
   accentColor = "#3b82f6" 
 }: ArchiveBidCardProps) {
+  const { theme } = useTheme();
   const [isExpanded, setIsExpanded] = useState(false);
+  
+  // Smart color handling for button text based on background color
+  const getButtonTextColor = () => {
+    return getTextColor(accentColor, theme);
+  };
 
   const parseStops = (stops: string | string[] | null): string[] => {
     if (!stops) return [];
@@ -80,7 +88,7 @@ export function ArchiveBidCard({
             className="border-2"
             style={{
               backgroundColor: `${accentColor}15`,
-              color: accentColor,
+              color: accentColor === 'hsl(0, 0%, 100%)' && theme !== 'dark' ? '#000000' : accentColor,
               borderColor: `${accentColor}40`
             }}
           >

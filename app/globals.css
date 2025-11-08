@@ -165,6 +165,52 @@
     @apply bg-background text-foreground antialiased;
   }
   
+  /* Button press effect for all buttons */
+  button {
+    box-shadow: 0 6px 0 var(--button-shadow, rgba(0, 0, 0, 0.2));
+    transition: all 0.15s ease;
+  }
+  
+  button:active {
+    box-shadow: none !important;
+    transform: translateY(6px) !important;
+  }
+  
+  /* Disable effect for disabled buttons */
+  button:disabled {
+    box-shadow: none !important;
+    transform: none !important;
+  }
+  
+  /* Exclude buttons in headers and navigation */
+  header button,
+  nav button,
+  [role="navigation"] button,
+  /* Exclude dropdown menu triggers */
+  [data-radix-dropdown-menu-trigger],
+  [data-radix-dropdown-menu-trigger] button,
+  /* Exclude select triggers */
+  [data-radix-select-trigger],
+  button[data-state="open"],
+  /* Exclude select components */
+  select,
+  /* Exclude dropdown menu items */
+  [role="menuitem"],
+  [data-radix-dropdown-menu-item] {
+    box-shadow: none !important;
+    transform: none !important;
+  }
+  
+  header button:active,
+  nav button:active,
+  [role="navigation"] button:active,
+  [data-radix-dropdown-menu-trigger]:active,
+  [data-radix-dropdown-menu-trigger] button:active,
+  [data-radix-select-trigger]:active {
+    box-shadow: none !important;
+    transform: none !important;
+  }
+  
   h1, h2, h3, h4, h5, h6 {
     @apply font-semibold tracking-tight;
   }

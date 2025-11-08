@@ -31,6 +31,7 @@ import { MapboxMap } from "@/components/ui/MapboxMap";
 import { useAccentColor } from "@/hooks/useAccentColor";
 import { useTheme } from "next-themes";
 import { useIsAdmin } from "@/hooks/useUserRole";
+import { getButtonTextColor as getTextColor } from "@/lib/utils";
 
 // Optimized fetcher with error handling
 const fetcher = async (url: string) => {
@@ -76,11 +77,8 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
   }, [accentColor, theme]);
   
   const getButtonTextColor = useCallback(() => {
-    if (accentColor === 'hsl(0, 0%, 100%)') {
-      return '#000000';
-    }
-    return '#ffffff';
-  }, [accentColor]);
+    return getTextColor(accentColor, theme);
+  }, [accentColor, theme]);
 
   // Optimized SWR configuration
   const { data, mutate, isLoading, error } = useSWR(

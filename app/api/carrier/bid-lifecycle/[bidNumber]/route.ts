@@ -57,6 +57,7 @@ export async function GET(
 
     // Get bid details for complete information
     // Note: winner_user_id was removed in migration 078, only supabase_winner_user_id exists
+    // IMPORTANT: margin_cents is NEVER exposed to carriers - admin-only analytics data
     const bidDetails = await sql`
       SELECT 
         aa.bid_number,
@@ -73,12 +74,14 @@ export async function GET(
         cb.truck_number,
         cb.trailer_number,
         cb.lifecycle_notes
+        -- margin_cents is intentionally excluded - admin-only analytics data
       FROM auction_awards aa
       LEFT JOIN telegram_bids tb ON aa.bid_number = tb.bid_number
       LEFT JOIN carrier_bids cb ON aa.bid_number = cb.bid_number 
         AND cb.supabase_user_id = aa.supabase_winner_user_id
       WHERE aa.bid_number = ${bidNumber} 
         AND aa.supabase_winner_user_id = ${userId}
+        -- margin_cents is intentionally excluded - admin-only analytics data
       LIMIT 1
     `;
 

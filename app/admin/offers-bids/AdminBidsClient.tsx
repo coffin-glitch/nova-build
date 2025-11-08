@@ -3,6 +3,7 @@
 import AdminBidLifecycleViewer from "@/components/admin/AdminBidLifecycleViewer";
 import { DriverInfoDialog } from "@/components/admin/DriverInfoDialog";
 import { BidMessageConsole } from "@/components/bid-message/BidMessageConsole";
+import { MarginProfitAnalytics } from "@/components/admin/MarginProfitAnalytics";
 import { DocumentViewerDialog } from "./DocumentViewerDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -682,17 +683,7 @@ export default function AdminBidsClient() {
         </TabsContent>
 
         <TabsContent value="analytics" className="space-y-4">
-          <Card className="p-8 text-center">
-            <div className="space-y-4">
-              <div className="w-16 h-16 mx-auto bg-purple-100 dark:bg-purple-900/50 rounded-full flex items-center justify-center">
-                <BarChart3 className="h-8 w-8 text-purple-600 dark:text-purple-400" />
-              </div>
-              <h3 className="text-lg font-semibold text-foreground">Analytics Coming Soon</h3>
-              <p className="text-muted-foreground">
-                Bid analytics and reporting features will be available soon.
-              </p>
-            </div>
-          </Card>
+          <MarginProfitAnalytics accentColor={accentColor} />
         </TabsContent>
 
         <TabsContent value="history" className="space-y-4">

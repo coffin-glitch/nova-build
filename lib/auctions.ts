@@ -439,11 +439,13 @@ export async function awardAuction({
   winner_user_id,
   awarded_by,
   admin_notes,
+  margin_cents,
 }: {
   bid_number: string;
   winner_user_id: string;
   awarded_by: string;
   admin_notes?: string;
+  margin_cents?: number;
 }): Promise<AuctionAward> {
   try {
     // Verify the winner has a bid for this auction (Supabase-only)
@@ -466,11 +468,11 @@ export async function awardAuction({
       throw new Error('Auction already awarded');
     }
 
-    // Create the award with admin notes if provided
+    // Create the award with admin notes and margin if provided
     // Note: Uses supabase_winner_user_id and supabase_awarded_by (migration 078 removed winner_user_id and awarded_by)
     const award = await sql`
-      INSERT INTO public.auction_awards (bid_number, supabase_winner_user_id, winner_amount_cents, supabase_awarded_by, admin_notes)
-      VALUES (${bid_number}, ${winner_user_id}, ${winnerBid[0].amount_cents}, ${awarded_by}, ${admin_notes || null})
+      INSERT INTO public.auction_awards (bid_number, supabase_winner_user_id, winner_amount_cents, supabase_awarded_by, admin_notes, margin_cents)
+      VALUES (${bid_number}, ${winner_user_id}, ${winnerBid[0].amount_cents}, ${awarded_by}, ${admin_notes || null}, ${margin_cents !== undefined ? margin_cents : null})
       RETURNING *
     `;
 
@@ -531,11 +533,13 @@ export async function reAwardAuction({
   winner_user_id,
   awarded_by,
   admin_notes,
+  margin_cents,
 }: {
   bid_number: string;
   winner_user_id: string;
   awarded_by: string;
   admin_notes?: string;
+  margin_cents?: number;
 }): Promise<AuctionAward> {
   try {
     // Verify the winner has a bid for this auction (Supabase-only)
@@ -578,10 +582,10 @@ export async function reAwardAuction({
     // Delete notifications related to the old award (optional - can be done via cleanup)
     // We'll create new notifications below
 
-    // Create the new award with admin notes if provided
+    // Create the new award with admin notes and margin if provided
     const award = await sql`
-      INSERT INTO public.auction_awards (bid_number, supabase_winner_user_id, winner_amount_cents, supabase_awarded_by, admin_notes)
-      VALUES (${bid_number}, ${winner_user_id}, ${winnerBid[0].amount_cents}, ${awarded_by}, ${admin_notes || null})
+      INSERT INTO public.auction_awards (bid_number, supabase_winner_user_id, winner_amount_cents, supabase_awarded_by, admin_notes, margin_cents)
+      VALUES (${bid_number}, ${winner_user_id}, ${winnerBid[0].amount_cents}, ${awarded_by}, ${admin_notes || null}, ${margin_cents !== undefined ? margin_cents : null})
       RETURNING *
     `;
 

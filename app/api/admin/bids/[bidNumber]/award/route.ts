@@ -14,7 +14,7 @@ export async function POST(
     
     const { bidNumber } = await params;
     const body = await request.json();
-    const { winnerUserId, adminNotes } = body;
+    const { winnerUserId, adminNotes, marginCents } = body;
 
     if (!bidNumber) {
       return NextResponse.json(
@@ -35,7 +35,8 @@ export async function POST(
       bid_number: bidNumber,
       winner_user_id: winnerUserId,
       awarded_by: userId,
-      admin_notes: adminNotes // Pass notes directly to awardAuction function
+      admin_notes: adminNotes, // Pass notes directly to awardAuction function
+      margin_cents: marginCents ? parseInt(marginCents) : undefined // Convert to integer if provided
     });
 
     // Admin notes are now handled in awardAuction function

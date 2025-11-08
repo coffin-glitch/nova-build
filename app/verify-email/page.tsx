@@ -8,7 +8,9 @@ import { Button } from "@/components/ui/button";
 import { Mail, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useAccentColor } from "@/hooks/useAccentColor";
+import { useTheme } from "next-themes";
 import { Truck } from "lucide-react";
+import { getButtonTextColor as getTextColor } from "@/lib/utils";
 
 /**
  * Email Verification Pending Page
@@ -19,6 +21,7 @@ export default function VerifyEmailPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { accentColor } = useAccentColor();
+  const { theme } = useTheme();
   const [email, setEmail] = useState<string | null>(null);
   const [checkingStatus, setCheckingStatus] = useState(true);
   const [isVerified, setIsVerified] = useState(false);
@@ -89,10 +92,7 @@ export default function VerifyEmailPage() {
   };
 
   const getButtonTextColor = () => {
-    if (accentColor === 'hsl(0, 0%, 100%)') {
-      return '#000000';
-    }
-    return '#ffffff';
+    return getTextColor(accentColor, theme);
   };
 
   return (

@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useAccentColor } from "@/hooks/useAccentColor";
+import { getButtonTextColor as getTextColor } from "@/lib/utils";
 import {
     ArrowUpDown,
     BarChart3,
@@ -121,10 +122,7 @@ export default function AdminOffersClient() {
   const { theme } = useTheme();
 
   const getButtonTextColor = () => {
-    if (accentColor === 'hsl(0, 0%, 100%)') {
-      return '#000000';
-    }
-    return '#ffffff';
+    return getTextColor(accentColor, theme);
   };
 
   useEffect(() => {

@@ -12,6 +12,7 @@ export async function GET(request: NextRequest) {
     
     // Note: winner_user_id and awarded_by were removed in migration 078
     // Only supabase_winner_user_id and supabase_awarded_by exist now
+    // IMPORTANT: margin_cents is NEVER exposed to carriers - admin-only analytics data
     const awardedBids = await sql`
       SELECT 
         aa.id,
@@ -30,6 +31,7 @@ export async function GET(request: NextRequest) {
         COALESCE(cb.status, 'awarded') as status,
         cb.lifecycle_notes as notes,
         cb.updated_at
+        -- margin_cents is intentionally excluded - admin-only analytics data
       FROM auction_awards aa
       LEFT JOIN telegram_bids tb ON aa.bid_number = tb.bid_number
       LEFT JOIN carrier_bids cb ON aa.bid_number = cb.bid_number 
