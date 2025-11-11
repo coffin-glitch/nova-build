@@ -2,6 +2,12 @@
   "installCommand": "npm install --legacy-peer-deps",
   "env": {
     "ESLINT_NO_DEV_ERRORS": "true"
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/notifications/process",
+      "schedule": "*/2 * * * *"
+    }
+  ]
 }
 

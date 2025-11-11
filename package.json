@@ -23,7 +23,9 @@
     "ingest:eax": "tsx scripts/eax-ingest.ts",
     "ingest:interactive": "tsx scripts/eax-ingest-interactive.ts",
     "eax:export": "tsx scripts/eax-export-excel.ts",
-    "eax:open": "tsx scripts/eax-open.ts"
+    "eax:open": "tsx scripts/eax-open.ts",
+    "worker:notifications": "tsx workers/notification-worker.ts",
+    "worker:notifications:dev": "tsx --watch workers/notification-worker.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
@@ -62,6 +64,7 @@
     "@types/papaparse": "^5.3.16",
     "axios": "^1.13.2",
     "better-sqlite3": "^12.3.0",
+    "bullmq": "^5.63.0",
     "cheerio": "^1.1.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -71,6 +74,7 @@
     "drizzle-orm": "^0.44.6",
     "formidable": "^3.5.4",
     "framer-motion": "^12.23.16",
+    "ioredis": "^5.8.2",
     "lucide-react": "^0.544.0",
     "luxon": "^3.7.2",
     "mapbox-gl": "^3.15.0",
