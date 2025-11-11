@@ -3,7 +3,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Countdown } from "@/components/ui/Countdown";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Glass } from "@/components/ui/glass";
 import { Input } from "@/components/ui/input";
 import { MapboxMap } from "@/components/ui/MapboxMap";
@@ -11,21 +11,22 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAccentColor } from "@/hooks/useAccentColor";
 import { formatDistance, formatStopCount, formatStops, formatStopsDetailed } from "@/lib/format";
 import {
-    Activity,
-    AlertCircle,
-    BarChart3,
-    CheckCircle,
-    Clock,
-    DollarSign,
-    Edit,
-    Gavel,
-    MapPin,
-    Navigation,
-    Search,
-    Target,
-    Truck,
-    X,
-    XCircle
+  Activity,
+  AlertCircle,
+  CheckCircle,
+  Clock,
+  DollarSign,
+  Edit,
+  Gavel,
+  LayoutGrid,
+  MapPin,
+  Navigation,
+  Search,
+  Table as TableIcon,
+  Target,
+  Truck,
+  X,
+  XCircle
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -56,23 +57,6 @@ interface ActiveBid {
   award?: any;
 }
 
-interface HistoricalBid {
-  id: string;
-  bidNumber: string;
-  bidAmount: number;
-  bidStatus: 'won' | 'lost' | 'pending' | 'cancelled';
-  bidNotes?: string;
-  createdAt: string;
-  updatedAt: string;
-  distanceMiles: number;
-  pickupTimestamp: string;
-  deliveryTimestamp: string;
-  stops: string[];
-  tag: string;
-  sourceChannel: string;
-  loadStatus: 'archived' | 'active' | 'unknown';
-  archivedAt?: string;
-}
 
 interface ManageBidsConsoleProps {
   isOpen: boolean;
@@ -88,7 +72,8 @@ export default function ManageBidsConsole({ isOpen, onClose }: ManageBidsConsole
   const [bidNotes, setBidNotes] = useState("");
   const [isModifying, setIsModifying] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
-  const [activeTab, setActiveTab] = useState<'active' | 'closed' | 'historical'>('active');
+  const [activeTab, setActiveTab] = useState<'active' | 'closed'>('active');
+  const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
   const { accentColor, accentBgStyle } = useAccentColor();
 
   const { data, mutate, isLoading } = useSWR(
@@ -100,18 +85,7 @@ export default function ManageBidsConsole({ isOpen, onClose }: ManageBidsConsole
     }
   );
 
-  // Fetch historical bid data
-  const { data: historicalData, mutate: mutateHistorical } = useSWR(
-    isOpen ? `/api/carrier/bid-history` : null,
-    fetcher,
-    {
-      refreshInterval: 30000, // Less frequent updates for historical data
-      fallbackData: { ok: true, data: [] }
-    }
-  );
-
   const bids: ActiveBid[] = data?.data || [];
-  const historicalBids: HistoricalBid[] = historicalData?.data || [];
 
   // Separate bids by status
   const activeBids = bids.filter((bid: ActiveBid) => !bid.isExpired);
@@ -148,34 +122,6 @@ export default function ManageBidsConsole({ isOpen, onClose }: ManageBidsConsole
     return <Activity className="h-5 w-5 text-blue-400" />;
   };
 
-  // Historical bid helper functions
-  const getHistoricalStatusColor = (status: string) => {
-    switch (status) {
-      case 'won':
-        return "bg-green-500/20 text-green-400 border-green-500/30";
-      case 'lost':
-        return "bg-red-500/20 text-red-400 border-red-500/30";
-      case 'cancelled':
-        return "bg-gray-500/20 text-gray-400 border-gray-500/30";
-      case 'pending':
-      default:
-        return "bg-yellow-500/20 text-yellow-400 border-yellow-500/30";
-    }
-  };
-
-  const getHistoricalStatusIcon = (status: string) => {
-    switch (status) {
-      case 'won':
-        return <CheckCircle className="h-4 w-4 text-green-400" />;
-      case 'lost':
-        return <XCircle className="h-4 w-4 text-red-400" />;
-      case 'cancelled':
-        return <X className="h-4 w-4 text-gray-400" />;
-      case 'pending':
-      default:
-        return <Clock className="h-4 w-4 text-yellow-400" />;
-    }
-  };
 
   const getStatusText = (bid: ActiveBid) => {
     if (bid.isExpired) {
@@ -259,7 +205,7 @@ export default function ManageBidsConsole({ isOpen, onClose }: ManageBidsConsole
 
   const openModifyDialog = (bid: ActiveBid) => {
     setModifyBidDialog(bid);
-    setBidAmount(bid.myBid.toString());
+    setBidAmount((bid.myBid || 0).toString());
     setBidNotes(bid.notes || "");
   };
 
@@ -275,6 +221,9 @@ export default function ManageBidsConsole({ isOpen, onClose }: ManageBidsConsole
             <Gavel className="h-5 w-5" />
             Manage Your Bids
           </DialogTitle>
+          <DialogDescription>
+            View and manage your active and closed bids
+          </DialogDescription>
         </DialogHeader>
         
         <div className="overflow-y-auto max-h-[80vh] space-y-6">
@@ -308,8 +257,8 @@ export default function ManageBidsConsole({ isOpen, onClose }: ManageBidsConsole
             
             <Glass className="p-4">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-purple-500/20 rounded-lg">
-                  <BarChart3 className="h-5 w-5 text-purple-400" />
+                <div className="p-2 bg-green-500/20 rounded-lg">
+                  <CheckCircle className="h-5 w-5 text-green-400" />
                 </div>
                 <div>
                   <div className="text-xl font-bold">
@@ -345,21 +294,41 @@ export default function ManageBidsConsole({ isOpen, onClose }: ManageBidsConsole
           </div>
 
           {/* Tabs */}
-          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'active' | 'closed' | 'historical')}>
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="active" className="flex items-center gap-2">
-                <Activity className="h-4 w-4" />
-                Active ({activeBids.length})
-              </TabsTrigger>
-              <TabsTrigger value="closed" className="flex items-center gap-2">
-                <Clock className="h-4 w-4" />
-                Closed ({closedBids.length})
-              </TabsTrigger>
-              <TabsTrigger value="historical" className="flex items-center gap-2">
-                <BarChart3 className="h-4 w-4" />
-                History ({historicalBids.length})
-              </TabsTrigger>
-            </TabsList>
+          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'active' | 'closed')}>
+            <div className="flex items-center justify-between">
+              <TabsList className="grid w-auto grid-cols-2">
+                <TabsTrigger value="active" className="flex items-center gap-2">
+                  <Activity className="h-4 w-4" />
+                  Active ({activeBids.length})
+                </TabsTrigger>
+                <TabsTrigger value="closed" className="flex items-center gap-2">
+                  <Clock className="h-4 w-4" />
+                  Closed ({closedBids.length})
+                </TabsTrigger>
+              </TabsList>
+              
+              {/* View Mode Toggle */}
+              <div className="flex items-center gap-1 border border-border rounded p-0.5">
+                <Button
+                  variant={viewMode === 'card' ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setViewMode('card')}
+                  className={`text-xs px-2 py-1 h-7 ${viewMode === 'card' ? 'bg-primary text-primary-foreground' : ''}`}
+                  title="Card View"
+                >
+                  <LayoutGrid className="h-3 w-3" />
+                </Button>
+                <Button
+                  variant={viewMode === 'list' ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setViewMode('list')}
+                  className={`text-xs px-2 py-1 h-7 ${viewMode === 'list' ? 'bg-primary text-primary-foreground' : ''}`}
+                  title="List View"
+                >
+                  <TableIcon className="h-3 w-3" />
+                </Button>
+              </div>
+            </div>
 
             {/* Active Bids Tab */}
             <TabsContent value="active" className="space-y-4">
@@ -369,62 +338,131 @@ export default function ManageBidsConsole({ isOpen, onClose }: ManageBidsConsole
                   <h3 className="text-sm font-semibold mb-1">No active bids</h3>
                   <p className="text-xs text-muted-foreground">Start bidding on loads from the Live Auctions</p>
                 </div>
-              ) : (
+              ) : viewMode === 'card' ? (
                 <div className="space-y-3">
-                  {filteredActiveBids.map((bid) => {
-                    return (
-                      <Glass key={bid.id} className="p-4">
-                        <div className="space-y-3">
-                          {/* Header */}
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <h4 className="font-semibold">{bid.bidNumber}</h4>
-                              <Badge className={getStatusColor(bid)}>
-                                {getStatusText(bid)}
-                              </Badge>
-                              {getStatusIcon(bid)}
-                            </div>
-                            
-                            <div className="text-right">
-                              <div className="text-xs text-muted-foreground">Time Left</div>
-                              <Countdown 
-                                expiresAt={bid.expiresAt} 
-                                className="text-sm font-mono"
-                              />
+                  {filteredActiveBids.map((bid) => (
+                    <Glass key={bid.id} className="p-4">
+                      <div className="space-y-3">
+                        {/* Header */}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-semibold">{bid.bidNumber}</h4>
+                            <Badge className={getStatusColor(bid)}>
+                              {getStatusText(bid)}
+                            </Badge>
+                            {getStatusIcon(bid)}
+                          </div>
+                          
+                          <div className="text-right">
+                            <div className="text-xs text-muted-foreground">Time Left</div>
+                            <Countdown 
+                              expiresAt={bid.expiresAt} 
+                              className="text-sm font-mono"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Route Info */}
+                        <div className="grid grid-cols-3 gap-2 text-xs">
+                          <div className="flex items-center gap-1">
+                            <MapPin className="h-3 w-3 text-muted-foreground" />
+                            <span className="truncate">{formatStops(bid.stops)}</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Navigation className="h-3 w-3 text-muted-foreground" />
+                            <span>{formatDistance(bid.distance)}</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Truck className="h-3 w-3 text-muted-foreground" />
+                            <span>{formatStopCount(bid.stops)}</span>
+                          </div>
+                        </div>
+
+                        {/* Bidding Info */}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3 text-xs">
+                            <div className="flex items-center gap-1">
+                              <DollarSign className="h-3 w-3 text-muted-foreground" />
+                              <span>My Bid: <span className="font-semibold text-blue-400">${Number(bid.myBid || 0).toFixed(2)}</span></span>
                             </div>
                           </div>
-
-                          {/* Route Info */}
-                          <div className="grid grid-cols-3 gap-2 text-xs">
-                            <div className="flex items-center gap-1">
+                          
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setViewDetailsBid(bid)}
+                              className="text-xs px-2 py-1"
+                            >
+                              Details
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openModifyDialog(bid)}
+                              className="text-xs px-2 py-1 hover:bg-blue-500/20 hover:text-blue-400"
+                            >
+                              <Edit className="h-3 w-3 mr-1" />
+                              Modify
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openCancelDialog(bid)}
+                              className="text-xs px-2 py-1 hover:bg-red-500/20 hover:text-red-400"
+                            >
+                              <X className="h-3 w-3 mr-1" />
+                              Cancel
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </Glass>
+                  ))}
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border">
+                        <th className="text-left p-2 font-medium">Bid #</th>
+                        <th className="text-left p-2 font-medium">Route</th>
+                        <th className="text-left p-2 font-medium">Distance</th>
+                        <th className="text-left p-2 font-medium">My Bid</th>
+                        <th className="text-left p-2 font-medium">Time Left</th>
+                        <th className="text-left p-2 font-medium">Status</th>
+                        <th className="text-right p-2 font-medium">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredActiveBids.map((bid) => (
+                        <tr key={bid.id} className="border-b border-border/50 hover:bg-muted/20">
+                          <td className="p-2 font-semibold">{bid.bidNumber}</td>
+                          <td className="p-2">
+                            <div className="flex items-center gap-1 text-xs">
                               <MapPin className="h-3 w-3 text-muted-foreground" />
-                              <span className="truncate">{formatStops(bid.stops)}</span>
+                              <span className="truncate max-w-[200px]">{formatStops(bid.stops)}</span>
                             </div>
-                            <div className="flex items-center gap-1">
-                              <Navigation className="h-3 w-3 text-muted-foreground" />
-                              <span>{formatDistance(bid.distance)}</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <Truck className="h-3 w-3 text-muted-foreground" />
-                              <span>{formatStopCount(bid.stops)}</span>
-                            </div>
-                          </div>
-
-                          {/* Bidding Info */}
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3 text-xs">
-                              <div className="flex items-center gap-1">
-                                <DollarSign className="h-3 w-3 text-muted-foreground" />
-                                <span>My Bid: <span className="font-semibold text-blue-400">${Number(bid.myBid || 0).toFixed(2)}</span></span>
-                              </div>
-                            </div>
-                            
-                            <div className="flex items-center gap-1">
+                          </td>
+                          <td className="p-2 text-xs">{formatDistance(bid.distance)}</td>
+                          <td className="p-2">
+                            <span className="font-semibold text-blue-400">${Number(bid.myBid || 0).toFixed(2)}</span>
+                          </td>
+                          <td className="p-2">
+                            <Countdown expiresAt={bid.expiresAt} className="text-xs font-mono" />
+                          </td>
+                          <td className="p-2">
+                            <Badge className={getStatusColor(bid)} variant="outline">
+                              {getStatusText(bid)}
+                            </Badge>
+                          </td>
+                          <td className="p-2">
+                            <div className="flex items-center justify-end gap-1">
                               <Button
                                 variant="outline"
                                 size="sm"
                                 onClick={() => setViewDetailsBid(bid)}
-                                className="text-xs px-2 py-1"
+                                className="text-xs px-2 py-1 h-7"
                               >
                                 Details
                               </Button>
@@ -432,26 +470,24 @@ export default function ManageBidsConsole({ isOpen, onClose }: ManageBidsConsole
                                 variant="outline"
                                 size="sm"
                                 onClick={() => openModifyDialog(bid)}
-                                className="text-xs px-2 py-1 hover:bg-blue-500/20 hover:text-blue-400"
+                                className="text-xs px-2 py-1 h-7 hover:bg-blue-500/20 hover:text-blue-400"
                               >
-                                <Edit className="h-3 w-3 mr-1" />
-                                Modify
+                                <Edit className="h-3 w-3" />
                               </Button>
                               <Button
                                 variant="outline"
                                 size="sm"
                                 onClick={() => openCancelDialog(bid)}
-                                className="text-xs px-2 py-1 hover:bg-red-500/20 hover:text-red-400"
+                                className="text-xs px-2 py-1 h-7 hover:bg-red-500/20 hover:text-red-400"
                               >
-                                <X className="h-3 w-3 mr-1" />
-                                Cancel
+                                <X className="h-3 w-3" />
                               </Button>
                             </div>
-                          </div>
-                        </div>
-                      </Glass>
-                    );
-                  })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </TabsContent>
@@ -464,7 +500,7 @@ export default function ManageBidsConsole({ isOpen, onClose }: ManageBidsConsole
                   <h3 className="text-sm font-semibold mb-1">No closed bids</h3>
                   <p className="text-xs text-muted-foreground">Your closed bids will appear here</p>
                 </div>
-              ) : (
+              ) : viewMode === 'card' ? (
                 <div className="space-y-3">
                   {filteredClosedBids.map((bid) => (
                     <Glass key={bid.id} className="p-4">
@@ -528,89 +564,65 @@ export default function ManageBidsConsole({ isOpen, onClose }: ManageBidsConsole
                     </Glass>
                   ))}
                 </div>
-              )}
-            </TabsContent>
-
-            {/* Historical Bids Tab */}
-            <TabsContent value="historical" className="space-y-4">
-              {historicalBids.length === 0 ? (
-                <div className="text-center py-8">
-                  <BarChart3 className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                  <h3 className="text-sm font-semibold mb-1">No historical bids</h3>
-                  <p className="text-xs text-muted-foreground">Your bid history will appear here</p>
-                </div>
               ) : (
-                <div className="space-y-3">
-                  {historicalBids.map((bid) => (
-                    <Glass key={bid.id} className="p-4">
-                      <div className="space-y-3">
-                        {/* Header */}
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <h4 className="font-semibold">{bid.bidNumber}</h4>
-                            <Badge className={getHistoricalStatusColor(bid.bidStatus)}>
-                              {bid.bidStatus.toUpperCase()}
-                            </Badge>
-                            {getHistoricalStatusIcon(bid.bidStatus)}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {new Date(bid.createdAt).toLocaleDateString()}
-                          </div>
-                        </div>
-
-                        {/* Route Info */}
-                        <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                          <div className="flex items-center gap-1">
-                            <MapPin className="h-3 w-3" />
-                            <span>{formatStops(bid.stops)}</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <Truck className="h-3 w-3" />
-                            <span>{bid.distanceMiles} mi</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <Navigation className="h-3 w-3" />
-                            <span>{bid.tag}</span>
-                          </div>
-                        </div>
-
-                        {/* Bid Details */}
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3 text-xs">
-                            <div className="flex items-center gap-1">
-                              <DollarSign className="h-3 w-3 text-muted-foreground" />
-                              <span>Bid: <span className="font-semibold">${bid.bidAmount.toFixed(2)}</span></span>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border">
+                        <th className="text-left p-2 font-medium">Bid #</th>
+                        <th className="text-left p-2 font-medium">Route</th>
+                        <th className="text-left p-2 font-medium">Distance</th>
+                        <th className="text-left p-2 font-medium">My Bid</th>
+                        <th className="text-left p-2 font-medium">Closed Date</th>
+                        <th className="text-left p-2 font-medium">Status</th>
+                        <th className="text-right p-2 font-medium">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredClosedBids.map((bid) => (
+                        <tr key={bid.id} className="border-b border-border/50 hover:bg-muted/20">
+                          <td className="p-2 font-semibold">{bid.bidNumber}</td>
+                          <td className="p-2">
+                            <div className="flex items-center gap-1 text-xs">
+                              <MapPin className="h-3 w-3 text-muted-foreground" />
+                              <span className="truncate max-w-[200px]">{formatStops(bid.stops)}</span>
                             </div>
-                            <div className="flex items-center gap-1">
-                              <Clock className="h-3 w-3 text-muted-foreground" />
-                              <span>{new Date(bid.createdAt).toLocaleTimeString()}</span>
-                            </div>
-                          </div>
-                          
-                          <div className="flex items-center gap-2">
-                            <Badge variant="outline" className="text-xs">
-                              {bid.loadStatus}
+                          </td>
+                          <td className="p-2 text-xs">{formatDistance(bid.distance)}</td>
+                          <td className="p-2">
+                            <span className={`font-semibold ${
+                              bid.bidStatus === 'won' ? 'text-green-400' : 
+                              bid.bidStatus === 'lost' ? 'text-red-400' : 'text-blue-400'
+                            }`}>${Number(bid.myBid || 0).toFixed(2)}</span>
+                          </td>
+                          <td className="p-2 text-xs">
+                            {new Date(bid.expiresAt).toLocaleDateString()}
+                          </td>
+                          <td className="p-2">
+                            <Badge className={getStatusColor(bid)} variant="outline">
+                              {getStatusText(bid)}
                             </Badge>
-                            {bid.archivedAt && (
-                              <span className="text-xs text-muted-foreground">
-                                Archived: {new Date(bid.archivedAt).toLocaleDateString()}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Notes */}
-                        {bid.bidNotes && (
-                          <div className="text-xs text-muted-foreground bg-muted/30 p-2 rounded">
-                            <strong>Notes:</strong> {bid.bidNotes}
-                          </div>
-                        )}
-                      </div>
-                    </Glass>
-                  ))}
+                          </td>
+                          <td className="p-2">
+                            <div className="flex items-center justify-end gap-1">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setViewDetailsBid(bid)}
+                                className="text-xs px-2 py-1 h-7"
+                              >
+                                Details
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </TabsContent>
+
           </Tabs>
         </div>
 
@@ -619,6 +631,9 @@ export default function ManageBidsConsole({ isOpen, onClose }: ManageBidsConsole
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Modify Bid - #{modifyBidDialog?.bidNumber}</DialogTitle>
+              <DialogDescription>
+                Update your bid amount and notes for this load
+              </DialogDescription>
             </DialogHeader>
             
             {modifyBidDialog && (
@@ -669,7 +684,7 @@ export default function ManageBidsConsole({ isOpen, onClose }: ManageBidsConsole
                   <Button
                     onClick={handleModifyBid}
                     disabled={!bidAmount || isModifying || modifyBidDialog.isExpired}
-                    className={accentBgStyle}
+                    style={accentBgStyle}
                     size="sm"
                   >
                     {isModifying ? "Updating..." : "Update Bid"}
@@ -685,6 +700,9 @@ export default function ManageBidsConsole({ isOpen, onClose }: ManageBidsConsole
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Cancel Bid - #{cancelBidDialog?.bidNumber}</DialogTitle>
+              <DialogDescription>
+                Confirm cancellation of your bid for this load
+              </DialogDescription>
             </DialogHeader>
             
             {cancelBidDialog && (
@@ -737,6 +755,9 @@ export default function ManageBidsConsole({ isOpen, onClose }: ManageBidsConsole
           <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Bid Details - {viewDetailsBid?.bidNumber}</DialogTitle>
+              <DialogDescription>
+                View detailed information about this bid and load
+              </DialogDescription>
             </DialogHeader>
             
             {viewDetailsBid && (

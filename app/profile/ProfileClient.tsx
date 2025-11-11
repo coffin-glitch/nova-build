@@ -1,296 +1,790 @@
 "use client";
 
+import FavoritesConsole from "@/components/carrier/FavoritesConsole";
 import { useSupabase } from "@/components/providers/SupabaseProvider";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { updateCarrierProfile } from "@/lib/actions";
+import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
+import { useAccentColor } from "@/hooks/useAccentColor";
+import { useUnifiedUser } from "@/hooks/useUnifiedUser";
 import {
-  CheckCircle,
-  Clock,
-  DollarSign,
-  Edit,
-  FileText,
+  Bell,
+  Building2,
+  CheckCircle2,
+  CreditCard,
+  Eye,
+  EyeOff,
+  Loader2,
+  Lock,
   Mail,
-  Save,
-  Truck,
-  User,
-  X
+  Phone,
+  Shield,
+  User
 } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import useSWR from "swr";
 
-interface Profile {
-  mc_number?: string;
-  dot_number?: string;
-  phone?: string;
-  dispatch_email?: string;
+const fetcher = (url: string) => fetch(url).then(r => r.json());
+
+interface NotificationPreferences {
+  emailNotifications: boolean;
+  similarLoadNotifications: boolean;
+  toastNotifications?: boolean;
+  textNotifications?: boolean;
+  urgentContactPreference?: string;
+  urgentContactEmail?: boolean;
+  urgentContactPhone?: boolean;
+  [key: string]: any;
 }
 
-interface ProfileClientProps {
-  initialProfile: Profile;
-  userRole: string;
-}
-
-export function ProfileClient({ initialProfile, userRole }: ProfileClientProps) {
-  const { supabase } = useSupabase();
-  const router = useRouter();
-  const [profile, setProfile] = useState(initialProfile);
-  const [isEditing, setIsEditing] = useState(false);
-
-  const handleSignOut = async () => {
+export default function ProfileClient() {
+  const { user, supabase, loading: supabaseLoading } = useSupabase();
+  const { user: unifiedUser, isLoading: userLoading } = useUnifiedUser();
+  const { accentColor } = useAccentColor();
+  
+  // Password change state
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
+  const [passwordStep, setPasswordStep] = useState<'request' | 'verify' | 'change'>('request');
+  const [emailCode, setEmailCode] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [codeSent, setCodeSent] = useState(false);
+  
+  // Notification preferences state
+  const [notificationPrefs, setNotificationPrefs] = useState<NotificationPreferences>({
+    emailNotifications: true,
+    similarLoadNotifications: true,
+    toastNotifications: true,
+    textNotifications: false,
+    urgentContactPreference: 'email',
+    urgentContactEmail: true,
+    urgentContactPhone: false
+  });
+  const [savingPrefs, setSavingPrefs] = useState(false);
+  const [showFavoritesConsole, setShowFavoritesConsole] = useState(false);
+  
+  // Fetch carrier profile data
+  const { data: profileData, mutate: mutateProfile } = useSWR(
+    '/api/carrier/profile',
+    fetcher,
+    { revalidateOnFocus: false }
+  );
+  
+  // Fetch notification preferences
+  const { data: notifData, mutate: mutateNotif } = useSWR(
+    '/api/carrier/notification-preferences',
+    fetcher,
+    { revalidateOnFocus: false }
+  );
+  
+  useEffect(() => {
+    if (notifData?.data) {
+      const urgentPref = notifData.data.urgentContactPreference ?? 'email';
+      setNotificationPrefs(prev => ({
+        ...prev,
+        ...notifData.data,
+        toastNotifications: notifData.data.toastNotifications ?? true,
+        textNotifications: notifData.data.textNotifications ?? false,
+        urgentContactPreference: urgentPref,
+        urgentContactEmail: notifData.data.urgentContactEmail ?? (urgentPref === 'email' || urgentPref === 'both'),
+        urgentContactPhone: notifData.data.urgentContactPhone ?? (urgentPref === 'phone' || urgentPref === 'both')
+      }));
+    }
+  }, [notifData]);
+  
+  // Check if user signed in with Google OAuth
+  const isGoogleUser = user?.app_metadata?.provider === 'google' || 
+                       user?.identities?.some((id: any) => id.provider === 'google');
+  
+  // Check if user has email/password auth (Supabase native)
+  const hasPasswordAuth = user?.app_metadata?.provider === 'email' || 
+                          user?.identities?.some((id: any) => id.provider === 'email');
+  
+  const handleRequestPasswordChange = async () => {
+    if (!user?.email) {
+      toast.error("Email address not found");
+      return;
+    }
+    
+    setPasswordLoading(true);
     try {
-      await supabase.auth.signOut();
-      router.push('/sign-in');
-      router.refresh();
-    } catch (error) {
-      console.error('Error signing out:', error);
+      if (!supabase) throw new Error("Supabase client not available");
+      
+      // Send OTP code to email for verification
+      // Using signInWithOtp with shouldCreateUser: false works for logged-in users too
+      // This ensures consistent behavior and proper email template usage
+      const { error } = await supabase.auth.signInWithOtp({
+        email: user.email,
+        options: {
+          shouldCreateUser: false
+        }
+      });
+      
+      if (error) throw error;
+      
+      setCodeSent(true);
+      setPasswordStep('verify');
+      toast.success("Verification code sent to your email. Check your inbox for the 6-digit code.");
+    } catch (error: any) {
+      toast.error(error.message || "Failed to send verification code");
+    } finally {
+      setPasswordLoading(false);
     }
   };
-
-  const handleCancel = () => {
-    setProfile(initialProfile);
-    setIsEditing(false);
+  
+  const handleVerifyCode = async () => {
+    if (!user?.email || !emailCode) {
+      toast.error("Please enter the verification code");
+      return;
+    }
+    
+    setPasswordLoading(true);
+    try {
+      if (!supabase) throw new Error("Supabase client not available");
+      
+      // Verify the OTP code
+      // Using type 'email' since we're using signInWithOtp (not reauthenticate)
+      // This ensures the code verification works correctly
+      const { error: verifyError } = await supabase.auth.verifyOtp({
+        email: user.email!,
+        token: emailCode,
+        type: 'email'
+      });
+      
+      if (verifyError) throw verifyError;
+      
+      // After successful verification, send password reset link
+      // This will send an email with a link to change the password
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || window.location.origin || 'https://novabuild.io';
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(user.email!, {
+        redirectTo: `${baseUrl}/profile?passwordReset=true`
+      });
+      
+      if (resetError) throw resetError;
+      
+      // Close dialog and show success message
+      setShowPasswordDialog(false);
+      setPasswordStep('request');
+      setEmailCode("");
+      setCodeSent(false);
+      toast.success("Code verified! Check your email for the password change link.");
+    } catch (error: any) {
+      toast.error(error.message || "Invalid verification code");
+    } finally {
+      setPasswordLoading(false);
+    }
   };
-
+  
+  const handleChangePassword = async () => {
+    if (!newPassword || !confirmPassword) {
+      toast.error("Please fill in all fields");
+      return;
+    }
+    
+    if (newPassword.length < 8) {
+      toast.error("Password must be at least 8 characters");
+      return;
+    }
+    
+    if (newPassword !== confirmPassword) {
+      toast.error("Passwords do not match");
+      return;
+    }
+    
+    setPasswordLoading(true);
+    try {
+      if (!supabase) throw new Error("Supabase client not available");
+      
+      // Update password (this is called when user returns from password reset link)
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword
+      });
+      
+      if (error) throw error;
+      
+      toast.success("Password changed successfully!");
+      setShowPasswordDialog(false);
+      setPasswordStep('request');
+      setEmailCode("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setCodeSent(false);
+    } catch (error: any) {
+      toast.error(error.message || "Failed to change password");
+    } finally {
+      setPasswordLoading(false);
+    }
+  };
+  
+  // Listen for password recovery event (when user clicks reset link)
+  useEffect(() => {
+    if (!supabase) return;
+    
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        // User clicked password reset link, show password change dialog
+        setShowPasswordDialog(true);
+        setPasswordStep('change');
+        toast.info("Enter your new password");
+      }
+    });
+    
+    return () => subscription.unsubscribe();
+  }, [supabase]);
+  
+  // Check URL for password reset parameter
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('passwordReset') === 'true') {
+        // User returned from password reset link
+        setShowPasswordDialog(true);
+        setPasswordStep('change');
+        // Clean up URL
+        window.history.replaceState({}, '', '/profile');
+      }
+    }
+  }, []);
+  
+  const handleSaveNotificationPrefs = async () => {
+    setSavingPrefs(true);
+    try {
+      const response = await fetch('/api/carrier/notification-preferences', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(notificationPrefs)
+      });
+      
+      const result = await response.json();
+      
+      if (result.ok) {
+        toast.success("Notification preferences saved!");
+        mutateNotif();
+      } else {
+        toast.error(result.error || "Failed to save preferences");
+      }
+    } catch (error) {
+      toast.error("Failed to save preferences");
+    } finally {
+      setSavingPrefs(false);
+    }
+  };
+  
+  const carrierProfile = profileData?.data;
+  
+  if (userLoading || supabaseLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+  
   return (
-    <div className="grid lg:grid-cols-3 gap-6">
-      {/* Profile Information */}
-      <div className="lg:col-span-2 space-y-6">
-        <Card className="card-premium p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-semibold color: hsl(var(--foreground))">Profile Information</h2>
-            <div className="flex gap-2">
-              {isEditing ? (
-                <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleCancel}
-                  >
-                    <X className="w-4 h-4 mr-1" />
-                    Cancel
-                  </Button>
-                  <Button
-                    size="sm"
-                    className="btn-primary"
-                    form="profile-form"
-                  >
-                    <Save className="w-4 h-4 mr-1" />
-                    Save
-                  </Button>
-                </>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+      {/* Header */}
+      <div className="space-y-2">
+        <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 bg-clip-text text-transparent">
+          Profile Settings
+        </h1>
+        <p className="text-muted-foreground text-lg">
+          Manage your account information and preferences
+        </p>
+      </div>
+      
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Main Content */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Personal Information */}
+          <Card className="border border-white/20 shadow-2xl bg-white/10 dark:bg-black/10 backdrop-blur-xl">
+            <CardHeader className="pb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-gradient-to-br from-blue-500/10 to-purple-500/10 border border-blue-500/20">
+                  <User className="w-5 h-5 text-blue-600" />
+                </div>
+                <div>
+                  <CardTitle className="text-2xl">Personal Information</CardTitle>
+                  <CardDescription>Your personal details and contact information</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-muted-foreground">Full Name</Label>
+                  <p className="text-base font-medium">
+                    {`${unifiedUser?.firstName || ''} ${unifiedUser?.lastName || ''}`.trim() || 'Not set'}
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-muted-foreground">Email Address</Label>
+                  <p className="text-base font-medium">{user?.email || 'Not set'}</p>
+                </div>
+                {carrierProfile && (
+                  <>
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium text-muted-foreground">Phone Number</Label>
+                      <p className="text-base font-medium">{carrierProfile.phone || 'Not set'}</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium text-muted-foreground">MC Number</Label>
+                      <p className="text-base font-medium">{carrierProfile.mc_number || 'Not set'}</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium text-muted-foreground">USDOT Number</Label>
+                      <p className="text-base font-medium">{carrierProfile.dot_number || 'Not set'}</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium text-muted-foreground">Member Since</Label>
+                      <p className="text-base font-medium">
+                        {carrierProfile.created_at 
+                          ? new Date(carrierProfile.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+                          : 'Not set'}
+                      </p>
+                    </div>
+                  </>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+          
+          {/* Company Information */}
+          <Card className="border border-white/20 shadow-2xl bg-white/10 dark:bg-black/10 backdrop-blur-xl">
+            <CardHeader className="pb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-gradient-to-br from-emerald-500/10 to-teal-500/10 border border-emerald-500/20">
+                  <Building2 className="w-5 h-5 text-emerald-600" />
+                </div>
+                <div>
+                  <CardTitle className="text-2xl">Company Information</CardTitle>
+                  <CardDescription>Your company details and business information</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {carrierProfile ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium text-muted-foreground">Company Name</Label>
+                    <p className="text-base font-medium">{carrierProfile.company_name || carrierProfile.legal_name || 'Not set'}</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium text-muted-foreground">Address</Label>
+                    <p className="text-base font-medium">
+                      {carrierProfile.address_line1 || 'Not set'}
+                      {carrierProfile.address_line2 && <><br/>{carrierProfile.address_line2}</>}
+                      {carrierProfile.city && carrierProfile.state && (
+                        <><br/>{carrierProfile.city}, {carrierProfile.state} {carrierProfile.zip_code || ''}</>
+                      )}
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium text-muted-foreground">Contact Name</Label>
+                    <p className="text-base font-medium">{carrierProfile.contact_name || 'Not set'}</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium text-muted-foreground">Email</Label>
+                    <p className="text-base font-medium">{carrierProfile.email || user?.email || 'Not set'}</p>
+                  </div>
+                </div>
               ) : (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setIsEditing(true)}
-                >
-                  <Edit className="w-4 h-4 mr-1" />
-                  Edit
-                </Button>
+                <p className="text-muted-foreground">No company information available</p>
               )}
-            </div>
-          </div>
-
-          <form id="profile-form" onSubmit={async (e) => {
-            e.preventDefault();
-            const formData = new FormData(e.currentTarget);
-            try {
-              await updateCarrierProfile(formData);
-              toast.success("Profile updated successfully!");
-              setIsEditing(false);
-            } catch (error) {
-              toast.error("Failed to update profile");
-            }
-          }} className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="mc_number">MC Number</Label>
-                <Input
-                  id="mc_number"
-                  name="mc_number"
-                  value={profile.mc_number || ""}
-                  onChange={(e) => setProfile({ ...profile, mc_number: e.target.value })}
-                  disabled={!isEditing}
-                  className="input-premium"
-                  placeholder="Enter MC number"
-                />
+            </CardContent>
+          </Card>
+          
+          {/* Notification Preferences */}
+          <Card className="border border-white/20 shadow-2xl bg-white/10 dark:bg-black/10 backdrop-blur-xl">
+            <CardHeader className="pb-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-gradient-to-br from-amber-500/10 to-orange-500/10 border border-amber-500/20">
+                    <Bell className="w-5 h-5 text-amber-600" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-2xl">Notification Preferences</CardTitle>
+                    <CardDescription>Control how and when you receive notifications</CardDescription>
+                  </div>
+                </div>
+                <Button
+                  onClick={handleSaveNotificationPrefs}
+                  disabled={savingPrefs}
+                  style={{ backgroundColor: accentColor }}
+                  className="text-white"
+                >
+                  {savingPrefs ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    'Save Preferences'
+                  )}
+                </Button>
               </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="dot_number">DOT Number</Label>
-                <Input
-                  id="dot_number"
-                  name="dot_number"
-                  value={profile.dot_number || ""}
-                  onChange={(e) => setProfile({ ...profile, dot_number: e.target.value })}
-                  disabled={!isEditing}
-                  className="input-premium"
-                  placeholder="Enter DOT number"
-                />
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between p-4 rounded-lg border border-white/10 bg-white/5 dark:bg-black/5 backdrop-blur-sm">
+                  <div className="space-y-1">
+                    <Label htmlFor="toast-notifications" className="text-base font-medium">Toast Notifications</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Show in-app toast notifications
+                    </p>
+                  </div>
+                  <Switch
+                    id="toast-notifications"
+                    checked={notificationPrefs.toastNotifications ?? true}
+                    onCheckedChange={(checked) =>
+                      setNotificationPrefs(prev => ({ ...prev, toastNotifications: checked }))
+                    }
+                  />
+                </div>
+                
+                <div className="flex items-center justify-between p-4 rounded-lg border border-white/10 bg-white/5 dark:bg-black/5 backdrop-blur-sm">
+                  <div className="space-y-1">
+                    <Label htmlFor="email-notifications" className="text-base font-medium">Email Notifications</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Receive notifications via email
+                    </p>
+                  </div>
+                  <Switch
+                    id="email-notifications"
+                    checked={notificationPrefs.emailNotifications ?? true}
+                    onCheckedChange={(checked) =>
+                      setNotificationPrefs(prev => ({ ...prev, emailNotifications: checked }))
+                    }
+                  />
+                </div>
+                
+                <div className="flex items-center justify-between p-4 rounded-lg border border-white/10 bg-white/5 dark:bg-black/5 backdrop-blur-sm">
+                  <div className="space-y-1">
+                    <Label htmlFor="text-notifications" className="text-base font-medium">Text Notifications</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Receive notifications via SMS (coming soon)
+                    </p>
+                  </div>
+                  <Switch
+                    id="text-notifications"
+                    checked={false}
+                    disabled
+                    onCheckedChange={() => {}}
+                  />
+                </div>
+                
+                <Separator />
+                
+                <div className="space-y-3">
+                  <Label className="text-base font-medium">Urgent Contact Preference</Label>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    How should we contact you for urgent matters?
+                  </p>
+                  <div className="flex gap-3">
+                    <Button
+                      variant={notificationPrefs.urgentContactEmail ? 'default' : 'outline'}
+                      onClick={() => setNotificationPrefs(prev => ({ 
+                        ...prev, 
+                        urgentContactEmail: !prev.urgentContactEmail,
+                        urgentContactPreference: !prev.urgentContactEmail ? 'email' : (prev.urgentContactPhone ? 'phone' : 'email')
+                      }))}
+                      className={`relative transition-all duration-200 ${
+                        notificationPrefs.urgentContactEmail 
+                          ? 'shadow-lg shadow-blue-500/50 ring-2 ring-blue-400 ring-opacity-75' 
+                          : ''
+                      }`}
+                      style={notificationPrefs.urgentContactEmail ? { 
+                        backgroundColor: accentColor, 
+                        color: 'white',
+                        boxShadow: `0 0 20px ${accentColor}40, 0 0 40px ${accentColor}20`
+                      } : {}}
+                    >
+                      <Mail className="w-4 h-4 mr-2" />
+                      Email
+                    </Button>
+                    <Button
+                      variant={notificationPrefs.urgentContactPhone ? 'default' : 'outline'}
+                      onClick={() => setNotificationPrefs(prev => ({ 
+                        ...prev, 
+                        urgentContactPhone: !prev.urgentContactPhone,
+                        urgentContactPreference: !prev.urgentContactPhone ? 'phone' : (prev.urgentContactEmail ? 'email' : 'phone')
+                      }))}
+                      className={`relative transition-all duration-200 ${
+                        notificationPrefs.urgentContactPhone 
+                          ? 'shadow-lg shadow-blue-500/50 ring-2 ring-blue-400 ring-opacity-75' 
+                          : ''
+                      }`}
+                      style={notificationPrefs.urgentContactPhone ? { 
+                        backgroundColor: accentColor, 
+                        color: 'white',
+                        boxShadow: `0 0 20px ${accentColor}40, 0 0 40px ${accentColor}20`
+                      } : {}}
+                    >
+                      <Phone className="w-4 h-4 mr-2" />
+                      Phone
+                    </Button>
+                  </div>
+                </div>
               </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="phone">Phone Number</Label>
-                <Input
-                  id="phone"
-                  name="phone"
-                  type="tel"
-                  value={profile.phone || ""}
-                  onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
-                  disabled={!isEditing}
-                  className="input-premium"
-                  placeholder="Enter phone number"
-                />
+            </CardContent>
+          </Card>
+          
+          {/* Payment Methods */}
+          <Card className="border border-white/20 shadow-2xl bg-white/10 dark:bg-black/10 backdrop-blur-xl">
+            <CardHeader className="pb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-gradient-to-br from-violet-500/10 to-purple-500/10 border border-violet-500/20">
+                  <CreditCard className="w-5 h-5 text-violet-600" />
+                </div>
+                <div>
+                  <CardTitle className="text-2xl">Payment Methods</CardTitle>
+                  <CardDescription>Manage your payment information</CardDescription>
+                </div>
               </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="dispatch_email">Dispatch Email</Label>
-                <Input
-                  id="dispatch_email"
-                  name="dispatch_email"
-                  type="email"
-                  value={profile.dispatch_email || ""}
-                  onChange={(e) => setProfile({ ...profile, dispatch_email: e.target.value })}
-                  disabled={!isEditing}
-                  className="input-premium"
-                  placeholder="Enter dispatch email"
-                />
+            </CardHeader>
+            <CardContent>
+              <div className="text-center py-8 text-muted-foreground">
+                <CreditCard className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p className="text-sm">Payment methods coming soon</p>
               </div>
-            </div>
-          </form>
-        </Card>
-
-        {/* Activity Stats */}
-        <Card className="card-premium p-6">
-          <h2 className="text-xl font-semibold color: hsl(var(--foreground)) mb-6">Activity Summary</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="text-center space-y-2">
-              <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mx-auto">
-                <FileText className="w-6 h-6 text-primary" />
+            </CardContent>
+          </Card>
+        </div>
+        
+        {/* Sidebar */}
+        <div className="space-y-6">
+          {/* Security Card */}
+          <Card className="border border-white/20 shadow-2xl bg-white/10 dark:bg-black/10 backdrop-blur-xl">
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-gradient-to-br from-red-500/10 to-rose-500/10 border border-red-500/20">
+                  <Shield className="w-5 h-5 text-red-600" />
+                </div>
+                <CardTitle>Security</CardTitle>
               </div>
-              <div className="text-2xl font-bold color: hsl(var(--foreground))">12</div>
-              <div className="text-sm text-muted-foreground">Offers Submitted</div>
-            </div>
-            
-            <div className="text-center space-y-2">
-              <div className="w-12 h-12 bg-green-500/10 rounded-lg flex items-center justify-center mx-auto">
-                <CheckCircle className="w-6 h-6 text-green-500" />
-              </div>
-              <div className="text-2xl font-bold color: hsl(var(--foreground))">3</div>
-              <div className="text-sm text-muted-foreground">Accepted Offers</div>
-            </div>
-            
-            <div className="text-center space-y-2">
-              <div className="w-12 h-12 bg-blue-500/10 rounded-lg flex items-center justify-center mx-auto">
-                <Truck className="w-6 h-6 text-blue-500" />
-              </div>
-              <div className="text-2xl font-bold color: hsl(var(--foreground))">8</div>
-              <div className="text-sm text-muted-foreground">Active Loads</div>
-            </div>
-            
-            <div className="text-center space-y-2">
-              <div className="w-12 h-12 bg-orange-500/10 rounded-lg flex items-center justify-center mx-auto">
-                <DollarSign className="w-6 h-6 text-orange-500" />
-              </div>
-              <div className="text-2xl font-bold color: hsl(var(--foreground))">$24,500</div>
-              <div className="text-sm text-muted-foreground">Total Revenue</div>
-            </div>
-          </div>
-        </Card>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {hasPasswordAuth && !isGoogleUser ? (
+                <Button
+                  onClick={() => setShowPasswordDialog(true)}
+                  variant="outline"
+                  className="w-full"
+                >
+                  <Lock className="w-4 h-4 mr-2" />
+                  Change Password
+                </Button>
+              ) : (
+                <div className="text-sm text-muted-foreground">
+                  <p>Password changes are not available for Google sign-in accounts.</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+          
+          {/* Quick Links */}
+          <Card className="border border-white/20 shadow-2xl bg-white/10 dark:bg-black/10 backdrop-blur-xl">
+            <CardHeader>
+              <CardTitle>Quick Links</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Button
+                variant="outline"
+                className="w-full justify-start"
+                onClick={() => setShowFavoritesConsole(true)}
+              >
+                <Bell className="w-4 h-4 mr-2" />
+                Notification Settings
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
       </div>
-
-      {/* Account Info */}
-      <div className="space-y-6">
-        <Card className="card-premium p-6">
-          <h2 className="text-xl font-semibold color: hsl(var(--foreground)) mb-4">Account Information</h2>
-          <div className="space-y-4">
-            <div className="flex items-center gap-3">
-              <User className="w-5 h-5 text-muted-foreground" />
-              <div>
-                <div className="text-sm text-muted-foreground">Role</div>
-                <Badge className="bg-primary/10 text-primary border-primary/20">
-                  {userRole.charAt(0).toUpperCase() + userRole.slice(1)}
-                </Badge>
+      
+      {/* Change Password Dialog */}
+      <Dialog open={showPasswordDialog} onOpenChange={setShowPasswordDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Lock className="w-5 h-5" />
+              Change Password
+            </DialogTitle>
+            <DialogDescription>
+              {passwordStep === 'request' && "We'll send a 6-digit verification code to your email to confirm your identity. Check your inbox for the code."}
+              {passwordStep === 'verify' && 'Enter the 6-digit verification code from your email. After verification, you\'ll receive a password change link via email.'}
+              {passwordStep === 'change' && 'Enter your new password. Make sure it meets the security requirements (minimum 8 characters).'}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            {passwordStep === 'request' && (
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  A verification code will be sent to <strong>{user?.email}</strong>
+                </p>
+                <Button
+                  onClick={handleRequestPasswordChange}
+                  disabled={passwordLoading}
+                  className="w-full"
+                  style={{ backgroundColor: accentColor, color: 'white' }}
+                >
+                  {passwordLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Sending...
+                    </>
+                  ) : (
+                    <>
+                      <Mail className="w-4 h-4 mr-2" />
+                      Send Verification Code
+                    </>
+                  )}
+                </Button>
               </div>
-            </div>
+            )}
             
-            <div className="flex items-center gap-3">
-              <Mail className="w-5 h-5 text-muted-foreground" />
-              <div>
-                <div className="text-sm text-muted-foreground">Email</div>
-                <div className="text-sm font-medium">user@example.com</div>
+            {passwordStep === 'verify' && (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="code">Verification Code</Label>
+                  <Input
+                    id="code"
+                    type="text"
+                    placeholder="000000"
+                    value={emailCode}
+                    onChange={(e) => setEmailCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    maxLength={6}
+                    className="text-center text-2xl font-mono tracking-widest"
+                    style={{ letterSpacing: '0.5em' }}
+                  />
+                  <p className="text-xs text-muted-foreground text-center">
+                    Enter the 6-digit code from your email. The code expires in 15 minutes.
+                  </p>
+                </div>
+                <Button
+                  onClick={handleVerifyCode}
+                  disabled={passwordLoading || !emailCode || emailCode.length !== 6}
+                  className="w-full"
+                  style={{ backgroundColor: accentColor, color: 'white' }}
+                >
+                  {passwordLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Verifying...
+                    </>
+                  ) : (
+                    'Verify Code'
+                  )}
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setPasswordStep('request');
+                    setEmailCode("");
+                    setCodeSent(false);
+                  }}
+                  className="w-full text-sm"
+                >
+                  Resend Code
+                </Button>
               </div>
-            </div>
+            )}
             
-            <div className="flex items-center gap-3">
-              <Clock className="w-5 h-5 text-muted-foreground" />
-              <div>
-                <div className="text-sm text-muted-foreground">Member Since</div>
-                <div className="text-sm font-medium">January 2025</div>
+            {passwordStep === 'change' && (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="new-password">New Password</Label>
+                  <div className="relative">
+                    <Input
+                      id="new-password"
+                      type={showNewPassword ? "text" : "password"}
+                      placeholder="Enter new password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-0 top-0 h-full px-3"
+                      onClick={() => setShowNewPassword(!showNewPassword)}
+                    >
+                      {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Must be at least 8 characters
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="confirm-password">Confirm Password</Label>
+                  <div className="relative">
+                    <Input
+                      id="confirm-password"
+                      type={showConfirmPassword ? "text" : "password"}
+                      placeholder="Confirm new password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-0 top-0 h-full px-3"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    >
+                      {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </Button>
+                  </div>
+                </div>
+                <Button
+                  onClick={handleChangePassword}
+                  disabled={passwordLoading || !newPassword || !confirmPassword || newPassword !== confirmPassword}
+                  className="w-full"
+                  style={{ backgroundColor: accentColor, color: 'white' }}
+                >
+                  {passwordLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Changing...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-4 h-4 mr-2" />
+                      Change Password
+                    </>
+                  )}
+                </Button>
               </div>
-            </div>
+            )}
           </div>
-        </Card>
-
-        <Card className="card-premium p-6">
-          <h2 className="text-xl font-semibold color: hsl(var(--foreground)) mb-4">Recent Activity</h2>
-          <div className="space-y-3">
-            <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg">
-              <CheckCircle className="w-4 h-4 text-green-500" />
-              <div className="flex-1">
-                <div className="text-sm font-medium">Offer accepted</div>
-                <div className="text-xs text-muted-foreground">Load #12345 - $2,850</div>
-              </div>
-              <div className="text-xs text-muted-foreground">2 hours ago</div>
-            </div>
-            
-            <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg">
-              <FileText className="w-4 h-4 text-blue-500" />
-              <div className="flex-1">
-                <div className="text-sm font-medium">New offer submitted</div>
-                <div className="text-xs text-muted-foreground">Load #12346 - $3,200</div>
-              </div>
-              <div className="text-xs text-muted-foreground">1 day ago</div>
-            </div>
-            
-            <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg">
-              <Truck className="w-4 h-4 text-orange-500" />
-              <div className="flex-1">
-                <div className="text-sm font-medium">Load completed</div>
-                <div className="text-xs text-muted-foreground">Load #12344 - $2,100</div>
-              </div>
-              <div className="text-xs text-muted-foreground">3 days ago</div>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="card-premium p-6">
-          <h2 className="text-xl font-semibold color: hsl(var(--foreground)) mb-4">Account Actions</h2>
-          <div className="space-y-3">
-            <Button variant="outline" className="w-full justify-start">
-              <User className="w-4 h-4 mr-2" />
-              Edit Account
-            </Button>
-            <Button variant="outline" className="w-full justify-start">
-              <Mail className="w-4 h-4 mr-2" />
-              Change Email
-            </Button>
-            <Button 
-              variant="outline" 
-              className="w-full justify-start text-red-500 hover:text-red-600"
-              onClick={handleSignOut}
+          
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowPasswordDialog(false);
+                setPasswordStep('request');
+                setEmailCode("");
+                setNewPassword("");
+                setConfirmPassword("");
+                setCodeSent(false);
+              }}
             >
-              <X className="w-4 h-4 mr-2" />
-              Sign Out
+              Cancel
             </Button>
-          </div>
-        </Card>
-      </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Favorites Console */}
+      <FavoritesConsole isOpen={showFavoritesConsole} onClose={() => setShowFavoritesConsole(false)} />
     </div>
   );
 }

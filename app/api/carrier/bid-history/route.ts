@@ -13,6 +13,7 @@ export async function GET(request: NextRequest) {
     const offset = parseInt(searchParams.get("offset") || "0");
 
     // Get carrier bid history with detailed information
+    // Note: Using telegram_bids for both active and archived bids (archived_at IS NOT NULL means archived)
     const rows = await sql`
       SELECT 
         cb.id,
@@ -22,23 +23,22 @@ export async function GET(request: NextRequest) {
         cb.notes as bid_notes,
         cb.created_at,
         cb.updated_at,
-        -- Load details from archived bids or telegram bids
-        COALESCE(ab.distance_miles, tb.distance_miles, 0) as distance_miles,
-        COALESCE(ab.pickup_timestamp, tb.pickup_timestamp, cb.created_at) as pickup_timestamp,
-        COALESCE(ab.delivery_timestamp, tb.delivery_timestamp, cb.created_at + INTERVAL '1 day') as delivery_timestamp,
-        COALESCE(ab.stops, tb.stops, '[]'::JSONB) as stops,
-        COALESCE(ab.tag, tb.tag, 'UNKNOWN') as tag,
-        COALESCE(ab.source_channel, tb.source_channel, 'unknown') as source_channel,
+        -- Load details from telegram_bids (works for both active and archived)
+        COALESCE(tb.distance_miles, 0) as distance_miles,
+        COALESCE(tb.pickup_timestamp, cb.created_at) as pickup_timestamp,
+        COALESCE(tb.delivery_timestamp, cb.created_at + INTERVAL '1 day') as delivery_timestamp,
+        COALESCE(tb.stops, '[]'::JSONB) as stops,
+        COALESCE(tb.tag, 'UNKNOWN') as tag,
+        COALESCE(tb.source_channel, 'unknown') as source_channel,
         -- Additional metadata
         CASE 
-          WHEN ab.id IS NOT NULL THEN 'archived'
+          WHEN tb.archived_at IS NOT NULL THEN 'archived'
           WHEN tb.id IS NOT NULL THEN 'active'
           ELSE 'unknown'
         END as load_status,
-        COALESCE(ab.archived_at, NULL) as archived_at
+        tb.archived_at
       FROM carrier_bids cb
-      LEFT JOIN archived_bids ab ON cb.bid_number = ab.bid_number
-      LEFT JOIN telegram_bids tb ON cb.bid_number = tb.bid_number AND tb.is_archived = false
+      LEFT JOIN telegram_bids tb ON cb.bid_number = tb.bid_number
       WHERE cb.supabase_user_id = ${userId}
       ${status ? sql`AND COALESCE(cb.bid_outcome, 'pending') = ${status}` : sql``}
       ORDER BY cb.created_at DESC

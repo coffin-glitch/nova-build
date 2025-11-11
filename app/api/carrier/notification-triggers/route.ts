@@ -1,12 +1,11 @@
-import sql from '@/lib/db';
 import { requireApiCarrier } from "@/lib/auth-api-helper";
+import sql from '@/lib/db';
 import { NextRequest, NextResponse } from "next/server";
 
 // Notification trigger types
 export type NotificationTriggerType = 
   | 'similar_load' 
   | 'exact_match' 
-  | 'price_drop' 
   | 'new_route'
   | 'favorite_available'
   | 'deadline_approaching';
@@ -36,54 +35,80 @@ export async function GET(request: NextRequest) {
     const triggersBase = await sql`
       SELECT 
         nt.id,
-        nt.carrier_user_id,
+        nt.supabase_carrier_user_id,
         nt.trigger_type,
         nt.trigger_config,
         nt.is_active,
         nt.created_at,
         nt.updated_at
       FROM notification_triggers nt
-      WHERE nt.supabase_user_id = ${userId}
+      WHERE nt.supabase_carrier_user_id = ${userId}
       ${triggerType ? sql`AND nt.trigger_type = ${triggerType}` : sql``}
       ${isActive !== null ? sql`AND nt.is_active = ${isActive}` : sql``}
       ORDER BY created_at DESC
     `;
 
-    // For exact_match triggers, enrich with bid number and route
+    // Enrich triggers with bid number and route
     const triggers = await Promise.all(triggersBase.map(async (trigger) => {
-      if (trigger.trigger_type === 'exact_match') {
-        // Parse trigger_config if it's a string
-        let config = trigger.trigger_config;
-        if (typeof config === 'string') {
-          try {
-            config = JSON.parse(config);
-          } catch (e) {
-            console.error('Error parsing trigger_config:', e);
-            config = {};
-          }
-        }
-        
-        if (config?.favoriteBidNumbers?.length > 0) {
-          const bidNumber = config.favoriteBidNumbers[0];
-          
-          // Get route for this bid
-          const routeResult = await sql`
-            SELECT tb.stops
-            FROM carrier_favorites cf
-            JOIN telegram_bids tb ON cf.bid_number = tb.bid_number
-            WHERE cf.supabase_user_id = ${userId}
-              AND cf.bid_number = ${bidNumber}
-            LIMIT 1
-          `;
-          
-          return {
-            ...trigger,
-            bid_number: bidNumber,
-            route: routeResult[0]?.stops || null
-          };
+      // Parse trigger_config if it's a string
+      let config = trigger.trigger_config;
+      if (typeof config === 'string') {
+        try {
+          config = JSON.parse(config);
+        } catch (e) {
+          console.error('Error parsing trigger_config:', e);
+          config = {};
         }
       }
-      return trigger;
+      
+      // For exact_match triggers, get bid number and route
+      if (trigger.trigger_type === 'exact_match' && config?.favoriteBidNumbers?.length > 0) {
+        const bidNumber = config.favoriteBidNumbers[0];
+        
+        // Get route for this bid
+        const routeResult = await sql`
+          SELECT tb.stops
+          FROM carrier_favorites cf
+          JOIN telegram_bids tb ON cf.bid_number = tb.bid_number
+          WHERE cf.supabase_carrier_user_id = ${userId}
+            AND cf.bid_number = ${bidNumber}
+          LIMIT 1
+        `;
+        
+        return {
+          ...trigger,
+          trigger_config: config,
+          bid_number: bidNumber,
+          route: routeResult[0]?.stops || null
+        };
+      }
+      
+      // For similar_load triggers, get route from config if available
+      if (trigger.trigger_type === 'similar_load' && config?.favoriteBidNumbers?.length > 0) {
+        const bidNumber = config.favoriteBidNumbers[0];
+        
+        // Get route for this bid
+        const routeResult = await sql`
+          SELECT tb.stops
+          FROM carrier_favorites cf
+          JOIN telegram_bids tb ON cf.bid_number = tb.bid_number
+          WHERE cf.supabase_carrier_user_id = ${userId}
+            AND cf.bid_number = ${bidNumber}
+          LIMIT 1
+        `;
+        
+        return {
+          ...trigger,
+          trigger_config: config,
+          bid_number: bidNumber,
+          route: routeResult[0]?.stops || null
+        };
+      }
+      
+      return {
+        ...trigger,
+        trigger_config: config
+      };
     }));
 
     return NextResponse.json({
@@ -124,10 +149,48 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check for duplicate state matches
+    if (triggerType === 'exact_match' && triggerConfig.matchType === 'state') {
+      const originState = triggerConfig.originState;
+      const destinationState = triggerConfig.destinationState;
+      
+      if (originState && destinationState) {
+        // Check if user already has a state match for this route
+        const existingTriggers = await sql`
+          SELECT id, trigger_config
+          FROM notification_triggers
+          WHERE supabase_carrier_user_id = ${userId}
+            AND trigger_type = 'exact_match'
+            AND is_active = true
+        `;
+        
+        for (const existing of existingTriggers) {
+          let existingConfig = existing.trigger_config;
+          if (typeof existingConfig === 'string') {
+            try {
+              existingConfig = JSON.parse(existingConfig);
+            } catch {
+              continue;
+            }
+          }
+          
+          // If it's a state match with the same origin and destination states
+          if (existingConfig.matchType === 'state' && 
+              existingConfig.originState === originState && 
+              existingConfig.destinationState === destinationState) {
+            return NextResponse.json(
+              { error: `You already have a state match alert for ${originState} → ${destinationState}. Please use exact match for different cities.` },
+              { status: 400 }
+            );
+          }
+        }
+      }
+    }
+
     // Insert new notification trigger (Supabase-only)
     const result = await sql`
       INSERT INTO notification_triggers (
-        supabase_user_id,
+        supabase_carrier_user_id,
         trigger_type,
         trigger_config,
         is_active
@@ -178,16 +241,74 @@ export async function PUT(request: NextRequest) {
     }
 
     // Update notification trigger
-    const result = await sql`
-      UPDATE notification_triggers 
-      SET 
-        trigger_config = COALESCE(${JSON.stringify(triggerConfig)}, trigger_config),
-        is_active = COALESCE(${isActive}, is_active),
-        updated_at = NOW()
-      WHERE id = ${id} 
-      AND supabase_user_id = ${userId}
-      RETURNING id
-    `;
+    // If triggerConfig is provided, merge it with existing config
+    let updatedConfig: any = null;
+    if (triggerConfig) {
+      // Get existing trigger to merge configs
+      const existing = await sql`
+        SELECT trigger_config FROM notification_triggers
+        WHERE id = ${id} AND supabase_carrier_user_id = ${userId}
+        LIMIT 1
+      `;
+      
+      if (existing.length > 0) {
+        let existingConfig = existing[0].trigger_config;
+        if (typeof existingConfig === 'string') {
+          try {
+            existingConfig = JSON.parse(existingConfig);
+          } catch {
+            existingConfig = {};
+          }
+        }
+        // Merge existing config with new config
+        updatedConfig = { ...existingConfig, ...triggerConfig };
+      } else {
+        updatedConfig = triggerConfig;
+      }
+    }
+    
+    // Build the UPDATE query - handle each field separately
+    let result;
+    if (updatedConfig !== null && isActive !== undefined && isActive !== null) {
+      // Update both trigger_config and is_active
+      result = await sql`
+        UPDATE notification_triggers 
+        SET 
+          trigger_config = ${JSON.stringify(updatedConfig)},
+          is_active = ${isActive},
+          updated_at = NOW()
+        WHERE id = ${id} 
+        AND supabase_carrier_user_id = ${userId}
+        RETURNING id
+      `;
+    } else if (updatedConfig !== null) {
+      // Update only trigger_config
+      result = await sql`
+        UPDATE notification_triggers 
+        SET 
+          trigger_config = ${JSON.stringify(updatedConfig)},
+          updated_at = NOW()
+        WHERE id = ${id} 
+        AND supabase_carrier_user_id = ${userId}
+        RETURNING id
+      `;
+    } else if (isActive !== undefined && isActive !== null) {
+      // Update only is_active
+      result = await sql`
+        UPDATE notification_triggers 
+        SET 
+          is_active = ${isActive},
+          updated_at = NOW()
+        WHERE id = ${id} 
+        AND supabase_carrier_user_id = ${userId}
+        RETURNING id
+      `;
+    } else {
+      return NextResponse.json(
+        { error: "No fields to update" },
+        { status: 400 }
+      );
+    }
 
     if (result.length === 0) {
       return NextResponse.json(
@@ -229,7 +350,7 @@ export async function DELETE(request: NextRequest) {
     const result = await sql`
       DELETE FROM notification_triggers 
       WHERE id = ${id} 
-      AND supabase_user_id = ${userId}
+      AND supabase_carrier_user_id = ${userId}
       RETURNING id
     `;
 
@@ -266,12 +387,6 @@ function validateTriggerConfig(triggerType: NotificationTriggerType, config: Not
     case 'exact_match':
       if (!config.favoriteBidNumbers || config.favoriteBidNumbers.length === 0) {
         return "At least one favorite bid number is required for exact match";
-      }
-      break;
-    
-    case 'price_drop':
-      if (!config.priceThreshold || config.priceThreshold < 0) {
-        return "Price threshold must be a positive number";
       }
       break;
     

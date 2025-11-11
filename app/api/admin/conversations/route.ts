@@ -20,8 +20,12 @@ export async function GET(request: NextRequest) {
         c.last_message_at,
         c.created_at,
         c.updated_at,
-        COALESCE(COUNT(CASE WHEN mr.id IS NULL AND (
+        COALESCE(COUNT(CASE WHEN mr.id IS NULL AND cm.supabase_sender_id != ${userId} AND (
+          -- Carrier messages to admin (admin is recipient)
           (cm.sender_type = 'carrier' AND c.supabase_admin_user_id = ${userId}) OR
+          -- Admin messages where current user is the recipient
+          -- For admin-to-admin: if current user is admin_user_id, count messages from carrier_user_id (other admin)
+          -- For admin-to-admin: if current user is carrier_user_id, count messages from admin_user_id (other admin)
           (cm.sender_type = 'admin' AND c.supabase_carrier_user_id = ${userId})
         ) THEN 1 END)::integer, 0) as unread_count,
         (
@@ -39,6 +43,13 @@ export async function GET(request: NextRequest) {
           LIMIT 1
         ) as last_message_sender_type,
         (
+          SELECT cm2.supabase_sender_id 
+          FROM conversation_messages cm2 
+          WHERE cm2.conversation_id = c.id 
+          ORDER BY cm2.created_at DESC 
+          LIMIT 1
+        ) as last_message_sender_id,
+        (
           SELECT cm2.created_at 
           FROM conversation_messages cm2 
           WHERE cm2.conversation_id = c.id 
@@ -46,19 +57,31 @@ export async function GET(request: NextRequest) {
           LIMIT 1
         ) as last_message_timestamp,
         CASE 
-          WHEN c.supabase_admin_user_id = ${userId} AND c.supabase_carrier_user_id IS NOT NULL THEN 'carrier'
+          -- If current user is admin_user_id, check if the other user (carrier_user_id) is an admin
+          WHEN c.supabase_admin_user_id = ${userId} AND c.supabase_carrier_user_id IS NOT NULL THEN
+            CASE 
+              WHEN EXISTS (
+                SELECT 1 FROM user_roles_cache ur 
+                WHERE ur.supabase_user_id = c.supabase_carrier_user_id 
+                AND ur.role = 'admin'
+              ) THEN 'admin'
+              ELSE 'carrier'
+            END
+          -- If current user is carrier_user_id, the other user (admin_user_id) is always an admin
           WHEN c.supabase_carrier_user_id = ${userId} THEN 'admin'
           ELSE 'carrier'
         END as conversation_with_type
       FROM conversations c
       LEFT JOIN conversation_messages cm ON cm.conversation_id = c.id
       LEFT JOIN message_reads mr ON mr.message_id = cm.id AND mr.supabase_user_id = ${userId}
-      WHERE c.supabase_admin_user_id = ${userId}
+      WHERE (c.supabase_admin_user_id = ${userId}
          OR (c.supabase_carrier_user_id = ${userId} AND EXISTS (
            SELECT 1 FROM user_roles_cache ur 
            WHERE ur.supabase_user_id = c.supabase_admin_user_id 
            AND ur.role = 'admin'
-         ))
+         )))
+         -- CRITICAL: Filter out self-conversations (where admin and carrier are the same)
+         AND c.supabase_admin_user_id != c.supabase_carrier_user_id
       GROUP BY c.id, c.supabase_carrier_user_id, c.supabase_admin_user_id, c.last_message_at, c.created_at, c.updated_at
       ORDER BY c.last_message_at DESC NULLS LAST, c.created_at DESC
     `;
@@ -103,6 +126,13 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
+    // CRITICAL: Prevent self-conversations (user chatting with themselves)
+    if (targetUserId === userId) {
+      return NextResponse.json({ 
+        error: "Cannot create a conversation with yourself" 
+      }, { status: 400 });
+    }
+    
     // Check if target user is an admin or carrier
     const targetUserRole = await sql`
       SELECT role FROM user_roles_cache 
@@ -212,6 +242,75 @@ export async function POST(req: NextRequest) {
     console.error("Error creating admin conversation:", error);
     return NextResponse.json({ 
       error: "Failed to create conversation" 
+    }, { status: 500 });
+  }
+}
+
+// DELETE endpoint to clean up self-conversations
+export async function DELETE(request: NextRequest) {
+  try {
+    // Supabase auth only
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
+
+    const { searchParams } = new URL(request.url);
+    const cleanup = searchParams.get('cleanup');
+    
+    // If cleanup=true, delete all self-conversations for this user
+    if (cleanup === 'true') {
+      // Delete self-conversations where admin_user_id = carrier_user_id = current user
+      const result = await sql`
+        DELETE FROM conversations 
+        WHERE supabase_admin_user_id = ${userId}
+          AND supabase_carrier_user_id = ${userId}
+        RETURNING id
+      `;
+      
+      return NextResponse.json({ 
+        ok: true, 
+        message: `Deleted ${result.length} self-conversation(s)`,
+        deleted_count: result.length
+      });
+    }
+    
+    // Otherwise, delete a specific conversation
+    const body = await request.json();
+    const { conversation_id } = body;
+    
+    if (!conversation_id) {
+      return NextResponse.json({ 
+        error: "Missing required field: conversation_id" 
+      }, { status: 400 });
+    }
+    
+    // Verify the user has access to this conversation
+    const conversation = await sql`
+      SELECT id FROM conversations 
+      WHERE id = ${conversation_id}
+        AND (supabase_admin_user_id = ${userId} OR supabase_carrier_user_id = ${userId})
+    `;
+    
+    if (conversation.length === 0) {
+      return NextResponse.json({ 
+        error: "Conversation not found or access denied" 
+      }, { status: 404 });
+    }
+    
+    // Delete the conversation (cascade will delete messages)
+    await sql`
+      DELETE FROM conversations 
+      WHERE id = ${conversation_id}
+    `;
+    
+    return NextResponse.json({ 
+      ok: true, 
+      message: "Conversation deleted successfully"
+    });
+    
+  } catch (error) {
+    console.error("Error deleting conversation:", error);
+    return NextResponse.json({ 
+      error: "Failed to delete conversation" 
     }, { status: 500 });
   }
 }

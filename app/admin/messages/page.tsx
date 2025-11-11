@@ -6,26 +6,32 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useUnifiedRole } from "@/hooks/useUnifiedRole";
 import { useUnifiedUser } from "@/hooks/useUnifiedUser";
-import { Clock, MessageCircle, User, Users, Zap } from "lucide-react";
+import { Clock, MessageCircle, Trash2, User, Users, Zap } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import useSWR from "swr";
+import { toast } from "sonner";
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
 export default function AdminMessagesPage() {
   const { user, isLoaded } = useUnifiedUser();
-  const { isAdmin, isLoading: roleLoading } = useUnifiedRole();
+  const { isAdmin, isLoading: roleLoading, role } = useUnifiedRole();
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
   const [showConversations, setShowConversations] = useState(false);
   const [showNewChat, setShowNewChat] = useState(false);
 
   // Fetch conversations data (new unified system)
-  const { data: conversationsData } = useSWR(
+  const { data: conversationsData, mutate: mutateConversations } = useSWR(
     user && isAdmin ? "/api/admin/conversations" : null,
     fetcher,
-    { refreshInterval: 10000 }
+    { 
+      refreshInterval: 10000,
+      keepPreviousData: true, // Keep previous data during refetch to prevent flashing
+      revalidateOnFocus: false, // Don't refetch on window focus
+      revalidateOnReconnect: true, // Refetch on network reconnect
+    }
   );
   const { data: carriersData } = useSWR(
     user && isAdmin ? "/api/admin/carriers" : null,
@@ -44,14 +50,28 @@ export default function AdminMessagesPage() {
     { refreshInterval: 30000 }
   );
 
-  const conversations = conversationsData?.data || [];
+  // Use previous data if available to prevent flashing during refetch
+  const conversations = (conversationsData?.data ?? conversationsData) || [];
   const carriers = Array.isArray(carriersData) ? carriersData : [];
   const admins = Array.isArray(adminsData) ? adminsData.filter((admin: any) => admin.user_id !== user?.id) : [];
 
   // Get unique user IDs from conversations (both carriers and admins)
-  const allUserIds = Array.from(new Set(
-    conversations.map((conv: any) => conv.other_user_id || conv.carrier_user_id).filter(Boolean)
+  // Need to get the other user's ID, not the current user's ID
+  const conversationUserIds = Array.from(new Set(
+    conversations.map((conv: any) => {
+      // Determine the other user's ID (not current user)
+      const otherUserId = conv.admin_user_id === user?.id 
+        ? conv.carrier_user_id 
+        : conv.admin_user_id;
+      return otherUserId || conv.other_user_id || conv.carrier_user_id;
+    }).filter(Boolean)
   ));
+  
+  // Also include admin IDs from the admins array (for "Start New Chat" section)
+  const adminIdsFromList = admins.map((admin: any) => admin.user_id || admin.id).filter(Boolean);
+  
+  // Combine all user IDs (from conversations + from admin list)
+  const allUserIds = Array.from(new Set([...conversationUserIds, ...adminIdsFromList]));
 
   // Fetch user information for all users (carriers and admins)
   const { data: userInfos = {} } = useSWR(
@@ -59,18 +79,21 @@ export default function AdminMessagesPage() {
     fetcher
   );
 
-  // Helper function to get display name
-  const getDisplayName = (userId: string): string => {
+  // Helper function to get display name (works for both carriers and admins)
+  const getDisplayName = (userId: string, isAdmin?: boolean): string => {
     const userInfo = userInfos[userId];
-    if (!userInfo) return userId;
+    if (!userInfo) {
+      return isAdmin ? "Admin" : "Carrier";
+    }
     
+    // Admin display names are already set in fullName by /api/users/batch
     if (userInfo.fullName) return userInfo.fullName;
     if (userInfo.firstName && userInfo.lastName) return `${userInfo.firstName} ${userInfo.lastName}`;
     if (userInfo.firstName) return userInfo.firstName;
     if (userInfo.username) return userInfo.username;
     if (userInfo.emailAddresses?.[0]?.emailAddress) return userInfo.emailAddresses[0].emailAddress;
     
-    return userId;
+    return isAdmin ? "Admin" : "Carrier";
   };
 
   // Calculate stats from conversations
@@ -151,30 +174,86 @@ export default function AdminMessagesPage() {
       }
     } catch (error: any) {
       console.error('Error starting new chat:', error);
-      alert(error.message || 'Failed to start new chat. Please try again.');
+      toast.error(error.message || 'Failed to start new chat. Please try again.');
+    }
+  };
+
+  // Function to delete a conversation
+  const deleteConversation = async (conversationId: string, displayName: string) => {
+    if (!confirm(`Are you sure you want to delete the conversation with ${displayName}? This will permanently remove all messages and reset the chat. The user will be able to start a new chat with you.`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/admin/conversations', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          conversation_id: conversationId,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        toast.success(`Conversation with ${displayName} deleted successfully. Chat has been reset.`);
+        
+        // Refresh conversations list
+        mutateConversations();
+        
+        // If conversations list is visible, refresh it
+        if (showConversations) {
+          setShowConversations(false);
+          setTimeout(() => setShowConversations(true), 100);
+        }
+      } else {
+        const errorData = await response.json().catch(() => ({ error: 'Failed to delete conversation' }));
+        throw new Error(errorData.error || 'Failed to delete conversation');
+      }
+    } catch (error: any) {
+      console.error('Error deleting conversation:', error);
+      toast.error(error.message || 'Failed to delete conversation. Please try again.');
     }
   };
 
   useEffect(() => {
-    if (!isLoaded || roleLoading) return;
+    // Wait for both user and role to be loaded before making any decisions
+    if (!isLoaded || roleLoading) {
+      return;
+    }
 
+    // If no user, redirect to sign-in
     if (!user) {
       router.push('/sign-in');
       return;
     }
 
-    // Check if user is admin - useUnifiedRole handles this with Supabase auth
-    // Wait for role to load before checking
-    if (!roleLoading && !isAdmin) {
-      router.push('/forbidden');
-      return;
+    // Only redirect to forbidden if:
+    // 1. Role loading is complete (!roleLoading)
+    // 2. User exists (we already checked above)
+    // 3. Role has been determined and is NOT "admin"
+    // We check both role and isAdmin to prevent race conditions:
+    // - If role === "carrier", user is definitely not admin
+    // - If role !== "admin" AND isAdmin === false, user is not admin
+    // - If role === "none", wait (role might still be loading)
+    // - If role === "admin" OR isAdmin === true, allow access
+    if (!roleLoading && user) {
+      // Only redirect if we're certain the user is not an admin
+      // Check both role and isAdmin to handle all edge cases
+      if (role === "carrier" || (role !== "admin" && role !== "none" && !isAdmin)) {
+        // Role has been determined and user is definitely not an admin
+        router.push('/forbidden');
+        return;
+      }
     }
 
     // Only set loading to false if we have a user and role is loaded
+    // and either we're an admin or we're about to redirect
     if (user && !roleLoading) {
       setIsLoading(false);
     }
-  }, [user, isLoaded, isAdmin, roleLoading, router]);
+  }, [user, isLoaded, isAdmin, roleLoading, role, router]);
 
   if (!isLoaded || isLoading) {
     return (
@@ -341,42 +420,71 @@ export default function AdminMessagesPage() {
                 ) : (
                   <div className="space-y-2">
                     {conversations.map((conv: any) => {
-                      const otherUserId = conv.other_user_id || conv.carrier_user_id;
-                      const displayName = getDisplayName(otherUserId);
-                      const unreadCount = conv.unread_count || 0;
+                      // Determine the other user's ID (not current user)
+                      // If current user is admin_user_id, other user is carrier_user_id
+                      // If current user is carrier_user_id, other user is admin_user_id
+                      const otherUserId = conv.admin_user_id === user?.id 
+                        ? conv.carrier_user_id 
+                        : conv.admin_user_id;
+                      
                       const conversationType = conv.conversation_with_type || 'carrier';
+                      const isOtherUserAdmin = conversationType === 'admin';
+                      const displayName = getDisplayName(otherUserId || conv.carrier_user_id, isOtherUserAdmin);
+                      const unreadCount = conv.unread_count || 0;
+                      
+                      // Determine if the last message was from the current user
+                      const isLastMessageFromCurrentUser = conv.last_message_sender_id 
+                        ? conv.last_message_sender_id === user?.id
+                        : ((conv.last_message_sender_type === 'admin' && 
+                            conv.admin_user_id === user?.id) ||
+                           (conv.last_message_sender_type === 'carrier' && 
+                            conv.carrier_user_id === user?.id));
                       
                       return (
-                        <div key={conv.conversation_id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                        <div key={conv.conversation_id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 group">
+                          <div className="flex items-center gap-3 flex-1 min-w-0">
+                            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
                               <User className="h-5 w-5 text-primary" />
                             </div>
-                            <div>
-                              <p className="font-medium">{displayName}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {conversationType === 'admin' ? 'Admin' : 'Carrier'} • {otherUserId}
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium truncate">{displayName}</p>
+                              <p className="text-xs text-muted-foreground truncate">
+                                {conversationType === 'admin' ? 'Admin' : 'Carrier'} • {otherUserId || conv.carrier_user_id}
                               </p>
-                              <p className="text-sm text-muted-foreground">
+                              <p className="text-sm text-muted-foreground truncate">
                                 {conv.last_message ? (
-                                  (conv.last_message_sender_type === 'admin' && conv.supabase_admin_user_id === user?.id) || 
-                                  (conv.last_message_sender_type === 'carrier' && conversationType === 'admin' && conv.carrier_user_id === user?.id)
-                                    ? 'You: ' : ''
+                                  isLastMessageFromCurrentUser 
+                                    ? 'You: ' 
+                                    : `${displayName}: `
                                 ) + conv.last_message.substring(0, 50) + '...' : 'No messages'}
                               </p>
                             </div>
                           </div>
-                          <div className="text-right">
-                            {unreadCount > 0 && (
-                              <div className="w-6 h-6 rounded-full bg-primary text-white text-xs flex items-center justify-center mb-1">
-                                {unreadCount}
-                              </div>
-                            )}
-                            <p className="text-xs text-muted-foreground">
-                              {conv.last_message_timestamp || conv.last_message_at 
-                                ? new Date(conv.last_message_timestamp || conv.last_message_at).toLocaleTimeString() 
-                                : ''}
-                            </p>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <div className="text-right">
+                              {unreadCount > 0 && (
+                                <div className="w-6 h-6 rounded-full bg-primary text-white text-xs flex items-center justify-center mb-1">
+                                  {unreadCount}
+                                </div>
+                              )}
+                              <p className="text-xs text-muted-foreground">
+                                {conv.last_message_timestamp || conv.last_message_at 
+                                  ? new Date(conv.last_message_timestamp || conv.last_message_at).toLocaleTimeString() 
+                                  : ''}
+                              </p>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                deleteConversation(conv.conversation_id, displayName);
+                              }}
+                              className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive hover:bg-destructive/10"
+                              title="Delete conversation and reset chat"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
                           </div>
                         </div>
                       );
@@ -428,7 +536,7 @@ export default function AdminMessagesPage() {
                                   <User className="h-5 w-5 text-primary" />
                                 </div>
                                 <div className="flex-1">
-                                  <p className="font-medium">{getDisplayName(adminId)}</p>
+                                  <p className="font-medium">{getDisplayName(adminId, true)}</p>
                                   <p className="text-sm text-muted-foreground">{admin.email || 'Admin'}</p>
                                 </div>
                                 <Button 

@@ -33,24 +33,15 @@ export function useUnifiedRole() {
       }
 
       try {
-        // First check user metadata
-        const metadataRole = user.user_metadata?.role;
-        if (metadataRole === "admin" || metadataRole === "carrier") {
-          const userRole = metadataRole as UserRole;
-          setRole(userRole);
-          setIsAdmin(userRole === "admin");
-          setIsCarrier(userRole === "carrier");
-          setIsLoading(false);
-          return;
-        }
-
-        // If not in metadata, fetch from API
+        // CRITICAL: Always query database first (source of truth)
+        // User metadata may be stale after role changes
         const response = await fetch('/api/user/role', {
           method: 'GET',
           credentials: 'include',
           headers: {
             'Content-Type': 'application/json',
           },
+          cache: 'no-store', // Always fetch fresh role from database
         });
 
         if (response.ok) {
@@ -62,25 +53,47 @@ export function useUnifiedRole() {
             setRole(userRole);
             setIsAdmin(userRole === "admin");
             setIsCarrier(userRole === "carrier");
+            setIsLoading(false);
+            return;
           } else {
             // Response is not JSON (probably HTML error page)
-            console.warn('Role API returned non-JSON response, defaulting to carrier');
-            setRole("carrier");
-            setIsAdmin(false);
-            setIsCarrier(true);
+            console.warn('Role API returned non-JSON response, falling back to metadata');
           }
         } else {
-          // API returned an error, default to carrier
+          // API returned an error, fall back to metadata
+          console.warn('Role API error, falling back to user metadata');
+        }
+        
+        // Fallback: Check user metadata if API fails
+        const metadataRole = user.user_metadata?.role;
+        if (metadataRole === "admin" || metadataRole === "carrier") {
+          const userRole = metadataRole as UserRole;
+          setRole(userRole);
+          setIsAdmin(userRole === "admin");
+          setIsCarrier(userRole === "carrier");
+          setIsLoading(false);
+          return;
+        }
+        
+        // Final fallback: default to carrier
+        setRole("carrier");
+        setIsAdmin(false);
+        setIsCarrier(true);
+      } catch (error) {
+        console.error("Error fetching role:", error);
+        // Fallback to metadata if available
+        const metadataRole = user.user_metadata?.role;
+        if (metadataRole === "admin" || metadataRole === "carrier") {
+          const userRole = metadataRole as UserRole;
+          setRole(userRole);
+          setIsAdmin(userRole === "admin");
+          setIsCarrier(userRole === "carrier");
+        } else {
+          // Default to carrier for authenticated users
           setRole("carrier");
           setIsAdmin(false);
           setIsCarrier(true);
         }
-      } catch (error) {
-        console.error("Error fetching role:", error);
-        // Default to carrier for authenticated users
-        setRole("carrier");
-        setIsAdmin(false);
-        setIsCarrier(true);
       } finally {
         setIsLoading(false);
       }

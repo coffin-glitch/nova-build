@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
         c.last_message_at,
         c.created_at,
         c.updated_at,
-        COUNT(CASE WHEN mr.id IS NULL AND cm.sender_type = 'carrier' THEN 1 END) as unread_count,
+        COUNT(CASE WHEN mr.id IS NULL AND cm.sender_type = 'carrier' AND cm.supabase_sender_id != ${userId} THEN 1 END) as unread_count,
         (
           SELECT cm2.message 
           FROM conversation_messages cm2 
@@ -102,10 +102,12 @@ export async function POST(request: NextRequest) {
       INSERT INTO conversations (
         supabase_carrier_user_id,
         supabase_admin_user_id,
+        subject,
+        status,
         conversation_type,
         created_at,
         updated_at
-      ) VALUES (${carrier_user_id}, ${userId}, 'appeal', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      ) VALUES (${carrier_user_id}, ${userId}, 'Profile Appeal', 'active', 'appeal', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
       RETURNING id
     `;
     console.log('Appeal conversation created:', result);

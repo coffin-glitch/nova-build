@@ -45,9 +45,9 @@ interface UnifiedUser {
   provider: AuthProvider;
 }
 
-// In-memory cache for role resolution (60s TTL)
+// In-memory cache for role resolution (5s TTL for faster role updates)
 const roleCache = new Map<string, { role: UserRole; timestamp: number }>();
-const ROLE_CACHE_TTL = 60 * 1000; // 60 seconds
+const ROLE_CACHE_TTL = 5 * 1000; // 5 seconds (reduced for faster role updates)
 
 /**
  * Get unified auth result from Supabase

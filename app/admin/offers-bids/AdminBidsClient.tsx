@@ -2,12 +2,12 @@
 
 import AdminBidLifecycleViewer from "@/components/admin/AdminBidLifecycleViewer";
 import { DriverInfoDialog } from "@/components/admin/DriverInfoDialog";
-import { BidMessageConsole } from "@/components/bid-message/BidMessageConsole";
 import { MarginProfitAnalytics } from "@/components/admin/MarginProfitAnalytics";
-import { DocumentViewerDialog } from "./DocumentViewerDialog";
+import { BidMessageConsole } from "@/components/bid-message/BidMessageConsole";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,29 +15,31 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAccentColor } from "@/hooks/useAccentColor";
 import { useUnifiedUser } from "@/hooks/useUnifiedUser";
 import {
-    BarChart3,
-    CheckCircle2,
-    Clock,
-    Crown,
-    DollarSign,
-    Filter,
-    History,
-    MessageSquare,
-    RefreshCw,
-    Search,
-    Shield,
-    TrendingUp,
-    XCircle,
-    Zap,
-    File,
-    Download,
-    Calendar as CalendarIcon,
-    ChevronLeft,
-    ChevronRight
+  AlertTriangle,
+  BarChart3,
+  Calendar as CalendarIcon,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  Crown,
+  DollarSign,
+  File,
+  Filter,
+  History,
+  MessageSquare,
+  RefreshCw,
+  Search,
+  Shield,
+  Trash2,
+  TrendingUp,
+  XCircle,
+  Zap
 } from "lucide-react";
 import { useTheme } from "next-themes";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { DocumentViewerDialog } from "./DocumentViewerDialog";
 
 interface AwardedBid {
   id: string;
@@ -93,6 +95,10 @@ export default function AdminBidsClient() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedDateBids, setSelectedDateBids] = useState<AwardedBid[]>([]);
   const [showDateDialog, setShowDateDialog] = useState(false);
+  const [bidToRemove, setBidToRemove] = useState<AwardedBid | null>(null);
+  const [showRemoveDialog, setShowRemoveDialog] = useState(false);
+  const [removeConfirmed, setRemoveConfirmed] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const { theme } = useTheme();
   const { accentColor } = useAccentColor();
 
@@ -341,6 +347,49 @@ export default function AdminBidsClient() {
 
   const handleCloseMessage = () => {
     setMessageBidNumber(null);
+  };
+
+  const handleRemoveBid = (bid: AwardedBid) => {
+    setBidToRemove(bid as any); // Type assertion to handle interface mismatch
+    setRemoveConfirmed(false);
+    setShowRemoveDialog(true);
+  };
+
+  const handleConfirmRemove = async () => {
+    if (!bidToRemove || !removeConfirmed) return;
+
+    setRemoving(true);
+    try {
+      const response = await fetch(`/api/admin/bids/${bidToRemove.bid_number}/remove-award`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        toast.success(`Bid #${bidToRemove.bid_number} award removed successfully`, {
+          description: "The bid has been reset and is now available for re-award."
+        });
+        setShowRemoveDialog(false);
+        setBidToRemove(null);
+        setRemoveConfirmed(false);
+        // Refresh bids list
+        fetchBids();
+        // If this bid was in the date dialog, refresh that too
+        if (selectedDate) {
+          const updatedBids = selectedDateBids.filter(b => b.bid_number !== bidToRemove.bid_number);
+          setSelectedDateBids(updatedBids);
+        }
+      } else {
+        toast.error(result.error || 'Failed to remove award');
+      }
+    } catch (error) {
+      console.error('Error removing award:', error);
+      toast.error('Failed to remove award');
+    } finally {
+      setRemoving(false);
+    }
   };
 
   if (loading) {
@@ -811,6 +860,14 @@ export default function AdminBidsClient() {
                           <File className="h-4 w-4 mr-2" />
                           Documents
                         </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => handleRemoveBid(bid)}
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Remove
+                        </Button>
                       </div>
                     </div>
 
@@ -849,6 +906,81 @@ export default function AdminBidsClient() {
                 </Card>
               ))
             )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Remove Award Confirmation Dialog */}
+      <Dialog open={showRemoveDialog} onOpenChange={setShowRemoveDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              Remove Award Confirmation
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
+              <p className="text-sm font-medium mb-2">
+                You are about to remove the award for Bid #{bidToRemove?.bid_number}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                This will:
+              </p>
+              <ul className="text-sm text-muted-foreground mt-2 space-y-1 list-disc list-inside">
+                <li>Remove the award from the carrier</li>
+                <li>Reset the bid to "needs to be awarded" state</li>
+                <li>Remove all stats tied to this award</li>
+                <li>Delete lifecycle events for this bid</li>
+                <li>Notify the carrier that the award was removed</li>
+              </ul>
+            </div>
+
+            <div className="flex items-center gap-3 p-4 bg-muted/50 rounded-lg border">
+              <Checkbox
+                id="remove-confirm"
+                checked={removeConfirmed}
+                onCheckedChange={(checked) => setRemoveConfirmed(checked === true)}
+                className="border-destructive data-[state=checked]:bg-destructive data-[state=checked]:border-destructive"
+              />
+              <label
+                htmlFor="remove-confirm"
+                className="text-sm font-medium cursor-pointer select-none"
+              >
+                I understand this action cannot be undone and wish to remove this bid from the carrier
+              </label>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4 border-t">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowRemoveDialog(false);
+                  setRemoveConfirmed(false);
+                  setBidToRemove(null);
+                }}
+                disabled={removing}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleConfirmRemove}
+                disabled={!removeConfirmed || removing}
+              >
+                {removing ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                    Removing...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Remove Award
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
@@ -1050,8 +1182,7 @@ function BidCalendarView({
               key={dateStr}
               className="hover:shadow-lg transition-all duration-200 cursor-pointer border-2 hover:border-opacity-50"
               style={{ 
-                borderColor: accentColor,
-                borderOpacity: 0.3
+                borderColor: `${accentColor}4D`
               }}
               onClick={() => onDateClick(dateStr, dateBids)}
             >

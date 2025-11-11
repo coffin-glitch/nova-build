@@ -1,6 +1,6 @@
 import sql from './db';
 import { formatCountdown } from './format';
-import { isNewLowestBid, notifyAllAdmins, getCarrierProfileInfo } from './notifications';
+import { getCarrierProfileInfo, isNewLowestBid, notifyAllAdmins } from './notifications';
 
 // Types
 export interface TelegramBid {
@@ -521,6 +521,14 @@ export async function awardAuction({
       ON CONFLICT (rr_number) DO NOTHING
     `;
 
+    // Set carrier_bids status to 'awarded' so carrier must accept it in my-bids
+    // This ensures the acceptance cycle is reset if the bid was previously removed
+    await sql`
+      UPDATE public.carrier_bids
+      SET status = 'awarded', bid_outcome = 'won', updated_at = NOW()
+      WHERE bid_number = ${bid_number} AND supabase_user_id = ${winner_user_id}
+    `;
+
     return award[0];
   } catch (error) {
     console.error('Database error in awardAuction:', error);
@@ -648,10 +656,111 @@ export async function reAwardAuction({
       WHERE rr_number = ${bid_number}
     `;
 
+    // Set carrier_bids status to 'awarded' for the new winner so they must accept it in my-bids
+    // This ensures the acceptance cycle is reset if the bid was previously removed
+    await sql`
+      UPDATE public.carrier_bids
+      SET status = 'awarded', bid_outcome = 'won', updated_at = NOW()
+      WHERE bid_number = ${bid_number} AND supabase_user_id = ${winner_user_id}
+    `;
+
     return award[0];
   } catch (error) {
     console.error('Database error in reAwardAuction:', error);
     throw error; // Re-throw to maintain API contract
+  }
+}
+
+export async function removeAward({
+  bid_number,
+  removed_by,
+}: {
+  bid_number: string;
+  removed_by: string;
+}): Promise<void> {
+  try {
+    // Get existing award to find the winner
+    const existingAward = await sql`
+      SELECT id, supabase_winner_user_id, winner_amount_cents
+      FROM public.auction_awards 
+      WHERE bid_number = ${bid_number}
+    `;
+
+    // If no award exists, still clean up any related data and return successfully
+    // This handles cases where the award was already removed or doesn't exist
+    if (existingAward.length === 0) {
+      // Award doesn't exist, but clean up any orphaned data anyway
+      await sql`
+        UPDATE public.carrier_bids
+        SET status = 'pending', bid_outcome = 'pending'
+        WHERE bid_number = ${bid_number}
+      `;
+
+      await sql`
+        DELETE FROM bid_lifecycle_events
+        WHERE bid_id = ${bid_number}
+      `;
+
+      await sql`
+        DELETE FROM bid_documents
+        WHERE bid_number = ${bid_number}
+      `;
+
+      await sql`
+        UPDATE public.loads 
+        SET status_code = NULL
+        WHERE rr_number = ${bid_number}
+      `;
+
+      // Return early - award already doesn't exist
+      return;
+    }
+
+    const winnerUserId = existingAward[0].supabase_winner_user_id;
+
+    // Delete the award
+    await sql`
+      DELETE FROM public.auction_awards 
+      WHERE bid_number = ${bid_number}
+    `;
+
+    // Reset carrier_bid status for the winner
+    await sql`
+      UPDATE public.carrier_bids
+      SET status = 'pending', bid_outcome = 'pending'
+      WHERE bid_number = ${bid_number} AND supabase_user_id = ${winnerUserId}
+    `;
+
+    // Delete lifecycle events tied to this award
+    await sql`
+      DELETE FROM bid_lifecycle_events
+      WHERE bid_id = ${bid_number}
+    `;
+
+    // Delete bid documents tied to this award (if any)
+    await sql`
+      DELETE FROM bid_documents
+      WHERE bid_number = ${bid_number}
+    `;
+
+    // Delete notifications related to this award
+    await sql`
+      DELETE FROM notifications
+      WHERE (data->>'bid_number' = ${bid_number} OR data->>'bidNumber' = ${bid_number})
+        AND (type = 'bid_won' OR type = 'bid_lost')
+    `;
+
+    // Reset load assignment
+    await sql`
+      UPDATE public.loads 
+      SET status_code = NULL
+      WHERE rr_number = ${bid_number}
+    `;
+
+    // No notifications sent - award removal is silent
+  } catch (error) {
+    console.error('Database error in removeAward:', error);
+    throw error;
   }
 }
 

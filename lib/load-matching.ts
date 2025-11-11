@@ -51,7 +51,7 @@ export async function calculateLoadSimilarity(
         tb.source_channel
       FROM carrier_favorites cf
       JOIN telegram_bids tb ON cf.bid_number = tb.bid_number
-      WHERE cf.carrier_user_id = ${carrierUserId}
+      WHERE cf.supabase_carrier_user_id = ${carrierUserId}
     `;
 
     if (favoriteLoads.length === 0) {
@@ -246,13 +246,13 @@ export async function processNewLoadForMatching(bidNumber: string): Promise<void
     // Get carriers with notification preferences enabled
     const carriers = await sql`
       SELECT DISTINCT 
-        cf.carrier_user_id,
+        cf.supabase_carrier_user_id,
         cnp.similar_load_notifications,
         cnp.distance_threshold_miles,
         cnp.state_preferences,
         cnp.equipment_preferences
       FROM carrier_favorites cf
-      JOIN public.carrier_notification_preferences cnp ON cf.carrier_user_id = cnp.carrier_user_id
+      JOIN public.carrier_notification_preferences cnp ON cf.supabase_carrier_user_id = cnp.supabase_carrier_user_id
       WHERE cnp.similar_load_notifications = true
     `;
 
@@ -266,7 +266,7 @@ export async function processNewLoadForMatching(bidNumber: string): Promise<void
           avoid_high_competition,
           max_competition_bids
         FROM public.carrier_notification_preferences
-        WHERE carrier_user_id = ${carrier.carrier_user_id}
+        WHERE supabase_carrier_user_id = ${carrier.supabase_carrier_user_id}
         LIMIT 1
       `;
 
@@ -282,7 +282,7 @@ export async function processNewLoadForMatching(bidNumber: string): Promise<void
       };
 
       const similarities = await calculateLoadSimilarity(
-        carrier.carrier_user_id,
+        carrier.supabase_carrier_user_id,
         newLoad[0] as unknown as TelegramBid,
         criteria
       );
@@ -291,7 +291,7 @@ export async function processNewLoadForMatching(bidNumber: string): Promise<void
       for (const similarity of similarities) {
         if (similarity.score >= minMatchScore) {
           await createNotification({
-            carrierUserId: carrier.carrier_user_id,
+            carrierUserId: carrier.supabase_carrier_user_id,
             notificationType: 'similar_load',
             title: `Similar Load Alert: ${bidNumber}`,
             message: `New load matches your favorites! Score: ${(similarity.score * 100).toFixed(0)}%. ${similarity.reasons.slice(0, 2).join(', ')}`,
@@ -350,7 +350,7 @@ async function createNotification({
       // Check if user has email notifications enabled
       const prefsResult = await sql`
         SELECT email_notifications FROM public.carrier_notification_preferences
-        WHERE carrier_user_id = ${carrierUserId}
+        WHERE supabase_carrier_user_id = ${carrierUserId}
         LIMIT 1
       `;
 
@@ -402,24 +402,21 @@ export async function getNotificationPreferences(carrierUserId: string) {
   try {
     const preferences = await sql`
       SELECT * FROM public.carrier_notification_preferences 
-      WHERE carrier_user_id = ${carrierUserId}
+      WHERE supabase_carrier_user_id = ${carrierUserId}
     `;
 
     if (preferences.length === 0) {
       // Create default preferences
       await sql`
         INSERT INTO public.carrier_notification_preferences (
-          carrier_user_id,
+          supabase_carrier_user_id,
           email_notifications,
           similar_load_notifications,
-          distance_threshold_miles,
           state_preferences,
           equipment_preferences,
           min_distance,
           max_distance,
           min_match_score,
-          route_match_threshold,
-          distance_flexibility,
           timing_relevance_days,
           prioritize_backhaul,
           avoid_high_competition,
@@ -428,14 +425,11 @@ export async function getNotificationPreferences(carrierUserId: string) {
           ${carrierUserId},
           true,
           true,
-          50,
           ARRAY[]::TEXT[],
           ARRAY[]::TEXT[],
           0,
           2000,
           70,
-          60,
-          25,
           7,
           true,
           false,
@@ -446,18 +440,20 @@ export async function getNotificationPreferences(carrierUserId: string) {
       return {
         emailNotifications: true,
         similarLoadNotifications: true,
-        distanceThresholdMiles: 50,
         statePreferences: [],
         equipmentPreferences: [],
         minDistance: 0,
         maxDistance: 2000,
         minMatchScore: 70,
-        routeMatchThreshold: 60,
-        distanceFlexibility: 25,
         timingRelevanceDays: 7,
-        prioritizeBackhaul: true,
+        backhaulMatcher: true,
         avoidHighCompetition: false,
         maxCompetitionBids: 10,
+        toastNotifications: true,
+        textNotifications: false,
+        urgentContactPreference: 'email',
+        urgentContactEmail: true,
+        urgentContactPhone: false,
       };
     }
 
@@ -466,18 +462,20 @@ export async function getNotificationPreferences(carrierUserId: string) {
     return {
       emailNotifications: pref.email_notifications ?? true,
       similarLoadNotifications: pref.similar_load_notifications ?? true,
-      distanceThresholdMiles: pref.distance_threshold_miles ?? 50,
       statePreferences: pref.state_preferences ?? [],
       equipmentPreferences: pref.equipment_preferences ?? [],
       minDistance: pref.min_distance ?? 0,
       maxDistance: pref.max_distance ?? 2000,
       minMatchScore: pref.min_match_score ?? 70,
-      routeMatchThreshold: pref.route_match_threshold ?? 60,
-      distanceFlexibility: pref.distance_flexibility ?? 25,
       timingRelevanceDays: pref.timing_relevance_days ?? 7,
-      prioritizeBackhaul: pref.prioritize_backhaul ?? true,
+      backhaulMatcher: pref.prioritize_backhaul ?? true, // Map prioritize_backhaul to backhaulMatcher
       avoidHighCompetition: pref.avoid_high_competition ?? false,
       maxCompetitionBids: pref.max_competition_bids ?? 10,
+      toastNotifications: pref.toast_notifications ?? true,
+      textNotifications: pref.text_notifications ?? false,
+      urgentContactPreference: pref.urgent_contact_preference ?? 'email',
+      urgentContactEmail: pref.urgent_contact_email ?? true,
+      urgentContactPhone: pref.urgent_contact_phone ?? false,
     };
   } catch (error) {
     console.error('Error getting notification preferences:', error);
@@ -506,61 +504,87 @@ export async function updateNotificationPreferences(
     prioritizeBackhaul?: boolean;
     avoidHighCompetition?: boolean;
     maxCompetitionBids?: number;
+    // New fields
+    toastNotifications?: boolean;
+    textNotifications?: boolean;
+    urgentContactPreference?: string;
+    urgentContactEmail?: boolean;
+    urgentContactPhone?: boolean;
   }>
 ) {
   try {
-    await sql`
-      INSERT INTO public.carrier_notification_preferences (
-        carrier_user_id,
-        email_notifications,
-        similar_load_notifications,
-        distance_threshold_miles,
-        state_preferences,
-        equipment_preferences,
-        min_distance,
-        max_distance,
-        min_match_score,
-        route_match_threshold,
-        distance_flexibility,
-        timing_relevance_days,
-        prioritize_backhaul,
-        avoid_high_competition,
-        max_competition_bids
-      ) VALUES (
-        ${carrierUserId},
-        ${preferences.emailNotifications ?? true},
-        ${preferences.similarLoadNotifications ?? true},
-        ${preferences.distanceThresholdMiles ?? 50},
-        ${preferences.statePreferences ?? []},
-        ${preferences.equipmentPreferences ?? []},
-        ${preferences.minDistance ?? 0},
-        ${preferences.maxDistance ?? 2000},
-        ${preferences.minMatchScore ?? 70},
-        ${preferences.routeMatchThreshold ?? 60},
-        ${preferences.distanceFlexibility ?? 25},
-        ${preferences.timingRelevanceDays ?? 7},
-        ${preferences.prioritizeBackhaul ?? true},
-        ${preferences.avoidHighCompetition ?? false},
-        ${preferences.maxCompetitionBids ?? 10}
-      )
-      ON CONFLICT (carrier_user_id)
-      DO UPDATE SET
-        email_notifications = EXCLUDED.email_notifications,
-        similar_load_notifications = EXCLUDED.similar_load_notifications,
-        distance_threshold_miles = EXCLUDED.distance_threshold_miles,
-        state_preferences = EXCLUDED.state_preferences,
-        equipment_preferences = EXCLUDED.equipment_preferences,
-        min_distance = EXCLUDED.min_distance,
-        max_distance = EXCLUDED.max_distance,
-        min_match_score = EXCLUDED.min_match_score,
-        route_match_threshold = EXCLUDED.route_match_threshold,
-        distance_flexibility = EXCLUDED.distance_flexibility,
-        timing_relevance_days = EXCLUDED.timing_relevance_days,
-        prioritize_backhaul = EXCLUDED.prioritize_backhaul,
-        avoid_high_competition = EXCLUDED.avoid_high_competition,
-        max_competition_bids = EXCLUDED.max_competition_bids,
-        updated_at = NOW()
+    // First check if record exists
+    const existing = await sql`
+      SELECT id FROM public.carrier_notification_preferences 
+      WHERE supabase_carrier_user_id = ${carrierUserId}
+      LIMIT 1
     `;
+
+    if (existing.length > 0) {
+      // Update existing record
+      await sql`
+        UPDATE public.carrier_notification_preferences SET
+          email_notifications = ${preferences.emailNotifications ?? true},
+          similar_load_notifications = ${preferences.similarLoadNotifications ?? true},
+          state_preferences = ${preferences.statePreferences ?? []},
+          equipment_preferences = ${preferences.equipmentPreferences ?? []},
+          min_distance = ${preferences.minDistance ?? 0},
+          max_distance = ${preferences.maxDistance ?? 2000},
+          min_match_score = ${preferences.minMatchScore ?? 70},
+          timing_relevance_days = ${preferences.timingRelevanceDays ?? 7},
+          prioritize_backhaul = ${preferences.prioritizeBackhaul ?? true},
+          avoid_high_competition = ${preferences.avoidHighCompetition ?? false},
+          max_competition_bids = ${preferences.maxCompetitionBids ?? 10},
+          toast_notifications = COALESCE(${preferences.toastNotifications ?? null}, toast_notifications),
+          text_notifications = COALESCE(${preferences.textNotifications ?? null}, text_notifications),
+          urgent_contact_preference = COALESCE(${preferences.urgentContactPreference ?? null}, urgent_contact_preference),
+          urgent_contact_email = COALESCE(${preferences.urgentContactEmail ?? null}, urgent_contact_email),
+          urgent_contact_phone = COALESCE(${preferences.urgentContactPhone ?? null}, urgent_contact_phone),
+          updated_at = NOW()
+        WHERE supabase_carrier_user_id = ${carrierUserId}
+      `;
+    } else {
+      // Insert new record
+      await sql`
+        INSERT INTO public.carrier_notification_preferences (
+          supabase_carrier_user_id,
+          email_notifications,
+          similar_load_notifications,
+          state_preferences,
+          equipment_preferences,
+          min_distance,
+          max_distance,
+          min_match_score,
+          timing_relevance_days,
+          prioritize_backhaul,
+          avoid_high_competition,
+          max_competition_bids,
+          toast_notifications,
+          text_notifications,
+          urgent_contact_preference,
+          urgent_contact_email,
+          urgent_contact_phone
+        ) VALUES (
+          ${carrierUserId},
+          ${preferences.emailNotifications ?? true},
+          ${preferences.similarLoadNotifications ?? true},
+          ${preferences.statePreferences ?? []},
+          ${preferences.equipmentPreferences ?? []},
+          ${preferences.minDistance ?? 0},
+          ${preferences.maxDistance ?? 2000},
+          ${preferences.minMatchScore ?? 70},
+          ${preferences.timingRelevanceDays ?? 7},
+          ${preferences.prioritizeBackhaul ?? true},
+          ${preferences.avoidHighCompetition ?? false},
+          ${preferences.maxCompetitionBids ?? 10},
+          ${preferences.toastNotifications ?? true},
+          ${preferences.textNotifications ?? false},
+          ${preferences.urgentContactPreference ?? 'email'},
+          ${preferences.urgentContactEmail ?? true},
+          ${preferences.urgentContactPhone ?? false}
+        )
+      `;
+    }
 
     return { success: true };
   } catch (error: any) {

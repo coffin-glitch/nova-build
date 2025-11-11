@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useUnifiedRole } from "@/hooks/useUnifiedRole";
 import { cn } from "@/lib/utils";
@@ -12,13 +13,16 @@ import { useUnifiedUser } from "@/hooks/useUnifiedUser";
 import {
     ArrowLeft,
     FileText,
+    Mail,
     Maximize2,
     MessageCircle,
     Minimize2,
     MoreVertical,
     Paperclip,
+    Phone,
     Search,
     Send,
+    User,
     Users,
     X
 } from "lucide-react";
@@ -96,6 +100,7 @@ export default function FloatingCarrierChatButton() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [showNewChat, setShowNewChat] = useState(false);
+  const [isProfilePopoverOpen, setIsProfilePopoverOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -125,16 +130,79 @@ export default function FloatingCarrierChatButton() {
   const conversations = Array.isArray(conversationsData) ? conversationsData : (conversationsData?.data || []);
   const messages = Array.isArray(messagesData) ? messagesData : (messagesData?.data || []);
 
-  // Get unique admin user IDs from conversations
+  // Get unique admin user IDs from conversations, plus the selected conversation's admin if any
   const adminUserIds = useMemo(() => {
-    return Array.from(new Set(conversations.map((conv: Conversation) => conv.admin_user_id).filter(Boolean)));
-  }, [conversations]);
+    const ids = new Set<string>();
+    // Add all admin IDs from conversations
+    conversations.forEach((conv: Conversation) => {
+      if (conv.admin_user_id) {
+        ids.add(conv.admin_user_id);
+      }
+    });
+    // Also add the selected conversation's admin ID if it exists
+    if (selectedConversation?.admin_user_id) {
+      ids.add(selectedConversation.admin_user_id);
+    }
+    return Array.from(ids);
+  }, [conversations, selectedConversation]);
 
   // Fetch admin user information
-  const { data: userInfos = {} } = useSWR(
+  const { data: userInfosData, isLoading: isLoadingUserInfos, error: userInfosError } = useSWR(
     adminUserIds.length > 0 ? `/api/users/batch?ids=${adminUserIds.join(',')}` : null,
-    fetcher
+    async (url: string) => {
+      try {
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const data = await response.json();
+        // Batch API returns the object directly, not wrapped in { ok: true, data: {...} }
+        if (data.error) {
+          console.error(`[FloatingCarrierChat] API error for ${url}:`, data.error);
+          return {};
+        }
+        // Return data directly (it's already an object with user IDs as keys)
+        console.log('[FloatingCarrierChat] UserInfos loaded:', data);
+        return data || {};
+      } catch (error) {
+        console.error(`[FloatingCarrierChat] Error fetching user infos from ${url}:`, error);
+        return {};
+      }
+    }
   );
+  
+  const userInfos = userInfosData || {};
+
+  // Fallback: Fetch specific admin info when popover opens if not already loaded
+  const selectedAdminId = selectedConversation?.admin_user_id;
+  const { data: fallbackAdminInfo } = useSWR(
+    isProfilePopoverOpen && selectedAdminId && !userInfos[selectedAdminId]
+      ? `/api/users/${selectedAdminId}`
+      : null,
+    async (url: string) => {
+      try {
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const data = await response.json();
+        console.log('[FloatingCarrierChat] Fallback admin info loaded:', data);
+        return data;
+      } catch (error) {
+        console.error(`[FloatingCarrierChat] Error fetching fallback admin info from ${url}:`, error);
+        return null;
+      }
+    }
+  );
+
+  // Merge fallback data into userInfos if available
+  const mergedUserInfos = useMemo(() => {
+    const merged = { ...userInfos };
+    if (selectedAdminId && fallbackAdminInfo && !merged[selectedAdminId]) {
+      merged[selectedAdminId] = fallbackAdminInfo;
+    }
+    return merged;
+  }, [userInfos, fallbackAdminInfo, selectedAdminId]);
 
   // Helper function to get display name
   // Priority: admin_display_name from API > batch API > fallback
@@ -142,8 +210,8 @@ export default function FloatingCarrierChatButton() {
     // First check if admin_display_name is provided from the API
     if (adminDisplayName) return adminDisplayName;
     
-    // Fallback to batch API
-    const userInfo = userInfos[userId] as UserInfo;
+    // Fallback to merged user infos (includes batch + fallback data)
+    const userInfo = mergedUserInfos[userId] as UserInfo;
     if (!userInfo) return "Admin";
     
     if (userInfo.fullName) return userInfo.fullName;
@@ -153,7 +221,7 @@ export default function FloatingCarrierChatButton() {
     if (userInfo.emailAddresses?.[0]?.emailAddress) return userInfo.emailAddresses[0].emailAddress;
     
     return "Admin";
-  }, [userInfos]);
+  }, [mergedUserInfos]);
 
   // Filter conversations based on search
   const filteredConversations = useMemo(() => {
@@ -773,9 +841,143 @@ export default function FloatingCarrierChatButton() {
                                 </div>
                               </div>
                               <div className="flex items-center gap-1">
-                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                                  <MoreVertical className="h-4 w-4" />
-                                </Button>
+                                <Popover open={isProfilePopoverOpen} onOpenChange={setIsProfilePopoverOpen}>
+                                  <PopoverTrigger asChild>
+                                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                      <MoreVertical className="h-4 w-4" />
+                                    </Button>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-80 p-0" align="end">
+                                    <div className="p-4">
+                                      <div className="flex items-center gap-3 mb-4 pb-4 border-b">
+                                        <Avatar className="h-12 w-12">
+                                          <AvatarImage src={undefined} />
+                                          <AvatarFallback>
+                                            {getInitials(displayName)}
+                                          </AvatarFallback>
+                                        </Avatar>
+                                        <div>
+                                          <p className="font-semibold text-sm">
+                                            {displayName}
+                                          </p>
+                                          <p className="text-xs text-muted-foreground">
+                                            Admin Profile
+                                          </p>
+                                        </div>
+                                      </div>
+                                      
+                                      {(() => {
+                                        const adminUserId = selectedConversation?.admin_user_id;
+                                        const adminInfo = adminUserId ? (mergedUserInfos[adminUserId] as UserInfo | undefined) : undefined;
+                                        
+                                        // Debug logging
+                                        console.log('[FloatingCarrierChat] Profile popover state:', {
+                                          adminUserId,
+                                          isLoadingUserInfos,
+                                          userInfosKeys: Object.keys(mergedUserInfos),
+                                          hasFallbackData: !!fallbackAdminInfo,
+                                          adminInfo,
+                                          hasAdminInfo: !!adminInfo,
+                                          adminInfoKeys: adminInfo ? Object.keys(adminInfo) : []
+                                        });
+                                        
+                                        // Show loading only if we're actively loading AND we don't have the data yet
+                                        if (isLoadingUserInfos && !adminInfo) {
+                                          return (
+                                            <div className="text-center py-4">
+                                              <p className="text-sm text-muted-foreground">Loading profile...</p>
+                                            </div>
+                                          );
+                                        }
+                                        
+                                        // If we have an error, show error message
+                                        if (userInfosError) {
+                                          return (
+                                            <div className="text-center py-4">
+                                              <p className="text-sm text-red-500">Error loading profile</p>
+                                              <p className="text-xs text-muted-foreground mt-1">Please try again later</p>
+                                            </div>
+                                          );
+                                        }
+                                        
+                                        // If we have admin info, show it
+                                        if (adminInfo) {
+                                          return (
+                                          <div className="space-y-3">
+                                            {adminInfo.fullName && (
+                                              <div className="flex items-start gap-3">
+                                                <User className="h-4 w-4 text-muted-foreground mt-0.5" />
+                                                <div>
+                                                  <p className="text-xs text-muted-foreground">Full Name</p>
+                                                  <p className="text-sm font-medium">{adminInfo.fullName}</p>
+                                                </div>
+                                              </div>
+                                            )}
+                                            
+                                            {(adminInfo.firstName || adminInfo.lastName) && !adminInfo.fullName && (
+                                              <div className="flex items-start gap-3">
+                                                <User className="h-4 w-4 text-muted-foreground mt-0.5" />
+                                                <div>
+                                                  <p className="text-xs text-muted-foreground">Name</p>
+                                                  <p className="text-sm font-medium">
+                                                    {[adminInfo.firstName, adminInfo.lastName].filter(Boolean).join(' ') || 'N/A'}
+                                                  </p>
+                                                </div>
+                                              </div>
+                                            )}
+                                            
+                                            {adminInfo.emailAddresses?.[0]?.emailAddress && (
+                                              <div className="flex items-start gap-3">
+                                                <Mail className="h-4 w-4 text-muted-foreground mt-0.5" />
+                                                <div>
+                                                  <p className="text-xs text-muted-foreground">Email</p>
+                                                  <p className="text-sm font-medium break-all">{adminInfo.emailAddresses[0].emailAddress}</p>
+                                                </div>
+                                              </div>
+                                            )}
+                                            
+                                            {adminInfo.username && (
+                                              <div className="flex items-start gap-3">
+                                                <User className="h-4 w-4 text-muted-foreground mt-0.5" />
+                                                <div>
+                                                  <p className="text-xs text-muted-foreground">Username</p>
+                                                  <p className="text-sm font-medium">{adminInfo.username}</p>
+                                                </div>
+                                              </div>
+                                            )}
+                                            
+                                            {adminInfo.role && (
+                                              <div className="flex items-start gap-3">
+                                                <User className="h-4 w-4 text-muted-foreground mt-0.5" />
+                                                <div>
+                                                  <p className="text-xs text-muted-foreground">Role</p>
+                                                  <p className="text-sm font-medium">{adminInfo.role}</p>
+                                                </div>
+                                              </div>
+                                            )}
+                                            
+                                            {!adminInfo.fullName && !adminInfo.firstName && !adminInfo.lastName && !adminInfo.emailAddresses?.[0]?.emailAddress && !adminInfo.username && (
+                                              <div className="text-center py-4">
+                                                <p className="text-sm text-muted-foreground">Limited profile information available</p>
+                                              </div>
+                                            )}
+                                          </div>
+                                        );
+                                        }
+                                        
+                                        // Fallback: No admin info available
+                                        return (
+                                          <div className="text-center py-4">
+                                            <p className="text-sm text-muted-foreground">Profile information not available</p>
+                                            <p className="text-xs text-muted-foreground mt-1">
+                                              {adminUserId ? `Admin ID: ${adminUserId}` : 'No admin selected'}
+                                            </p>
+                                          </div>
+                                        );
+                                      })()}
+                                    </div>
+                                  </PopoverContent>
+                                </Popover>
                               </div>
                             </div>
 

@@ -29,7 +29,7 @@ const pooledUrl = dbUrl.includes('?') ? `${dbUrl}&options=-csearch_path%3Dpublic
 if (!g.__pg_sql_client) {
   g.__pg_sql_client = postgres(pooledUrl, {
     ssl: dbUrl.includes('localhost') ? false : 'require',
-    max: Number(process.env.PG_POOL_MAX || 15),
+    max: Number(process.env.PG_POOL_MAX || 50), // Increased for notification system scalability
     idle_timeout: Number(process.env.PG_IDLE_TIMEOUT || 20),
     connect_timeout: Number(process.env.PG_CONNECT_TIMEOUT || 30),
     max_lifetime: Number(process.env.PG_MAX_LIFETIME || 60 * 30),

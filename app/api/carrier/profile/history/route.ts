@@ -1,5 +1,5 @@
-import sql from "@/lib/db";
 import { requireApiCarrier } from "@/lib/auth-api-helper";
+import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
         version_number,
         created_at
       FROM carrier_profile_history
-      WHERE supabase_user_id = ${userId}
+      WHERE carrier_user_id = ${userId}
       ORDER BY version_number DESC
     `;
 

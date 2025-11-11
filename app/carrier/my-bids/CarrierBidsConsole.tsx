@@ -4,36 +4,36 @@ import { BidMessageConsole } from "@/components/bid-message/BidMessageConsole";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Countdown } from "@/components/ui/Countdown";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { formatDistance, formatMoney, formatStops, formatPickupDateTime, formatStopCount } from "@/lib/format";
-import { useUnifiedUser } from "@/hooks/useUnifiedUser";
 import { useAccentColor } from "@/hooks/useAccentColor";
-import { Countdown } from "@/components/ui/Countdown";
+import { useUnifiedUser } from "@/hooks/useUnifiedUser";
+import { formatDistance, formatMoney, formatPickupDateTime, formatStopCount } from "@/lib/format";
 import {
-    Calendar,
-    CheckCircle,
-    ChevronDown,
-    ChevronRight,
-    ChevronLeft,
-    Clock,
-    DollarSign,
-    Grid3X3,
-    List,
-    MapPin,
-    MessageSquare,
-    Package,
-    RefreshCw,
-    TrendingUp,
-    Truck,
-    XCircle,
-    Zap,
-    Eye,
-    Navigation,
-    Upload,
-    Calendar as CalendarIcon
+  Calendar,
+  Calendar as CalendarIcon,
+  CheckCircle,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  DollarSign,
+  Eye,
+  Grid3X3,
+  List,
+  MapPin,
+  MessageSquare,
+  Navigation,
+  Package,
+  RefreshCw,
+  TrendingUp,
+  Truck,
+  Upload,
+  XCircle,
+  Zap
 } from "lucide-react";
-import { useState, useEffect, useMemo } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
 import { BidAnalytics } from "./BidAnalytics";
@@ -96,6 +96,11 @@ interface FilterState {
 
 // Progress calculation utility
 const getProgressForStatus = (status: string) => {
+  // If status is 'awarded' (not yet accepted), return 0%
+  if (status === 'awarded') {
+    return 0;
+  }
+  
   const statusOrder = [
     'bid_awarded',
     'load_assigned', 
@@ -108,10 +113,7 @@ const getProgressForStatus = (status: string) => {
     'completed'
   ];
   
-  // Handle both 'awarded' and 'bid_awarded' as the same status
-  const normalizedStatus = status === 'awarded' ? 'bid_awarded' : status;
-  
-  const currentIndex = statusOrder.indexOf(normalizedStatus);
+  const currentIndex = statusOrder.indexOf(status);
   if (currentIndex === -1) return 0;
   
   // Use the same calculation as BidLifecycleManager: (currentIndex + 1) / length
@@ -134,6 +136,7 @@ export function CarrierBidsConsole() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedDateBids, setSelectedDateBids] = useState<AwardedBid[]>([]);
   const [showDateDialog, setShowDateDialog] = useState(false);
+  const [expandedRecentBids, setExpandedRecentBids] = useState<Set<string>>(new Set());
   const { accentColor } = useAccentColor();
   const [advancedFilters, setAdvancedFilters] = useState<FilterState>({
     searchTerm: '',
@@ -234,9 +237,12 @@ export function CarrierBidsConsole() {
       cancelled: "bg-red-500/20 text-red-300 border-red-400"
     };
     
+    // Show "Awaiting Acceptance" for awarded status
+    const displayStatus = status === 'awarded' ? 'Awaiting Acceptance' : status.replace('_', ' ').toUpperCase();
+    
     return (
       <Badge variant="outline" className={variants[status as keyof typeof variants] || variants.awarded}>
-        {status.replace('_', ' ').toUpperCase()}
+        {displayStatus}
       </Badge>
     );
   };
@@ -531,31 +537,131 @@ export function CarrierBidsConsole() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {awardedBids.slice(0, 5).map((bid) => (
-                    <div 
-                      key={bid.id} 
-                      className="flex items-center justify-between p-3 border rounded-lg hover:bg-accent/50 transition-colors cursor-pointer"
-                      onClick={() => {
-                        // For awarded bids, show lifecycle dialog (can update lifecycle)
-                        setSelectedBidForDialog(bid);
-                        setDialogOpen(true);
-                      }}
-                    >
-                      <div className="flex items-center gap-3">
-                        {getStatusIcon(bid.status || 'awarded')}
-                        <div>
-                          <p className="font-medium">#{bid.bid_number}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {bid.distance_miles ? formatDistance(bid.distance_miles) : 'N/A'} • {bid.tag || 'N/A'}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-semibold">{formatMoney(bid.winner_amount_cents)}</p>
-                        {getStatusBadge(bid.status || 'awarded')}
-                      </div>
-                    </div>
-                  ))}
+                  {awardedBids.slice(0, 5).map((bid) => {
+                    const isExpanded = expandedRecentBids.has(bid.bid_number);
+                    return (
+                      <Card 
+                        key={bid.id} 
+                        className="hover:shadow-md transition-shadow"
+                      >
+                        <CardContent className="p-4">
+                          <div 
+                            className="flex items-center justify-between cursor-pointer"
+                            onClick={() => {
+                              const newExpanded = new Set(expandedRecentBids);
+                              if (isExpanded) {
+                                newExpanded.delete(bid.bid_number);
+                              } else {
+                                newExpanded.add(bid.bid_number);
+                              }
+                              setExpandedRecentBids(newExpanded);
+                            }}
+                          >
+                            <div className="flex items-center gap-3">
+                              {getStatusIcon(bid.status || 'awarded')}
+                              <div>
+                                <p className="font-medium">#{bid.bid_number}</p>
+                                <p className="text-sm text-muted-foreground">
+                                  {bid.distance_miles ? formatDistance(bid.distance_miles) : 'N/A'} • {bid.tag || 'N/A'}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <div className="text-right">
+                                <p className="font-semibold">{formatMoney(bid.winner_amount_cents)}</p>
+                                {getStatusBadge(bid.status || 'awarded')}
+                              </div>
+                              <ChevronDown 
+                                className={`h-4 w-4 text-muted-foreground transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                              />
+                            </div>
+                          </div>
+                          {isExpanded && (
+                            <div className="flex items-center gap-2 flex-wrap mt-3 pt-3 border-t">
+                              <BidDetailsDialog bid={bid} />
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedMessageBid(bid.bid_number);
+                                }}
+                              >
+                                <MessageSquare className="w-4 h-4 mr-2" />
+                                Message
+                              </Button>
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setDocumentUploadBid(bid.bid_number);
+                                }}
+                              >
+                                <Upload className="w-4 h-4 mr-2" />
+                                Documents
+                              </Button>
+                              {/* Show Accept Bid button only for newly awarded bids (status === 'awarded') */}
+                              {bid.status === 'awarded' && (
+                                <Button 
+                                  size="sm"
+                                  disabled={acceptingBid === bid.bid_number}
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    setAcceptingBid(bid.bid_number);
+                                    try {
+                                      const response = await fetch(`/api/carrier/bid-lifecycle/${bid.bid_number}`, {
+                                        method: 'POST',
+                                        headers: {
+                                          'Content-Type': 'application/json',
+                                        },
+                                        body: JSON.stringify({
+                                          status: 'bid_awarded',
+                                          notes: 'Bid accepted by carrier'
+                                        }),
+                                      });
+
+                                      if (response.ok) {
+                                        mutateBids();
+                                        toast.success('Bid accepted successfully! You can now access the lifecycle.');
+                                      } else {
+                                        const errorData = await response.json();
+                                        toast.error(`Failed to accept bid: ${errorData.error || 'Unknown error'}`);
+                                        console.error('Error accepting bid:', errorData.error);
+                                      }
+                                    } catch (error) {
+                                      toast.error('Failed to accept bid. Please try again.');
+                                      console.error('Error accepting bid:', error);
+                                    } finally {
+                                      setAcceptingBid(null);
+                                    }
+                                  }}
+                                >
+                                  <Truck className="w-4 h-4 mr-2" />
+                                  {acceptingBid === bid.bid_number ? 'Accepting...' : 'Accept Bid'}
+                                </Button>
+                              )}
+                              {/* Show View Lifecycle button only after bid is accepted (status !== 'awarded') */}
+                              {bid.status !== 'awarded' && (
+                                <Button 
+                                  variant="default" 
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedBidForDialog(bid);
+                                    setDialogOpen(true);
+                                  }}
+                                >
+                                  <Truck className="w-4 h-4 mr-2" />
+                                  View Lifecycle
+                                </Button>
+                              )}
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
                   {awardedBids.length === 0 && (
                     <p className="text-center text-muted-foreground py-4">No awarded bids yet</p>
                   )}
@@ -815,7 +921,7 @@ export function CarrierBidsConsole() {
                             </div>
                             <div className="flex items-center gap-2">
                               <Badge variant="outline">
-                                {(bid.status || 'awarded').replace('_', ' ').toUpperCase()}
+                                {(bid.status || 'awarded') === 'awarded' ? 'Awaiting Acceptance' : (bid.status || 'awarded').replace('_', ' ').toUpperCase()}
                               </Badge>
                               <Button
                                 variant="ghost"
@@ -938,7 +1044,7 @@ export function CarrierBidsConsole() {
                           </div>
                           <div className="flex items-center gap-2">
                             <Badge variant="outline">
-                              {(bid.status || 'awarded').replace('_', ' ').toUpperCase()}
+                              {(bid.status || 'awarded') === 'awarded' ? 'Awaiting Acceptance' : (bid.status || 'awarded').replace('_', ' ').toUpperCase()}
                             </Badge>
                             <Button
                               variant="ghost"
@@ -1038,10 +1144,56 @@ export function CarrierBidsConsole() {
           </DialogHeader>
           {selectedBidForDialog && (
             <div className="overflow-x-auto">
-              <BidLifecycleManager 
-                bidId={selectedBidForDialog.bid_number} 
-                bidData={selectedBidForDialog}
-              />
+              {/* Only show lifecycle if bid has been accepted (status !== 'awarded') */}
+              {selectedBidForDialog.status !== 'awarded' ? (
+                <BidLifecycleManager 
+                  bidId={selectedBidForDialog.bid_number} 
+                  bidData={selectedBidForDialog}
+                />
+              ) : (
+                <div className="text-center py-12">
+                  <Package className="w-16 h-16 mx-auto mb-4 text-muted-foreground opacity-50" />
+                  <h3 className="text-lg font-semibold mb-2">Accept Bid to Access Lifecycle</h3>
+                  <p className="text-muted-foreground mb-4">
+                    Please accept this bid first to access the lifecycle management.
+                  </p>
+                  <Button
+                    onClick={async () => {
+                      if (!selectedBidForDialog) return;
+                      setAcceptingBid(selectedBidForDialog.bid_number);
+                      try {
+                        const response = await fetch(`/api/carrier/bid-lifecycle/${selectedBidForDialog.bid_number}`, {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json',
+                          },
+                          body: JSON.stringify({
+                            status: 'bid_awarded',
+                            notes: 'Bid accepted by carrier'
+                          }),
+                        });
+
+                        if (response.ok) {
+                          mutateBids();
+                          toast.success('Bid accepted successfully! You can now access the lifecycle.');
+                          setDialogOpen(false);
+                        } else {
+                          const errorData = await response.json();
+                          toast.error(`Failed to accept bid: ${errorData.error || 'Unknown error'}`);
+                        }
+                      } catch (error) {
+                        toast.error('Failed to accept bid. Please try again.');
+                      } finally {
+                        setAcceptingBid(null);
+                      }
+                    }}
+                    disabled={acceptingBid === selectedBidForDialog.bid_number}
+                  >
+                    <Truck className="w-4 h-4 mr-2" />
+                    {acceptingBid === selectedBidForDialog.bid_number ? 'Accepting...' : 'Accept Bid'}
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </DialogContent>
@@ -1256,18 +1408,6 @@ export function CarrierBidsConsole() {
                         className="flex items-center gap-2 flex-wrap ml-4"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <Button 
-                          variant="default" 
-                          size="sm"
-                          onClick={() => {
-                            setSelectedBidForDialog(bid);
-                            setDialogOpen(true);
-                            setShowDateDialog(false);
-                          }}
-                        >
-                          <Truck className="w-4 h-4 mr-2" />
-                          View Lifecycle
-                        </Button>
                         <div onClick={(e) => e.stopPropagation()}>
                           <BidDetailsDialog bid={bid} />
                         </div>
@@ -1293,6 +1433,61 @@ export function CarrierBidsConsole() {
                           <Upload className="w-4 h-4 mr-2" />
                           Documents
                         </Button>
+                        {/* Show Accept Bid button only for newly awarded bids (status === 'awarded') */}
+                        {bid.status === 'awarded' && (
+                          <Button 
+                            size="sm"
+                            disabled={acceptingBid === bid.bid_number}
+                            onClick={async () => {
+                              setAcceptingBid(bid.bid_number);
+                              try {
+                                const response = await fetch(`/api/carrier/bid-lifecycle/${bid.bid_number}`, {
+                                  method: 'POST',
+                                  headers: {
+                                    'Content-Type': 'application/json',
+                                  },
+                                  body: JSON.stringify({
+                                    status: 'bid_awarded',
+                                    notes: 'Bid accepted by carrier'
+                                  }),
+                                });
+
+                                if (response.ok) {
+                                  mutateBids();
+                                  toast.success('Bid accepted successfully! You can now access the lifecycle.');
+                                  setShowDateDialog(false);
+                                } else {
+                                  const errorData = await response.json();
+                                  toast.error(`Failed to accept bid: ${errorData.error || 'Unknown error'}`);
+                                  console.error('Error accepting bid:', errorData.error);
+                                }
+                              } catch (error) {
+                                toast.error('Failed to accept bid. Please try again.');
+                                console.error('Error accepting bid:', error);
+                              } finally {
+                                setAcceptingBid(null);
+                              }
+                            }}
+                          >
+                            <Truck className="w-4 h-4 mr-2" />
+                            {acceptingBid === bid.bid_number ? 'Accepting...' : 'Accept Bid'}
+                          </Button>
+                        )}
+                        {/* Show View Lifecycle button only after bid is accepted (status !== 'awarded') */}
+                        {bid.status !== 'awarded' && (
+                          <Button 
+                            variant="default" 
+                            size="sm"
+                            onClick={() => {
+                              setSelectedBidForDialog(bid);
+                              setDialogOpen(true);
+                              setShowDateDialog(false);
+                            }}
+                          >
+                            <Truck className="w-4 h-4 mr-2" />
+                            View Lifecycle
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </CardContent>

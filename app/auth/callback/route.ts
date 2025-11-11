@@ -1,7 +1,7 @@
 import { createServerClient } from '@supabase/ssr';
 import { cookies, headers } from 'next/headers';
-import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { NextResponse } from 'next/server';
 
 /**
  * Supabase Auth Callback Handler
@@ -189,6 +189,44 @@ export async function GET(request: NextRequest) {
         console.log('✅ [Auth Callback] Success! User authenticated:', data.session.user.email);
         console.log('🐛 [AUTH CALLBACK DEBUG] Email confirmed:', !!data.session.user.email_confirmed_at);
         
+        // Automatically assign "carrier" role to new users if they don't have one
+        try {
+          const sql = (await import("@/lib/db")).default;
+          const userId = data.session.user.id;
+          const userEmail = data.session.user.email || `user_${userId.substring(0, 8)}@placeholder.local`;
+          
+          // Check if user already has a role in cache
+          const existingRole = await sql`
+            SELECT role FROM user_roles_cache 
+            WHERE supabase_user_id = ${userId} 
+            LIMIT 1
+          `;
+          
+          // If no role exists, create one with "carrier" as default
+          if (!existingRole || existingRole.length === 0) {
+            await sql`
+              INSERT INTO user_roles_cache (
+                supabase_user_id,
+                role,
+                email,
+                last_synced,
+                created_at
+              ) VALUES (
+                ${userId},
+                'carrier',
+                ${userEmail.toLowerCase()},
+                NOW(),
+                NOW()
+              )
+              ON CONFLICT (supabase_user_id) DO NOTHING
+            `;
+            console.log('✅ [Auth Callback] Auto-assigned "carrier" role to new user:', data.session.user.email);
+          }
+        } catch (roleError) {
+          console.warn('[Auth Callback] Could not auto-assign carrier role:', roleError);
+          // Continue anyway - user can still sign in
+        }
+        
         // OAuth providers (like Google) automatically confirm emails
         // But check anyway - if not confirmed, redirect to verification page
         if (!data.session.user.email_confirmed_at) {
@@ -208,17 +246,41 @@ export async function GET(request: NextRequest) {
                   serviceRoleKey
                 );
                 
-                const { data: roleData } = await adminClient
-                  .from('user_roles_cache')
-                  .select('role')
-                  .eq('supabase_user_id', data.session.user.id)
-                  .single();
+                // Query role directly from database (bypass any caching)
+                const sql = (await import("@/lib/db")).default;
+                const roleResult = await sql`
+                  SELECT role FROM user_roles_cache 
+                  WHERE supabase_user_id = ${data.session.user.id} 
+                  LIMIT 1
+                `;
                 
-                if (roleData?.role === 'admin') {
+                const userRole = roleResult[0]?.role;
+                
+                // CRITICAL: Always redirect admins to /admin, never to carrier routes
+                if (userRole === 'admin') {
                   finalRedirectUrl = '/admin';
-                  console.log('✅ [Auth Callback] Admin user detected, redirecting to /admin');
+                  console.log('✅ [Auth Callback] Admin user detected, redirecting to /admin (bypassing carrier routes)');
+                } else if (userRole === 'carrier') {
+                  // For carriers, check if they have a profile - if not, redirect to profile setup
+                  const profileCheck = await sql`
+                    SELECT id FROM carrier_profiles 
+                    WHERE supabase_user_id = ${data.session.user.id} 
+                    LIMIT 1
+                  `;
+                  
+                  if (!profileCheck || profileCheck.length === 0) {
+                    // No profile exists - redirect to profile setup for fresh start
+                    finalRedirectUrl = '/carrier/profile?setup=true';
+                    console.log('✅ [Auth Callback] Carrier user with no profile, redirecting to profile setup');
+                  } else {
+                    // Profile exists - redirect to home (middleware will handle profile status checks)
+                    finalRedirectUrl = '/';
+                    console.log('✅ [Auth Callback] Carrier user with profile, redirecting to home');
+                  }
                 } else {
+                  // No role or unknown role - redirect to home
                   finalRedirectUrl = '/';
+                  console.log(`✅ [Auth Callback] User role: ${userRole || 'none'}, redirecting to home`);
                 }
               } else {
                 // Fallback to home if we can't check role
@@ -303,8 +365,21 @@ export async function GET(request: NextRequest) {
 
       switch (type) {
         case 'recovery':
-          // Password reset - redirect to reset password page with token
-          redirectUrl = `/auth/reset-password?token=${token}`;
+          // Password reset - verify the token and establish session
+          // The token_hash needs to be verified to create a session
+          const { error: recoveryError, data: recoveryData } = await supabase.auth.verifyOtp({
+            token_hash: token,
+            type: 'recovery',
+          });
+
+          if (recoveryError) {
+            console.error('[Auth Callback] Password recovery verification error:', recoveryError);
+            const errorUrl = new URL('/auth/reset-password?error=invalid_token', requestUrl.origin);
+            return NextResponse.redirect(errorUrl);
+          }
+
+          // After verification, session is established - redirect to reset password page
+          redirectUrl = `/auth/reset-password`;
           break;
         
         case 'magiclink':

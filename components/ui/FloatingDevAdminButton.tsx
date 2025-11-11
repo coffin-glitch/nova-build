@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { useIsAdmin } from "@/hooks/useUnifiedRole";
 import { cn } from "@/lib/utils";
 import { useUnifiedUser } from "@/hooks/useUnifiedUser";
-import { Crown, RefreshCw, Search, Settings, Shield, Truck, User, X } from "lucide-react";
+import { Crown, RefreshCw, Search, Settings, Shield, Truck, User, X, Trash2, AlertTriangle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -31,10 +31,16 @@ export default function FloatingDevAdminButton() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedUser, setSelectedUser] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [showWipeDialog, setShowWipeDialog] = useState(false);
+  const [wipeUser, setWipeUser] = useState<any>(null);
+  const [isWiping, setIsWiping] = useState(false);
   
   const { user, isLoaded } = useUnifiedUser();
   const buttonRef = useRef<HTMLDivElement>(null);
   const consoleRef = useRef<HTMLDivElement>(null);
+  
+  // Check if current user is the main admin (duke@novafreight.io)
+  const isMainAdmin = user?.email === 'duke@novafreight.io';
 
   // Set initial position on client side
   useEffect(() => {
@@ -531,15 +537,28 @@ export default function FloatingDevAdminButton() {
                                   </Badge>
                                 </div>
                               </div>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setSelectedUser(user)}
-                                className="border-violet-500/50 text-violet-300 hover:bg-violet-500/20 hover:border-violet-400/60 transition-all duration-300 px-4"
-                              >
-                                <Shield className="w-4 h-4 mr-2" />
-                                Manage
-                              </Button>
+                              <div className="flex gap-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setSelectedUser(user)}
+                                  className="border-violet-500/50 text-violet-300 hover:bg-violet-500/20 hover:border-violet-400/60 transition-all duration-300 px-4"
+                                >
+                                  <Shield className="w-4 h-4 mr-2" />
+                                  Manage
+                                </Button>
+                                {isMainAdmin && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setWipeUser(user)}
+                                    className="border-red-500/50 text-red-300 hover:bg-red-500/20 hover:border-red-400/60 transition-all duration-300 px-4"
+                                  >
+                                    <Trash2 className="w-4 h-4 mr-2" />
+                                    Wipe All
+                                  </Button>
+                                )}
+                              </div>
                             </div>
                           </CardContent>
                         </Card>
@@ -612,6 +631,138 @@ export default function FloatingDevAdminButton() {
                   variant="outline"
                   onClick={() => setSelectedUser(null)}
                   className="w-full border-slate-600/50 text-slate-300 hover:bg-slate-700/50 hover:border-slate-500/50 transition-all duration-300"
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Wipe All Dialog */}
+      <Dialog open={!!wipeUser} onOpenChange={() => setWipeUser(null)}>
+        <DialogContent className="max-w-md bg-gradient-to-br from-slate-900 via-red-900 to-orange-900 border-red-500/30 backdrop-blur-xl">
+          <DialogHeader>
+            <DialogTitle className="text-center text-white flex items-center justify-center gap-2 text-xl font-bold bg-gradient-to-r from-red-200 to-orange-200 bg-clip-text text-transparent">
+              <div className="p-2 bg-gradient-to-br from-red-500/20 to-orange-600/20 rounded-lg border border-red-500/30">
+                <AlertTriangle className="w-5 h-5 text-red-300" />
+              </div>
+              Wipe User Data
+            </DialogTitle>
+          </DialogHeader>
+          
+          {wipeUser && (
+            <div className="space-y-4">
+              <div className="text-center">
+                <div className="w-16 h-16 bg-gradient-to-br from-red-500 to-orange-500 rounded-full flex items-center justify-center text-white font-bold text-xl mx-auto mb-3">
+                  {wipeUser.firstName?.[0] || wipeUser.email[0].toUpperCase()}
+                </div>
+                <h3 className="text-lg font-semibold text-white">
+                  {wipeUser.firstName && wipeUser.lastName 
+                    ? `${wipeUser.firstName} ${wipeUser.lastName}` 
+                    : wipeUser.email
+                  }
+                </h3>
+                <p className="text-red-200/80">{wipeUser.email}</p>
+                <Badge className={`${getRoleColor(wipeUser.role)} text-white mt-2`}>
+                  {wipeUser.role}
+                </Badge>
+              </div>
+
+              <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 space-y-2">
+                <p className="text-red-200 text-sm font-semibold">⚠️ Warning: Destructive Actions</p>
+                <p className="text-red-200/70 text-xs">
+                  These actions cannot be undone. All user data will be permanently removed.
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <Button
+                  onClick={async () => {
+                    setIsWiping(true);
+                    try {
+                      const response = await fetch('/api/admin/users', {
+                        method: 'DELETE',
+                        credentials: 'include',
+                        headers: { 
+                          'Content-Type': 'application/json' 
+                        },
+                        body: JSON.stringify({ 
+                          user_id: wipeUser.id, 
+                          action: 'wipe' 
+                        }),
+                      });
+
+                      if (response.ok) {
+                        const result = await response.json();
+                        toast.success(result.message || 'All user data wiped successfully');
+                        loadUsers();
+                        setWipeUser(null);
+                      } else {
+                        const errorData = await response.json().catch(() => ({}));
+                        toast.error(errorData.error || "Failed to wipe user data");
+                      }
+                    } catch (error) {
+                      console.error("Error wiping user data:", error);
+                      toast.error("Failed to wipe user data");
+                    } finally {
+                      setIsWiping(false);
+                    }
+                  }}
+                  className="w-full bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 shadow-lg hover:shadow-red-500/25 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={isWiping}
+                >
+                  <Trash2 className="w-4 h-4 mr-2 drop-shadow-sm" />
+                  {isWiping ? 'Wiping Data...' : 'Clear All Data'}
+                </Button>
+                <Button
+                  onClick={async () => {
+                    if (!confirm(`⚠️ PERMANENT DELETE: Are you absolutely sure you want to permanently delete ${wipeUser.email}? This will:\n\n- Delete ALL user data\n- Remove from Supabase Auth\n- Remove from user_roles_cache\n\nThis action CANNOT be undone!`)) {
+                      return;
+                    }
+                    
+                    setIsWiping(true);
+                    try {
+                      const response = await fetch('/api/admin/users', {
+                        method: 'DELETE',
+                        credentials: 'include',
+                        headers: { 
+                          'Content-Type': 'application/json' 
+                        },
+                        body: JSON.stringify({ 
+                          user_id: wipeUser.id, 
+                          action: 'delete' 
+                        }),
+                      });
+
+                      if (response.ok) {
+                        const result = await response.json();
+                        toast.success(result.message || 'User account permanently deleted');
+                        loadUsers();
+                        setWipeUser(null);
+                      } else {
+                        const errorData = await response.json().catch(() => ({}));
+                        toast.error(errorData.error || "Failed to delete user account");
+                      }
+                    } catch (error) {
+                      console.error("Error deleting user account:", error);
+                      toast.error("Failed to delete user account");
+                    } finally {
+                      setIsWiping(false);
+                    }
+                  }}
+                  className="w-full bg-gradient-to-r from-red-600 to-red-800 hover:from-red-700 hover:to-red-900 shadow-lg hover:shadow-red-500/25 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={isWiping}
+                >
+                  <AlertTriangle className="w-4 h-4 mr-2 drop-shadow-sm" />
+                  {isWiping ? 'Deleting Account...' : 'Delete Account Permanently'}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setWipeUser(null)}
+                  className="w-full border-slate-600/50 text-slate-300 hover:bg-slate-700/50 hover:border-slate-500/50 transition-all duration-300"
+                  disabled={isWiping}
                 >
                   Cancel
                 </Button>

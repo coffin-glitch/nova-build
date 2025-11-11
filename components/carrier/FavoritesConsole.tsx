@@ -3,22 +3,24 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Countdown } from "@/components/ui/Countdown";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Glass } from "@/components/ui/glass";
 import { Input } from "@/components/ui/input";
 import { MapboxMap } from "@/components/ui/MapboxMap";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAccentColor } from "@/hooks/useAccentColor";
 import { formatDistance, formatStopCount, formatStops, formatStopsDetailed } from "@/lib/format";
 import {
   Activity,
+  ArrowLeftRight,
   BarChart3,
   Bell,
+  BellOff,
   Clock,
   DollarSign,
-  Eye,
-  EyeOff,
   Heart,
+  Info,
   LayoutGrid,
   MapPin,
   Navigation,
@@ -35,9 +37,10 @@ import {
   Zap
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
+import { US_STATES } from "./US_STATES";
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
@@ -75,19 +78,14 @@ interface NotificationTrigger {
 interface NotificationPreferences {
   emailNotifications: boolean;
   similarLoadNotifications: boolean;
-  distanceThresholdMiles: number;
   statePreferences: string[];
   equipmentPreferences: string[];
   minDistance: number;
   maxDistance: number;
   // Advanced matching criteria
   minMatchScore: number; // Minimum similarity score to trigger notification (0-100)
-  routeMatchThreshold: number; // Minimum route similarity percentage
-  equipmentStrict: boolean; // Require exact equipment match vs partial
-  distanceFlexibility: number; // Percentage variance allowed for distance (0-50%)
   timingRelevanceDays: number; // How many days ahead to consider for timing
-  prioritizeBackhaul: boolean; // Prefer loads that match return routes
-  marketPriceAlerts: boolean; // Alert when market price is favorable
+  backhaulMatcher: boolean; // Enable backhaul matching for exact/state match alerts
   avoidHighCompetition: boolean; // Filter out loads with too many bids
   maxCompetitionBids: number; // Maximum number of bids before filtering (if avoidHighCompetition is true)
 }
@@ -110,9 +108,13 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
   const [showNotificationTriggers, setShowNotificationTriggers] = useState(false);
   const [isCreatingTrigger, setIsCreatingTrigger] = useState(false);
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
+  const [showSmartNotifications, setShowSmartNotifications] = useState(true);
+  const [showStatePrefDialog, setShowStatePrefDialog] = useState(false);
   const [viewMode, setViewMode] = useState<'card' | 'table'>('card');
   const [maxCompetitionBids, setMaxCompetitionBids] = useState<number>(10);
   const [avoidHighCompetition, setAvoidHighCompetition] = useState<boolean>(false);
+  const [showMatchTypeDialog, setShowMatchTypeDialog] = useState<string | null>(null); // bid_number when dialog is open
+  const [selectedMatchType, setSelectedMatchType] = useState<'exact' | 'state' | null>(null);
   
   // Local state to track string input values (allows empty strings during editing)
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
@@ -142,17 +144,34 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
   );
 
   // Fetch notification triggers
-  const { data: triggersData, mutate: mutateTriggers } = useSWR(
+  const { data: triggersData, mutate: mutateTriggers, isLoading: isLoadingTriggers } = useSWR(
     isOpen ? `/api/carrier/notification-triggers` : null,
     fetcher,
     { 
       refreshInterval: 30000,
-      fallbackData: { ok: true, data: [] }
+      fallbackData: { ok: true, data: [] },
+      keepPreviousData: true,
+      revalidateOnFocus: false,
+      revalidateOnReconnect: true,
+      dedupingInterval: 5000 // Prevent duplicate requests within 5 seconds
     }
   );
 
   const favorites: FavoriteBid[] = data?.data || [];
-  const notificationTriggers: NotificationTrigger[] = triggersData?.data || [];
+  
+  // Stabilize notification triggers array to prevent flashing
+  const notificationTriggers: NotificationTrigger[] = useMemo(() => {
+    // If we have valid data, use it
+    if (triggersData?.ok && Array.isArray(triggersData?.data)) {
+      return triggersData.data;
+    }
+    // If data exists but not ok, still try to use it if it's an array
+    if (Array.isArray(triggersData?.data)) {
+      return triggersData.data;
+    }
+    // Return empty array as fallback
+    return [];
+  }, [triggersData]);
   
   // Debug logging
   useEffect(() => {
@@ -172,18 +191,13 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
   const defaultPreferences: NotificationPreferences = {
     emailNotifications: true,
     similarLoadNotifications: true,
-    distanceThresholdMiles: 50,
     statePreferences: [],
     equipmentPreferences: [],
     minDistance: 0,
     maxDistance: 2000,
     minMatchScore: 70,
-    routeMatchThreshold: 60,
-    equipmentStrict: false,
-    distanceFlexibility: 25,
     timingRelevanceDays: 7,
-    prioritizeBackhaul: true,
-    marketPriceAlerts: false,
+    backhaulMatcher: true,
     avoidHighCompetition: false,
     maxCompetitionBids: 10,
   };
@@ -365,16 +379,28 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
    * Uses weighted composite scoring based on preferences, route patterns, timing, and market fit
    */
   const getSimilarityScoreSync = (bid: FavoriteBid): number => {
-    let preferenceScore = 0;
-    let routeConsistencyScore = 0;
-    let timingScore = 0;
-    let marketFitScore = 0;
-
     const prefs = preferences;
-    const allFavorites = favorites.filter(f => f.bid_number !== bid.bid_number);
-
-    // 1. PREFERENCE ALIGNMENT (40% weight)
-    // Distance alignment
+    
+    // New calculation based on selected states, timing relevance, and min/max distance
+    let stateMatchScore = 0;
+    let distanceScore = 0;
+    let timingScore = 0;
+    
+    // 1. STATE PREFERENCE MATCHING (40% weight)
+    if (prefs.statePreferences.length > 0 && bid.stops && Array.isArray(bid.stops) && bid.stops.length > 0) {
+      const originState = extractStateFromStop(bid.stops[0]);
+      if (originState && prefs.statePreferences.includes(originState)) {
+        stateMatchScore = 100; // Perfect match if pickup state is in preferences
+      } else {
+        stateMatchScore = 0; // No match
+      }
+    } else if (prefs.statePreferences.length === 0) {
+      stateMatchScore = 50; // Neutral if no state preferences set
+    } else {
+      stateMatchScore = 0; // No state data or no match
+    }
+    
+    // 2. DISTANCE MATCHING (35% weight)
     if (bid.distance >= prefs.minDistance && bid.distance <= prefs.maxDistance) {
       const distanceRange = prefs.maxDistance - prefs.minDistance;
       if (distanceRange > 0) {
@@ -382,174 +408,87 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
         const normalizedDistance = distanceFromMin / distanceRange;
         // Prefer distances in the middle-upper range (50-80% of range)
         if (normalizedDistance >= 0.5 && normalizedDistance <= 0.8) {
-          preferenceScore += 40;
+          distanceScore = 100;
         } else if (normalizedDistance >= 0.3 && normalizedDistance <= 0.9) {
-          preferenceScore += 30;
+          distanceScore = 80;
         } else {
-          preferenceScore += 20;
+          distanceScore = 60;
         }
       } else {
-        preferenceScore += 30; // Default if range is 0
+        distanceScore = 70; // Default if range is 0
       }
     } else {
       // Penalty for out-of-range distances
       if (bid.distance < prefs.minDistance) {
         const percentShort = ((prefs.minDistance - bid.distance) / prefs.minDistance) * 100;
-        preferenceScore += Math.max(0, 20 - percentShort / 5);
+        distanceScore = Math.max(0, 50 - percentShort / 2);
       } else {
         const percentOver = ((bid.distance - prefs.maxDistance) / prefs.maxDistance) * 100;
-        preferenceScore += Math.max(0, 20 - percentOver / 10);
+        distanceScore = Math.max(0, 50 - percentOver / 5);
       }
     }
-
-    // Equipment/Tag matching
-    if (bid.tag && prefs.statePreferences.length > 0) {
-      if (prefs.statePreferences.includes(bid.tag)) {
-        preferenceScore += 40;
-      } else {
-        preferenceScore += 10; // Tag exists but doesn't match preferences
-      }
-    } else if (bid.tag) {
-      preferenceScore += 20; // Tag exists but no preferences set
-    } else {
-      preferenceScore += 15; // No tag, neutral
-    }
-
-    // Equipment preferences (if we had equipment data, would check here)
-    preferenceScore = Math.min(100, preferenceScore);
-
-    // 2. ROUTE CONSISTENCY (30% weight) - Compare with other favorites
-    if (allFavorites.length > 0 && bid.stops && Array.isArray(bid.stops) && bid.stops.length > 0) {
-      const bidOrigin = extractCityName(bid.stops[0]).toUpperCase().trim();
-      const bidDest = extractCityName(bid.stops[bid.stops.length - 1]).toUpperCase().trim();
-      
-      let routeMatches = 0;
-      let partialMatches = 0;
-      
-      for (const fav of allFavorites) {
-        if (fav.stops && Array.isArray(fav.stops) && fav.stops.length > 0) {
-          const favOrigin = extractCityName(fav.stops[0]).toUpperCase().trim();
-          const favDest = extractCityName(fav.stops[fav.stops.length - 1]).toUpperCase().trim();
-          
-          if (bidOrigin === favOrigin && bidDest === favDest) {
-            routeMatches++;
-          } else if (bidOrigin === favOrigin || bidDest === favDest) {
-            partialMatches++;
-          }
-        }
-      }
-      
-      const totalMatches = routeMatches + partialMatches;
-      if (totalMatches > 0) {
-        // Strong pattern if multiple exact matches
-        if (routeMatches >= 3) {
-          routeConsistencyScore = 100;
-        } else if (routeMatches >= 1) {
-          routeConsistencyScore = 70 + (routeMatches * 10);
-        } else if (partialMatches >= 2) {
-          routeConsistencyScore = 50 + (partialMatches * 5);
-        } else {
-          routeConsistencyScore = 40;
-        }
-      } else {
-        // No route matches - this is a unique route (neutral score)
-        routeConsistencyScore = 50;
-      }
-    } else {
-      routeConsistencyScore = 50; // Neutral if no route data
-    }
-
-    // 3. TIMING RELEVANCE (20% weight)
+    
+    // 3. TIMING RELEVANCE (25% weight)
     const now = new Date();
-    const pickupTime = new Date(bid.pickupDate);
-    const daysUntilPickup = (pickupTime.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
     const relevanceWindow = prefs.timingRelevanceDays || 7;
-
-    if (bid.isExpired) {
-      timingScore = 10; // Expired loads get low score
-    } else if (daysUntilPickup < 0) {
-      timingScore = 80; // Past pickup but not expired (still relevant)
-    } else if (daysUntilPickup >= 0 && daysUntilPickup <= relevanceWindow) {
-      if (daysUntilPickup <= 1) {
-        timingScore = 100; // Urgent - within 24 hours
-      } else if (daysUntilPickup <= 2) {
-        timingScore = 90; // Very soon
-      } else if (daysUntilPickup <= 3) {
-        timingScore = 80; // Soon
+    
+    if (bid.pickupDate) {
+      const pickupDate = new Date(bid.pickupDate);
+      const daysUntilPickup = (pickupDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+      
+      if (daysUntilPickup >= 0 && daysUntilPickup <= relevanceWindow) {
+        if (daysUntilPickup <= 1) {
+          timingScore = 100; // Within 24 hours - perfect
+        } else if (daysUntilPickup <= 2) {
+          timingScore = 90; // Within 2 days
+        } else if (daysUntilPickup <= 3) {
+          timingScore = 80; // Within 3 days
+        } else {
+          // Decay score based on remaining window
+          const remainingDays = Math.max(1, relevanceWindow - 3);
+          const decayPercent = Math.max(0, (relevanceWindow - daysUntilPickup) / remainingDays);
+          timingScore = 80 * decayPercent + 20; // Scale between 20-80
+        }
+      } else if (daysUntilPickup < 0) {
+        timingScore = 10; // Past pickup time
       } else {
-        // Decay score based on remaining window
-        const remainingDays = Math.max(1, relevanceWindow - 3);
-        const decayPercent = Math.max(0, (relevanceWindow - daysUntilPickup) / remainingDays);
-        timingScore = 70 * decayPercent + 30; // Scale between 30-100
+        timingScore = 0; // Beyond relevance window
       }
-    } else if (daysUntilPickup > relevanceWindow) {
-      // Beyond relevance window
-      const excessDays = daysUntilPickup - relevanceWindow;
-      timingScore = Math.max(20, 50 - (excessDays * 5));
-    }
-
-    // 4. MARKET FIT (10% weight) - Competition and activity
-    if (prefs.avoidHighCompetition && bid.bidCount > prefs.maxCompetitionBids) {
-      // High competition penalty
-      const excessBids = bid.bidCount - prefs.maxCompetitionBids;
-      marketFitScore = Math.max(0, 30 - (excessBids * 2));
     } else {
-      // Moderate competition is good (shows demand)
-      if (bid.bidCount === 0) {
-        marketFitScore = 60; // No competition but also no validation
-      } else if (bid.bidCount <= 3) {
-        marketFitScore = 90; // Low competition - good opportunity
-      } else if (bid.bidCount <= prefs.maxCompetitionBids) {
-        marketFitScore = 70; // Moderate competition - still viable
-      } else {
-        marketFitScore = 40; // Higher competition
-      }
+      timingScore = 50; // No pickup date - neutral
     }
-
+    
     // Calculate weighted composite score
     const compositeScore = (
-      preferenceScore * 0.40 +
-      routeConsistencyScore * 0.30 +
-      timingScore * 0.20 +
-      marketFitScore * 0.10
+      stateMatchScore * 0.40 +
+      distanceScore * 0.35 +
+      timingScore * 0.25
     );
-
-    // Return score as percentage (0-100)
+    
     return Math.round(Math.max(0, Math.min(100, compositeScore)));
   };
 
-  // Notification trigger functions
-  const handleCreateSimilarLoadTrigger = async () => {
-    setIsCreatingTrigger(true);
-    try {
-      const response = await fetch('/api/carrier/notification-triggers', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          triggerType: 'similar_load',
-          triggerConfig: {
-            distanceThreshold: preferences.distanceThresholdMiles,
-            statePreferences: preferences.statePreferences,
-            equipmentPreferences: preferences.equipmentPreferences,
-            minDistance: preferences.minDistance,
-            maxDistance: preferences.maxDistance
-          },
-          isActive: true
-        })
-      });
 
-      const result = await response.json();
-      if (result.ok) {
-        toast.success("Similar load notifications enabled!");
-        mutateTriggers();
-      } else {
-        toast.error(result.error || "Failed to create notification trigger");
-      }
-    } catch (error) {
-      toast.error("Failed to create notification trigger");
-    } finally {
-      setIsCreatingTrigger(false);
-    }
+  // Helper to extract state from stop string (same logic as heat map)
+  const extractStateFromStop = (stop: string): string | null => {
+    if (!stop) return null;
+    const trimmed = stop.trim().toUpperCase();
+    const validStates = new Set([
+      'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
+      'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
+      'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
+      'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
+      'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY', 'DC'
+    ]);
+    let match = trimmed.match(/,\s*([A-Z]{2})$/);
+    if (match && validStates.has(match[1])) return match[1];
+    match = trimmed.match(/\s+([A-Z]{2})$/);
+    if (match && validStates.has(match[1])) return match[1];
+    match = trimmed.match(/,\s*([A-Z]{2})\s*,/);
+    if (match && validStates.has(match[1])) return match[1];
+    match = trimmed.match(/([A-Z]{2})$/);
+    if (match && validStates.has(match[1])) return match[1];
+    return null;
   };
 
   const handleCreateExactMatchTrigger = async (bidNumber: string) => {
@@ -561,7 +500,8 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
         body: JSON.stringify({
           triggerType: 'exact_match',
           triggerConfig: {
-            favoriteBidNumbers: [bidNumber]
+            favoriteBidNumbers: [bidNumber],
+            matchType: 'exact' // Exact city-to-city match
           },
           isActive: true
         })
@@ -571,8 +511,74 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
       if (result.ok) {
         toast.success(`Exact match notifications enabled for ${bidNumber}!`);
         mutateTriggers();
+        setShowMatchTypeDialog(null);
+        setSelectedMatchType(null);
       } else {
-        toast.error(result.error || "Failed to create notification trigger");
+        // Check if it's a duplicate state match error
+        if (result.error && result.error.includes('already have a state match')) {
+          toast.error(result.error);
+        } else {
+          toast.error(result.error || "Failed to create notification trigger");
+        }
+      }
+    } catch (error) {
+      toast.error("Failed to create notification trigger");
+    } finally {
+      setIsCreatingTrigger(false);
+    }
+  };
+
+  const handleCreateStateMatchTrigger = async (bidNumber: string) => {
+    setIsCreatingTrigger(true);
+    try {
+      // Get the favorite bid to extract state information
+      const favorite = favorites.find(f => f.bid_number === bidNumber);
+      if (!favorite || !favorite.stops || favorite.stops.length < 2) {
+        toast.error("Cannot create state match: route information missing");
+        setIsCreatingTrigger(false);
+        return;
+      }
+
+      // Extract origin and destination states
+      const originStop = favorite.stops[0];
+      const destinationStop = favorite.stops[favorite.stops.length - 1];
+      const originState = extractStateFromStop(originStop);
+      const destinationState = extractStateFromStop(destinationStop);
+
+      if (!originState || !destinationState) {
+        toast.error("Cannot create state match: state information missing");
+        setIsCreatingTrigger(false);
+        return;
+      }
+
+      const response = await fetch('/api/carrier/notification-triggers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          triggerType: 'exact_match', // Using same type but with state match config
+          triggerConfig: {
+            favoriteBidNumbers: [bidNumber],
+            matchType: 'state', // State-to-state match
+            originState,
+            destinationState
+          },
+          isActive: true
+        })
+      });
+
+      const result = await response.json();
+      if (result.ok) {
+        toast.success(`State match notifications enabled for ${originState} → ${destinationState}!`);
+        mutateTriggers();
+        setShowMatchTypeDialog(null);
+        setSelectedMatchType(null);
+      } else {
+        // Check if it's a duplicate state match error
+        if (result.error && result.error.includes('already have a state match')) {
+          toast.error(result.error);
+        } else {
+          toast.error(result.error || "Failed to create notification trigger");
+        }
       }
     } catch (error) {
       toast.error("Failed to create notification trigger");
@@ -630,6 +636,9 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
             <Star className="h-5 w-5" />
             Your Favorites
           </DialogTitle>
+          <DialogDescription>
+            Manage your favorited bids and configure smart notification alerts
+          </DialogDescription>
         </DialogHeader>
         
         <div className="overflow-y-auto max-h-[80vh] space-y-4">
@@ -685,7 +694,7 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                     </div>
                     <span 
                       className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-muted text-[10px] cursor-help" 
-                      title="Average Match Score: Calculated using a weighted algorithm that considers (1) Distance & Equipment preferences (40%), (2) Route consistency with your other favorites (30%), (3) Timing relevance within your window (20%), and (4) Market competition level (10%). Each bid's score is averaged across all your favorites."
+                      title="Average Match Score: Calculated based on (1) State Preference Matching (40%): Checks if pickup state matches your selected states, (2) Distance Matching (35%): Based on whether distance falls within your min/max range, and (3) Timing Relevance (25%): Based on pickup date within your timing relevance window. Each bid's score is averaged across all your favorites."
                     >
                       ?
                     </span>
@@ -761,7 +770,7 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                 className="hover:bg-blue-500/20 hover:text-blue-400 text-xs px-2 py-1"
               >
                 <Settings className="h-3 w-3 mr-1" />
-                {showPreferences ? <EyeOff className="h-3 w-3 mr-1" /> : <Eye className="h-3 w-3 mr-1" />}
+                {showPreferences ? <BellOff className="h-3 w-3 mr-1" /> : <Bell className="h-3 w-3 mr-1" />}
                 {showPreferences ? "Hide" : "Show"} Prefs
               </Button>
               
@@ -781,15 +790,26 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                     <Bell className="h-4 w-4 text-blue-400" />
                     <h3 className="text-sm font-semibold">Notification Preferences</h3>
                   </div>
-                  <Button
-                    variant={showAdvancedSettings ? "default" : "outline"}
-                    size="sm"
-                    className="text-xs"
-                    title="Advanced Matching Settings"
-                    onClick={() => setShowAdvancedSettings(!showAdvancedSettings)}
-                  >
-                    {showAdvancedSettings ? "Hide Advanced" : "Show Advanced"}
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant={showSmartNotifications ? "default" : "outline"}
+                      size="sm"
+                      className="text-xs"
+                      title="Show/Hide Smart Notifications"
+                      onClick={() => setShowSmartNotifications(!showSmartNotifications)}
+                    >
+                      {showSmartNotifications ? "Hide" : "Show"} Smart
+                    </Button>
+                    <Button
+                      variant={showAdvancedSettings ? "default" : "outline"}
+                      size="sm"
+                      className="text-xs"
+                      title="Advanced Matching Settings"
+                      onClick={() => setShowAdvancedSettings(!showAdvancedSettings)}
+                    >
+                      {showAdvancedSettings ? "Hide Advanced" : "Show Advanced"}
+                    </Button>
+                  </div>
                 </div>
                 
                 {/* Advanced Settings Panel */}
@@ -800,34 +820,16 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                         <Target className="h-4 w-4 text-purple-400" />
                         <h4 className="text-sm font-semibold">Advanced Matching Criteria</h4>
                       </div>
-                      {/* Presets */}
+                      {/* State Pref Button */}
                       <div className="flex items-center gap-2">
                         <Button
                           variant="outline"
                           size="sm"
                           className="text-xs"
-                          title="More Alerts"
-                          onClick={() => setEditingPreferences(prev => ({ ...(prev || preferences), minMatchScore: 50, distanceFlexibility: 30 }))}
+                          title="Select States for Pickup Notifications"
+                          onClick={() => setShowStatePrefDialog(true)}
                         >
-                          More Alerts
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="text-xs"
-                          title="Balanced"
-                          onClick={() => setEditingPreferences(prev => ({ ...(prev || preferences), minMatchScore: 70, distanceFlexibility: 25 }))}
-                        >
-                          Balanced
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="text-xs"
-                          title="Selective"
-                          onClick={() => setEditingPreferences(prev => ({ ...(prev || preferences), minMatchScore: 85, distanceFlexibility: 15 }))}
-                        >
-                          Selective
+                          State Pref
                         </Button>
                       </div>
                     </div>
@@ -862,62 +864,6 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                         />
                       </div>
 
-                      {/* Route Match Threshold */}
-                      <div>
-                        <label className="text-xs font-medium flex items-center gap-1">
-                          Route Match Threshold (%)
-                          <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-muted text-[10px] cursor-help" title="How similar pickup/delivery cities must be. Higher = closer to the same cities.">?</span>
-                        </label>
-                        <Input
-                          type="number"
-                          min="0"
-                          max="100"
-                          value={inputValues.routeMatchThreshold !== undefined ? inputValues.routeMatchThreshold : preferences.routeMatchThreshold}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setInputValues(prev => ({ ...prev, routeMatchThreshold: val }));
-                            if (val === '') return; // Allow empty during editing
-                            const numVal = Math.max(0, Math.min(100, parseInt(val) || 0));
-                            setEditingPreferences(prev => ({ ...(prev || preferences), routeMatchThreshold: numVal }));
-                          }}
-                          onBlur={(e) => {
-                            const val = e.target.value;
-                            if (val === '') {
-                              setInputValues(prev => ({ ...prev, routeMatchThreshold: String(preferences.routeMatchThreshold) }));
-                            }
-                          }}
-                          className="mt-1 text-xs"
-                        />
-                      </div>
-
-                      {/* Distance Flexibility */}
-                      <div>
-                        <label className="text-xs font-medium">Distance Flexibility (%)</label>
-                        <Input
-                          type="number"
-                          min="0"
-                          max="50"
-                          value={inputValues.distanceFlexibility !== undefined ? inputValues.distanceFlexibility : preferences.distanceFlexibility}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setInputValues(prev => ({ ...prev, distanceFlexibility: val }));
-                            if (val === '') return; // Allow empty during editing
-                            const numVal = Math.max(0, Math.min(50, parseInt(val) || 0));
-                            setEditingPreferences(prev => ({ ...(prev || preferences), distanceFlexibility: numVal }));
-                          }}
-                          onBlur={(e) => {
-                            const val = e.target.value;
-                            if (val === '') {
-                              setInputValues(prev => ({ ...prev, distanceFlexibility: String(preferences.distanceFlexibility) }));
-                            }
-                          }}
-                          className="mt-1 text-xs"
-                        />
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Allowed variance in miles compared to similar routes.
-                        </p>
-                      </div>
-
                       {/* Timing Relevance Window */}
                       <div>
                         <label className="text-xs font-medium">Timing Relevance Window (days)</label>
@@ -946,19 +892,28 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                         </p>
                       </div>
 
-                      {/* Prioritize Backhaul */}
+                      {/* Backhaul Matcher */}
                       <div className="flex items-center justify-between mt-6">
-                        <div>
-                          <label className="text-xs font-medium">Prioritize Backhaul</label>
-                          <p className="text-xs text-muted-foreground">Prefer return route matches</p>
+                        <div className="flex items-center gap-2">
+                          <label className="text-xs font-medium">Backhaul Matcher</label>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs">
+                                <p>Enable backhaul matching for your exact/state match alerts. When enabled, you'll also receive notifications for return route opportunities that match your favorited loads.</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                         </div>
                         <Button
-                          variant={preferences.prioritizeBackhaul ? "default" : "outline"}
+                          variant={preferences.backhaulMatcher ? "default" : "outline"}
                           size="sm"
                           className="text-xs"
-                          onClick={() => setEditingPreferences(prev => ({ ...(prev || preferences), prioritizeBackhaul: !(prev || preferences).prioritizeBackhaul }))}
+                          onClick={() => setEditingPreferences(prev => ({ ...(prev || preferences), backhaulMatcher: !(prev || preferences).backhaulMatcher }))}
                         >
-                          {preferences.prioritizeBackhaul ? 'ON' : 'OFF'}
+                          {preferences.backhaulMatcher ? 'ON' : 'OFF'}
                         </Button>
                       </div>
 
@@ -1025,13 +980,17 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                     
                     <div className="flex items-center justify-between">
                       <div>
-                        <label className="text-xs font-medium">Similar Load Alerts</label>
-                        <p className="text-xs text-muted-foreground">Get notified about matches</p>
+                        <label className="text-xs font-medium">State Pref Bid Notifications</label>
+                        <p className="text-xs text-muted-foreground">Master control for state preference notifications</p>
                       </div>
                       <Button
                         variant={preferences.similarLoadNotifications ? "default" : "outline"}
                         size="sm"
-                        onClick={() => setEditingPreferences(prev => ({ ...(prev || preferences), similarLoadNotifications: !(prev || preferences).similarLoadNotifications }))}
+                        onClick={() => {
+                          const newValue = !preferences.similarLoadNotifications;
+                          setEditingPreferences(prev => ({ ...(prev || preferences), similarLoadNotifications: newValue }));
+                          // Just toggle the state - user must press Save to persist
+                        }}
                         className={preferences.similarLoadNotifications ? "bg-primary text-primary-foreground" : ""}
                       >
                         {preferences.similarLoadNotifications ? "ON" : "OFF"}
@@ -1039,32 +998,8 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                     </div>
                   </div>
                   
-                  <div className="space-y-2">
-                    <div>
-                      <label className="text-xs font-medium">Distance Threshold (miles)</label>
-                      <Input
-                        type="number"
-                        min="0"
-                        max="500"
-                        value={inputValues.distanceThresholdMiles !== undefined ? inputValues.distanceThresholdMiles : preferences.distanceThresholdMiles}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setInputValues(prev => ({ ...prev, distanceThresholdMiles: val }));
-                          if (val === '') return; // Allow empty during editing
-                          const numVal = parseInt(val) || 50;
-                          setEditingPreferences(prev => ({ ...(prev || preferences), distanceThresholdMiles: numVal }));
-                        }}
-                        onBlur={(e) => {
-                          const val = e.target.value;
-                          if (val === '') {
-                            setInputValues(prev => ({ ...prev, distanceThresholdMiles: String(preferences.distanceThresholdMiles) }));
-                          }
-                        }}
-                        className="mt-1 text-xs"
-                      />
-                    </div>
-                    
-                    <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="text-xs font-medium">Min Distance</label>
                         <Input
@@ -1137,8 +1072,8 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
             </Glass>
           )}
 
-          {/* Notification Triggers Panel */}
-          {showNotificationTriggers && (
+          {/* Smart Notifications Panel - Controlled by showSmartNotifications */}
+          {showSmartNotifications && (
             <Glass className="p-4">
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
@@ -1146,87 +1081,326 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                     <Zap className="h-4 w-4 text-purple-400" />
                     <h3 className="text-sm font-semibold">Smart Notifications</h3>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowNotificationTriggers(false)}
-                    className="text-xs px-2 py-1"
-                  >
-                    <X className="h-3 w-3" />
-                  </Button>
                 </div>
                 
-                <div className="space-y-3">
-                  {/* Similar Load Notifications */}
-                  <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
-                    <div>
-                      <div className="text-sm font-medium">Similar Load Alerts</div>
-                      <div className="text-xs text-muted-foreground">
-                        Get notified when loads similar to your favorites appear
+                <div className="space-y-4">
+                  <>
+                  {/* Backhaul Matcher Toggle */}
+                  <div className="flex items-center justify-between p-4 bg-gradient-to-r from-blue-500/10 to-purple-500/10 rounded-lg border border-blue-500/20">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-blue-500/20">
+                        <Navigation className="h-5 w-5 text-blue-400" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-sm font-semibold">Backhaul Matcher</h4>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs">
+                                <p>Enable backhaul matching for your exact/state match alerts. When enabled, you'll also receive notifications for return route opportunities that match your favorited loads.</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Get notified about return route opportunities
+                        </p>
                       </div>
                     </div>
                     <Button
-                      onClick={handleCreateSimilarLoadTrigger}
-                      disabled={isCreatingTrigger}
-                      className="bg-primary text-primary-foreground text-xs px-3 py-1"
+                      variant={preferences.backhaulMatcher ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => {
+                        const newValue = !preferences.backhaulMatcher;
+                        setEditingPreferences(prev => ({ ...(prev || preferences), backhaulMatcher: newValue }));
+                        // Just toggle the state - user must press Save to persist
+                        // This matches the behavior of the backhaul matcher in advanced matching criteria
+                      }}
+                      className={preferences.backhaulMatcher ? "bg-blue-500 hover:bg-blue-600 text-white" : ""}
                     >
-                      {isCreatingTrigger ? (
-                        <RefreshCw className="h-3 w-3 animate-spin" />
-                      ) : (
+                      {preferences.backhaulMatcher ? (
                         <>
-                          <Bell className="h-3 w-3 mr-1" />
-                          Enable
+                          <Navigation className="h-3 w-3 mr-1" />
+                          ON
                         </>
+                      ) : (
+                        "OFF"
                       )}
                     </Button>
                   </div>
-                  
-                  {/* Active Triggers */}
-                  {notificationTriggers.length > 0 && (
-                    <div className="space-y-2">
-                      <div className="text-sm font-medium">Active Triggers</div>
-                      {notificationTriggers.map((trigger) => (
-                        <div key={trigger.id} className="flex items-center justify-between p-2 bg-muted/20 rounded text-xs">
-                          <div className="flex items-center gap-2 flex-1 flex-wrap">
-                            <Badge variant="outline" className="text-xs">
-                              {trigger.trigger_type.replace('_', ' ')}
-                            </Badge>
-                            {trigger.bid_number && (
-                              <span className="text-muted-foreground">
-                                Bid #{trigger.bid_number}
-                              </span>
-                            )}
-                            {trigger.route && (
-                              <span className="text-muted-foreground truncate">
-                                {Array.isArray(trigger.route) ? trigger.route.join(' → ') : trigger.route}
-                              </span>
-                            )}
-                            <span className="text-muted-foreground">
-                              • {trigger.is_active ? 'Active' : 'Inactive'}
-                            </span>
+
+                  {/* Active Exact/State Match Triggers */}
+                  {(() => {
+                    // Ensure notificationTriggers is always an array
+                    const safeTriggers = Array.isArray(notificationTriggers) ? notificationTriggers : [];
+                    const exactMatchTriggers = safeTriggers.filter(
+                      (t: NotificationTrigger) => t && t.trigger_type === 'exact_match'
+                    );
+                    
+                    // Always show triggers if we have them, regardless of loading state
+                    // This prevents flickering during refetches - use memoized notificationTriggers
+                    if (exactMatchTriggers.length > 0) {
+                      return (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-sm font-semibold">Active Alerts ({exactMatchTriggers.length})</h4>
                           </div>
-                          <div className="flex items-center gap-1">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleToggleTrigger(trigger.id, trigger.is_active)}
-                              className="text-xs px-2 py-1"
-                            >
-                              {trigger.is_active ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleDeleteTrigger(trigger.id)}
-                              className="text-red-400 hover:text-red-300 text-xs px-2 py-1"
-                            >
-                              <X className="h-3 w-3" />
-                            </Button>
-                          </div>
+                          {exactMatchTriggers.map((trigger) => {
+                          const config = trigger.trigger_config || {};
+                          const matchType = config.matchType || 'exact';
+                          const favoriteBidNumbers = config.favoriteBidNumbers || [];
+                          const favorite = favorites.find(f => favoriteBidNumbers.includes(f.bid_number));
+                          
+                          return (
+                            <div key={trigger.id} className="flex items-center justify-between p-3 bg-muted/20 rounded-lg border border-border/50 hover:bg-muted/30 transition-colors">
+                              <div className="flex items-center gap-3 flex-1 min-w-0">
+                                <div className={`p-2 rounded-lg ${matchType === 'exact' ? 'bg-blue-500/20' : 'bg-purple-500/20'}`}>
+                                  {matchType === 'exact' ? (
+                                    <Target className="h-4 w-4 text-blue-400" />
+                                  ) : (
+                                    <MapPin className="h-4 w-4 text-purple-400" />
+                                  )}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <Badge variant="outline" className={`text-xs ${matchType === 'exact' ? 'border-blue-400 text-blue-400' : 'border-purple-400 text-purple-400'}`}>
+                                      {matchType === 'exact' ? 'Exact Match' : 'State Match'}
+                                    </Badge>
+                                    {favorite && (
+                                      <span className="text-sm font-medium truncate">
+                                        #{favorite.bid_number}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {favorite && favorite.stops && (
+                                    <p className="text-xs text-muted-foreground truncate mt-1">
+                                      {formatStops(favorite.stops)}
+                                    </p>
+                                  )}
+                                  {!favorite && trigger.route && (
+                                    <p className="text-xs text-muted-foreground truncate mt-1">
+                                      {Array.isArray(trigger.route) ? formatStops(trigger.route) : trigger.route}
+                                    </p>
+                                  )}
+                                  {matchType === 'state' && config.originState && config.destinationState && (
+                                    <p className="text-xs text-muted-foreground mt-1 font-mono">
+                                      {config.originState} → {config.destinationState}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                {/* Backhaul Toggle for this trigger */}
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        variant={config.backhaulEnabled ? "default" : "outline"}
+                                        size="sm"
+                                        onClick={async () => {
+                                          const newBackhaulEnabled = !(config.backhaulEnabled || false);
+                                          try {
+                                            const response = await fetch('/api/carrier/notification-triggers', {
+                                              method: 'PUT',
+                                              headers: { 'Content-Type': 'application/json' },
+                                              body: JSON.stringify({
+                                                id: trigger.id,
+                                                triggerConfig: {
+                                                  ...config,
+                                                  backhaulEnabled: newBackhaulEnabled
+                                                }
+                                              })
+                                            });
+                                            const result = await response.json();
+                                            if (result.ok) {
+                                              toast.success(`Backhaul matching ${newBackhaulEnabled ? 'enabled' : 'disabled'}`);
+                                              mutateTriggers();
+                                            } else {
+                                              toast.error(result.error || "Failed to update backhaul setting");
+                                            }
+                                          } catch (error) {
+                                            toast.error("Failed to update backhaul setting");
+                                          }
+                                        }}
+                                        className={`text-xs px-2 py-1 ${config.backhaulEnabled ? 'bg-orange-500 hover:bg-orange-600 text-white' : ''}`}
+                                        title={config.backhaulEnabled ? "Disable backhaul matching" : "Enable backhaul matching"}
+                                      >
+                                        <ArrowLeftRight className="h-3 w-3" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>{config.backhaulEnabled ? "Backhaul matching enabled - Click to disable" : "Enable backhaul matching for this alert"}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                                <Button
+                                  variant={trigger.is_active ? "default" : "outline"}
+                                  size="sm"
+                                  onClick={() => handleToggleTrigger(trigger.id, trigger.is_active)}
+                                  className={`text-xs px-2 py-1 ${trigger.is_active ? 'bg-blue-500 hover:bg-blue-600 text-white' : ''}`}
+                                  title={trigger.is_active ? "Disable alert" : "Enable alert"}
+                                >
+                                  {trigger.is_active ? <Bell className="h-3 w-3" /> : <BellOff className="h-3 w-3" />}
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleDeleteTrigger(trigger.id)}
+                                  className="text-red-400 hover:text-red-300 text-xs px-2 py-1"
+                                  title="Delete alert"
+                                >
+                                  <X className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            </div>
+                          );
+                        })}
                         </div>
-                      ))}
+                      );
+                    }
+                    
+                    // Only show "No active alerts" if we have confirmed there are no triggers
+                    // Use memoized notificationTriggers instead of triggersData to prevent flickering
+                    // Check if we've successfully loaded data at least once
+                    const hasLoadedOnce = triggersData !== undefined && triggersData !== null;
+                    const hasValidResponse = triggersData?.ok === true;
+                    
+                    // Only show empty state if we've confirmed there are no triggers and we have a valid response
+                    if (hasValidResponse && exactMatchTriggers.length === 0 && hasLoadedOnce) {
+                      return (
+                        <div className="text-center py-6 text-muted-foreground">
+                          <Bell className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                          <p className="text-sm">No active alerts</p>
+                          <p className="text-xs mt-1">Click the bell icon on any favorite to enable alerts</p>
+                        </div>
+                      );
+                    }
+                    
+                    // During initial load (no data yet), show nothing to prevent flickering
+                    if (!hasLoadedOnce && exactMatchTriggers.length === 0) {
+                      return null;
+                    }
+                    
+                    // If we're here, we're in a loading state but have no triggers yet
+                    // Return null to prevent flickering
+                    return null;
+                  })()}
+                  
+                  {/* Legacy Active Triggers (for other types) */}
+                  {(() => {
+                    const otherTriggers = notificationTriggers.filter(
+                      (t: NotificationTrigger) => t.trigger_type !== 'exact_match'
+                    );
+                    
+                    if (otherTriggers.length === 0) return null;
+                    
+                    return (
+                      <div className="space-y-2 pt-4 border-t">
+                        <div className="text-sm font-medium text-muted-foreground">Other Triggers</div>
+                        {otherTriggers.map((trigger) => {
+                          const triggerConfig = trigger.trigger_config || {};
+                          return (
+                          <div key={trigger.id} className="flex items-center justify-between p-3 bg-muted/20 rounded-lg border border-border/50 hover:bg-muted/30 transition-colors">
+                            <div className="flex items-center gap-3 flex-1 min-w-0">
+                              <div className="p-2 rounded-lg bg-orange-500/20">
+                                <Bell className="h-4 w-4 text-orange-400" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <Badge variant="outline" className="text-xs">
+                                    {trigger.trigger_type.replace('_', ' ')}
+                                  </Badge>
+                                  {trigger.bid_number && (
+                                    <span className="text-sm font-medium truncate">
+                                      #{trigger.bid_number}
+                                    </span>
+                                  )}
+                                </div>
+                                {trigger.route && (
+                                  <p className="text-xs text-muted-foreground truncate mt-1">
+                                    {Array.isArray(trigger.route) ? formatStops(trigger.route) : trigger.route}
+                                  </p>
+                                )}
+                                <span className="text-xs text-muted-foreground">
+                                  {trigger.is_active ? 'Active' : 'Inactive'}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              {/* Backhaul Toggle for similar load triggers */}
+                              {trigger.trigger_type === 'similar_load' && (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        variant={triggerConfig.backhaulEnabled ? "default" : "outline"}
+                                        size="sm"
+                                        onClick={async () => {
+                                          const newBackhaulEnabled = !(triggerConfig.backhaulEnabled || false);
+                                          try {
+                                            const response = await fetch('/api/carrier/notification-triggers', {
+                                              method: 'PUT',
+                                              headers: { 'Content-Type': 'application/json' },
+                                              body: JSON.stringify({
+                                                id: trigger.id,
+                                                triggerConfig: {
+                                                  ...triggerConfig,
+                                                  backhaulEnabled: newBackhaulEnabled
+                                                }
+                                              })
+                                            });
+                                            const result = await response.json();
+                                            if (result.ok) {
+                                              toast.success(`Backhaul matching ${newBackhaulEnabled ? 'enabled' : 'disabled'}`);
+                                              mutateTriggers();
+                                            } else {
+                                              toast.error(result.error || "Failed to update backhaul setting");
+                                            }
+                                          } catch (error) {
+                                            toast.error("Failed to update backhaul setting");
+                                          }
+                                        }}
+                                        className={`text-xs px-2 py-1 ${triggerConfig.backhaulEnabled ? 'bg-orange-500 hover:bg-orange-600 text-white' : ''}`}
+                                        title={triggerConfig.backhaulEnabled ? "Disable backhaul matching" : "Enable backhaul matching"}
+                                      >
+                                        <ArrowLeftRight className="h-3 w-3" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>{triggerConfig.backhaulEnabled ? "Backhaul matching enabled" : "Enable backhaul matching"}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              )}
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleToggleTrigger(trigger.id, trigger.is_active)}
+                                className="text-xs px-2 py-1"
+                                title={trigger.is_active ? "Disable alert" : "Enable alert"}
+                              >
+                                {trigger.is_active ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleDeleteTrigger(trigger.id)}
+                                className="text-red-400 hover:text-red-300 text-xs px-2 py-1"
+                                title="Delete alert"
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </div>
+                          );
+                        })}
                     </div>
-                  )}
+                    );
+                  })()}
+                  </>
                 </div>
               </div>
             </Glass>
@@ -1378,16 +1552,61 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
 
                             {/* Right side - Action Buttons */}
                             <div className="flex items-center gap-2">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleCreateExactMatchTrigger(favorite.bid_number)}
-                                disabled={isCreatingTrigger}
-                                className="text-blue-400 hover:text-blue-300 hover:bg-blue-500/20 border-blue-500/30 p-1 h-7 w-7"
-                                title="Get notified when this exact load appears again"
-                              >
-                                <Bell className="h-3 w-3" />
-                              </Button>
+                              {/* Check if trigger already exists for this bid */}
+                              {(() => {
+                                const existingTrigger = notificationTriggers.find(
+                                  (t: NotificationTrigger) => 
+                                    t.trigger_type === 'exact_match' && 
+                                    t.trigger_config?.favoriteBidNumbers?.includes(favorite.bid_number)
+                                );
+                                
+                                if (existingTrigger) {
+                                  const matchType = existingTrigger.trigger_config?.matchType || 'exact';
+                                  return (
+                                    <TooltipProvider>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <Button
+                                            variant="default"
+                                            size="sm"
+                                            className="text-blue-400 hover:text-blue-300 hover:bg-blue-500/20 border-blue-500/30 p-1 h-7 w-7 bg-blue-500/20"
+                                            title={matchType === 'exact' 
+                                              ? "Exact match notifications enabled - Click to change" 
+                                              : "State match notifications enabled - Click to change"}
+                                            onClick={() => setShowMatchTypeDialog(favorite.bid_number)}
+                                          >
+                                            <Bell className="h-3 w-3" />
+                                          </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          <p>{matchType === 'exact' ? 'Exact Match Active' : 'State Match Active'}</p>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                  );
+                                }
+                                
+                                return (
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          onClick={() => setShowMatchTypeDialog(favorite.bid_number)}
+                                          disabled={isCreatingTrigger}
+                                          className="text-blue-400 hover:text-blue-300 hover:bg-blue-500/20 border-blue-500/30 p-1 h-7 w-7"
+                                        >
+                                          <Bell className="h-3 w-3" />
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>Enable smart alerts for this load</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                );
+                              })()}
                               
                               <Button
                                 variant="outline"
@@ -1505,16 +1724,34 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                             </td>
                             <td className="p-3">
                               <div className="flex items-center gap-1">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleCreateExactMatchTrigger(favorite.bid_number)}
-                                  disabled={isCreatingTrigger}
-                                  className="h-7 w-7 p-0 text-blue-400 hover:text-blue-300 hover:bg-blue-500/20"
-                                  title="Notify on exact match"
-                                >
-                                  <Bell className="h-3 w-3" />
-                                </Button>
+                                {(() => {
+                                  const existingTrigger = notificationTriggers.find(
+                                    (t: NotificationTrigger) => 
+                                      t.trigger_type === 'exact_match' && 
+                                      t.trigger_config?.favoriteBidNumbers?.includes(favorite.bid_number)
+                                  );
+                                  
+                                  return (
+                                    <TooltipProvider>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <Button
+                                            variant={existingTrigger ? "default" : "ghost"}
+                                            size="sm"
+                                            onClick={() => setShowMatchTypeDialog(favorite.bid_number)}
+                                            disabled={isCreatingTrigger}
+                                            className={`h-7 w-7 p-0 ${existingTrigger ? 'text-blue-400 bg-blue-500/20' : 'text-blue-400 hover:text-blue-300 hover:bg-blue-500/20'}`}
+                                          >
+                                            <Bell className="h-3 w-3" />
+                                          </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          <p>{existingTrigger ? 'Smart alerts enabled - Click to change' : 'Enable smart alerts'}</p>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                  );
+                                })()}
                                 <Button
                                   variant="outline"
                                   size="sm"
@@ -1579,6 +1816,9 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                   <X className="h-4 w-4" />
                 </Button>
               </div>
+              <DialogDescription>
+                View detailed information about this favorited bid
+              </DialogDescription>
             </DialogHeader>
             
             {viewDetailsBid && (
@@ -1641,7 +1881,237 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
             )}
           </DialogContent>
         </Dialog>
+
+        {/* Match Type Selection Dialog */}
+        <Dialog open={!!showMatchTypeDialog} onOpenChange={(open) => !open && setShowMatchTypeDialog(null)}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Bell className="h-5 w-5" />
+                Smart Alert Options
+              </DialogTitle>
+              <DialogDescription>
+                Choose how you want to be notified for bid #{showMatchTypeDialog}
+              </DialogDescription>
+            </DialogHeader>
+            
+            {showMatchTypeDialog && (() => {
+              const favorite = favorites.find(f => f.bid_number === showMatchTypeDialog);
+              const originState = favorite?.stops?.[0] ? extractStateFromStop(favorite.stops[0]) : null;
+              const destinationState = favorite?.stops?.[favorite.stops.length - 1] 
+                ? extractStateFromStop(favorite.stops[favorite.stops.length - 1]) 
+                : null;
+              
+              return (
+                <div className="space-y-4 py-4">
+                  {/* Exact Match Option */}
+                  <div 
+                    className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                      selectedMatchType === 'exact' 
+                        ? 'border-blue-500 bg-blue-500/10' 
+                        : 'border-border hover:border-blue-300'
+                    }`}
+                    onClick={() => setSelectedMatchType('exact')}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={`mt-1 w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                        selectedMatchType === 'exact' 
+                          ? 'border-blue-500 bg-blue-500' 
+                          : 'border-muted-foreground'
+                      }`}>
+                        {selectedMatchType === 'exact' && (
+                          <div className="w-2 h-2 rounded-full bg-white" />
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h4 className="font-semibold">Exact Match</h4>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs">
+                                <p>Get notified when the exact same route (same cities and states) appears again on the bid board.</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          Notifies you when the exact city-to-city route matches your favorited load.
+                        </p>
+                        {favorite && (
+                          <p className="text-xs text-muted-foreground mt-2 font-mono">
+                            {formatStops(favorite.stops)}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* State Match Option */}
+                  <div 
+                    className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                      selectedMatchType === 'state' 
+                        ? 'border-blue-500 bg-blue-500/10' 
+                        : 'border-border hover:border-blue-300'
+                    }`}
+                    onClick={() => setSelectedMatchType('state')}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={`mt-1 w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                        selectedMatchType === 'state' 
+                          ? 'border-blue-500 bg-blue-500' 
+                          : 'border-muted-foreground'
+                      }`}>
+                        {selectedMatchType === 'state' && (
+                          <div className="w-2 h-2 rounded-full bg-white" />
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h4 className="font-semibold">State Match</h4>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs">
+                                <p>Get notified when any load with the same state-to-state route appears, regardless of specific cities.</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          Notifies you when any load matches the same state-to-state route, giving you more opportunities.
+                        </p>
+                        {originState && destinationState && (
+                          <p className="text-xs text-muted-foreground mt-2 font-mono">
+                            {originState} → {destinationState}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2 pt-4">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setShowMatchTypeDialog(null);
+        setSelectedMatchType(null);
+                        setSelectedMatchType(null);
+                      }}
+                      className="flex-1"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        if (selectedMatchType === 'exact') {
+                          handleCreateExactMatchTrigger(showMatchTypeDialog);
+                        } else if (selectedMatchType === 'state') {
+                          handleCreateStateMatchTrigger(showMatchTypeDialog);
+                        }
+                      }}
+                      disabled={!selectedMatchType || isCreatingTrigger}
+                      className="flex-1"
+                    >
+                      {isCreatingTrigger ? (
+                        <>
+                          <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                          Enabling...
+                        </>
+                      ) : (
+                        <>
+                          <Bell className="h-4 w-4 mr-2" />
+                          Enable {selectedMatchType === 'exact' ? 'Exact' : 'State'} Match
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              );
+            })()}
+          </DialogContent>
+        </Dialog>
       </DialogContent>
+      
+      {/* State Preference Selection Dialog */}
+      <Dialog open={showStatePrefDialog} onOpenChange={setShowStatePrefDialog}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MapPin className="h-5 w-5" />
+              Select States for Pickup Notifications
+            </DialogTitle>
+            <DialogDescription>
+              Select states where you want to receive notifications for any bid picking up in those states, regardless of delivery location.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="overflow-y-auto max-h-[60vh]">
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2 p-4">
+              {US_STATES.map((state) => {
+                const currentPrefs = editingPreferences || preferences;
+                const isSelected = currentPrefs.statePreferences.includes(state.code);
+                return (
+                  <Button
+                    key={state.code}
+                    variant={isSelected ? "default" : "outline"}
+                    size="sm"
+                    className={`text-xs h-auto py-2 px-3 flex flex-col items-center gap-1 ${
+                      isSelected ? "bg-blue-500 hover:bg-blue-600 text-white" : ""
+                    }`}
+                    onClick={() => {
+                      const newStatePrefs = isSelected
+                        ? currentPrefs.statePreferences.filter(s => s !== state.code)
+                        : [...currentPrefs.statePreferences, state.code];
+                      setEditingPreferences({
+                        ...currentPrefs,
+                        statePreferences: newStatePrefs
+                      });
+                    }}
+                  >
+                    <span className="font-bold text-sm">{state.code}</span>
+                    <span className="text-[10px] opacity-80">{state.name}</span>
+                  </Button>
+                );
+              })}
+            </div>
+          </div>
+          
+          <div className="flex items-center justify-between p-4 border-t">
+            <div className="text-sm text-muted-foreground">
+              {(editingPreferences || preferences).statePreferences.length} state{(editingPreferences || preferences).statePreferences.length !== 1 ? 's' : ''} selected
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setEditingPreferences(prev => ({
+                    ...(prev || preferences),
+                    statePreferences: []
+                  }));
+                }}
+              >
+                Clear All
+              </Button>
+              <Button
+                variant="default"
+                size="sm"
+                onClick={async () => {
+                  await handleSavePreferences();
+                  setShowStatePrefDialog(false);
+                }}
+              >
+                Save States
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }

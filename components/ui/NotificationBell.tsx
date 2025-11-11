@@ -37,7 +37,10 @@ export function NotificationBell() {
   const notificationsEndpoint = isAdmin ? '/api/notifications' : '/api/carrier/notifications';
   
   const { data, mutate, error } = useSWR(notificationsEndpoint, swrFetcher, {
-    refreshInterval: 10000, // Refresh every 10 seconds
+    refreshInterval: 10000, // Refresh every 10 seconds to get new notifications
+    revalidateOnFocus: true, // Revalidate when window regains focus
+    revalidateOnReconnect: true, // Revalidate when network reconnects
+    keepPreviousData: true, // Keep previous data during refetch to prevent flashing
     onError: (err) => console.error('Notification fetch error:', err),
   });
 
@@ -213,10 +216,26 @@ export function NotificationBell() {
     }
   };
 
+  // State to force re-render for timestamp updates
+  const [timestampUpdate, setTimestampUpdate] = useState(0);
+
+  // Update timestamps every 30 seconds for real-time feel
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTimestampUpdate(prev => prev + 1);
+    }, 30000); // Update every 30 seconds
+
+    return () => clearInterval(interval);
+  }, []);
+
   const formatTimeAgo = (dateString: string) => {
     const date = new Date(dateString);
     const now = new Date();
     const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+    // Use timestampUpdate to ensure this function recalculates
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const _ = timestampUpdate; // Force recalculation when timestampUpdate changes
 
     if (diffInSeconds < 60) return 'Just now';
     if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;

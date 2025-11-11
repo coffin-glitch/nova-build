@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import useSWR from "swr";
 import { Bell, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -32,11 +32,25 @@ interface Notification {
 export default function NotificationsMenu() {
   const [isOpen, setIsOpen] = useState(false);
 
+  const [timestampUpdate, setTimestampUpdate] = useState(0);
+
+  // Update timestamps every 30 seconds for real-time feel
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTimestampUpdate(prev => prev + 1);
+    }, 30000); // Update every 30 seconds
+
+    return () => clearInterval(interval);
+  }, []);
+
   const { data, mutate, isLoading } = useSWR(
     "/api/notifications?unread=1",
     fetcher,
     { 
       refreshInterval: 30000, // Poll every 30 seconds
+      revalidateOnFocus: true, // Revalidate when window regains focus
+      revalidateOnReconnect: true, // Revalidate when network reconnects
+      keepPreviousData: true, // Keep previous data during refetch to prevent flashing
       fallbackData: { ok: true, data: [] }
     }
   );
@@ -181,7 +195,12 @@ export default function NotificationsMenu() {
                         {notification.message}
                       </p>
                       <p className="text-xs text-slate-400 mt-1">
-                        {formatDistanceToNow(new Date(notification.created_at), { addSuffix: true })}
+                        {/* timestampUpdate forces re-render to update timestamp in real-time */}
+                        {(() => {
+                          // Access timestampUpdate to force recalculation when it changes
+                          void timestampUpdate;
+                          return formatDistanceToNow(new Date(notification.created_at), { addSuffix: true });
+                        })()}
                       </p>
                     </div>
                   </div>

@@ -303,51 +303,51 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Get carrier bid data for revenue calculation
-    let carrierBidsQuery;
+    // Get revenue data from auction_awards (matching offers-bids page calculation)
+    // This ensures consistency with the Total Revenue shown on /admin/offers-bids
+    let revenueQuery;
     if (dateThreshold && dateEnd) {
-      carrierBidsQuery = sql`
+      revenueQuery = sql`
         SELECT 
-          cb.bid_number,
-          cb.amount_cents,
+          aa.bid_number,
+          aa.winner_amount_cents,
           tb.stops
-        FROM carrier_bids cb
-        INNER JOIN telegram_bids tb ON cb.bid_number = tb.bid_number
+        FROM auction_awards aa
+        INNER JOIN telegram_bids tb ON aa.bid_number = tb.bid_number
         WHERE tb.received_at >= ${dateThreshold}
           AND tb.received_at <= ${dateEnd}
           AND tb.stops IS NOT NULL
       `;
     } else if (dateThreshold) {
-      carrierBidsQuery = sql`
+      revenueQuery = sql`
         SELECT 
-          cb.bid_number,
-          cb.amount_cents,
+          aa.bid_number,
+          aa.winner_amount_cents,
           tb.stops
-        FROM carrier_bids cb
-        INNER JOIN telegram_bids tb ON cb.bid_number = tb.bid_number
+        FROM auction_awards aa
+        INNER JOIN telegram_bids tb ON aa.bid_number = tb.bid_number
         WHERE tb.received_at >= ${dateThreshold}
           AND tb.stops IS NOT NULL
       `;
     } else {
-      carrierBidsQuery = sql`
+      revenueQuery = sql`
         SELECT 
-          cb.bid_number,
-          cb.amount_cents,
+          aa.bid_number,
+          aa.winner_amount_cents,
           tb.stops
-        FROM carrier_bids cb
-        INNER JOIN telegram_bids tb ON cb.bid_number = tb.bid_number
+        FROM auction_awards aa
+        INNER JOIN telegram_bids tb ON aa.bid_number = tb.bid_number
         WHERE tb.stops IS NOT NULL
       `;
     }
-    const carrierBids = await carrierBidsQuery;
+    const revenueData = await revenueQuery;
 
-    // Calculate revenue per bid (using lowest bid amount as proxy)
+    // Calculate revenue per bid from auction_awards (matches offers-bids page)
     const bidRevenue: Record<string, number> = {};
-    for (const carrierBid of carrierBids) {
-      const bidNumber = carrierBid.bid_number;
-      if (!bidRevenue[bidNumber] || carrierBid.amount_cents < bidRevenue[bidNumber]) {
-        bidRevenue[bidNumber] = carrierBid.amount_cents;
-      }
+    for (const award of revenueData) {
+      const bidNumber = award.bid_number;
+      // Sum all awards for the same bid (in case of re-awards)
+      bidRevenue[bidNumber] = (bidRevenue[bidNumber] || 0) + (award.winner_amount_cents || 0);
     }
 
     // Add revenue to state and city data

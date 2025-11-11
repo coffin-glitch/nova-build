@@ -588,6 +588,13 @@ function BidAdjudicationConsole({ bid, accentColor, onClose, onAwarded }: {
                           <p className="text-xs text-slate-400">Awarded By</p>
                           <p className="font-semibold text-white text-sm">Admin - {bidDetails.award.awarded_by_name || 'System'}</p>
                         </div>
+                        {bidDetails.award.margin_cents !== null && bidDetails.award.margin_cents !== undefined && (
+                          <div className="p-3 bg-gradient-to-r from-blue-700/50 to-indigo-800/50 rounded-lg border border-blue-600/30">
+                            <p className="text-xs text-slate-400">Profit Margin</p>
+                            <p className="text-xl font-bold text-blue-300">{formatMoney(bidDetails.award.margin_cents)}</p>
+                            <p className="text-xs text-slate-400 mt-1">Added when submitting to auction</p>
+                          </div>
+                        )}
                       </div>
                     </>
                   ) : (

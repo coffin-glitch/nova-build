@@ -4,23 +4,35 @@ import PageHeader from "@/components/layout/PageHeader";
 import SectionCard from "@/components/layout/SectionCard";
 import { Button } from "@/components/ui/button";
 import { useAccentColor } from "@/hooks/useAccentColor";
+import { useUnifiedRole } from "@/hooks/useUnifiedRole";
 import { useUnifiedUser } from "@/hooks/useUnifiedUser";
 import { getButtonTextColor as getTextColor } from "@/lib/utils";
 import {
-    ArrowRight,
-    CheckCircle,
-    Clock,
-    DollarSign,
-    MapPin,
-    Shield,
-    Truck,
-    Zap
+  ArrowRight,
+  CheckCircle,
+  Clock,
+  DollarSign,
+  MapPin,
+  Shield,
+  Truck,
+  Zap
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
 export default function HomePage() {
   const { accentColor } = useAccentColor();
   const { user, isLoaded } = useUnifiedUser();
+  const { role, isLoading: roleLoading } = useUnifiedRole();
+  const router = useRouter();
+
+  // Redirect admins to admin dashboard
+  useEffect(() => {
+    if (!roleLoading && role === "admin") {
+      router.replace("/admin");
+    }
+  }, [role, roleLoading, router]);
   
   // Smart color handling for button text based on background color
   // Note: theme not available here, but light mode is default
@@ -32,7 +44,7 @@ export default function HomePage() {
   console.log('🐛 [HOME PAGE DEBUG] Auth state:');
   console.log('🐛 - isLoaded:', isLoaded);
   console.log('🐛 - Has user:', !!user);
-  console.log('🐛 - User email:', user?.emailAddresses?.[0]?.emailAddress || user?.primaryEmailAddress?.emailAddress || 'None');
+  console.log('🐛 - User email:', user?.emailAddresses?.[0]?.emailAddress || user?.email || 'None');
   console.log('🐛 - User ID:', user?.id || 'None');
 
   // Show landing page for unauthenticated users
@@ -120,9 +132,9 @@ export default function HomePage() {
                 e.currentTarget.style.backgroundColor = accentColor;
               }}
             >
-              <Link href="/find-loads">
+              <Link href="/carrier">
                 <MapPin className="mr-2 h-5 w-5 group-hover:scale-110 transition-transform" />
-                Find Loads
+                Dashboard
                 <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
               </Link>
             </Button>

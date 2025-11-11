@@ -1,5 +1,5 @@
-import sql from "@/lib/db";
 import { requireApiCarrier } from "@/lib/auth-api-helper";
+import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
     const conversations = await sql`
       SELECT 
         c.id as conversation_id,
-        c.admin_user_id,
+        c.supabase_admin_user_id as admin_user_id,
         c.last_message_at,
         c.created_at,
         c.updated_at,
@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
       LEFT JOIN message_reads mr ON mr.message_id = cm.id AND mr.supabase_user_id = ${userId}
       WHERE c.supabase_carrier_user_id = ${userId}
       AND c.conversation_type = 'appeal'
-      GROUP BY c.id, c.admin_user_id, c.last_message_at, c.created_at, c.updated_at
+      GROUP BY c.id, c.supabase_admin_user_id, c.last_message_at, c.created_at, c.updated_at
       ORDER BY c.last_message_at DESC
     `;
 
@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
     // Check if appeal conversation already exists
     const existingConversation = await sql`
       SELECT id FROM conversations 
-      WHERE supabase_carrier_user_id = ${userId} AND admin_user_id = ${targetAdminId} AND conversation_type = 'appeal'
+      WHERE supabase_carrier_user_id = ${userId} AND (supabase_admin_user_id = ${targetAdminId} OR supabase_admin_user_id IS NULL) AND conversation_type = 'appeal'
     `;
 
     let conversationId;
@@ -83,14 +83,17 @@ export async function POST(request: NextRequest) {
       conversationId = existingConversation[0].id;
     } else {
       // Create new appeal conversation (Supabase-only)
+      // Note: For appeals, we may not have a specific admin assigned yet, so supabase_admin_user_id can be NULL
       const conversationResult = await sql`
         INSERT INTO conversations (
           supabase_carrier_user_id,
-          admin_user_id,
+          supabase_admin_user_id,
+          subject,
+          status,
           conversation_type,
           created_at,
           updated_at
-        ) VALUES (${userId}, ${targetAdminId}, 'appeal', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        ) VALUES (${userId}, ${targetAdminId !== 'admin_system' ? targetAdminId : null}, 'Profile Appeal', 'active', 'appeal', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         RETURNING id
       `;
       conversationId = conversationResult[0].id;
@@ -115,6 +118,44 @@ export async function POST(request: NextRequest) {
       )
       RETURNING id, created_at
     `;
+
+    // Update conversation last_message_at
+    await sql`
+      UPDATE conversations
+      SET last_message_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ${conversationId}
+    `;
+
+    // Notify all admins about the new appeal message
+    try {
+      const { notifyAllAdmins, getCarrierProfileInfo } = await import('@/lib/notifications');
+      
+      // Get carrier profile info for the notification
+      const carrierProfile = await getCarrierProfileInfo(userId);
+      const carrierName = carrierProfile?.legalName || carrierProfile?.companyName || 'Unknown Carrier';
+      const mcNumber = carrierProfile?.mcNumber || 'N/A';
+      
+      // Create message preview (first 100 chars)
+      const messagePreview = message.length > 100 ? message.substring(0, 100) + '...' : message;
+      
+      await notifyAllAdmins(
+        'appeal_message',
+        '📩 New Appeal Message',
+        `${carrierName} (MC: ${mcNumber}) sent an appeal message: ${messagePreview}`,
+        {
+          conversation_id: conversationId,
+          carrier_user_id: userId,
+          carrier_name: carrierName,
+          mc_number: mcNumber,
+          message_id: messageResult[0].id,
+          message_preview: messagePreview,
+          is_new_conversation: existingConversation.length === 0
+        }
+      );
+    } catch (notificationError) {
+      console.error('Failed to create admin notifications for appeal message:', notificationError);
+      // Don't throw - message sending should still succeed even if notifications fail
+    }
 
     return NextResponse.json({ 
       ok: true,

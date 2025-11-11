@@ -50,7 +50,8 @@ const fetcher = async (url: string) => {
 interface Conversation {
   conversation_id: string;
   carrier_user_id: string;
-  admin_user_id: string;
+  admin_user_id?: string; // Legacy field name
+  supabase_admin_user_id?: string; // Actual field name from API
   other_user_id?: string;
   last_message_at: string;
   last_message_timestamp?: string;
@@ -58,6 +59,7 @@ interface Conversation {
   updated_at: string;
   last_message: string;
   last_message_sender_type: 'admin' | 'carrier';
+  last_message_sender_id?: string;
   unread_count: number;
   conversation_with_type?: 'carrier' | 'admin';
 }
@@ -129,11 +131,53 @@ export default function FloatingAdminChatButton() {
   const conversations: Conversation[] = Array.isArray(conversationsData) 
     ? conversationsData 
     : (conversationsData?.data || []);
+  
+  // Clear selected conversation if it no longer exists
+  useEffect(() => {
+    if (selectedConversationId && conversations.length > 0) {
+      const conversationExists = conversations.some(
+        (conv: Conversation) => conv.conversation_id === selectedConversationId
+      );
+      if (!conversationExists) {
+        console.log('[FloatingAdminChat] Selected conversation no longer exists, clearing selection');
+        setSelectedConversationId(null);
+      }
+    }
+  }, [conversations, selectedConversationId]);
 
   // Fetch messages for selected conversation
   const { data: messagesData, mutate: mutateMessages } = useSWR(
     user && isAdmin && selectedConversationId ? `/api/admin/conversations/${selectedConversationId}` : null,
-    fetcher,
+    async (url: string) => {
+      try {
+        const response = await fetch(url);
+        const data = await response.json();
+        // Handle API response structure: { ok: true, data: [...] } or { error: "..." }
+        if (data.ok && data.data) {
+          return data.data;
+        }
+        if (data.error) {
+          // If conversation not found, clear selection
+          if (data.error.includes('not found') || data.error.includes('Conversation not found')) {
+            console.log('[FloatingAdminChat] Conversation not found, clearing selection');
+            setSelectedConversationId(null);
+            return [];
+          }
+          console.error(`[FloatingAdminChat] API error for ${url}:`, data.error);
+          return [];
+        }
+        // Fallback: return data directly if it's already an array or object
+        return data.data || data || [];
+      } catch (error: any) {
+        // If conversation not found, clear selection
+        if (error?.message?.includes('not found') || error?.message?.includes('Conversation not found')) {
+          console.log('[FloatingAdminChat] Conversation not found, clearing selection');
+          setSelectedConversationId(null);
+          return [];
+        }
+        throw error;
+      }
+    },
     { refreshInterval: 2000 } // Refresh messages every 2 seconds
   );
 
@@ -142,10 +186,89 @@ export default function FloatingAdminChatButton() {
     ? messagesData 
     : (messagesData?.data || []);
 
-  // Get unique carrier user IDs from conversations
+  // Get unique carrier user IDs from conversations (exclude admins)
+  // Only include actual carriers, not admins in admin-to-admin chats
   const carrierUserIds = useMemo(() => {
-    return Array.from(new Set(conversations.map(conv => conv.carrier_user_id)));
-  }, [conversations]);
+    const userIds = new Set<string>();
+    conversations.forEach(conv => {
+      // Only add carriers, not admins
+      if (conv.conversation_with_type === 'carrier') {
+        // Get the actual admin_user_id (could be admin_user_id or supabase_admin_user_id)
+        const actualAdminUserId = conv.supabase_admin_user_id || conv.admin_user_id;
+        // Determine the other user's ID (not current user)
+        const otherUserId = actualAdminUserId === user?.id 
+          ? conv.carrier_user_id 
+          : actualAdminUserId;
+        if (otherUserId && otherUserId !== user?.id) {
+          userIds.add(otherUserId);
+        }
+      }
+    });
+    return Array.from(userIds);
+  }, [conversations, user?.id]);
+
+  // Get unique admin user IDs from conversations and messages
+  // This includes other admins in admin-to-admin chats
+  const adminUserIds = useMemo(() => {
+    const adminIds = new Set<string>();
+    // Add current user if they're an admin
+    if (user?.id) adminIds.add(user.id);
+    // Add all admin senders from messages
+    messages.forEach((msg: ConversationMessage) => {
+      if (msg.sender_type === 'admin' && msg.sender_id) {
+        adminIds.add(msg.sender_id);
+      }
+    });
+    // For admin-to-admin chats, add the other admin (who is in carrier_user_id)
+    conversations.forEach(conv => {
+      // Get the actual admin_user_id (could be admin_user_id or supabase_admin_user_id)
+      const actualAdminUserId = conv.supabase_admin_user_id || conv.admin_user_id;
+      
+      // Debug: Log each conversation to see its structure
+      if (conv.conversation_with_type === 'admin') {
+        console.log('[FloatingAdminChat] Processing admin-to-admin conversation:', {
+          conversation_id: conv.conversation_id,
+          conversation_with_type: conv.conversation_with_type,
+          admin_user_id: actualAdminUserId,
+          carrier_user_id: conv.carrier_user_id,
+          current_user_id: user?.id
+        });
+        
+        // The other admin is in carrier_user_id for admin-to-admin chats
+        const otherAdminId = actualAdminUserId === user?.id 
+          ? conv.carrier_user_id 
+          : actualAdminUserId;
+        console.log('[FloatingAdminChat] Calculated otherAdminId:', otherAdminId);
+        
+        if (otherAdminId && otherAdminId !== user?.id) {
+          adminIds.add(otherAdminId);
+          console.log('[FloatingAdminChat] Added otherAdminId to adminIds:', otherAdminId);
+        }
+        // Also explicitly add carrier_user_id when it's an admin-to-admin chat
+        if (conv.carrier_user_id && conv.carrier_user_id !== user?.id) {
+          adminIds.add(conv.carrier_user_id);
+          console.log('[FloatingAdminChat] Added carrier_user_id to adminIds:', conv.carrier_user_id);
+        }
+      } else {
+        // Debug: Log non-admin conversations to see what we're missing
+        console.log('[FloatingAdminChat] Non-admin conversation:', {
+          conversation_id: conv.conversation_id,
+          conversation_with_type: conv.conversation_with_type,
+          admin_user_id: actualAdminUserId,
+          carrier_user_id: conv.carrier_user_id
+        });
+      }
+      // Also add admin_user_id if it's not the current user
+      // But only if conversation_with_type is not explicitly 'carrier'
+      if (actualAdminUserId && actualAdminUserId !== user?.id && conv.conversation_with_type !== 'carrier') {
+        adminIds.add(actualAdminUserId);
+      }
+    });
+    const adminIdsArray = Array.from(adminIds);
+    // Debug logging
+    console.log('[FloatingAdminChat] Final collected admin user IDs:', adminIdsArray, 'from', conversations.length, 'conversations');
+    return adminIdsArray;
+  }, [messages, conversations, user?.id]);
 
   // Fetch carrier user information
   const { data: userInfos = {} } = useSWR(
@@ -153,19 +276,49 @@ export default function FloatingAdminChatButton() {
     fetcher
   );
 
-  // Helper function to get display name
-  const getDisplayName = useCallback((userId: string): string => {
-    const userInfo = userInfos[userId] as UserInfo;
-    if (!userInfo) return "Carrier"; // Default for carrier if info not loaded
+  // Fetch admin user information (including display names from admin_profiles)
+  const { data: adminUserInfos = {}, isLoading: isLoadingAdminInfos } = useSWR(
+    adminUserIds.length > 0 ? `/api/users/batch?ids=${adminUserIds.join(',')}` : null,
+    fetcher
+  );
 
+  // Merge user infos (carriers + admins)
+  const allUserInfos = useMemo(() => {
+    return { ...userInfos, ...adminUserInfos };
+  }, [userInfos, adminUserInfos]);
+
+  // Helper function to get display name (works for both carriers and admins)
+  const getDisplayName = useCallback((userId: string, isAdmin?: boolean): string => {
+    if (!userId) {
+      return isAdmin ? "Admin" : "Carrier";
+    }
+    
+    const userInfo = allUserInfos[userId] as UserInfo;
+    if (!userInfo) {
+      // If it's the current user and they're an admin, try to get their display name
+      if (isAdmin && userId === user?.id) {
+        return "You"; // Fallback for current admin
+      }
+      // If admin info is still loading, try to show user ID as fallback
+      if (isAdmin && isLoadingAdminInfos) {
+        return userId.substring(0, 8) + "..."; // Show partial user ID while loading
+      }
+      // Debug: Log when admin info is missing (only if not loading)
+      if (isAdmin && !isLoadingAdminInfos) {
+        console.log(`[FloatingAdminChat] Admin user info not found for ${userId}. AdminUserIds:`, adminUserIds, 'AllUserInfos keys:', Object.keys(allUserInfos), 'IsLoading:', isLoadingAdminInfos);
+      }
+      return isAdmin ? "Admin" : "Carrier";
+    }
+
+    // Admin display names are already set in fullName by /api/users/batch
     if (userInfo.fullName) return userInfo.fullName;
     if (userInfo.firstName && userInfo.lastName) return `${userInfo.firstName} ${userInfo.lastName}`;
     if (userInfo.firstName) return userInfo.firstName;
     if (userInfo.username) return userInfo.username;
     if (userInfo.emailAddresses?.[0]?.emailAddress) return userInfo.emailAddresses[0].emailAddress;
     
-    return "Carrier";
-  }, [userInfos]);
+    return isAdmin ? "Admin" : "Carrier";
+  }, [allUserInfos, user?.id, adminUserIds, isLoadingAdminInfos]);
 
   // Calculate total unread count for the button badge
   const totalUnreadCount = useMemo(() => {
@@ -178,14 +331,40 @@ export default function FloatingAdminChatButton() {
     
     const searchLower = searchTerm.toLowerCase();
     return conversations.filter(conv => {
-      const displayName = getDisplayName(conv.carrier_user_id);
+      // Get the other user's ID (not current user)
+      const otherUserId = conv.admin_user_id === user?.id 
+        ? conv.carrier_user_id 
+        : conv.admin_user_id;
+      const isOtherUserAdmin = conv.conversation_with_type === 'admin';
+      const displayName = getDisplayName(otherUserId, isOtherUserAdmin);
+      
       return (
         displayName.toLowerCase().includes(searchLower) ||
-        conv.carrier_user_id.toLowerCase().includes(searchLower) ||
+        otherUserId.toLowerCase().includes(searchLower) ||
         (conv.last_message && conv.last_message.toLowerCase().includes(searchLower))
       );
     });
-  }, [conversations, searchTerm, getDisplayName]);
+  }, [conversations, searchTerm, getDisplayName, user?.id]);
+
+  // Auto-cleanup self-conversations on mount
+  useEffect(() => {
+    if (user?.id && isAdmin) {
+      // Clean up any self-conversations (where admin_user_id = carrier_user_id)
+      fetch('/api/admin/conversations?cleanup=true', {
+        method: 'DELETE'
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.ok && data.deleted_count > 0) {
+            console.log(`[FloatingAdminChat] Cleaned up ${data.deleted_count} self-conversation(s)`);
+            mutateConversations(); // Refresh conversations list
+          }
+        })
+        .catch(err => {
+          console.error('[FloatingAdminChat] Error cleaning up self-conversations:', err);
+        });
+    }
+  }, [user?.id, isAdmin, mutateConversations]);
 
   // Debug logging
   useEffect(() => {
@@ -443,18 +622,56 @@ export default function FloatingAdminChatButton() {
   }, []);
 
   const selectedConversation = conversations.find(c => c.conversation_id === selectedConversationId);
-  const carrierDisplayName = selectedConversation ? getDisplayName(selectedConversation.carrier_user_id) : "Carrier";
-  const carrierUserId = selectedConversation?.carrier_user_id;
+  // Get the other user's ID (not current user) for the selected conversation
+  // If current user is admin_user_id, other user is carrier_user_id
+  // If current user is carrier_user_id, other user is admin_user_id
+  const actualAdminUserId = selectedConversation?.supabase_admin_user_id || selectedConversation?.admin_user_id;
+  const otherUserId = selectedConversation 
+    ? (actualAdminUserId === user?.id 
+       ? selectedConversation.carrier_user_id 
+       : actualAdminUserId)
+    : null;
+  const isOtherUserAdmin = selectedConversation?.conversation_with_type === 'admin';
+  // Ensure we use otherUserId (which is correctly identified) and pass isAdmin flag
+  const carrierDisplayName = selectedConversation && otherUserId
+    ? getDisplayName(otherUserId, isOtherUserAdmin) 
+    : selectedConversation
+    ? getDisplayName(selectedConversation.carrier_user_id || selectedConversation.admin_user_id, isOtherUserAdmin)
+    : "Carrier";
+  const carrierUserId = otherUserId || selectedConversation?.carrier_user_id;
 
   // Fetch carrier profile for preview (must be before any conditional returns)
-  const { data: carrierProfileData } = useSWR(
+  const { data: carrierProfileData, isLoading: isLoadingCarrierProfile, error: carrierProfileError } = useSWR(
     user && isAdmin && carrierUserId && isProfilePopoverOpen 
       ? `/api/admin/carriers/${carrierUserId}` 
       : null,
-    fetcher
+    async (url: string) => {
+      try {
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const data = await response.json();
+        // API returns { ok: true, data: {...} } structure
+        if (data.ok && data.data) {
+          console.log('[FloatingAdminChat] Carrier profile loaded:', data.data);
+          return data.data;
+        }
+        if (data.error) {
+          console.error(`[FloatingAdminChat] API error for ${url}:`, data.error);
+          throw new Error(data.error);
+        }
+        // Fallback: return data directly if structure is different
+        console.log('[FloatingAdminChat] Carrier profile loaded (fallback):', data);
+        return data;
+      } catch (error) {
+        console.error(`[FloatingAdminChat] Error fetching carrier profile from ${url}:`, error);
+        throw error;
+      }
+    }
   );
 
-  const carrierProfile = carrierProfileData?.data || null;
+  const carrierProfile = carrierProfileData || null;
 
   if (!isLoaded || !user || !isAdmin) return null;
 
@@ -584,7 +801,28 @@ export default function FloatingAdminChatButton() {
                             </div>
                           ) : (
                             filteredConversations.map((conv) => {
-                              const displayName = getDisplayName(conv.carrier_user_id);
+                              // Determine the other user's ID (not the current admin)
+                              // If current user is admin_user_id, other user is carrier_user_id
+                              // If current user is carrier_user_id, other user is admin_user_id
+                              const actualAdminUserId = conv.supabase_admin_user_id || conv.admin_user_id;
+                              const otherUserId = actualAdminUserId === user?.id 
+                                ? conv.carrier_user_id 
+                                : actualAdminUserId;
+                              
+                              const isOtherUserAdmin = conv.conversation_with_type === 'admin';
+                              // Ensure otherUserId is valid before calling getDisplayName
+                              const displayName = otherUserId 
+                                ? getDisplayName(otherUserId, isOtherUserAdmin)
+                                : isOtherUserAdmin ? "Admin" : "Carrier";
+                              
+                              // Determine if the last message was from the current user
+                              // Use last_message_sender_id if available, otherwise fall back to sender_type check
+                              const isLastMessageFromCurrentUser = conv.last_message_sender_id 
+                                ? conv.last_message_sender_id === user?.id
+                                : ((conv.last_message_sender_type === 'admin' && 
+                                    actualAdminUserId === user?.id) ||
+                                   (conv.last_message_sender_type === 'carrier' && 
+                                    conv.carrier_user_id === user?.id));
                               
                               return (
                                 <div
@@ -611,11 +849,11 @@ export default function FloatingAdminChatButton() {
                                       )}
                                     </div>
                                     <p className="text-xs text-muted-foreground truncate">
-                                      {conv.carrier_user_id}
+                                      {otherUserId}
                                     </p>
                                     {conv.last_message && (
                                       <p className="text-xs text-muted-foreground truncate mt-1">
-                                        {conv.last_message_sender_type === 'admin' ? 'You: ' : ''}
+                                        {isLastMessageFromCurrentUser ? 'You: ' : `${displayName}: `}
                                         {conv.last_message}
                                       </p>
                                     )}
@@ -660,7 +898,7 @@ export default function FloatingAdminChatButton() {
                                     {carrierDisplayName}
                                   </p>
                                   <p className="text-xs text-muted-foreground">
-                                    {selectedConversation.carrier_user_id}
+                                    {carrierUserId || selectedConversation.carrier_user_id}
                                   </p>
                                 </div>
                               </div>
@@ -690,63 +928,113 @@ export default function FloatingAdminChatButton() {
                                         </div>
                                       </div>
                                       
-                                      {carrierProfile ? (
-                                        <div className="space-y-3">
-                                          {carrierProfile.contact_name && (
-                                            <div className="flex items-start gap-3">
-                                              <User className="h-4 w-4 text-muted-foreground mt-0.5" />
-                                              <div>
-                                                <p className="text-xs text-muted-foreground">Contact Name</p>
-                                                <p className="text-sm font-medium">{carrierProfile.contact_name}</p>
-                                              </div>
+                                      {(() => {
+                                        // Debug logging
+                                        console.log('[FloatingAdminChat] Carrier profile popover state:', {
+                                          carrierUserId,
+                                          isLoadingCarrierProfile,
+                                          carrierProfileError,
+                                          carrierProfile,
+                                          hasCarrierProfile: !!carrierProfile
+                                        });
+                                        
+                                        // Show loading only if we're actively loading AND we don't have the data yet
+                                        if (isLoadingCarrierProfile && !carrierProfile) {
+                                          return (
+                                            <div className="text-center py-4">
+                                              <p className="text-sm text-muted-foreground">Loading profile...</p>
                                             </div>
-                                          )}
-                                          
-                                          {carrierProfile.mc_number && (
-                                            <div className="flex items-start gap-3">
-                                              <Building2 className="h-4 w-4 text-muted-foreground mt-0.5" />
-                                              <div>
-                                                <p className="text-xs text-muted-foreground">MC Number</p>
-                                                <p className="text-sm font-medium">{carrierProfile.mc_number}</p>
-                                              </div>
+                                          );
+                                        }
+                                        
+                                        // If we have an error, show error message
+                                        if (carrierProfileError) {
+                                          return (
+                                            <div className="text-center py-4">
+                                              <p className="text-sm text-red-500">Error loading profile</p>
+                                              <p className="text-xs text-muted-foreground mt-1">
+                                                {carrierProfileError instanceof Error 
+                                                  ? carrierProfileError.message 
+                                                  : 'Please try again later'}
+                                              </p>
                                             </div>
-                                          )}
-                                          
-                                          {carrierProfile.dot_number && (
-                                            <div className="flex items-start gap-3">
-                                              <Building2 className="h-4 w-4 text-muted-foreground mt-0.5" />
-                                              <div>
-                                                <p className="text-xs text-muted-foreground">DOT Number</p>
-                                                <p className="text-sm font-medium">{carrierProfile.dot_number}</p>
-                                              </div>
+                                          );
+                                        }
+                                        
+                                        // If we have carrier profile, show it
+                                        if (carrierProfile) {
+                                          return (
+                                            <div className="space-y-3">
+                                              {carrierProfile.contact_name && (
+                                                <div className="flex items-start gap-3">
+                                                  <User className="h-4 w-4 text-muted-foreground mt-0.5" />
+                                                  <div>
+                                                    <p className="text-xs text-muted-foreground">Contact Name</p>
+                                                    <p className="text-sm font-medium">{carrierProfile.contact_name}</p>
+                                                  </div>
+                                                </div>
+                                              )}
+                                              
+                                              {carrierProfile.mc_number && (
+                                                <div className="flex items-start gap-3">
+                                                  <Building2 className="h-4 w-4 text-muted-foreground mt-0.5" />
+                                                  <div>
+                                                    <p className="text-xs text-muted-foreground">MC Number</p>
+                                                    <p className="text-sm font-medium">{carrierProfile.mc_number}</p>
+                                                  </div>
+                                                </div>
+                                              )}
+                                              
+                                              {carrierProfile.dot_number && (
+                                                <div className="flex items-start gap-3">
+                                                  <Building2 className="h-4 w-4 text-muted-foreground mt-0.5" />
+                                                  <div>
+                                                    <p className="text-xs text-muted-foreground">DOT Number</p>
+                                                    <p className="text-sm font-medium">{carrierProfile.dot_number}</p>
+                                                  </div>
+                                                </div>
+                                              )}
+                                              
+                                              {carrierProfile.email && carrierProfile.email !== 'N/A' && (
+                                                <div className="flex items-start gap-3">
+                                                  <Mail className="h-4 w-4 text-muted-foreground mt-0.5" />
+                                                  <div>
+                                                    <p className="text-xs text-muted-foreground">Email</p>
+                                                    <p className="text-sm font-medium break-all">{carrierProfile.email}</p>
+                                                  </div>
+                                                </div>
+                                              )}
+                                              
+                                              {carrierProfile.phone && (
+                                                <div className="flex items-start gap-3">
+                                                  <Phone className="h-4 w-4 text-muted-foreground mt-0.5" />
+                                                  <div>
+                                                    <p className="text-xs text-muted-foreground">Phone</p>
+                                                    <p className="text-sm font-medium">{carrierProfile.phone}</p>
+                                                  </div>
+                                                </div>
+                                              )}
+                                              
+                                              {!carrierProfile.contact_name && !carrierProfile.mc_number && !carrierProfile.dot_number && 
+                                               (!carrierProfile.email || carrierProfile.email === 'N/A') && !carrierProfile.phone && (
+                                                <div className="text-center py-4">
+                                                  <p className="text-sm text-muted-foreground">Limited profile information available</p>
+                                                </div>
+                                              )}
                                             </div>
-                                          )}
-                                          
-                                          {carrierProfile.email && carrierProfile.email !== 'N/A' && (
-                                            <div className="flex items-start gap-3">
-                                              <Mail className="h-4 w-4 text-muted-foreground mt-0.5" />
-                                              <div>
-                                                <p className="text-xs text-muted-foreground">Email</p>
-                                                <p className="text-sm font-medium break-all">{carrierProfile.email}</p>
-                                              </div>
-                                            </div>
-                                          )}
-                                          
-                                          {carrierProfile.phone && (
-                                            <div className="flex items-start gap-3">
-                                              <Phone className="h-4 w-4 text-muted-foreground mt-0.5" />
-                                              <div>
-                                                <p className="text-xs text-muted-foreground">Phone</p>
-                                                <p className="text-sm font-medium">{carrierProfile.phone}</p>
-                                              </div>
-                                            </div>
-                                          )}
-                                        </div>
-                                      ) : (
-                                        <div className="text-center py-4">
-                                          <p className="text-sm text-muted-foreground">Loading profile...</p>
-                                        </div>
-                                      )}
+                                          );
+                                        }
+                                        
+                                        // Fallback: No carrier profile available
+                                        return (
+                                          <div className="text-center py-4">
+                                            <p className="text-sm text-muted-foreground">Profile information not available</p>
+                                            <p className="text-xs text-muted-foreground mt-1">
+                                              {carrierUserId ? `Carrier ID: ${carrierUserId}` : 'No carrier selected'}
+                                            </p>
+                                          </div>
+                                        );
+                                      })()}
                                     </div>
                                   </PopoverContent>
                                 </Popover>
@@ -756,20 +1044,31 @@ export default function FloatingAdminChatButton() {
                             {/* Messages */}
                             <ScrollArea className="flex-1 p-4">
                               <div className="space-y-4">
-                                {messages.map((message) => (
-                                  <div
-                                    key={message.id}
-                                    className={`flex ${message.sender_id === user?.id ? 'justify-end' : 'justify-start'}`}
-                                  >
+                                {messages.map((message) => {
+                                  const isCurrentUser = message.sender_id === user?.id;
+                                  const senderDisplayName = getDisplayName(message.sender_id, message.sender_type === 'admin');
+                                  
+                                  return (
                                     <div
-                                      className={`max-w-[80%] rounded-lg px-3 py-2 ${
-                                        message.sender_id === user?.id
-                                          ? 'bg-primary text-primary-foreground'
-                                          : 'bg-muted'
-                                      }`}
+                                      key={message.id}
+                                      className={`flex ${isCurrentUser ? 'justify-end' : 'justify-start'}`}
                                     >
-                                      {/* Attachment */}
-                                      {message.attachment_url && (
+                                      <div className={`max-w-[80%] ${isCurrentUser ? 'items-end' : 'items-start'} flex flex-col`}>
+                                        {/* Sender name (only show if not current user or if admin-to-admin chat) */}
+                                        {!isCurrentUser && (
+                                          <p className="text-xs text-muted-foreground mb-1 px-1">
+                                            {senderDisplayName}
+                                          </p>
+                                        )}
+                                        <div
+                                          className={`rounded-lg px-3 py-2 ${
+                                            isCurrentUser
+                                              ? 'bg-primary text-primary-foreground'
+                                              : 'bg-muted'
+                                          }`}
+                                        >
+                                          {/* Attachment */}
+                                          {message.attachment_url && (
                                         <div className="mb-2">
                                           {message.attachment_type?.startsWith('image/') ? (
                                             <a 
@@ -816,21 +1115,23 @@ export default function FloatingAdminChatButton() {
                                             </a>
                                           )}
                                         </div>
-                                      )}
-                                      {/* Message text */}
-                                      {message.message && (
-                                        <p className="text-sm">{message.message}</p>
-                                      )}
-                                      <p className={`text-xs mt-1 ${
-                                        message.sender_id === user?.id 
-                                          ? 'text-primary-foreground/70' 
-                                          : 'text-muted-foreground'
-                                      }`}>
-                                        {formatTime(message.created_at)}
-                                      </p>
+                                          )}
+                                          {/* Message text */}
+                                          {message.message && (
+                                            <p className="text-sm">{message.message}</p>
+                                          )}
+                                          <p className={`text-xs mt-1 ${
+                                            isCurrentUser
+                                              ? 'opacity-70' 
+                                              : 'text-muted-foreground'
+                                          }`}>
+                                            {new Date(message.created_at).toLocaleTimeString()}
+                                          </p>
+                                        </div>
+                                      </div>
                                     </div>
-                                  </div>
-                                ))}
+                                  );
+                                })}
                                 <div ref={messagesEndRef} />
                               </div>
                             </ScrollArea>

@@ -15,6 +15,7 @@ import type { UserRole } from "./auth-unified";
 interface ApiAuthResult {
   userId: string;
   userRole: UserRole;
+  email: string | null;
   provider: "supabase";
   fromHeader: boolean;
   authProvider: "supabase"; // For compatibility with existing code
@@ -46,9 +47,30 @@ export async function getApiAuth(request?: NextRequest): Promise<ApiAuthResult |
     }
     
     if (userId && userRole) {
+      // Try to get email from headers or fetch it
+      let email: string | null = null;
+      if (request) {
+        email = request.headers.get("X-User-Email");
+      } else {
+        const headersList = await headers();
+        email = headersList.get("X-User-Email");
+      }
+      
+      // If email not in headers, fetch from Supabase
+      if (!email) {
+        try {
+          const { getUnifiedAuth } = await import('@/lib/auth-unified');
+          const unifiedAuth = await getUnifiedAuth();
+          email = unifiedAuth.email;
+        } catch {
+          // Ignore - email is optional
+        }
+      }
+      
       return {
         userId,
         userRole: userRole as UserRole,
+        email,
         provider: "supabase",
         fromHeader: true,
         authProvider: "supabase",
@@ -69,6 +91,7 @@ export async function getApiAuth(request?: NextRequest): Promise<ApiAuthResult |
       return {
         userId: unifiedAuth.userId,
         userRole: unifiedAuth.userRole,
+        email: unifiedAuth.email,
         provider: "supabase",
         fromHeader: false,
         authProvider: "supabase",

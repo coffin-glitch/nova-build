@@ -28,6 +28,8 @@ const publicRoutes = [
   "/sign-up(.*)",
   "/verify-email(.*)",
   "/auth/callback(.*)",
+  "/auth/forgot-password(.*)",
+  "/auth/reset-password(.*)",
   "/api/test-db",
   "/api/reset-telegram-bids",
   "/api/test(.*)",
@@ -206,6 +208,8 @@ export async function middleware(req: NextRequest) {
       !pathname.startsWith('/sign-up') && 
       !pathname.startsWith('/verify-email') && 
       !pathname.startsWith('/auth/callback') &&
+      !pathname.startsWith('/auth/forgot-password') &&
+      !pathname.startsWith('/auth/reset-password') &&
       !matchRoute(pathname, publicRoutes)) {
     const signInUrl = new URL("/sign-in", req.url);
     signInUrl.searchParams.set('next', pathname); // Preserve intended destination
@@ -251,6 +255,27 @@ export async function middleware(req: NextRequest) {
     console.log(`🧹 [MIDDLEWARE] Deleted ${clerkCookieNames.length} Clerk cookies:`, clerkCookieNames);
   }
 
+  // CRITICAL: Admins should NEVER be checked for carrier profile status
+  // Redirect admins from home page to admin dashboard immediately
+  if (userRole === "admin" && userId) {
+    // Redirect admins away from home page to admin dashboard
+    if (pathname === '/') {
+      const adminUrl = new URL("/admin", req.url);
+      return createResponse(NextResponse.redirect(adminUrl));
+    }
+    // Redirect admins away from carrier routes to admin dashboard
+    if (matchRoute(pathname, carrierRoutes) && pathname !== '/admin') {
+      const adminUrl = new URL("/admin", req.url);
+      return createResponse(NextResponse.redirect(adminUrl));
+    }
+    // Allow admins to access admin routes
+    if (matchRoute(pathname, adminRoutes)) {
+      return response;
+    }
+    // For all other routes, allow admins through (they have full access)
+    return response;
+  }
+
   // Check admin routes (only for page routes, not API routes)
   if (!pathname.startsWith('/api/') && matchRoute(pathname, adminRoutes)) {
     if (userRole !== "admin") {
@@ -262,6 +287,7 @@ export async function middleware(req: NextRequest) {
   // Check carrier profile status for ALL authenticated PAGE routes (not API routes)
   // This ensures new carriers are redirected to profile setup even when accessing home page
   // Skip API routes - they handle their own errors and return JSON
+  // IMPORTANT: Only check carrier profile for users with carrier role (admins bypass this)
   if (userRole === "carrier" && !pathname.startsWith('/api/') && !matchRoute(pathname, publicRoutes) && pathname !== '/carrier/profile') {
       try {
         let supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -365,19 +391,21 @@ export async function middleware(req: NextRequest) {
 
 // In-memory role cache for middleware (Edge runtime doesn't support persistent caching)
 const roleCache = new Map<string, { role: UserRole; timestamp: number }>();
-const ROLE_CACHE_TTL = 30 * 1000; // 30 seconds cache for middleware
+const ROLE_CACHE_TTL = 5 * 1000; // 5 seconds cache for middleware (reduced for faster role updates)
 
 /**
  * Resolve user role from Supabase user_roles_cache
  * Uses service role key for admin access in Edge runtime
  * Implements caching to reduce database queries and improve performance
  */
-async function resolveUserRole(userId: string): Promise<UserRole> {
+async function resolveUserRole(userId: string, forceRefresh: boolean = false): Promise<UserRole> {
   try {
-    // Check cache first (30 second TTL)
-    const cached = roleCache.get(userId);
-    if (cached && Date.now() - cached.timestamp < ROLE_CACHE_TTL) {
-      return cached.role;
+    // Check cache first (5 second TTL), but skip if forceRefresh is true
+    if (!forceRefresh) {
+      const cached = roleCache.get(userId);
+      if (cached && Date.now() - cached.timestamp < ROLE_CACHE_TTL) {
+        return cached.role;
+      }
     }
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;

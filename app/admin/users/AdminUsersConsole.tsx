@@ -8,16 +8,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
-    Building2,
-    CheckCircle,
-    Edit3,
-    History,
-    MessageSquare,
-    Search,
-    Shield,
-    Unlock,
-    Users,
-    X
+  Bell,
+  Building2,
+  CheckCircle,
+  Edit3,
+  History,
+  Mail,
+  MessageSquare,
+  Phone,
+  Search,
+  Shield,
+  Unlock,
+  Users,
+  X
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -49,6 +52,8 @@ interface CarrierProfile {
   edits_enabled_at?: string;
   created_at: string;
   updated_at: string;
+  urgent_contact_email?: boolean;
+  urgent_contact_phone?: boolean;
 }
 
 interface AdminMessage {
@@ -542,6 +547,17 @@ export function AdminUsersConsole() {
           <div className="flex items-center gap-2">
             <Building2 className="h-5 w-5 text-blue-600" />
             <CardTitle className="text-lg">{carrier.company_name}</CardTitle>
+            {getUnreadCount(carrier.user_id) > 0 && (
+              <div className="relative">
+                <Bell className="h-4 w-4 text-orange-500 animate-pulse" style={{ 
+                  filter: 'drop-shadow(0 0 6px rgba(249, 115, 22, 0.9))',
+                  animation: 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite'
+                }} />
+                <div className="absolute inset-0 rounded-full bg-orange-500/30 animate-ping" style={{ 
+                  animation: 'ping 2s cubic-bezier(0, 0, 0.2, 1) infinite'
+                }} />
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2">
             {getStatusBadge(carrier)}
@@ -572,6 +588,27 @@ export function AdminUsersConsole() {
             <div className="font-medium">{carrier.dot_number || 'N/A'}</div>
           </div>
         </div>
+
+        {/* Preferred Contact Methods */}
+        {(carrier.urgent_contact_email || carrier.urgent_contact_phone) && (
+          <div className="flex items-center gap-2 pt-2 border-t border-border/50">
+            <span className="text-xs text-muted-foreground font-medium">Preferred Contact:</span>
+            <div className="flex items-center gap-2">
+              {carrier.urgent_contact_email && (
+                <div className="flex items-center gap-1 text-xs">
+                  <Mail className="w-3.5 h-3.5 text-blue-600" />
+                  <span className="text-muted-foreground">Email</span>
+                </div>
+              )}
+              {carrier.urgent_contact_phone && (
+                <div className="flex items-center gap-1 text-xs">
+                  <Phone className="w-3.5 h-3.5 text-green-600" />
+                  <span className="text-muted-foreground">Phone</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Profile Status Info */}
         {carrier.profile_status === 'declined' && carrier.decline_reason && (

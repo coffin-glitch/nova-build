@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useUnifiedUser } from "@/hooks/useUnifiedUser";
+import { useSupabase } from "@/components/providers/SupabaseProvider";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -39,7 +41,10 @@ import {
   Archive,
   Gavel,
   Loader2,
-  CheckCircle2
+  CheckCircle2,
+  Lock,
+  Eye,
+  EyeOff
 } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
@@ -66,6 +71,7 @@ interface AdminProfile {
 
 export function AdminProfileClient() {
   const { user, isLoaded } = useUnifiedUser();
+  const { user: supabaseUser, supabase, loading: supabaseLoading } = useSupabase();
   const { data, mutate, isLoading } = useSWR<{ ok: boolean; data: AdminProfile }>(
     "/api/admin/profile",
     fetcher
@@ -76,6 +82,17 @@ export function AdminProfileClient() {
   const [formData, setFormData] = useState<Partial<AdminProfile>>({});
   const [editingSection, setEditingSection] = useState<string | null>(null);
   const [sectionFormData, setSectionFormData] = useState<Partial<AdminProfile>>({});
+  
+  // Password change state
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
+  const [passwordStep, setPasswordStep] = useState<'request' | 'verify' | 'change'>('request');
+  const [emailCode, setEmailCode] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [codeSent, setCodeSent] = useState(false);
 
   const profile = data?.data;
 
@@ -210,6 +227,147 @@ export function AdminProfileClient() {
       .toUpperCase()
       .slice(0, 2);
   };
+
+  // Check if user signed in with Google OAuth
+  const isGoogleUser = supabaseUser?.app_metadata?.provider === 'google' || 
+                       supabaseUser?.identities?.some((id: any) => id.provider === 'google');
+  
+  // Check if user has email/password auth (Supabase native)
+  const hasPasswordAuth = supabaseUser?.app_metadata?.provider === 'email' || 
+                          supabaseUser?.identities?.some((id: any) => id.provider === 'email');
+
+  const handleRequestPasswordChange = async () => {
+    if (!supabaseUser?.email) {
+      toast.error("Email address not found");
+      return;
+    }
+    
+    setPasswordLoading(true);
+    try {
+      if (!supabase) throw new Error("Supabase client not available");
+      
+      const { error } = await supabase.auth.signInWithOtp({
+        email: supabaseUser.email,
+        options: {
+          shouldCreateUser: false
+        }
+      });
+      
+      if (error) throw error;
+      
+      setCodeSent(true);
+      setPasswordStep('verify');
+      toast.success("Verification code sent to your email. Check your inbox for the 6-digit code.");
+    } catch (error: any) {
+      toast.error(error.message || "Failed to send verification code");
+    } finally {
+      setPasswordLoading(false);
+    }
+  };
+  
+  const handleVerifyCode = async () => {
+    if (!supabaseUser?.email || !emailCode) {
+      toast.error("Please enter the verification code");
+      return;
+    }
+    
+    setPasswordLoading(true);
+    try {
+      if (!supabase) throw new Error("Supabase client not available");
+      
+      const { error: verifyError } = await supabase.auth.verifyOtp({
+        email: supabaseUser.email!,
+        token: emailCode,
+        type: 'email'
+      });
+      
+      if (verifyError) throw verifyError;
+      
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || window.location.origin || 'https://novabuild.io';
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(supabaseUser.email!, {
+        redirectTo: `${baseUrl}/admin/profile?passwordReset=true`
+      });
+      
+      if (resetError) throw resetError;
+      
+      setShowPasswordDialog(false);
+      setPasswordStep('request');
+      setEmailCode("");
+      setCodeSent(false);
+      toast.success("Code verified! Check your email for the password change link.");
+    } catch (error: any) {
+      toast.error(error.message || "Invalid verification code");
+    } finally {
+      setPasswordLoading(false);
+    }
+  };
+  
+  const handleChangePassword = async () => {
+    if (!newPassword || !confirmPassword) {
+      toast.error("Please fill in all fields");
+      return;
+    }
+    
+    if (newPassword.length < 8) {
+      toast.error("Password must be at least 8 characters");
+      return;
+    }
+    
+    if (newPassword !== confirmPassword) {
+      toast.error("Passwords do not match");
+      return;
+    }
+    
+    setPasswordLoading(true);
+    try {
+      if (!supabase) throw new Error("Supabase client not available");
+      
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword
+      });
+      
+      if (error) throw error;
+      
+      toast.success("Password changed successfully!");
+      setShowPasswordDialog(false);
+      setPasswordStep('request');
+      setEmailCode("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setCodeSent(false);
+    } catch (error: any) {
+      toast.error(error.message || "Failed to change password");
+    } finally {
+      setPasswordLoading(false);
+    }
+  };
+  
+  // Listen for password recovery event
+  useEffect(() => {
+    if (!supabase) return;
+    
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setShowPasswordDialog(true);
+        setPasswordStep('change');
+        toast.info("Enter your new password");
+      }
+    });
+    
+    return () => subscription.unsubscribe();
+  }, [supabase]);
+  
+  // Check URL for password reset parameter
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('passwordReset') === 'true') {
+        setShowPasswordDialog(true);
+        setPasswordStep('change');
+        window.history.replaceState({}, '', '/admin/profile');
+      }
+    }
+  }, []);
 
   if (!isLoaded || isLoading) {
     return (
@@ -615,6 +773,19 @@ export function AdminProfileClient() {
                       : "Not available"}
                   </p>
                 </div>
+                {hasPasswordAuth && (
+                  <>
+                    <Separator />
+                    <Button
+                      onClick={() => setShowPasswordDialog(true)}
+                      variant="outline"
+                      className="w-full"
+                    >
+                      <Lock className="w-4 h-4 mr-2" />
+                      Change Password
+                    </Button>
+                  </>
+                )}
               </CardContent>
             </Card>
 
@@ -677,6 +848,181 @@ export function AdminProfileClient() {
           </div>
         </div>
       </div>
+      
+      {/* Change Password Dialog */}
+      {hasPasswordAuth && (
+        <Dialog open={showPasswordDialog} onOpenChange={setShowPasswordDialog}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Lock className="w-5 h-5" />
+                Change Password
+              </DialogTitle>
+              <DialogDescription>
+                {passwordStep === 'request' && "We'll send a 6-digit verification code to your email to confirm your identity. Check your inbox for the code."}
+                {passwordStep === 'verify' && 'Enter the 6-digit verification code from your email. After verification, you\'ll receive a password change link via email.'}
+                {passwordStep === 'change' && 'Enter your new password. Make sure it meets the security requirements (minimum 8 characters).'}
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="space-y-4 py-4">
+              {passwordStep === 'request' && (
+                <div className="space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    A verification code will be sent to <strong>{supabaseUser?.email}</strong>
+                  </p>
+                  <Button
+                    onClick={handleRequestPasswordChange}
+                    disabled={passwordLoading}
+                    className="w-full"
+                  >
+                    {passwordLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Sending...
+                      </>
+                    ) : (
+                      <>
+                        <Mail className="w-4 h-4 mr-2" />
+                        Send Verification Code
+                      </>
+                    )}
+                  </Button>
+                </div>
+              )}
+              
+              {passwordStep === 'verify' && (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="code">Verification Code</Label>
+                    <Input
+                      id="code"
+                      type="text"
+                      placeholder="000000"
+                      value={emailCode}
+                      onChange={(e) => setEmailCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      maxLength={6}
+                      className="text-center text-2xl font-mono tracking-widest"
+                      style={{ letterSpacing: '0.5em' }}
+                    />
+                    <p className="text-xs text-muted-foreground text-center">
+                      Enter the 6-digit code from your email. The code expires in 15 minutes.
+                    </p>
+                  </div>
+                  <Button
+                    onClick={handleVerifyCode}
+                    disabled={passwordLoading || !emailCode || emailCode.length !== 6}
+                    className="w-full"
+                  >
+                    {passwordLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Verifying...
+                      </>
+                    ) : (
+                      'Verify Code'
+                    )}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      setPasswordStep('request');
+                      setEmailCode("");
+                      setCodeSent(false);
+                    }}
+                    className="w-full text-sm"
+                  >
+                    Resend Code
+                  </Button>
+                </div>
+              )}
+              
+              {passwordStep === 'change' && (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="new-password">New Password</Label>
+                    <div className="relative">
+                      <Input
+                        id="new-password"
+                        type={showNewPassword ? "text" : "password"}
+                        placeholder="Enter new password"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-0 top-0 h-full px-3"
+                        onClick={() => setShowNewPassword(!showNewPassword)}
+                      >
+                        {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Must be at least 8 characters
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="confirm-password">Confirm Password</Label>
+                    <div className="relative">
+                      <Input
+                        id="confirm-password"
+                        type={showConfirmPassword ? "text" : "password"}
+                        placeholder="Confirm new password"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-0 top-0 h-full px-3"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      >
+                        {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </Button>
+                    </div>
+                  </div>
+                  <Button
+                    onClick={handleChangePassword}
+                    disabled={passwordLoading || !newPassword || !confirmPassword || newPassword !== confirmPassword}
+                    className="w-full"
+                  >
+                    {passwordLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Changing...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="w-4 h-4 mr-2" />
+                        Change Password
+                      </>
+                    )}
+                  </Button>
+                </div>
+              )}
+            </div>
+            
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowPasswordDialog(false);
+                  setPasswordStep('request');
+                  setEmailCode("");
+                  setNewPassword("");
+                  setConfirmPassword("");
+                  setCodeSent(false);
+                }}
+              >
+                Cancel
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

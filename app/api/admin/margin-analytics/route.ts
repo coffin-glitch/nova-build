@@ -101,17 +101,28 @@ export async function GET(request: NextRequest) {
       FROM auction_awards aa
       LEFT JOIN telegram_bids tb ON aa.bid_number = tb.bid_number
       ${whereClause}
-      GROUP BY margin_range
-      ORDER BY 
-        CASE margin_range
-          WHEN 'No Margin' THEN 0
-          WHEN '$0' THEN 1
-          WHEN '$0-$50' THEN 2
-          WHEN '$50-$100' THEN 3
-          WHEN '$100-$200' THEN 4
-          WHEN '$200-$500' THEN 5
-          WHEN '$500+' THEN 6
+      GROUP BY 
+        CASE
+          WHEN aa.margin_cents IS NULL THEN 'No Margin'
+          WHEN aa.margin_cents = 0 THEN '$0'
+          WHEN aa.margin_cents < 5000 THEN '$0-$50'
+          WHEN aa.margin_cents < 10000 THEN '$50-$100'
+          WHEN aa.margin_cents < 20000 THEN '$100-$200'
+          WHEN aa.margin_cents < 50000 THEN '$200-$500'
+          ELSE '$500+'
         END
+      ORDER BY 
+        MIN(
+          CASE
+            WHEN aa.margin_cents IS NULL THEN 0
+            WHEN aa.margin_cents = 0 THEN 1
+            WHEN aa.margin_cents < 5000 THEN 2
+            WHEN aa.margin_cents < 10000 THEN 3
+            WHEN aa.margin_cents < 20000 THEN 4
+            WHEN aa.margin_cents < 50000 THEN 5
+            ELSE 6
+          END
+        )
     `;
 
     // Top Routes by Margin

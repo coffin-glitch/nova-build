@@ -8,16 +8,17 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatDistance, formatMoney } from "@/lib/format";
 import {
-    ArrowLeft,
-    CheckCircle2,
-    Clock,
-    FileText,
-    MapPin,
-    MessageSquare,
-    Package,
-    Truck
+  ArrowLeft,
+  CheckCircle2,
+  FileText,
+  MapPin,
+  MessageSquare,
+  Package,
+  Truck
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import { BidLifecycleManager } from "./BidLifecycleManager";
 
 interface BidDetailsDialogProps {
   bid?: any;
@@ -43,6 +44,8 @@ export function BidDetailsDialog({ bid, children }: BidDetailsDialogProps) {
   const [messageConsoleOpen, setMessageConsoleOpen] = useState(false);
   const [bidHistory, setBidHistory] = useState<BidHistoryEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [showLifecycleManager, setShowLifecycleManager] = useState(false);
+  const [acceptingBid, setAcceptingBid] = useState(false);
 
   if (!bid) return null;
 
@@ -75,9 +78,12 @@ export function BidDetailsDialog({ bid, children }: BidDetailsDialogProps) {
       cancelled: "bg-red-500/20 text-red-300 border-red-400"
     };
     
+    // Show "Awaiting Acceptance" for awarded status
+    const displayStatus = status === 'awarded' ? 'Awaiting Acceptance' : status.replace('_', ' ').toUpperCase();
+    
     return (
       <Badge variant="outline" className={variants[status as keyof typeof variants] || variants.awarded}>
-        {status.replace('_', ' ').toUpperCase()}
+        {displayStatus}
       </Badge>
     );
   };
@@ -101,10 +107,9 @@ export function BidDetailsDialog({ bid, children }: BidDetailsDialogProps) {
         </DialogHeader>
 
         <Tabs defaultValue="overview" className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="lifecycle">Lifecycle</TabsTrigger>
-            <TabsTrigger value="history">History</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="space-y-6">
@@ -232,76 +237,63 @@ export function BidDetailsDialog({ bid, children }: BidDetailsDialogProps) {
           </TabsContent>
 
           <TabsContent value="lifecycle" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Truck className="w-5 h-5" />
-                  Bid Lifecycle
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center py-8 text-muted-foreground">
-                  Lifecycle management will be available here
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="history" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Clock className="w-5 h-5" />
-                  Bid History
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {historyLoading ? (
-                  <div className="text-center py-8">
-                    <Clock className="w-8 h-8 animate-spin mx-auto mb-4 text-muted-foreground" />
-                    <p className="text-muted-foreground">Loading history...</p>
-                  </div>
-                ) : bidHistory.length > 0 ? (
-                  <div className="space-y-4">
-                    {bidHistory.map((entry) => (
-                      <div key={entry.id} className="flex items-start gap-4 p-4 border rounded-lg">
-                        <div className="flex-shrink-0">
-                          <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-                            <Clock className="w-4 h-4 text-blue-600" />
-                          </div>
-                        </div>
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="font-medium">{entry.action}</span>
-                            <span className="text-sm text-muted-foreground">
-                              by {entry.performed_by}
-                            </span>
-                          </div>
-                          <p className="text-sm text-muted-foreground mb-2">
-                            {new Date(entry.performed_at).toLocaleString()}
-                          </p>
-                          {entry.carrier_notes && (
-                            <p className="text-sm bg-muted p-2 rounded">
-                              <strong>Notes:</strong> {entry.carrier_notes}
-                            </p>
-                          )}
-                          {entry.admin_notes && (
-                            <p className="text-sm bg-blue-50 p-2 rounded">
-                              <strong>Admin Notes:</strong> {entry.admin_notes}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
+            {/* Only show lifecycle if bid has been accepted (status !== 'awarded') */}
+            {bid.status !== 'awarded' ? (
+              <BidLifecycleManager 
+                bidId={bid.bid_number} 
+                bidData={bid}
+              />
+            ) : (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Truck className="w-5 h-5" />
+                    Bid Lifecycle
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
                   <div className="text-center py-8 text-muted-foreground">
-                    <Clock className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                    <p>No history available for this bid</p>
+                    <Package className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                    <p className="mb-4">Please accept this bid first to access the lifecycle.</p>
+                    <Button
+                      onClick={async () => {
+                        setAcceptingBid(true);
+                        try {
+                          const response = await fetch(`/api/carrier/bid-lifecycle/${bid.bid_number}`, {
+                            method: 'POST',
+                            headers: {
+                              'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                              status: 'bid_awarded',
+                              notes: 'Bid accepted by carrier'
+                            }),
+                          });
+
+                          if (response.ok) {
+                            toast.success('Bid accepted successfully! You can now access the lifecycle.');
+                            setIsOpen(false);
+                            // Refresh the page or update bid status
+                            window.location.reload();
+                          } else {
+                            const errorData = await response.json();
+                            toast.error(`Failed to accept bid: ${errorData.error || 'Unknown error'}`);
+                          }
+                        } catch (error) {
+                          toast.error('Failed to accept bid. Please try again.');
+                        } finally {
+                          setAcceptingBid(false);
+                        }
+                      }}
+                      disabled={acceptingBid}
+                    >
+                      <Truck className="w-4 h-4 mr-2" />
+                      {acceptingBid ? 'Accepting...' : 'Accept Bid'}
+                    </Button>
                   </div>
-                )}
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
         </Tabs>
 
@@ -311,15 +303,36 @@ export function BidDetailsDialog({ bid, children }: BidDetailsDialogProps) {
             <ArrowLeft className="h-4 w-4 mr-2" />
             Close
           </Button>
-          <Button>
-            <Truck className="h-4 w-4 mr-2" />
-            Update Status
-          </Button>
+          {/* Only show Update Status if bid has been accepted */}
+          {bid.status !== 'awarded' && (
+            <Button onClick={() => setShowLifecycleManager(true)}>
+              <Truck className="h-4 w-4 mr-2" />
+              Update Status
+            </Button>
+          )}
           <Button variant="outline">
             <MessageSquare className="h-4 w-4 mr-2" />
             Message
           </Button>
         </div>
+        
+        {/* Update Status Dialog - Opens BidLifecycleManager */}
+        {showLifecycleManager && (
+          <Dialog open={showLifecycleManager} onOpenChange={setShowLifecycleManager}>
+            <DialogContent className="max-w-7xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Truck className="w-5 h-5" />
+                  Update Bid Status - #{bid.bid_number}
+                </DialogTitle>
+              </DialogHeader>
+              <BidLifecycleManager 
+                bidId={bid.bid_number} 
+                bidData={bid}
+              />
+            </DialogContent>
+          </Dialog>
+        )}
       </DialogContent>
     </Dialog>
   );
