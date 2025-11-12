@@ -4,7 +4,7 @@
 
 ## Easiest Deployment Method
 
-**Just deploy from root directory - no railway.json needed!**
+**Just deploy from root directory - no config file needed!**
 
 ### Steps:
 
@@ -16,6 +16,7 @@
 2. **Settings → Deploy:**
    - **Start Command:** `npm run worker:notifications`
    - **Root Directory:** Leave empty (uses root `/`)
+   - **Build Command:** `npm ci --legacy-peer-deps` (or leave empty, Railway will auto-detect)
 
 3. **Settings → Variables:**
    ```
@@ -25,6 +26,8 @@
    ```
 
 4. **Deploy** - That's it!
+
+**Note:** The `.npmrc` file is included to automatically use `--legacy-peer-deps` for all npm commands.
 
 Railway will:
 - Auto-detect Node.js

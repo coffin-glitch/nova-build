@@ -1,8 +1,14 @@
+import 'dotenv/config';
 import { Queue, Worker, QueueEvents, Job } from 'bullmq';
 import Redis from 'ioredis';
 
 // Redis connection configuration
-const redisConnection = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
+const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+if (!process.env.REDIS_URL) {
+  console.warn('⚠️  REDIS_URL not set, defaulting to localhost. Set REDIS_URL in .env.local');
+}
+
+const redisConnection = new Redis(redisUrl, {
   maxRetriesPerRequest: null,
   enableReadyCheck: false,
   retryStrategy: (times) => {

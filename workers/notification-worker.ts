@@ -9,6 +9,8 @@
  *   - Production: Run as a separate service/container
  */
 
+// Load environment variables first
+import 'dotenv/config';
 import { createNotificationWorker, createUrgentNotificationWorker } from '../lib/notification-queue';
 import { 
   getCachedPreferences, 

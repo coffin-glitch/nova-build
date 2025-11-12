@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { redisConnection } from './notification-queue';
 
 const CACHE_TTL = {
