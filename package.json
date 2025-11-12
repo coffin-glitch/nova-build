@@ -25,7 +25,9 @@
     "eax:export": "tsx scripts/eax-export-excel.ts",
     "eax:open": "tsx scripts/eax-open.ts",
     "worker:notifications": "tsx workers/notification-worker.ts",
-    "worker:notifications:dev": "tsx --watch workers/notification-worker.ts"
+    "worker:notifications:dev": "tsx --watch workers/notification-worker.ts",
+    "test:redis": "tsx scripts/test-redis-connection.ts",
+    "worker:status": "tsx scripts/check-worker-status.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

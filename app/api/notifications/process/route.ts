@@ -1,5 +1,5 @@
-import { notificationQueue, urgentNotificationQueue } from '@/lib/notification-queue';
 import sql from '@/lib/db';
+import { notificationQueue, urgentNotificationQueue } from '@/lib/notification-queue';
 import { NextRequest, NextResponse } from "next/server";
 
 // This service enqueues notification jobs instead of processing directly
@@ -114,10 +114,11 @@ export async function PUT(request: NextRequest) {
 }
 
 // Import legacy processing functions (kept for backward compatibility)
-import { 
-  processSimilarLoadNotifications,
+import {
+  processDeadlineApproachingNotifications,
   processExactMatchNotifications,
-  processNewRouteNotifications,
   processFavoriteAvailableNotifications,
-  processDeadlineApproachingNotifications
+  processNewRouteNotifications,
+  processSimilarLoadNotifications
 } from './process-legacy';
+

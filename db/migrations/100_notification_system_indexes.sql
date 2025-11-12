@@ -14,10 +14,11 @@ ON notification_triggers(is_active, trigger_type, supabase_carrier_user_id)
 WHERE is_active = true;
 
 -- Partial index for active telegram_bids (most queried subset)
--- This index optimizes: WHERE is_archived = false AND received_at > TIME
+-- This index optimizes: WHERE is_archived = false (we can't use NOW() in index predicate)
+-- Note: The time-based filtering will be done in queries, but this index helps with is_archived = false
 CREATE INDEX IF NOT EXISTS idx_telegram_bids_active_received 
 ON telegram_bids(received_at DESC) 
-WHERE is_archived = false AND NOW() <= (received_at + INTERVAL '25 minutes');
+WHERE is_archived = false;
 
 -- Index for notification_logs time-based queries (for rate limiting)
 CREATE INDEX IF NOT EXISTS idx_notification_logs_user_sent_at 
@@ -50,5 +51,5 @@ COMMENT ON INDEX idx_notification_triggers_active_type_user IS
   'Optimizes active trigger queries for notification processing';
 
 COMMENT ON INDEX idx_telegram_bids_active_received IS 
-  'Optimizes queries for active bids within 25-minute window';
+  'Optimizes queries for active (non-archived) bids ordered by received_at';
 
