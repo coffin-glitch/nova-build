@@ -28,7 +28,7 @@ import { promises as fs } from 'fs';
       if(ok) break;
     } }
     if(ok) break;
-  }
+  } }
 
   // 2) Try to open the search screen (menu/button heuristics)
   const texts=['EAX SEARCH','Search','LOAD SEARCH','RRB LOAD SEARCH'];
