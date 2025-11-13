@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseServer } from "./supabase";
-import { headers } from "next/headers";
+import { getSupabaseServer, createCookieAdapter } from "./supabase";
+import { headers, cookies } from "next/headers";
 import { getUserRole } from "./auth";
 
 /**
@@ -140,7 +140,9 @@ export async function secureApiEndpoint(
       if (!userId) {
         try {
           const supabaseHeaders = await headers();
-          const supabase = getSupabaseServer(supabaseHeaders);
+          const cookieStore = await cookies();
+          const cookieAdapter = createCookieAdapter(cookieStore);
+          const supabase = getSupabaseServer(supabaseHeaders, cookieAdapter);
           const { data: { user } } = await supabase.auth.getUser();
           userId = user?.id;
         } catch (error) {
