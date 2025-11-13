@@ -366,7 +366,9 @@ export async function getSupabaseUserInfo(userId: string): Promise<{
     }
 
     // Get role from database
-    const role = await getSupabaseUserRole(userId);
+    const userRole = await getSupabaseUserRole(userId);
+    // Ensure role is either "admin" or "carrier" (filter out "none")
+    const role: "admin" | "carrier" = (userRole === "admin" || userRole === "carrier") ? userRole : "carrier";
     
     const firstName = user.user_metadata?.first_name || user.user_metadata?.name?.split(' ')[0] || null;
     const lastName = user.user_metadata?.last_name || user.user_metadata?.name?.split(' ').slice(1).join(' ') || null;
