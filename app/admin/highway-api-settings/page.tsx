@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { getUnifiedAuth } from "@/lib/auth-unified";
 import HighwayApiSettingsClient from "./HighwayApiSettingsClient";
 
+export const dynamic = 'force-dynamic';
+
 export default async function HighwayApiSettingsPage() {
   const auth = await getUnifiedAuth();
 
