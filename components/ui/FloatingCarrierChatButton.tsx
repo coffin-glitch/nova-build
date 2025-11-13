@@ -149,7 +149,7 @@ export default function FloatingCarrierChatButton() {
 
     // Add carrier responses
     responses.forEach((response: CarrierResponse) => {
-      const adminId = messages.find(msg => msg.id === response.message_id)?.admin_user_id;
+      const adminId = messages.find((msg: AdminMessage) => msg.id === response.message_id)?.admin_user_id;
       if (adminId) {
         if (!groups.has(adminId)) {
           groups.set(adminId, []);
