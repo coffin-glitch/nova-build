@@ -165,7 +165,9 @@ export async function getBidOffers(bidId: number) {
 export async function getUserRoleAction() {
   try {
     const headersList = await headers();
-    const supabase = getSupabaseServer(headersList);
+    const cookieStore = await cookies();
+    const cookieAdapter = createCookieAdapter(cookieStore);
+    const supabase = getSupabaseServer(headersList, cookieAdapter);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
     
