@@ -98,6 +98,11 @@ export default function SupabaseSignUp() {
         console.log('🐛 [SIGN-UP DEBUG] Client URL:', clientUrl);
       }
       
+      // TypeScript guard: supabase is checked above but TypeScript needs explicit assertion
+      if (!supabase) {
+        throw new Error("Supabase client not initialized");
+      }
+      
       const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
@@ -165,6 +170,11 @@ export default function SupabaseSignUp() {
     setGoogleLoading(true);
     setError(null);
     setMessage(null);
+
+    if (!supabase) {
+      setError("Supabase client not initialized");
+      return;
+    }
 
     try {
       const { error: googleError } = await supabase.auth.signInWithOAuth({
