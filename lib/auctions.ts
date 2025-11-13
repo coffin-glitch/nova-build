@@ -265,7 +265,7 @@ export async function getBidSummary(bid_number: string, userId?: string): Promis
       telegram_bid: {
         ...bid,
         time_left_seconds: countdown.secondsLeft,
-      },
+      } as TelegramBid,
       carrier_bids: carrierBids,
       lowest_amount_cents: lowestBid?.amount_cents || null,
       lowest_user_id: lowestBid?.supabase_user_id || null,
