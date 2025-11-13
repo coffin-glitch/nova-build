@@ -231,7 +231,7 @@ export function EnhancedLoadLifecycleManager({ loadId, loadData }: EnhancedLoadL
   const handleStatusUpdate = (status: string) => {
     const currentDateTime = getCurrentDateTime();
     
-    let initialData = { status };
+    let initialData: { status: string; [key: string]: any } = { status };
     
     // Auto-fill current date/time for checked_in, picked_up, departed, and checked_in_delivery status
     if (status === 'checked_in') {
