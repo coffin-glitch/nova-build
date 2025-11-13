@@ -35,7 +35,7 @@ interface GlowingBackgroundProps {
 
 export function GlowingBackground({ className = "", enabled = true }: GlowingBackgroundProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const animationFrameRef = useRef<number>();
+  const animationFrameRef = useRef<number | undefined>(undefined);
   const particlesRef = useRef<Particle[]>([]);
   const { theme } = useTheme();
   const { accentColor } = useAccentColor();
