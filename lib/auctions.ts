@@ -529,7 +529,7 @@ export async function awardAuction({
       WHERE bid_number = ${bid_number} AND supabase_user_id = ${winner_user_id}
     `;
 
-    return award[0];
+    return award[0] as unknown as AuctionAward;
   } catch (error) {
     console.error('Database error in awardAuction:', error);
     throw error; // Re-throw to maintain API contract
@@ -664,7 +664,7 @@ export async function reAwardAuction({
       WHERE bid_number = ${bid_number} AND supabase_user_id = ${winner_user_id}
     `;
 
-    return award[0];
+    return award[0] as unknown as AuctionAward;
   } catch (error) {
     console.error('Database error in reAwardAuction:', error);
     throw error; // Re-throw to maintain API contract
@@ -910,7 +910,7 @@ export async function ensureCarrierProfile(userId: string): Promise<CarrierProfi
     `;
 
     if (existing.length > 0) {
-      return existing[0];
+      return existing[0] as unknown as CarrierProfile;
     }
 
     // Create a basic profile with a unique MC number (Supabase-only)
@@ -921,7 +921,7 @@ export async function ensureCarrierProfile(userId: string): Promise<CarrierProfi
       RETURNING *
     `;
 
-    return profile[0];
+    return profile[0] as unknown as CarrierProfile;
   } catch (error) {
     console.error('Database error in ensureCarrierProfile:', error);
     throw error; // Re-throw to maintain API contract
@@ -978,7 +978,7 @@ export async function getCarrierProfile(userId: string): Promise<CarrierProfile 
       LIMIT 1
     `;
 
-    return profiles.length > 0 ? profiles[0] : null;
+    return profiles.length > 0 ? (profiles[0] as unknown as CarrierProfile) : null;
   } catch (error) {
     console.error('Database error in getCarrierProfile:', error);
     return null;
