@@ -1,4 +1,4 @@
-import sql from "@/lib/db.server";
+import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function PATCH(
