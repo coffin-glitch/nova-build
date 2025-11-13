@@ -1015,18 +1015,21 @@ export async function updateCarrierProfile({
     // Build SET clause with proper SQL parameterization
     const setParts: string[] = [];
     const values: any[] = [];
-    for (const [key, value] of Object.entries(updates)) {
-      setParts.push(`${key} = $${setParts.length + 1}`);
+    Object.entries(updates).forEach(([key, value], index) => {
+      setParts.push(`${key} = $${index + 1}`);
       values.push(value);
-    }
+    });
     const setClause = setParts.join(', ');
+
+    // Add userId to values array for WHERE clause
+    values.push(userId);
 
     const result = await sql.unsafe(`
       UPDATE public.carrier_profiles 
       SET ${setClause}
-      WHERE supabase_user_id = $${setParts.length + 1}
+      WHERE supabase_user_id = $${values.length}
       RETURNING *
-    `, [...values, userId]);
+    `, values);
 
     // Clear caches to ensure updated data appears immediately
     try {
