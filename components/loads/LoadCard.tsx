@@ -32,11 +32,11 @@ export default function LoadCard({ r, onOffer }: { r: LoadRow; onOffer: (rr: str
             {r.origin_city}, {r.origin_state} → {r.destination_city}, {r.destination_state}
           </h4>
           <p className="text-sm text-gray-500 mt-1">
-            Pickup: {fmtDate(r.pickup_date)} &nbsp;•&nbsp; Delivery: {fmtDate(r.delivery_date)}
+            Pickup: {r.pickup_date ? fmtDate(r.pickup_date) : 'TBD'} &nbsp;•&nbsp; Delivery: {r.delivery_date ? fmtDate(r.delivery_date) : 'TBD'}
           </p>
         </div>
         <div className="text-right">
-          <p className="text-xl font-bold text-gray-900">{fmtUSD(r.revenue)}</p>
+          <p className="text-xl font-bold text-gray-900">{r.revenue ? fmtUSD(r.revenue) : 'TBD'}</p>
           <p className="text-sm text-gray-500">{fmtMiles(r.total_miles)}</p>
         </div>
       </div>
