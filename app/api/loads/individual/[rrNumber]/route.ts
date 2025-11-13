@@ -31,24 +31,19 @@ export async function PATCH(
       UPDATE loads 
       SET 
         status_code = ${status},
-        updated_at = CURRENT_TIMESTAMP
+        updated_at = NOW()
       WHERE rr_number = ${rrNumber}
+      RETURNING rr_number, status_code, updated_at
     `;
 
-    if ((result as any).changes === 0) {
+    if (!Array.isArray(result) || result.length === 0) {
       return NextResponse.json(
         { error: "Load not found" },
         { status: 404 }
       );
     }
 
-    // Get the updated load
-    const updatedLoadResult = await sql`
-      SELECT rr_number, status_code, updated_at
-      FROM loads
-      WHERE rr_number = ${rrNumber}
-    `;
-    const updatedLoad = Array.isArray(updatedLoadResult) ? updatedLoadResult[0] : null;
+    const updatedLoad = result[0];
 
     return NextResponse.json({
       success: true,
