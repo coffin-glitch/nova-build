@@ -27,6 +27,7 @@
     "worker:notifications": "tsx workers/notification-worker.ts",
     "worker:notifications:dev": "tsx --watch workers/notification-worker.ts",
     "test:redis": "tsx scripts/test-redis-connection.ts",
+    "test:upstash": "tsx scripts/test-upstash-notification.ts",
     "worker:status": "tsx scripts/check-worker-status.ts",
     "verify:worker": "tsx scripts/verify-worker-connection.ts"
   },

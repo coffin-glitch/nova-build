@@ -4,8 +4,8 @@
   "description": "Notification worker process for Nova Build",
   "main": "index.js",
   "scripts": {
-    "start": "tsx ../workers/notification-worker.ts",
-    "dev": "tsx --watch ../workers/notification-worker.ts"
+    "start": "tsx workers/notification-worker.ts",
+    "dev": "tsx --watch workers/notification-worker.ts"
   },
   "dependencies": {
     "bullmq": "^5.0.0",

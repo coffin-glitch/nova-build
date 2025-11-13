@@ -41,7 +41,7 @@ export async function PUT(
     let updateResult;
 
     switch (action) {
-      case 'accept':
+      case 'accept': {
         status = 'accepted';
         updateResult = await sql`
           UPDATE load_offers 
@@ -51,14 +51,14 @@ export async function PUT(
         `;
         
         // Get supabase_user_id for notifications (Supabase-only)
-        const carrierSupabaseUserId = updateResult[0].supabase_carrier_user_id || updateResult[0].carrier_user_id;
+        const acceptCarrierSupabaseUserId = updateResult[0].supabase_carrier_user_id || updateResult[0].carrier_user_id;
         
         // Create notification for carrier (Supabase-only)
         await sql`
           INSERT INTO carrier_notifications (
             supabase_user_id, carrier_user_id, type, title, message, priority, load_id, action_url
           ) VALUES (
-            ${carrierSupabaseUserId},
+            ${acceptCarrierSupabaseUserId},
             ${updateResult[0].carrier_user_id},
             'offer_accepted',
             'Offer Accepted!',
@@ -77,12 +77,13 @@ export async function PUT(
           ) VALUES (
             ${offerId}, 'accepted', 'pending', 'accepted', 
             ${updateResult[0].offer_amount}, ${updateResult[0].offer_amount},
-            ${adminNotes || null}, ${carrierSupabaseUserId}, NOW()
+            ${adminNotes || null}, ${acceptCarrierSupabaseUserId}, NOW()
           )
         `;
         break;
+      }
       
-      case 'reject':
+      case 'reject': {
         status = 'rejected';
         updateResult = await sql`
           UPDATE load_offers 
@@ -92,14 +93,14 @@ export async function PUT(
         `;
         
         // Get supabase_user_id for notifications (Supabase-only)
-        const carrierSupabaseUserId = updateResult[0].supabase_carrier_user_id || updateResult[0].carrier_user_id;
+        const rejectCarrierSupabaseUserId = updateResult[0].supabase_carrier_user_id || updateResult[0].carrier_user_id;
         
         // Create notification for carrier (Supabase-only)
         await sql`
           INSERT INTO carrier_notifications (
             supabase_user_id, carrier_user_id, type, title, message, priority, load_id, action_url
           ) VALUES (
-            ${carrierSupabaseUserId},
+            ${rejectCarrierSupabaseUserId},
             ${updateResult[0].carrier_user_id},
             'offer_rejected',
             'Offer Rejected',
@@ -118,12 +119,13 @@ export async function PUT(
           ) VALUES (
             ${offerId}, 'rejected', 'pending', 'rejected', 
             ${updateResult[0].offer_amount}, ${updateResult[0].offer_amount},
-            ${adminNotes || null}, ${carrierSupabaseUserId}, NOW()
+            ${adminNotes || null}, ${rejectCarrierSupabaseUserId}, NOW()
           )
         `;
         break;
+      }
       
-      case 'counter':
+      case 'counter': {
         status = 'countered';
         updateResult = await sql`
           UPDATE load_offers 
@@ -133,14 +135,14 @@ export async function PUT(
         `;
         
         // Get supabase_user_id for notifications (Supabase-only)
-        const carrierSupabaseUserId = updateResult[0].supabase_carrier_user_id || updateResult[0].carrier_user_id;
+        const counterCarrierSupabaseUserId = updateResult[0].supabase_carrier_user_id || updateResult[0].carrier_user_id;
         
         // Create notification for carrier (Supabase-only)
         await sql`
           INSERT INTO carrier_notifications (
             supabase_user_id, carrier_user_id, type, title, message, priority, load_id, action_url
           ) VALUES (
-            ${carrierSupabaseUserId},
+            ${counterCarrierSupabaseUserId},
             ${updateResult[0].carrier_user_id},
             'offer_countered',
             'Counter Offer Received',
@@ -159,10 +161,11 @@ export async function PUT(
           ) VALUES (
             ${offerId}, 'countered', 'pending', 'countered', 
             ${updateResult[0].offer_amount}, ${counterAmount},
-            ${adminNotes || null}, ${carrierSupabaseUserId}, NOW()
+            ${adminNotes || null}, ${counterCarrierSupabaseUserId}, NOW()
           )
         `;
         break;
+      }
       
       default:
         return NextResponse.json({ error: "Invalid action" }, { status: 400 });
