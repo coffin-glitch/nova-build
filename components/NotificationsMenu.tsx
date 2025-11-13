@@ -171,12 +171,15 @@ export default function NotificationsMenu() {
           ) : (
             <div className="space-y-2 max-h-80 overflow-y-auto">
               {notifications.map((notification: Notification) => (
-                <CardGlass
+                <div
                   key={notification.id}
-                  className={`p-3 cursor-pointer hover:bg-white/5 transition-colors ${
+                  onClick={() => handleMarkRead(notification.id)}
+                  className="cursor-pointer"
+                >
+                <CardGlass
+                  className={`p-3 hover:bg-white/5 transition-colors ${
                     !notification.read ? "bg-blue-500/10 border-blue-500/20" : ""
                   }`}
-                  onClick={() => handleMarkRead(notification.id)}
                 >
                   <div className="flex items-start gap-3">
                     <div className={`text-lg ${getNotificationColor(notification.type)}`}>
@@ -205,6 +208,7 @@ export default function NotificationsMenu() {
                     </div>
                   </div>
                 </CardGlass>
+                </div>
               ))}
             </div>
           )}
