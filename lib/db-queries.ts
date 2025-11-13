@@ -23,7 +23,7 @@ export async function getUserWhereCondition(
   columnPrefix: string = ''
 ): Promise<Sql<any>> {
   if (columnPrefix) {
-    return sql`${sql(columnPrefix)}.supabase_user_id = ${userId}`;
+    return sql.unsafe(`${columnPrefix}.supabase_user_id = $1`, [userId]) as Sql<any>;
   } else {
     return sql`supabase_user_id = ${userId}`;
   }
@@ -38,7 +38,7 @@ export async function getCarrierUserWhereCondition(
   columnPrefix: string = ''
 ): Promise<Sql<any>> {
   if (columnPrefix) {
-    return sql`${sql(columnPrefix)}.supabase_carrier_user_id = ${userId}`;
+    return sql.unsafe(`${columnPrefix}.supabase_carrier_user_id = $1`, [userId]) as Sql<any>;
   } else {
     return sql`supabase_carrier_user_id = ${userId}`;
   }
@@ -53,7 +53,7 @@ export async function getAdminUserWhereCondition(
   columnPrefix: string = ''
 ): Promise<Sql<any>> {
   if (columnPrefix) {
-    return sql`${sql(columnPrefix)}.supabase_admin_user_id = ${userId}`;
+    return sql.unsafe(`${columnPrefix}.supabase_admin_user_id = $1`, [userId]) as Sql<any>;
   } else {
     return sql`supabase_admin_user_id = ${userId}`;
   }
@@ -68,7 +68,7 @@ export async function getWinnerUserWhereCondition(
   columnPrefix: string = ''
 ): Promise<Sql<any>> {
   if (columnPrefix) {
-    return sql`${sql(columnPrefix)}.winner_user_id = ${userId}`;
+    return sql.unsafe(`${columnPrefix}.winner_user_id = $1`, [userId]) as Sql<any>;
   } else {
     return sql`winner_user_id = ${userId}`;
   }
@@ -83,7 +83,7 @@ export async function getSenderUserWhereCondition(
   columnPrefix: string = ''
 ): Promise<Sql<any>> {
   if (columnPrefix) {
-    return sql`${sql(columnPrefix)}.supabase_sender_id = ${userId}`;
+    return sql.unsafe(`${columnPrefix}.supabase_sender_id = $1`, [userId]) as Sql<any>;
   } else {
     return sql`supabase_sender_id = ${userId}`;
   }
