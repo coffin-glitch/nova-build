@@ -218,7 +218,6 @@ export default function LoadCard({
               weight,
               miles,
               stops,
-              target_buy,
               customer_name,
               origin_city,
               origin_state,
@@ -227,7 +226,7 @@ export default function LoadCard({
               published,
               created_at,
               updated_at,
-            }}
+            } as any}
           />
           <OfferDialog
             loadRrNumber={rr_number}
@@ -236,7 +235,6 @@ export default function LoadCard({
               origin_state,
               destination_city,
               destination_state,
-              target_buy,
               equipment,
             }}
             onOfferSubmitted={onOfferSubmitted}
