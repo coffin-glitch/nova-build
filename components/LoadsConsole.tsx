@@ -102,7 +102,7 @@ export default function LoadsConsole() {
       const bookedElement = document.getElementById('booked-loads');
       
       if (totalElement) totalElement.textContent = (data.total || 0).toString();
-      if (activeElement) activeElement.textContent = (data.loads?.filter(load => load.published).length || 0).toString();
+      if (activeElement) activeElement.textContent = (data.loads?.filter((load: any) => load.published).length || 0).toString();
       if (bidsElement) bidsElement.textContent = (data.loads?.length || 0).toString();
       if (bookedElement) bookedElement.textContent = '0';
       
