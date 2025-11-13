@@ -2067,7 +2067,7 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                     }`}
                     onClick={() => {
                       const newStatePrefs = isSelected
-                        ? currentPrefs.statePreferences.filter(s => s !== state.code)
+                        ? currentPrefs.statePreferences.filter((s: string) => s !== state.code)
                         : [...currentPrefs.statePreferences, state.code];
                       setEditingPreferences({
                         ...currentPrefs,
