@@ -336,11 +336,11 @@ export default function FloatingAdminChatButton() {
         ? conv.carrier_user_id 
         : conv.admin_user_id;
       const isOtherUserAdmin = conv.conversation_with_type === 'admin';
-      const displayName = getDisplayName(otherUserId, isOtherUserAdmin);
+      const displayName = getDisplayName(otherUserId || '', isOtherUserAdmin);
       
       return (
         displayName.toLowerCase().includes(searchLower) ||
-        otherUserId.toLowerCase().includes(searchLower) ||
+        (otherUserId && otherUserId.toLowerCase().includes(searchLower)) ||
         (conv.last_message && conv.last_message.toLowerCase().includes(searchLower))
       );
     });
@@ -636,7 +636,7 @@ export default function FloatingAdminChatButton() {
   const carrierDisplayName = selectedConversation && otherUserId
     ? getDisplayName(otherUserId, isOtherUserAdmin) 
     : selectedConversation
-    ? getDisplayName(selectedConversation.carrier_user_id || selectedConversation.admin_user_id, isOtherUserAdmin)
+    ? getDisplayName(selectedConversation.carrier_user_id || selectedConversation.admin_user_id || '', isOtherUserAdmin)
     : "Carrier";
   const carrierUserId = otherUserId || selectedConversation?.carrier_user_id;
 
