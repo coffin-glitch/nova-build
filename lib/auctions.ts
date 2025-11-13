@@ -893,7 +893,7 @@ export async function listAwardsForUser(userId: string): Promise<AuctionAward[]>
       ORDER BY aa.awarded_at DESC
     `;
 
-    return awards;
+    return awards as unknown as AuctionAward[];
   } catch (error) {
     console.error('Database error in listAwardsForUser:', error);
     return [];
