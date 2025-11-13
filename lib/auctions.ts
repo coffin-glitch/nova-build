@@ -1012,16 +1012,21 @@ export async function updateCarrierProfile({
     if (contact_name !== undefined) updates.contact_name = contact_name;
     updates.updated_at = new Date();
 
-    const setClause = Object.keys(updates)
-      .map(key => `${key} = $${key}`)
-      .join(', ');
+    // Build SET clause with proper SQL parameterization
+    const setParts: string[] = [];
+    const values: any[] = [];
+    for (const [key, value] of Object.entries(updates)) {
+      setParts.push(`${key} = $${setParts.length + 1}`);
+      values.push(value);
+    }
+    const setClause = setParts.join(', ');
 
-    const result = await sql`
+    const result = await sql.unsafe(`
       UPDATE public.carrier_profiles 
-      SET ${sql(setClause, ...Object.values(updates))}
-      WHERE supabase_user_id = ${userId}
+      SET ${setClause}
+      WHERE supabase_user_id = $${setParts.length + 1}
       RETURNING *
-    `;
+    `, [...values, userId]);
 
     // Clear caches to ensure updated data appears immediately
     try {
