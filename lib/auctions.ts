@@ -207,12 +207,12 @@ export async function listActiveTelegramBids({
     const rows = await query;
     
     // Add time_left_seconds to each row
-    return rows.map(row => {
+    return rows.map((row): TelegramBid => {
       const countdown = formatCountdown(row.expires_at_25);
       return {
         ...row,
         time_left_seconds: countdown.secondsLeft,
-      };
+      } as TelegramBid;
     });
   } catch (error) {
     console.error('Database error in listActiveTelegramBids:', error);
