@@ -1,5 +1,5 @@
 import { requireApiAdmin } from "@/lib/auth-api-helper";
-import sql from "@/lib/db.server";
+import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
           SET published = false, 
               archived = true, 
               updated_at = NOW()
-          WHERE rr_number = ANY(${loadIds})
+          WHERE rr_number = ANY(${sql(loadIds)})
         `;
         message = `Successfully archived loads`;
         break;
@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
         // Delete selected loads
         result = await sql`
           DELETE FROM loads 
-          WHERE rr_number = ANY(${loadIds})
+          WHERE rr_number = ANY(${sql(loadIds)})
         `;
         message = `Successfully deleted loads`;
         break;
