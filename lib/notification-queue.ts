@@ -22,30 +22,34 @@ redisConnection.on('connect', () => {
   console.log('✅ Redis connection established');
 });
 
-redisConnection.on('ready', async () => {
+redisConnection.on('ready', () => {
   console.log('✅ Redis connection ready');
   // Check eviction policy (this will show a warning if not noeviction)
-  try {
-    const info = await redisConnection.info('memory');
-    const policyMatch = info.match(/maxmemory-policy:(\w+)/);
-    const maxMemoryMatch = info.match(/maxmemory:(\d+)/);
-    
-    if (policyMatch) {
-      const policy = policyMatch[1];
-      if (policy === 'noeviction') {
-        console.log('✅ Redis eviction policy: noeviction (recommended for queues)');
+  // Use setImmediate to ensure this runs after the ready event completes
+  setImmediate(async () => {
+    try {
+      const info = await redisConnection.info('memory');
+      const policyMatch = info.match(/maxmemory-policy:(\w+)/);
+      const maxMemoryMatch = info.match(/maxmemory:(\d+)/);
+      
+      if (policyMatch) {
+        const policy = policyMatch[1];
+        if (policy === 'noeviction') {
+          console.log('✅ Redis eviction policy: noeviction (recommended for queues)');
+        } else {
+          console.warn(`⚠️  Redis eviction policy is "${policy}" (not "noeviction"). Consider changing to "noeviction" in Upstash settings to prevent job loss.`);
+        }
+      } else if (maxMemoryMatch && parseInt(maxMemoryMatch[1]) === 0) {
+        // If maxmemory is 0, eviction is effectively disabled
+        console.log('✅ Redis eviction is disabled (maxmemory: 0) - equivalent to noeviction');
       } else {
-        console.warn(`⚠️  Redis eviction policy is "${policy}" (not "noeviction"). Consider changing to "noeviction" in Upstash settings to prevent job loss.`);
+        console.warn('⚠️  Could not determine Redis eviction policy. Check Upstash settings.');
+        console.log('Debug - Memory info snippet:', info.split('\n').slice(0, 5).join('\n'));
       }
-    } else if (maxMemoryMatch && parseInt(maxMemoryMatch[1]) === 0) {
-      // If maxmemory is 0, eviction is effectively disabled
-      console.log('✅ Redis eviction is disabled (maxmemory: 0) - equivalent to noeviction');
-    } else {
-      console.warn('⚠️  Could not determine Redis eviction policy. Check Upstash settings.');
+    } catch (error: any) {
+      console.warn('⚠️  Could not check Redis eviction policy:', error?.message || error);
     }
-  } catch (error) {
-    console.warn('⚠️  Could not check Redis eviction policy:', error);
-  }
+  });
 });
 
 redisConnection.on('error', (error) => {
