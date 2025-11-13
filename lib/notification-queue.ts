@@ -17,6 +17,34 @@ const redisConnection = new Redis(redisUrl, {
   },
 });
 
+// Log Redis connection status
+redisConnection.on('connect', () => {
+  console.log('✅ Redis connection established');
+});
+
+redisConnection.on('ready', async () => {
+  console.log('✅ Redis connection ready');
+  // Check eviction policy (this will show a warning if not noeviction)
+  try {
+    const info = await redisConnection.info('memory');
+    if (info.includes('maxmemory-policy:noeviction')) {
+      console.log('✅ Redis eviction policy: noeviction (recommended for queues)');
+    } else {
+      console.warn('⚠️  Redis eviction policy is not "noeviction". Consider changing to "noeviction" in Upstash settings to prevent job loss.');
+    }
+  } catch (error) {
+    console.warn('⚠️  Could not check Redis eviction policy:', error);
+  }
+});
+
+redisConnection.on('error', (error) => {
+  console.error('❌ Redis connection error:', error);
+});
+
+redisConnection.on('close', () => {
+  console.log('⚠️  Redis connection closed');
+});
+
 // Create queues for different notification priorities
 export const notificationQueue = new Queue('notifications', {
   connection: redisConnection,
