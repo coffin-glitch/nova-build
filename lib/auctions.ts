@@ -256,17 +256,17 @@ export async function getBidSummary(bid_number: string, userId?: string): Promis
     `;
 
     // Get lowest bid info
-    const lowestBid = carrierBids.length > 0 ? carrierBids[0] : null;
+    const lowestBid = carrierBids.length > 0 ? (carrierBids[0] as CarrierBid) : null;
 
     // Get user's bid if userId provided (Supabase-only)
-    const userBid = userId ? carrierBids.find(bid => bid.supabase_user_id === userId) || null : null;
+    const userBid = userId ? (carrierBids.find(bid => bid.supabase_user_id === userId) as CarrierBid | undefined) || null : null;
 
     return {
       telegram_bid: {
         ...bid,
         time_left_seconds: countdown.secondsLeft,
       } as TelegramBid,
-      carrier_bids: carrierBids,
+      carrier_bids: carrierBids as unknown as CarrierBid[],
       lowest_amount_cents: lowestBid?.amount_cents || null,
       lowest_user_id: lowestBid?.supabase_user_id || null,
       bids_count: carrierBids.length,
