@@ -4,13 +4,13 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { userId: string } }
+  { params }: { params: Promise<{ userId: string }> }
 ) {
   try {
     // Ensure user is admin (Supabase-only)
     await requireApiAdmin(request);
 
-    const carrierUserId = params.userId;
+    const { userId: carrierUserId } = await params;
 
     // Unlock carrier profile (Supabase-only)
     await sql`

@@ -200,10 +200,9 @@ export function CarrierLoadsConsole() {
   // Filter offers based on search and filters
   const filteredOffers = offers.filter(offer => {
     const matchesSearch = !searchTerm || 
-      offer.load?.tm_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       offer.load_rr_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      offer.load?.origin_city?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      offer.load?.destination_city?.toLowerCase().includes(searchTerm.toLowerCase());
+      offer.origin_city?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      offer.destination_city?.toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesStatus = statusFilter === "all" || offer.status === statusFilter;
     
@@ -546,9 +545,9 @@ export function CarrierLoadsConsole() {
                       <div className="flex items-center gap-3">
                         {getStatusIcon(offer.status)}
                         <div>
-                          <p className="font-medium">#{offer.load?.tm_number || offer.load_rr_number}</p>
+                          <p className="font-medium">#{offer.tm_number || offer.load_rr_number}</p>
                           <p className="text-sm text-muted-foreground">
-                            {offer.load?.origin_city || 'N/A'}, {offer.load?.origin_state || 'N/A'} → {offer.load?.destination_city || 'N/A'}, {offer.load?.destination_state || 'N/A'}
+                            {offer.origin_city || 'N/A'}, {offer.origin_state || 'N/A'} → {offer.destination_city || 'N/A'}, {offer.destination_state || 'N/A'}
                           </p>
                         </div>
                       </div>
@@ -609,7 +608,7 @@ export function CarrierLoadsConsole() {
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-3">
-                        <h3 className="text-lg font-semibold">#{offer.load?.tm_number || offer.load_rr_number}</h3>
+                        <h3 className="text-lg font-semibold">#{offer.tm_number || offer.load_rr_number}</h3>
                         {getStatusBadge(offer.status)}
                       </div>
                       
@@ -617,24 +616,24 @@ export function CarrierLoadsConsole() {
                         <div>
                           <p className="text-sm text-muted-foreground">Route</p>
                           <p className="font-medium">
-                            {offer.load?.origin_city || 'N/A'}, {offer.load?.origin_state || 'N/A'} → {offer.load?.destination_city || 'N/A'}, {offer.load?.destination_state || 'N/A'}
+                            {offer.origin_city || 'N/A'}, {offer.origin_state || 'N/A'} → {offer.destination_city || 'N/A'}, {offer.destination_state || 'N/A'}
                           </p>
                         </div>
                         <div>
                           <p className="text-sm text-muted-foreground">Pickup</p>
                           <p className="font-medium">
-                            {offer.load?.pickup_date || 'N/A'} {offer.load?.pickup_time || ''}
+                            {offer.pickup_date || 'N/A'}
                           </p>
                         </div>
                         <div>
                           <p className="text-sm text-muted-foreground">Delivery</p>
                           <p className="font-medium">
-                            {offer.load?.delivery_date || 'N/A'} {offer.load?.delivery_time || ''}
+                            {offer.delivery_date || 'N/A'}
                           </p>
                         </div>
                         <div>
                           <p className="text-sm text-muted-foreground">Equipment</p>
-                          <p className="font-medium">{offer.load?.equipment || 'N/A'}</p>
+                          <p className="font-medium">{offer.equipment || 'N/A'}</p>
                         </div>
                       </div>
 
@@ -682,7 +681,7 @@ export function CarrierLoadsConsole() {
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <LoadDetailsDialog load={offer.load} offer={offer} />
+                      <LoadDetailsDialog load={null} offer={offer} />
                       {offer.status === 'pending' && (
                         <>
                           <Button 

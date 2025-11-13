@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Load, LoadsResponse, getLoads, getLoadStats, deleteLoad, updateLoadStatus } from "@/lib/load-actions";
+import { getLoads, getLoadStats, deleteLoad, updateLoadStatus } from "@/lib/load-actions";
+import { Load } from "@/types/load";
 
 interface LoadsManagementClientProps {
-  initialLoads?: LoadsResponse;
+  initialLoads?: Load[];
   initialStats?: {
     totalLoads: number;
     publishedLoads: number;
@@ -16,7 +17,7 @@ export default function LoadsManagementClient({
   initialLoads, 
   initialStats 
 }: LoadsManagementClientProps) {
-  const [loads, setLoads] = useState<Load[]>(initialLoads?.loads || []);
+  const [loads, setLoads] = useState<Load[]>(initialLoads || []);
   const [stats, setStats] = useState(initialStats || {
     totalLoads: 0,
     publishedLoads: 0,
@@ -38,10 +39,17 @@ export default function LoadsManagementClient({
       setError(null);
       
       const offset = (page - 1) * ITEMS_PER_PAGE;
-      const data = await getLoads(ITEMS_PER_PAGE, offset, search || undefined);
+      const result = await getLoads({ 
+        limit: ITEMS_PER_PAGE, 
+        offset, 
+        search: search || undefined 
+      });
       
-      setLoads(data.loads);
-      setTotalPages(Math.ceil(data.total / ITEMS_PER_PAGE));
+      if (result.success && result.data) {
+        setLoads(result.data as unknown as Load[]);
+        // For now, estimate total pages (we'd need a count query for accurate pagination)
+        setTotalPages(Math.ceil((result.data as unknown as Load[]).length / ITEMS_PER_PAGE));
+      }
       setCurrentPage(page);
     } catch (err) {
       console.error("Error fetching loads:", err);
@@ -54,8 +62,14 @@ export default function LoadsManagementClient({
   // Fetch stats
   const fetchStats = useCallback(async () => {
     try {
-      const newStats = await getLoadStats();
-      setStats(newStats);
+      const result = await getLoadStats();
+      if (result.success && result.data) {
+        setStats({
+          totalLoads: Number(result.data.total) || 0,
+          publishedLoads: Number(result.data.active) || 0,
+          totalRevenue: 0 // Not available in current stats
+        });
+      }
     } catch (err) {
       console.error("Error fetching stats:", err);
     }
@@ -126,7 +140,8 @@ export default function LoadsManagementClient({
   // Handle status toggle
   const handleToggleStatus = useCallback(async (rrNumber: string, currentStatus: boolean) => {
     try {
-      await updateLoadStatus(rrNumber, !currentStatus);
+      // Toggle between published/unpublished status
+      await updateLoadStatus(rrNumber, currentStatus ? 'archived' : 'published');
       await handleRefresh();
     } catch (err) {
       console.error("Error updating load status:", err);
@@ -156,7 +171,7 @@ export default function LoadsManagementClient({
     
     try {
       for (const rrNumber of selectedLoads) {
-        await updateLoadStatus(rrNumber, published);
+        await updateLoadStatus(rrNumber, published ? 'published' : 'archived');
       }
       setSelectedLoads(new Set());
       await handleRefresh();

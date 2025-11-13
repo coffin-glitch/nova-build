@@ -43,11 +43,12 @@ export async function PATCH(
     }
 
     // Get the updated load
-    const [updatedLoad] = await sql`
+    const updatedLoadResult = await sql`
       SELECT rr_number, status_code, updated_at
       FROM loads
       WHERE rr_number = ${rrNumber}
     `;
+    const updatedLoad = Array.isArray(updatedLoadResult) ? updatedLoadResult[0] : null;
 
     return NextResponse.json({
       success: true,
@@ -99,7 +100,7 @@ export async function GET(
       WHERE rr_number = ${rrNumber}
     `;
 
-    if (result.length === 0) {
+    if (!Array.isArray(result) || result.length === 0) {
       return NextResponse.json(
         { error: "Load not found" },
         { status: 404 }

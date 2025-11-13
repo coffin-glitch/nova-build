@@ -57,15 +57,16 @@ export async function POST(req: Request) {
   const offsetIdx = params.length;
 
   const where = clauses.length ? `where ${clauses.join(' AND ')}` : '';
-  const rows = await sql/*sql*/`
+  const query = `
     select rr_number, equipment, total_miles, revenue, purchase, margin,
            origin_city, origin_state, destination_city, destination_state,
            pickup_date, delivery_date, updated_at
     from public.loads
-    ${sql.unsafe(where.replace(/\$(\d+)/g, (_:any,n:string)=>`$${Number(n)}`))}
+    ${where.replace(/\$(\d+)/g, (_:any,n:string)=>`$${Number(n)}`)}
     order by pickup_date nulls last, updated_at desc
-    limit ${sql.unsafe(`$${limitIdx}`)} offset ${sql.unsafe(`$${offsetIdx}`)}
-  `(...params);
+    limit $${limitIdx} offset $${offsetIdx}
+  `;
+  const rows = await (sql as any).unsafe(query, params);
 
   return NextResponse.json({ rows });
 }

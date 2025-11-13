@@ -47,8 +47,6 @@ export function BidDetailsDialog({ bid, children }: BidDetailsDialogProps) {
   const [showLifecycleManager, setShowLifecycleManager] = useState(false);
   const [acceptingBid, setAcceptingBid] = useState(false);
 
-  if (!bid) return null;
-
   // Fetch bid history when dialog opens
   useEffect(() => {
     if (isOpen && bid?.bid_number) {
@@ -68,6 +66,8 @@ export function BidDetailsDialog({ bid, children }: BidDetailsDialogProps) {
         });
     }
   }, [isOpen, bid?.bid_number]);
+
+  if (!bid) return null;
 
   const getStatusBadge = (status: string) => {
     const variants = {

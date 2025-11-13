@@ -5,13 +5,14 @@ import { NextResponse } from "next/server";
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ offerId: string }> }
 ) {
   try {
     // This will throw if user is not admin
     await requireApiAdmin(req);
 
-    const { id } = await params;
+    const { offerId } = await params;
+    const id = offerId;
 
     // Get offer history with user information
     const history = await sql`

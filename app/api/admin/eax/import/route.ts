@@ -121,7 +121,7 @@ export async function POST(request: NextRequest) {
     return safe.data;
   });
 
-  const validRows = normalized.filter((r: any) => !r.__invalid && r.rr_number);
+  const validRows = normalized.filter((r: any) => !r.__invalid && r.rr_number) as Array<z.infer<typeof RowSchema>>;
   const invalid = normalized.filter((r: any) => r.__invalid);
 
   if (!validRows.length) {
@@ -141,9 +141,9 @@ export async function POST(request: NextRequest) {
            equipment, total_miles, revenue, purchase, net, margin, customer_name, customer_ref, driver_name,
            origin_city, origin_state, destination_city, destination_state, vendor_name, dispatcher_name, updated_at)
         values
-          (${r.rr_number}, ${r.tm_number}, ${r.status_code}, ${r.pickup_date}, ${r.pickup_window}, ${r.delivery_date}, ${r.delivery_window},
-           ${r.equipment}, ${r.total_miles}, ${r.revenue}, ${r.purchase}, ${r.net}, ${r.margin}, ${r.customer_name}, ${r.customer_ref}, ${r.driver_name},
-           ${r.origin_city}, ${r.origin_state}, ${r.destination_city}, ${r.destination_state}, ${r.vendor_name}, ${r.dispatcher_name}, now())
+          (${r.rr_number}, ${r.tm_number ?? null}, ${r.status_code ?? null}, ${r.pickup_date ?? null}, ${r.pickup_window ?? null}, ${r.delivery_date ?? null}, ${r.delivery_window ?? null},
+           ${r.equipment ?? null}, ${r.total_miles ?? null}, ${r.revenue ?? null}, ${r.purchase ?? null}, ${r.net ?? null}, ${r.margin ?? null}, ${r.customer_name ?? null}, ${r.customer_ref ?? null}, ${r.driver_name ?? null},
+           ${r.origin_city ?? null}, ${r.origin_state ?? null}, ${r.destination_city ?? null}, ${r.destination_state ?? null}, ${r.vendor_name ?? null}, ${r.dispatcher_name ?? null}, now())
         on conflict (rr_number) do update set
            tm_number = excluded.tm_number,
            status_code = excluded.status_code,
@@ -175,9 +175,9 @@ export async function POST(request: NextRequest) {
            equipment, total_miles, revenue, purchase, net, margin, customer_name, customer_ref, driver_name,
            origin_city, origin_state, destination_city, destination_state, vendor_name, dispatcher_name, published, created_at, updated_at)
         values
-          (${r.rr_number}, ${r.tm_number}, ${r.status_code}, ${r.pickup_date}, ${r.pickup_window}, ${r.delivery_date}, ${r.delivery_window},
-           ${r.equipment}, ${r.total_miles}, ${r.revenue}, ${r.purchase}, ${r.net}, ${r.margin}, ${r.customer_name}, ${r.customer_ref}, ${r.driver_name},
-           ${r.origin_city}, ${r.origin_state}, ${r.destination_city}, ${r.destination_state}, ${r.vendor_name}, ${r.dispatcher_name}, false, now(), now())
+          (${r.rr_number}, ${r.tm_number ?? null}, ${r.status_code ?? null}, ${r.pickup_date ?? null}, ${r.pickup_window ?? null}, ${r.delivery_date ?? null}, ${r.delivery_window ?? null},
+           ${r.equipment ?? null}, ${r.total_miles ?? null}, ${r.revenue ?? null}, ${r.purchase ?? null}, ${r.net ?? null}, ${r.margin ?? null}, ${r.customer_name ?? null}, ${r.customer_ref ?? null}, ${r.driver_name ?? null},
+           ${r.origin_city ?? null}, ${r.origin_state ?? null}, ${r.destination_city ?? null}, ${r.destination_state ?? null}, ${r.vendor_name ?? null}, ${r.dispatcher_name ?? null}, false, now(), now())
         on conflict (rr_number) do update set
            tm_number = excluded.tm_number,
            status_code = excluded.status_code,

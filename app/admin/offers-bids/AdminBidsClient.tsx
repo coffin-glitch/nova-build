@@ -770,7 +770,7 @@ export default function AdminBidsClient() {
           </DialogHeader>
           <AdminBidLifecycleViewer 
             bidId={selectedBid?.bid_number} 
-            onBidSelect={(bid) => setSelectedBid(bid)}
+            onBidSelect={(bid) => setSelectedBid(bid as AwardedBid)}
           />
         </DialogContent>
       </Dialog>

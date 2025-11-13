@@ -97,7 +97,7 @@ export function shouldTriggerNotification(
     return { shouldNotify: false, reason: 'Similar load notifications disabled' };
   }
   
-  if (preferences.emailNotifications === false && preferences.similarLoadNotifications === false) {
+  if (!preferences.emailNotifications && !preferences.similarLoadNotifications) {
     return { shouldNotify: false, reason: 'All notifications disabled' };
   }
   

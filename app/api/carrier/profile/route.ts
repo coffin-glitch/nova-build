@@ -221,9 +221,10 @@ export async function POST(request: NextRequest) {
       try {
         const { notifyAllAdmins } = await import('@/lib/notifications');
         
-        const companyName = formData.company_name || formData.legal_name || 'Unknown Company';
-        const mcNumber = formData.mc_number || 'N/A';
-        const dotNumber = formData.dot_number || null;
+        // Use variables already extracted from body
+        const companyNameForNotification = companyName || 'Unknown Company';
+        const mcNumberForNotification = mcNumber || 'N/A';
+        const dotNumberForNotification = dotNumber || null;
         
         await notifyAllAdmins(
           'profile_submission',
@@ -231,10 +232,10 @@ export async function POST(request: NextRequest) {
           `${companyName} (MC: ${mcNumber})${dotNumber ? `, DOT: ${dotNumber}` : ''} submitted their profile for approval`,
           {
             carrier_user_id: userId,
-            company_name: companyName,
-            legal_name: formData.legal_name || companyName,
-            mc_number: mcNumber,
-            dot_number: dotNumber,
+            company_name: companyNameForNotification,
+            legal_name: companyNameForNotification,
+            mc_number: mcNumberForNotification,
+            dot_number: dotNumberForNotification,
             submitted_at: new Date().toISOString()
           }
         );

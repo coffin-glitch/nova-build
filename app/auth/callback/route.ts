@@ -118,7 +118,7 @@ export async function GET(request: NextRequest) {
       console.log('🐛 Code length:', code.length);
       console.log('🐛 Code preview:', code.substring(0, 20) + '...');
       console.log('🐛 Cookie adapter type:', typeof cookieAdapter);
-      console.log('🐛 Cookie adapter get type:', typeof cookieAdapter.get);
+      console.log('🐛 Cookie adapter getAll type:', typeof cookieAdapter.getAll);
       
       let codeError: any = null;
       let data: any = null;
@@ -316,8 +316,7 @@ export async function GET(request: NextRequest) {
           console.log(`🧹 [AUTH CALLBACK] Deleting Clerk cookie: ${cookieName}`);
           
           // Delete with multiple methods to ensure removal
-          response.cookies.delete(cookieName, { path: '/' });
-          response.cookies.delete(cookieName, { path: '/', domain: undefined });
+          response.cookies.delete(cookieName);
           
           // Also set with expired date to force browser to remove it
           response.cookies.set(cookieName, '', {

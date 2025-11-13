@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import sql from "@/lib/db.server";
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,7 +9,7 @@ export async function GET(request: NextRequest) {
 
     // Get loads that have accepted offers today
     // For now, return 0 since we don't have a proper offers system yet
-    const bookedLoads = [];
+    const bookedLoads: any[] = [];
 
     // Get summary stats
     const totalBooked = bookedLoads.length;

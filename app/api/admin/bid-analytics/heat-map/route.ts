@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
-import sql from "@/lib/db";
 import { requireApiAdmin } from "@/lib/auth-api-helper";
+import sql from "@/lib/db";
+import { NextRequest, NextResponse } from "next/server";
 
 /**
  * API endpoint for heat map analytics
@@ -584,6 +584,16 @@ export async function GET(request: NextRequest) {
           originState: string;
           destinationState: string;
           lowestAwardedBidForRoute: number | null;
+        }>;
+        laneFrequencies?: Array<{
+          lane: string;
+          count: number;
+          firstSeen: string;
+          lastSeen: string;
+          timeSpanDays: number;
+          expectedFrequencyPerDay: number;
+          expectedFrequencyPerWeek: number;
+          expectedFrequencyPerMonth: number;
         }>;
       }> = [];
 

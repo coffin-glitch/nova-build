@@ -79,7 +79,7 @@ export async function POST(
         ${profileUserId},
         ${JSON.stringify(currentProfile[0])},
         'approved',
-        ${currentProfile[0].submitted_at || NOW()},
+        ${currentProfile[0].submitted_at || new Date().toISOString()},
         NOW(),
         ${adminUserId},
         ${review_notes || null},

@@ -4,14 +4,14 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { userId: string } }
+  { params }: { params: Promise<{ userId: string }> }
 ) {
   try {
     // Ensure user is admin (Supabase-only)
     const auth = await requireApiAdmin(request);
     const adminUserId = auth.userId;
 
-    const carrierUserId = params.userId;
+    const { userId: carrierUserId } = await params;
     const body = await request.json();
     const { reason } = body;
 

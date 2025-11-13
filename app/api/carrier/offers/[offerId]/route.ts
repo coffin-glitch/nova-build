@@ -186,7 +186,7 @@ export async function PUT(
   } catch (error) {
     console.error("Error updating carrier offer:", error);
     return NextResponse.json(
-      { error: "Failed to update offer", details: error.message },
+      { error: "Failed to update offer", details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     );
   }
@@ -194,14 +194,14 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ offerId: string }> }
 ) {
   try {
     const auth = await requireApiCarrier(request);
     const userId = auth.userId;
 
-    const { id } = await params;
-    const offerId = id; // Alias for clarity
+    const { offerId } = await params;
+    const id = offerId;
 
     // First, verify the offer belongs to this carrier and is in a deletable state
     const existingOffer = await sql`
@@ -248,7 +248,7 @@ export async function DELETE(
   } catch (error) {
     console.error("Error deleting carrier offer:", error);
     return NextResponse.json(
-      { error: "Failed to delete offer", details: error.message },
+      { error: "Failed to delete offer", details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     );
   }

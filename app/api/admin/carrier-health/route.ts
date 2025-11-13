@@ -1,6 +1,6 @@
 import { requireApiAdmin } from "@/lib/auth-api-helper";
-import { NextRequest, NextResponse } from "next/server";
 import axios from "axios";
+import { NextRequest, NextResponse } from "next/server";
 
 const API_BASE = "https://staging.highway.com/core/connect/external_api/v1";
 
@@ -223,7 +223,7 @@ If activation doesn't work, contact Highway support: implementations@highway.com
   }
 
   // 2) exact-value filters
-  const searchParamsList = [
+  const searchParamsList: Record<string, string>[] = [
     { "q[identifiers_value_eq]": mcDigits, "q[identifiers_is_type_eq]": "MC", "q[s]": "id desc" },
     { "q[identifiers_value_eq]": `MC${mcDigits}`, "q[identifiers_is_type_eq]": "MC", "q[s]": "id desc" },
     { "q[identifiers_value_eq]": mcDigits, "q[s]": "id desc" },

@@ -5,11 +5,11 @@ import { NextRequest, NextResponse } from "next/server";
 // GET /api/offers/[id]/comments - Get all comments for an offer
 export async function GET(
   request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ offerId: string }> }
 ) {
   try {
     const resolvedParams = await params;
-    const offerId = resolvedParams.id;
+    const offerId = resolvedParams.offerId;
 
     // Get comments with author information
     const comments = await sql`
@@ -44,7 +44,7 @@ export async function GET(
   } catch (error) {
     console.error("Error fetching offer comments:", error);
     return NextResponse.json(
-      { error: "Failed to fetch comments", details: error.message },
+      { error: "Failed to fetch comments", details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     );
   }
@@ -52,12 +52,12 @@ export async function GET(
 
 // POST /api/offers/[id]/comments - Create a new comment
 export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  request: NextRequest,
+  { params }: { params: Promise<{ offerId: string }> }
 ) {
   try {
     const resolvedParams = await params;
-    const offerId = resolvedParams.id;
+    const offerId = resolvedParams.offerId;
 
     const body = await request.json();
     const { comment_text, is_internal = false } = body;
@@ -126,7 +126,7 @@ export async function POST(
   } catch (error) {
     console.error("Error creating offer comment:", error);
     return NextResponse.json(
-      { error: "Failed to create comment", details: error.message },
+      { error: "Failed to create comment", details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     );
   }

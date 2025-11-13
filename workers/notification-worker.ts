@@ -24,7 +24,7 @@ import sql from '../lib/db';
 import { Job } from 'bullmq';
 
 // Process a notification job
-async function processNotificationJob(job: Job) {
+async function processNotificationJob(job: Job): Promise<void> {
   const { userId, triggers } = job.data;
   
   console.log(`Processing notifications for user ${userId}, ${triggers.length} triggers`);
@@ -84,7 +84,7 @@ async function processNotificationJob(job: Job) {
   }
 
   console.log(`Processed ${processedCount} notifications for user ${userId}`);
-  return processedCount;
+  // Don't return the count - worker expects void
 }
 
 // Process a single trigger

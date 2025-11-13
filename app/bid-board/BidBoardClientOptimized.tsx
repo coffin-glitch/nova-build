@@ -1,37 +1,32 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
-import useSWR from "swr";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Glass } from "@/components/ui/glass";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { Countdown } from "@/components/ui/Countdown";
-import { 
-  Search, 
-  Filter, 
-  MapPin, 
-  Clock, 
-  Truck, 
-  DollarSign,
-  RefreshCw,
-  AlertCircle,
-  Gavel,
-  Navigation,
-  Archive,
-  Calendar,
-  SortAsc
-} from "lucide-react";
-import { formatMoney, formatDistance, formatStops, formatTimeOnly, formatPickupDateTime, formatStopCount, formatStopsDetailed } from "@/lib/format";
-import { TelegramBid } from "@/lib/auctions";
-import { toast } from "sonner";
-import { MapboxMap } from "@/components/ui/MapboxMap";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Glass } from "@/components/ui/glass";
+import { Input } from "@/components/ui/input";
 import { useAccentColor } from "@/hooks/useAccentColor";
-import { useTheme } from "next-themes";
 import { useIsAdmin } from "@/hooks/useUserRole";
+import { TelegramBid } from "@/lib/auctions";
+import { formatDistance, formatPickupDateTime, formatStopCount, formatStops } from "@/lib/format";
 import { getButtonTextColor as getTextColor } from "@/lib/utils";
+import {
+  AlertCircle,
+  Archive,
+  Clock,
+  DollarSign,
+  Gavel,
+  MapPin,
+  Navigation,
+  RefreshCw,
+  Search,
+  Truck
+} from "lucide-react";
+import { useTheme } from "next-themes";
+import React, { useCallback, useMemo, useState } from "react";
+import { toast } from "sonner";
+import useSWR from "swr";
 
 // Optimized fetcher with error handling
 const fetcher = async (url: string) => {
@@ -55,6 +50,7 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
   const [isBidding, setIsBidding] = useState(false);
   const [viewDetailsBid, setViewDetailsBid] = useState<TelegramBid | null>(null);
   const [showExpired, setShowExpired] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
   const [archivedFilters, setArchivedFilters] = useState({
     date: "",
     city: "",
@@ -540,17 +536,57 @@ const BidCard = React.memo(({
     </div>
   </Glass>
 ));
+BidCard.displayName = 'BidCard';
 
 // Additional memoized components would go here...
-const BidDialogContent = React.memo(({ /* props */ }) => {
-  // Component implementation
+interface BidDialogContentProps {
+  bid: TelegramBid;
+  bidAmount: string;
+  setBidAmount: (value: string) => void;
+  bidNotes: string;
+  setBidNotes: (value: string) => void;
+  isBidding: boolean;
+  accentColor: string;
+  getButtonTextColor: () => string;
+  onPlaceBid: () => void;
+  onCancel: () => void;
+}
+const BidDialogContent = React.memo(({ bid, bidAmount, setBidAmount, bidNotes, setBidNotes, isBidding, accentColor, getButtonTextColor, onPlaceBid, onCancel }: BidDialogContentProps) => {
+  // Component implementation - placeholder
+  return null;
 });
+BidDialogContent.displayName = 'BidDialogContent';
 
-const BidDetailsContent = React.memo(({ /* props */ }) => {
-  // Component implementation
+interface BidDetailsContentProps {
+  bid: TelegramBid;
+  accentColor: string;
+  getButtonTextColor: () => string;
+  onClose: () => void;
+  onPlaceBid: () => void;
+}
+const BidDetailsContent = React.memo(({ bid, accentColor, getButtonTextColor, onClose, onPlaceBid }: BidDetailsContentProps) => {
+  // Component implementation - placeholder
+  return null;
 });
+BidDetailsContent.displayName = 'BidDetailsContent';
 
-const ArchivedBidsContent = React.memo(({ /* props */ }) => {
-  // Component implementation
+interface ArchivedBidsContentProps {
+  archivedFilters: {
+    date: string;
+    city: string;
+    state: string;
+    milesMin: string;
+    milesMax: string;
+    sortBy: string;
+  };
+  setArchivedFilters: (filters: ArchivedBidsContentProps['archivedFilters']) => void;
+  accentColor: string;
+  getButtonTextColor: () => string;
+  onClose: () => void;
+}
+const ArchivedBidsContent = React.memo(({ archivedFilters, setArchivedFilters, accentColor, getButtonTextColor, onClose }: ArchivedBidsContentProps) => {
+  // Component implementation - placeholder
+  return null;
 });
+ArchivedBidsContent.displayName = 'ArchivedBidsContent';
 

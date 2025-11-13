@@ -319,7 +319,7 @@ export async function PATCH(request: NextRequest) {
           const { clearRoleCache } = await import('@/lib/auth-unified');
           clearRoleCache(user_id);
           console.log(`✅ [Admin Users API] Cleared role cache for user ${user_id}`);
-        } catch (cacheError) {
+        } catch {
           // Cache clearing is optional - continue anyway
           console.log(`ℹ️ [Admin Users API] Could not clear role cache (may be in different process)`);
         }

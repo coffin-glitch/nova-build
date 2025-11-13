@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { optimizedQueries } from "@/lib/db-optimized";
+import sql from "@/lib/db";
 
 // Cache for frequently accessed data
 const cache = new Map();
@@ -30,11 +31,11 @@ export async function GET(request: NextRequest) {
     let query = optimizedQueries.getActiveTelegramBids(limit, offset);
     
     if (q) {
-      query = sql`${query} AND tb.bid_number ILIKE ${'%' + q + '%'}`;
+      query = sql.unsafe(`${query} AND tb.bid_number ILIKE ${'%' + q.replace(/'/g, "''") + '%'}`);
     }
 
     if (tag) {
-      query = sql`${query} AND tb.tag = ${tag.toUpperCase()}`;
+      query = sql.unsafe(`${query} AND tb.tag = '${tag.toUpperCase().replace(/'/g, "''")}'`);
     }
 
     const rows = await query;

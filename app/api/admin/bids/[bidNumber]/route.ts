@@ -3,10 +3,10 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { bidNumber: string } }
+  { params }: { params: Promise<{ bidNumber: string }> }
 ) {
   try {
-    const { bidNumber } = params;
+    const { bidNumber } = await params;
 
     if (!bidNumber) {
       return NextResponse.json(

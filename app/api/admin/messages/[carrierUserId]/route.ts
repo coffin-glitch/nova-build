@@ -4,13 +4,13 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { carrierUserId: string } }
+  { params }: { params: Promise<{ carrierUserId: string }> }
 ) {
   try {
     // Ensure user is admin (Supabase-only)
     await requireApiAdmin(request);
 
-    const carrierUserId = params.carrierUserId;
+    const { carrierUserId } = await params;
 
     // Get messages for specific carrier (Supabase-only)
     const messages = await sql`

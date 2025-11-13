@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/lib/auth-server";
+import { requireApiAdmin } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 // SECURITY FIX: Remove key logging and add authentication
@@ -7,7 +7,7 @@ const DEV_KEY = process.env.DEV_ADMIN_KEY || "nova-dev-2024-admin-key";
 export async function POST(request: NextRequest) {
   try {
     // SECURITY FIX: Require admin authentication
-    await requireAdmin();
+    await requireApiAdmin(request);
     
     const { key } = await request.json();
     

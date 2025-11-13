@@ -32,29 +32,28 @@ export function LoadEditDialog({ open, onOpenChange, load, onSuccess }: LoadEdit
         delivery_date: load.delivery_date ? load.delivery_date.split('T')[0] : '',
         delivery_time: load.delivery_time || '',
         equipment: load.equipment || '',
-        weight: load.weight || '',
-        stops: load.stops || '',
-        total_miles: load.total_miles || '',
+        // weight and stops are not in Load type but may be used in forms
+        total_miles: load.total_miles || null,
         customer_name: load.customer_name || '',
         customer_ref: load.customer_ref || '',
         driver_name: load.driver_name || '',
         vendor_name: load.vendor_name || '',
         dispatcher_name: load.dispatcher_name || '',
-        revenue: load.revenue || '',
-        target_buy: load.target_buy || '',
-        max_buy: load.max_buy || '',
-        purchase: load.purchase || '',
-        net: load.net || '',
-        margin: load.margin || '',
-        spot_bid: load.spot_bid || '',
-        fuel_surcharge: load.fuel_surcharge || '',
-        purch_tr: load.purch_tr || '',
-        net_mrg: load.net_mrg || '',
-        cm: load.cm || '',
+        revenue: load.revenue || null,
+        target_buy: load.target_buy || null,
+        max_buy: load.max_buy || null,
+        purchase: load.purchase || null,
+        net: load.net || null,
+        margin: load.margin || null,
+        spot_bid: load.spot_bid || null,
+        fuel_surcharge: load.fuel_surcharge || null,
+        purch_tr: load.purch_tr || null,
+        net_mrg: load.net_mrg || null,
+        cm: load.cm || null,
         docs_scanned: load.docs_scanned || '',
         invoice_date: load.invoice_date ? load.invoice_date.split('T')[0] : '',
         invoice_audit: load.invoice_audit || '',
-        nbr_of_stops: load.nbr_of_stops || '',
+        nbr_of_stops: load.nbr_of_stops ?? null,
         vendor_dispatch: load.vendor_dispatch || '',
         published: load.published || false
       });
@@ -175,7 +174,7 @@ export function LoadEditDialog({ open, onOpenChange, load, onSuccess }: LoadEdit
                 <Input
                   id="weight"
                   type="number"
-                  value={formData.weight}
+                  value={(formData as any).weight ?? ''}
                   onChange={(e) => handleInputChange("weight", parseFloat(e.target.value) || '')}
                 />
               </div>
@@ -184,8 +183,8 @@ export function LoadEditDialog({ open, onOpenChange, load, onSuccess }: LoadEdit
                 <Input
                   id="total_miles"
                   type="number"
-                  value={formData.total_miles}
-                  onChange={(e) => handleInputChange("total_miles", parseInt(e.target.value) || '')}
+                  value={formData.total_miles ?? ''}
+                  onChange={(e) => handleInputChange("total_miles", parseInt(e.target.value) || null)}
                 />
               </div>
             </div>
@@ -199,8 +198,8 @@ export function LoadEditDialog({ open, onOpenChange, load, onSuccess }: LoadEdit
                   id="revenue"
                   type="number"
                   step="0.01"
-                  value={formData.revenue}
-                  onChange={(e) => handleInputChange("revenue", parseFloat(e.target.value) || '')}
+                  value={formData.revenue ?? ''}
+                  onChange={(e) => handleInputChange("revenue", parseFloat(e.target.value) || null)}
                 />
               </div>
               <div className="space-y-2">
@@ -209,8 +208,8 @@ export function LoadEditDialog({ open, onOpenChange, load, onSuccess }: LoadEdit
                   id="target_buy"
                   type="number"
                   step="0.01"
-                  value={formData.target_buy}
-                  onChange={(e) => handleInputChange("target_buy", parseFloat(e.target.value) || '')}
+                  value={formData.target_buy ?? ''}
+                  onChange={(e) => handleInputChange("target_buy", parseFloat(e.target.value) || null)}
                 />
               </div>
               <div className="space-y-2">
@@ -219,8 +218,8 @@ export function LoadEditDialog({ open, onOpenChange, load, onSuccess }: LoadEdit
                   id="max_buy"
                   type="number"
                   step="0.01"
-                  value={formData.max_buy}
-                  onChange={(e) => handleInputChange("max_buy", parseFloat(e.target.value) || '')}
+                  value={formData.max_buy ?? ''}
+                  onChange={(e) => handleInputChange("max_buy", parseFloat(e.target.value) || null)}
                 />
               </div>
               <div className="space-y-2">
@@ -229,8 +228,8 @@ export function LoadEditDialog({ open, onOpenChange, load, onSuccess }: LoadEdit
                   id="spot_bid"
                   type="number"
                   step="0.01"
-                  value={formData.spot_bid}
-                  onChange={(e) => handleInputChange("spot_bid", parseFloat(e.target.value) || '')}
+                  value={formData.spot_bid ?? ''}
+                  onChange={(e) => handleInputChange("spot_bid", parseFloat(e.target.value) || null)}
                 />
               </div>
               <div className="space-y-2">
@@ -239,8 +238,8 @@ export function LoadEditDialog({ open, onOpenChange, load, onSuccess }: LoadEdit
                   id="fuel_surcharge"
                   type="number"
                   step="0.01"
-                  value={formData.fuel_surcharge}
-                  onChange={(e) => handleInputChange("fuel_surcharge", parseFloat(e.target.value) || '')}
+                  value={formData.fuel_surcharge ?? ''}
+                  onChange={(e) => handleInputChange("fuel_surcharge", parseFloat(e.target.value) || null)}
                 />
               </div>
               <div className="space-y-2">
@@ -249,8 +248,8 @@ export function LoadEditDialog({ open, onOpenChange, load, onSuccess }: LoadEdit
                   id="purchase"
                   type="number"
                   step="0.01"
-                  value={formData.purchase}
-                  onChange={(e) => handleInputChange("purchase", parseFloat(e.target.value) || '')}
+                  value={formData.purchase ?? ''}
+                  onChange={(e) => handleInputChange("purchase", parseFloat(e.target.value) || null)}
                 />
               </div>
             </div>
@@ -303,8 +302,8 @@ export function LoadEditDialog({ open, onOpenChange, load, onSuccess }: LoadEdit
                 <Input
                   id="nbr_of_stops"
                   type="number"
-                  value={formData.nbr_of_stops}
-                  onChange={(e) => handleInputChange("nbr_of_stops", parseInt(e.target.value) || '')}
+                  value={formData.nbr_of_stops ?? ''}
+                  onChange={(e) => handleInputChange("nbr_of_stops", parseInt(e.target.value) || null)}
                 />
               </div>
               <div className="space-y-2">
@@ -350,7 +349,7 @@ export function LoadEditDialog({ open, onOpenChange, load, onSuccess }: LoadEdit
                 <select
                   id="published"
                   value={formData.published ? 'true' : 'false'}
-                  onChange={(e) => handleInputChange("published", e.target.value === 'true')}
+                  onChange={(e) => setFormData(prev => ({ ...prev, published: e.target.value === 'true' }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white"
                 >
                   <option value="false">Not Published</option>

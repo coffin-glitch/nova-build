@@ -1,5 +1,5 @@
-import sql from "@/lib/db";
 import { requireApiCarrier } from "@/lib/auth-api-helper";
+import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
 // GET /api/carrier/notifications - Get carrier notifications
@@ -106,8 +106,7 @@ export async function GET(request: NextRequest) {
 
 // PUT /api/carrier/notifications/[id]/read - Mark notification as read
 export async function PUT(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  request: NextRequest
 ) {
   try {
     let auth;
@@ -131,7 +130,8 @@ export async function PUT(
       );
     }
 
-    const { id } = await params;
+    const body = await request.json();
+    const { id } = body;
 
     const result = await sql`
       UPDATE carrier_notifications 
@@ -163,8 +163,7 @@ export async function PUT(
 
 // DELETE /api/carrier/notifications/[id] - Delete notification
 export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  request: NextRequest
 ) {
   try {
     let auth;
@@ -188,7 +187,8 @@ export async function DELETE(
       );
     }
 
-    const { id } = await params;
+    const body = await request.json();
+    const { id } = body;
 
     const result = await sql`
       DELETE FROM carrier_notifications 

@@ -1696,7 +1696,7 @@ function CarrierBidCalendarView({
                 className="hover:shadow-lg transition-all duration-200 cursor-pointer border-2 hover:border-opacity-50"
                 style={{ 
                   borderColor: accentColor,
-                  borderOpacity: 0.3
+                  opacity: 0.8
                 }}
                 onClick={() => onDateClick(dateStr, dateBids)}
               >

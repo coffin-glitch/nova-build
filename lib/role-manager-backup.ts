@@ -1,5 +1,5 @@
-import sql from "@/lib/db.server";
 import sqlite from "@/lib/db-local";
+import sql from "@/lib/db.server";
 
 export type UserRole = "admin" | "carrier" | "none";
 
@@ -47,7 +47,9 @@ class RoleManager {
   getDb() {
     // Use local SQLite for local development (when running locally)
     // Check if we're in a local environment by looking for the SQLite file
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const fs = require('fs');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const path = require('path');
     const sqlitePath = path.join(process.cwd(), 'storage', 'nova-build.db');
     

@@ -7,20 +7,20 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-    ArrowDown,
-    ArrowUp,
-    CheckCircle,
-    ChevronDown,
-    ChevronLeft,
-    ChevronRight,
-    Clock,
-    FileText,
-    MapPin,
-    Navigation,
-    Paperclip,
-    Search,
-    Truck,
-    User
+  ArrowDown,
+  ArrowUp,
+  CheckCircle,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  FileText,
+  MapPin,
+  Navigation,
+  Paperclip,
+  Search,
+  Truck,
+  User
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import useSWR from "swr";
@@ -117,7 +117,7 @@ export default function AdminBidLifecycleViewer({ bidId, onBidSelect }: AdminBid
   // Auto-select bid when bidId prop is provided
   useEffect(() => {
     if (bidId && bidsData && !selectedBid) {
-      const bid = bidsData.find(b => b.bid_number === bidId);
+      const bid = bidsData.find((b: any) => b.bid_number === bidId);
       if (bid) {
         setSelectedBid(bid);
         fetchLoadInfo(bid.bid_number);
@@ -729,7 +729,7 @@ export default function AdminBidLifecycleViewer({ bidId, onBidSelect }: AdminBid
             ) : (
               <>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {bidsData.map((bid, index) => (
+                  {bidsData.map((bid: AwardedBid, index: number) => (
                     <div
                       key={`${bid.bid_number}-${bid.id}-${index}`}
                       className="border rounded-lg p-4 cursor-pointer hover:bg-muted/50 transition-colors"

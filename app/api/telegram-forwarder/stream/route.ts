@@ -1,8 +1,10 @@
 import { NextRequest } from "next/server";
 
 // Import WebSocket client library
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 let WebSocket: any;
 try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   WebSocket = require('ws');
 } catch {
   console.error('WebSocket library not found. Please install: npm install ws');

@@ -4,14 +4,14 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { bidNumber: string } }
+  { params }: { params: Promise<{ bidNumber: string }> }
 ) {
   try {
     // Ensure user is carrier (Supabase-only)
     const auth = await requireApiCarrier(request);
     const userId = auth.userId;
 
-    const { bidNumber } = params;
+    const { bidNumber } = await params;
 
     if (!bidNumber) {
       return NextResponse.json(

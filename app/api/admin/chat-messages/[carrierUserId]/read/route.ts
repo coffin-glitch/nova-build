@@ -4,13 +4,13 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { carrierUserId: string } }
+  { params }: { params: Promise<{ carrierUserId: string }> }
 ) {
   try {
     // Ensure user is admin (Supabase-only)
     await requireApiAdmin(request);
 
-    const carrierUserId = params.carrierUserId;
+    const { carrierUserId } = await params;
 
     // Mark all chat messages from this carrier as read (Supabase-only)
     await sql`

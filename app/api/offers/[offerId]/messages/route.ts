@@ -9,7 +9,7 @@ const MessageSchema = z.object({
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ offerId: string }> }
 ) {
   try {
     // Ensure user is authenticated (Supabase-only)
@@ -22,7 +22,8 @@ export async function GET(
       userId = carrierAuth.userId;
     }
 
-    const { id } = await params;
+    const { offerId } = await params;
+    const id = offerId;
 
     // Get offer messages
     const messages = await sql`
@@ -55,7 +56,7 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ offerId: string }> }
 ) {
   try {
     // Check if user is admin or carrier (Supabase-only)
@@ -73,7 +74,8 @@ export async function POST(
       userRole = 'carrier';
     }
 
-    const { id } = await params;
+    const { offerId } = await params;
+    const id = offerId;
     const body = await request.json();
     const { message } = MessageSchema.parse(body);
 

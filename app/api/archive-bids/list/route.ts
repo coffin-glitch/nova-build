@@ -91,7 +91,8 @@ export async function GET(request: NextRequest) {
       LIMIT $${queryParams.length + 1} OFFSET $${queryParams.length + 2}
     `;
 
-    const rows = await sql(query, ...queryParams, limit, offset);
+    // Use sql.unsafe to execute raw SQL with parameters
+    const rows = await (sql as any).unsafe(query, queryParams.concat([limit, offset]));
 
     // Get total count for pagination
     const countQuery = `
@@ -100,7 +101,7 @@ export async function GET(request: NextRequest) {
       WHERE tb.archived_at IS NOT NULL
       ${whereClause}
     `;
-    const countResult = await sql(countQuery, ...queryParams);
+    const countResult = await (sql as any).unsafe(countQuery, queryParams);
     const total = parseInt(countResult[0]?.total || '0');
 
     // Get archive statistics by date
@@ -118,7 +119,7 @@ export async function GET(request: NextRequest) {
       ORDER BY archived_date DESC
       LIMIT 30
     `;
-    const stats = await sql(statsQuery);
+    const stats = await (sql as any).unsafe(statsQuery, []);
 
     return NextResponse.json({
       ok: true,

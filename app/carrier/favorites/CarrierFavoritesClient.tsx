@@ -404,7 +404,7 @@ export default function CarrierFavoritesClient() {
                     variant={preferences.emailNotifications ? "default" : "outline"}
                     size="sm"
                     onClick={() => setPreferences(prev => ({ ...prev, emailNotifications: !prev.emailNotifications }))}
-                    className={preferences.emailNotifications ? accentBgStyle : ""}
+                    style={preferences.emailNotifications ? accentBgStyle : undefined}
                   >
                     {preferences.emailNotifications ? "ON" : "OFF"}
                   </Button>
@@ -419,7 +419,7 @@ export default function CarrierFavoritesClient() {
                     variant={preferences.similarLoadNotifications ? "default" : "outline"}
                     size="sm"
                     onClick={() => setPreferences(prev => ({ ...prev, similarLoadNotifications: !prev.similarLoadNotifications }))}
-                    className={preferences.similarLoadNotifications ? accentBgStyle : ""}
+                    style={preferences.similarLoadNotifications ? accentBgStyle : undefined}
                   >
                     {preferences.similarLoadNotifications ? "ON" : "OFF"}
                   </Button>
@@ -468,7 +468,7 @@ export default function CarrierFavoritesClient() {
               <Button
                 onClick={handleSavePreferences}
                 disabled={isSavingPreferences}
-                className={accentBgStyle}
+                style={accentBgStyle}
               >
                 {isSavingPreferences ? (
                   <>
@@ -519,7 +519,7 @@ export default function CarrierFavoritesClient() {
               </p>
               {!searchTerm && (
                 <Link href="/bid-board">
-                  <Button className={accentBgStyle}>
+                  <Button style={accentBgStyle}>
                     <Star className="h-4 w-4 mr-2" />
                     Browse Live Auctions
                   </Button>
@@ -555,7 +555,7 @@ export default function CarrierFavoritesClient() {
                               <div className="text-right">
                                 <div className="text-sm text-muted-foreground">Time Left</div>
                                 <Countdown 
-                                  targetDate={new Date(favorite.expiresAt)} 
+                                  expiresAt={new Date(favorite.expiresAt)} 
                                   className="text-lg font-mono"
                                 />
                               </div>

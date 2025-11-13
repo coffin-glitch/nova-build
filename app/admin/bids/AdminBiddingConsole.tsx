@@ -12,12 +12,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useAccentColor } from "@/hooks/useAccentColor";
-import { useTheme } from "next-themes";
-import { getButtonTextColor as getTextColor } from "@/lib/utils";
 import { TelegramBid } from "@/lib/auctions";
+import { formatDistance, formatMoney, formatPickupDateTime, formatStopCount, formatStops, formatStopsDetailed } from "@/lib/format";
 import { usStatesSVGPaths } from "@/lib/us-states-svg-paths";
 import { usStatesTextPositions } from "@/lib/us-states-text-positions";
-import { formatDistance, formatMoney, formatPickupDateTime, formatStopCount, formatStops, formatStopsDetailed } from "@/lib/format";
+import { getButtonTextColor as getTextColor } from "@/lib/utils";
 import {
   Activity,
   Archive,
@@ -52,6 +51,7 @@ import {
   XCircle,
   Zap
 } from "lucide-react";
+import { useTheme } from "next-themes";
 import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
@@ -1390,7 +1390,9 @@ function TagDetailsView({ data, accentColor }: { data: any; accentColor: string 
             <div className="flex justify-between items-center">
               <span className="text-sm text-muted-foreground flex items-center gap-1">
                 Market Efficiency
-                <Info className="w-3 h-3 text-muted-foreground/70 cursor-help" title="Market Efficiency: Measures how efficiently the market sets prices. Calculated as: (1 - Avg Bid Spread / Avg Winning Bid) × 100. A higher percentage indicates tighter bid spreads and more efficient price discovery, meaning carriers are bidding closer to market value." />
+                <span title="Market Efficiency: Measures how efficiently the market sets prices. Calculated as: (1 - Avg Bid Spread / Avg Winning Bid) × 100. A higher percentage indicates tighter bid spreads and more efficient price discovery, meaning carriers are bidding closer to market value.">
+                  <Info className="w-3 h-3 text-muted-foreground/70 cursor-help" />
+                </span>
               </span>
               <span className="font-semibold">{((1 - (competitionMetrics.avg_bid_spread || 0) / (revenueMetrics.avg_winning_bid || 1)) * 100).toFixed(1)}%</span>
             </div>
@@ -3546,7 +3548,9 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
                   <div className="grid grid-cols-2 gap-3 mb-4">
                     <div className="p-3 rounded-lg bg-muted/20"><p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
                       Competitiveness
-                      <Info className="w-3 h-3 text-muted-foreground/70 cursor-help" title="Competitiveness Score: The percentage of bids that are within 5% of the lowest bid for each auction. Calculated as: (Bids within 5% of lowest / Total bids) × 100. A higher score indicates the carrier consistently bids competitively close to the market rate." />
+                      <span title="Competitiveness Score: The percentage of bids that are within 5% of the lowest bid for each auction. Calculated as: (Bids within 5% of lowest / Total bids) × 100. A higher score indicates the carrier consistently bids competitively close to the market rate.">
+                        <Info className="w-3 h-3 text-muted-foreground/70 cursor-help" />
+                      </span>
                     </p><p className="text-xl font-bold">{group.competitiveness_score || 0}%</p></div>
                   </div>
                   {(() => {
@@ -3825,7 +3829,9 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
                 <Glass className="p-4">
                   <p className="text-xs text-muted-foreground flex items-center gap-1">
                     Competitiveness
-                    <Info className="w-3 h-3 text-muted-foreground/70 cursor-help" title="Competitiveness Score: The percentage of bids that are within 5% of the lowest bid for each auction. Calculated as: (Bids within 5% of lowest / Total bids) × 100. A higher score indicates the carrier consistently bids competitively close to the market rate." />
+                    <span title="Competitiveness Score: The percentage of bids that are within 5% of the lowest bid for each auction. Calculated as: (Bids within 5% of lowest / Total bids) × 100. A higher score indicates the carrier consistently bids competitively close to the market rate.">
+                      <Info className="w-3 h-3 text-muted-foreground/70 cursor-help" />
+                    </span>
                   </p>
                   <p className="text-2xl font-bold">{selectedGroup.competitiveness_score || 0}%</p>
                 </Glass>
@@ -3970,7 +3976,9 @@ function CarrierDetailConsole({
               <div className="flex justify-between items-center">
                 <span className="text-muted-foreground flex items-center gap-1">
                   Competitiveness
-                  <Info className="w-3.5 h-3.5 text-muted-foreground/70 cursor-help" title="Competitiveness Score: The percentage of bids that are within 5% of the lowest bid for each auction. Calculated as: (Bids within 5% of lowest / Total bids) × 100. A higher score indicates the carrier consistently bids competitively close to the market rate." />
+                  <span title="Competitiveness Score: The percentage of bids that are within 5% of the lowest bid for each auction. Calculated as: (Bids within 5% of lowest / Total bids) × 100. A higher score indicates the carrier consistently bids competitively close to the market rate.">
+                    <Info className="w-3.5 h-3.5 text-muted-foreground/70 cursor-help" />
+                  </span>
                 </span>
                 <span className="font-medium">{carrier.competitiveness_score || 0}%</span>
               </div>
@@ -4111,7 +4119,7 @@ function ReAwardDialog({
   const [currentPage, setCurrentPage] = useState(1);
   const [bidsPerPage] = useState(5);
 
-  const { data: bidData, error: bidDataError, mutate: mutateBidData } = useSWR(
+  const { data: bidData, mutate: mutateBidData } = useSWR(
     bidNumber ? `/api/admin/bids/${bidNumber}/award` : null,
     fetcher,
     { refreshInterval: 30000 }
@@ -4555,6 +4563,9 @@ function AdjudicationConsole({
         bid_number: bidData.telegram_bid.bid_number,
         distance_miles: bidData.telegram_bid.distance_miles,
         pickup_timestamp: bidData.telegram_bid.pickup_timestamp,
+        forwarded_to: bidData.telegram_bid.forwarded_to || null,
+        expires_at: bidData.telegram_bid.expires_at || bidData.telegram_bid.expires_at_25 || null,
+        stops_count: Array.isArray(bidData.telegram_bid.stops) ? bidData.telegram_bid.stops.length : (typeof bidData.telegram_bid.stops === 'string' ? JSON.parse(bidData.telegram_bid.stops || '[]').length : 0),
         delivery_timestamp: bidData.telegram_bid.delivery_timestamp,
         stops: bidData.telegram_bid.stops,
         tag: bidData.telegram_bid.tag,
@@ -4577,11 +4588,14 @@ function AdjudicationConsole({
         stops: null,
         tag: null,
         source_channel: null,
-        received_at: null,
-        expires_at_25: null,
+        received_at: bidData.received_at || new Date().toISOString(),
+        expires_at_25: bidData.expires_at_25 || new Date().toISOString(),
         is_expired: true,
         bids_count: bidData.carrier_bid_count,
-        time_left_seconds: 0
+        time_left_seconds: 0,
+        forwarded_to: null,
+        expires_at: null,
+        stops_count: 0
       };
       onSelectBid(telegramBid);
     }

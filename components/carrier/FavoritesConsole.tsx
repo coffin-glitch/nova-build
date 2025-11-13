@@ -19,6 +19,8 @@ import {
   BellOff,
   Clock,
   DollarSign,
+  Eye,
+  EyeOff,
   Heart,
   Info,
   LayoutGrid,

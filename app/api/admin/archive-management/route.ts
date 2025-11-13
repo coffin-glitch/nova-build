@@ -1,8 +1,8 @@
 import {
-    archiveExpiredBids,
-    cleanupOldArchiveTables,
-    getArchiveStatistics,
-    verifyArchiveIntegrity
+  archiveExpiredBids,
+  cleanupOldArchiveTables,
+  getArchiveStatistics,
+  verifyArchiveIntegrity
 } from "@/lib/archive-migration";
 import { requireApiAdmin } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    await requireAdmin();
+    await requireApiAdmin(request);
 
     const { action } = await request.json();
 

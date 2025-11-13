@@ -11,15 +11,15 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { TelegramBid } from "@/lib/auctions";
 import { formatDistance, formatMoney, formatStops, formatTimeOnly } from "@/lib/format";
 import {
-    Award,
-    Clock,
-    DollarSign,
-    Gavel,
-    MapPin,
-    RefreshCw,
-    Search,
-    Truck,
-    Users
+  Award,
+  Clock,
+  DollarSign,
+  Gavel,
+  MapPin,
+  RefreshCw,
+  Search,
+  Truck,
+  Users
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -27,11 +27,7 @@ import useSWR from "swr";
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
-interface AdminAuctionsClientProps {
-  // Remove initialBids prop since we're not using server-side data fetching
-}
-
-export default function AdminAuctionsClient({}: AdminAuctionsClientProps) {
+export default function AdminAuctionsClient() {
   const [q, setQ] = useState("");
   const [tag, setTag] = useState("");
   const [selectedBid, setSelectedBid] = useState<TelegramBid | null>(null);
@@ -228,7 +224,7 @@ export default function AdminAuctionsClient({}: AdminAuctionsClientProps) {
                     </div>
                   </TableCell>
                   <TableCell>
-                    {bid.lowest_amount_cents > 0 ? (
+                    {bid.lowest_amount_cents && bid.lowest_amount_cents > 0 ? (
                       <span className="text-primary font-medium">
                         {formatMoney(bid.lowest_amount_cents)}
                       </span>
@@ -256,7 +252,7 @@ export default function AdminAuctionsClient({}: AdminAuctionsClientProps) {
                       >
                         View Bids
                       </Button>
-                      {!bid.is_expired && bid.bids_count > 0 && (
+                      {!bid.is_expired && bid.bids_count && bid.bids_count > 0 && (
                         <Button
                           size="sm"
                           onClick={() => handleViewBids(bid)}

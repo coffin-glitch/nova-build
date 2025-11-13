@@ -344,7 +344,7 @@ export default function CarrierActiveBidsClient() {
               </p>
               {!searchTerm && (
                 <Link href="/bid-board">
-                  <Button className={accentBgStyle}>
+                  <Button style={accentBgStyle}>
                     <Gavel className="h-4 w-4 mr-2" />
                     Browse Live Auctions
                   </Button>
@@ -383,7 +383,7 @@ export default function CarrierActiveBidsClient() {
                             <div className="text-right">
                               <div className="text-sm text-muted-foreground">Time Left</div>
                               <Countdown 
-                                targetDate={new Date(bid.expiresAt)} 
+                                expiresAt={new Date(bid.expiresAt)} 
                                 className="text-lg font-mono"
                               />
                             </div>
@@ -653,7 +653,7 @@ export default function CarrierActiveBidsClient() {
                 </div>
                 <div className="flex items-center gap-2">
                   <Countdown 
-                    targetDate={new Date(modifyBidDialog.expiresAt)}
+                    expiresAt={new Date(modifyBidDialog.expiresAt)}
                     variant={modifyBidDialog.isExpired ? "expired" : "default"}
                   />
                 </div>
@@ -699,7 +699,7 @@ export default function CarrierActiveBidsClient() {
                 <Button
                   onClick={handleModifyBid}
                   disabled={!bidAmount || isModifying || modifyBidDialog.isExpired}
-                  className={accentBgStyle}
+                  style={accentBgStyle}
                 >
                   {isModifying ? "Updating Bid..." : "Update Bid"}
                 </Button>

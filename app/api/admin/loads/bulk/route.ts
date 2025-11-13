@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
       case "clear_all":
         // Delete all loads
         result = await sql`DELETE FROM loads`;
-        message = `Successfully cleared all ${result.length} loads`;
+        message = `Successfully cleared all loads`;
         break;
 
       case "archive":
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
               updated_at = NOW()
           WHERE rr_number = ANY(${loadIds})
         `;
-        message = `Successfully archived ${result.length} loads`;
+        message = `Successfully archived loads`;
         break;
 
       case "delete":
@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
           DELETE FROM loads 
           WHERE rr_number = ANY(${loadIds})
         `;
-        message = `Successfully deleted ${result.length} loads`;
+        message = `Successfully deleted loads`;
         break;
 
       default:
@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       message,
-      affectedRows: result.length
+      affectedRows: loadIds?.length || 0
     });
 
   } catch (error) {

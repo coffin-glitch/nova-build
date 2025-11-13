@@ -10,16 +10,16 @@ import { Glass } from "@/components/ui/glass";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAccentColor } from "@/hooks/useAccentColor";
-import { useTheme } from "next-themes";
 import { getButtonTextColor as getTextColor } from "@/lib/utils";
 import {
-    Archive,
-    Calendar,
-    Eye,
-    Filter,
-    Navigation,
-    RefreshCw
+  Archive,
+  Calendar,
+  Eye,
+  Filter,
+  Navigation,
+  RefreshCw
 } from "lucide-react";
+import { useTheme } from "next-themes";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
@@ -63,6 +63,7 @@ interface DailyActivity {
   bids_archived: number;
   first_archive_time: string;
   last_archive_time: string;
+  avg_hours_active?: number;
 }
 
 export function ArchiveBidsTimeline() {
@@ -79,7 +80,7 @@ export function ArchiveBidsTimeline() {
   const [sourceChannel, setSourceChannel] = useState("");
   const [sortBy, setSortBy] = useState("archived_at");
   const [sortOrder, setSortOrder] = useState("desc");
-  const [limit, setLimit] = useState("100");
+  const [limit] = useState("100");
   const [offset, setOffset] = useState(0);
   const [viewMode, setViewMode] = useState<"timeline" | "grid" | "analytics">("timeline");
   const [selectedBidNumber, setSelectedBidNumber] = useState<string | null>(null);
@@ -152,7 +153,7 @@ export function ArchiveBidsTimeline() {
       } else {
         toast.error('Failed to archive bids');
       }
-    } catch (error) {
+    } catch {
       toast.error('Failed to archive bids');
     }
   };
@@ -177,7 +178,7 @@ export function ArchiveBidsTimeline() {
       } else {
         toast.error('Failed to reset archived_at');
       }
-    } catch (error) {
+    } catch {
       toast.error('Failed to reset archived_at');
     }
   };
@@ -196,7 +197,7 @@ export function ArchiveBidsTimeline() {
       } else {
         toast.error('Failed to toggle auto-archiving');
       }
-    } catch (error) {
+    } catch {
       toast.error('Failed to toggle auto-archiving');
     }
   };
@@ -333,7 +334,7 @@ export function ArchiveBidsTimeline() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <Select value={viewMode} onValueChange={(value: any) => setViewMode(value)}>
+          <Select value={viewMode} onValueChange={(value: "timeline" | "grid" | "analytics") => setViewMode(value)}>
             <SelectTrigger className="w-40">
               <SelectValue />
             </SelectTrigger>
@@ -589,7 +590,7 @@ export function ArchiveBidsTimeline() {
                   <div className="text-right">
                     <p className="font-semibold">{day.bids_archived} bids</p>
                     <p className="text-sm text-muted-foreground">
-                      Avg: {Math.round(day.avg_hours_active)}h active
+                      Avg: {day.avg_hours_active ? Math.round(day.avg_hours_active) : 0}h active
                     </p>
                   </div>
                 </div>

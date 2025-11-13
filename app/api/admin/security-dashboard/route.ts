@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
 
     // Get event type distribution
     const eventTypeDistribution = Object.entries(dashboardData.eventCounts)
-      .map(([type, count]) => ({ type, count }))
+      .map(([type, count]) => ({ type, count: Number(count) }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 10);
 
@@ -104,7 +104,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     // Require admin authentication
-    await requireAdmin();
+    await requireApiAdmin(request);
 
     const body = await request.json();
     const { action, alertId, incidentId } = body;

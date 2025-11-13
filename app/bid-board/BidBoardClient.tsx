@@ -608,7 +608,7 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
               <select 
                 className="w-full h-10 px-3 py-2 text-sm border border-input bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                 value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
+                onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
               >
                 <option value="distance">Distance (Miles)</option>
                 {!showExpired && <option value="time-remaining">Time Remaining</option>}

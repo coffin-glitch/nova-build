@@ -7,9 +7,9 @@ import { NextRequest, NextResponse } from "next/server";
  */
 export async function GET(request: NextRequest) {
   try {
-    const auth = getApiAuth(request);
+    const auth = await getApiAuth(request);
     
-    if (!auth.userId) {
+    if (!auth?.userId) {
       return NextResponse.json({ valid: false, error: "Unauthorized" }, { status: 401 });
     }
 

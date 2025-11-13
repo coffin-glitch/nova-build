@@ -40,10 +40,11 @@ export async function POST(request: NextRequest) {
       ORDER BY updated_at DESC
     `;
 
+    const loadsArray = Array.isArray(loads) ? loads : [];
     if (format === "csv") {
-      return generateCSV(loads);
+      return generateCSV(loadsArray);
     } else if (format === "excel") {
-      return generateExcel(loads);
+      return generateExcel(loadsArray);
     } else {
       return NextResponse.json(
         { error: "Invalid format. Must be 'csv' or 'excel'" },
@@ -126,5 +127,6 @@ function generateCSV(loads: any[]) {
 
 function generateExcel(loads: any[]) {
   // For now, return CSV as Excel (you can implement proper Excel generation later)
-  return generateCSV(loads);
+  const loadsArray = Array.isArray(loads) ? loads : [];
+  return generateCSV(loadsArray);
 }

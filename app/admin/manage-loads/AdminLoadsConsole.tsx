@@ -13,26 +13,26 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatCurrency, formatDate, formatDistance } from "@/lib/utils";
 import {
-    Archive,
-    BarChart3,
-    CheckCircle,
-    ChevronLeft,
-    ChevronRight,
-    DollarSign,
-    Download,
-    Edit,
-    Eye,
-    Filter,
-    Info,
-    MapPin,
-    MoreHorizontal,
-    RefreshCw,
-    Route,
-    Search,
-    TrendingUp,
-    Truck,
-    Upload,
-    Weight
+  Archive,
+  BarChart3,
+  CheckCircle,
+  ChevronLeft,
+  ChevronRight,
+  DollarSign,
+  Download,
+  Edit,
+  Eye,
+  Filter,
+  Info,
+  MapPin,
+  MoreHorizontal,
+  RefreshCw,
+  Route,
+  Search,
+  TrendingUp,
+  Truck,
+  Upload,
+  Weight
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -1126,7 +1126,7 @@ export function AdminLoadsConsole() {
                       const halfVisible = Math.floor(maxVisiblePages / 2);
                       
                       let startPage = Math.max(1, currentPage - halfVisible);
-                      let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+                      const endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
                       
                       // Adjust start page if we're near the end
                       if (endPage - startPage < maxVisiblePages - 1) {

@@ -4,13 +4,13 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { userId: string } }
+  { params }: { params: Promise<{ userId: string }> }
 ) {
   try {
     // Ensure user is admin (Supabase-only)
     await requireApiAdmin(request);
 
-    const { userId } = params;
+    const { userId } = await params;
 
     // Fetch profile history for the specified carrier
     const history = await sql`

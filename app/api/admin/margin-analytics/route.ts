@@ -26,13 +26,17 @@ export async function GET(request: NextRequest) {
     // Build WHERE clause
     const whereConditions: any[] = [];
     if (dateConditions.length > 0) {
-      whereConditions.push(sql`(${sql.join(dateConditions, sql` AND `)})`);
+      whereConditions.push(sql`(${dateConditions.reduce((acc, condition, index) => 
+        index === 0 ? condition : sql`${acc} AND ${condition}`
+      )})`);
     }
     if (stateCondition) {
       whereConditions.push(stateCondition);
     }
     const whereClause = whereConditions.length > 0 
-      ? sql`WHERE ${sql.join(whereConditions, sql` AND `)}`
+      ? sql`WHERE ${whereConditions.reduce((acc, condition, index) => 
+          index === 0 ? condition : sql`${acc} AND ${condition}`
+        )}`
       : sql``;
 
     // Overall Statistics

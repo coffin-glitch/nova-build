@@ -8,7 +8,7 @@ interface MapPreviewProps {
 }
 
 export default function MapPreview({ loads }: MapPreviewProps) {
-  const getEquipmentColor = (equipment: string) => {
+  const getEquipmentColor = (equipment: string | undefined) => {
     switch (equipment?.toLowerCase()) {
       case "dry van":
         return "bg-blue-500";
@@ -25,7 +25,7 @@ export default function MapPreview({ loads }: MapPreviewProps) {
     }
   };
 
-  const equipmentTypes = Array.from(new Set(loads.map(load => load.equipment).filter(Boolean)));
+  const equipmentTypes = Array.from(new Set(loads.map(load => load.equipment).filter((e): e is string => Boolean(e))));
 
   return (
     <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 sticky top-8">
@@ -47,7 +47,7 @@ export default function MapPreview({ loads }: MapPreviewProps) {
         {equipmentTypes.length > 0 ? (
           equipmentTypes.map((equipment) => (
             <div key={equipment} className="flex items-center">
-              <div className={`w-3 h-3 rounded-full ${getEquipmentColor(equipment)} mr-2`}></div>
+              <div className={`w-3 h-3 rounded-full ${getEquipmentColor(equipment) || ''} mr-2`}></div>
               <span className="text-sm text-gray-700">{equipment} Loads</span>
             </div>
           ))

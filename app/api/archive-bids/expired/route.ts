@@ -75,8 +75,8 @@ export async function GET(request: NextRequest) {
 
     // Get bid counts for the returned rows
     const bidNumbers = rows.map(row => row.bid_number);
-    let bidCounts = {};
-    let bidAmounts = {};
+    let bidCounts: Record<string, number> = {};
+    let bidAmounts: Record<string, { lowest: number | null; highest: number | null; avg: number | null }> = {};
     
     if (bidNumbers.length > 0) {
       const bidCountsResult = await sql`
@@ -91,7 +91,7 @@ export async function GET(request: NextRequest) {
         GROUP BY bid_number
       `;
       
-      bidCountsResult.forEach(row => {
+      bidCountsResult.forEach((row: any) => {
         bidCounts[row.bid_number] = row.bids_count;
         bidAmounts[row.bid_number] = {
           lowest: row.lowest_amount_cents,
@@ -105,9 +105,9 @@ export async function GET(request: NextRequest) {
     const enrichedRows = rows.map(row => ({
       ...row,
       bids_count: bidCounts[row.bid_number] || 0,
-      lowest_bid_amount: bidAmounts[row.bid_number]?.lowest ? bidAmounts[row.bid_number].lowest / 100.0 : 0,
-      highest_bid_amount: bidAmounts[row.bid_number]?.highest ? bidAmounts[row.bid_number].highest / 100.0 : 0,
-      avg_bid_amount: bidAmounts[row.bid_number]?.avg ? bidAmounts[row.bid_number].avg / 100.0 : 0
+      lowest_bid_amount: bidAmounts[row.bid_number]?.lowest ? (bidAmounts[row.bid_number]!.lowest || 0) / 100.0 : 0,
+      highest_bid_amount: bidAmounts[row.bid_number]?.highest ? (bidAmounts[row.bid_number]!.highest || 0) / 100.0 : 0,
+      avg_bid_amount: bidAmounts[row.bid_number]?.avg ? (bidAmounts[row.bid_number]!.avg || 0) / 100.0 : 0
     }));
 
     // Get total count for pagination

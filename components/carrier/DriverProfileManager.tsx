@@ -5,15 +5,15 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
-    Clock,
-    Edit2,
-    GripVertical,
-    Phone,
-    Save,
-    Trash2,
-    Truck,
-    User,
-    X
+  Clock,
+  Edit2,
+  GripVertical,
+  Phone,
+  Save,
+  Trash2,
+  Truck,
+  User,
+  X
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -52,6 +52,11 @@ export function DriverProfileManager({
   onProfileSelect, 
   onProfilesUpdate 
 }: DriverProfileManagerProps) {
+  const [editingProfile, setEditingProfile] = useState<DriverProfile | null>(null);
+  const [editName, setEditName] = useState("");
+  const [isUpdatingOrder, setIsUpdatingOrder] = useState(false);
+  const [draggedProfile, setDraggedProfile] = useState<string | null>(null);
+
   // Early return if profiles is undefined or not loaded yet
   if (!profiles) {
     return (
@@ -60,11 +65,6 @@ export function DriverProfileManager({
       </div>
     );
   }
-
-  const [editingProfile, setEditingProfile] = useState<DriverProfile | null>(null);
-  const [editName, setEditName] = useState("");
-  const [isUpdatingOrder, setIsUpdatingOrder] = useState(false);
-  const [draggedProfile, setDraggedProfile] = useState<string | null>(null);
 
   const formatPhoneDisplay = (phone: string): string => {
     if (phone.length === 10) {

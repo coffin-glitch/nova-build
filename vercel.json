@@ -7,7 +7,7 @@
     {
       "path": "/api/notifications/process",
       "schedule": "*/2 * * * *"
-    }
+  }
   ]
 }
 

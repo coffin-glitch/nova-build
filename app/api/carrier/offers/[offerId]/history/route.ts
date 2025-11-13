@@ -1,16 +1,17 @@
-import sql from "@/lib/db";
 import { requireApiCarrier } from "@/lib/auth-api-helper";
+import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ offerId: string }> }
 ) {
   try {
     const auth = await requireApiCarrier(request);
     const userId = auth.userId;
 
-    const { id } = await params;
+    const { offerId } = await params;
+    const id = offerId;
 
     // Verify the offer belongs to this carrier
     const offerCheck = await sql`

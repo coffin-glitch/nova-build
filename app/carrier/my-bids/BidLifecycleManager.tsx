@@ -28,6 +28,7 @@ const fetcher = (url: string) => fetch(url).then(r => r.json());
 
 interface LifecycleEvent {
   id: string;
+  bid_id?: string;
   status: string;
   timestamp: string;
   notes?: string;
@@ -265,7 +266,7 @@ export function BidLifecycleManager({ bidId, bidData }: BidLifecycleManagerProps
   const handleStatusUpdate = (status: string) => {
     const currentDateTime = getCurrentDateTime();
     
-    let initialData = { status };
+    let initialData: Record<string, any> = { status };
     
     // Auto-fill current date/time for checked_in, picked_up, departed, and checked_in_delivery status
     if (status === 'checked_in_origin') {
@@ -513,7 +514,7 @@ export function BidLifecycleManager({ bidId, bidData }: BidLifecycleManagerProps
         </CardHeader>
         <CardContent>
           <BidTimeline 
-            events={events}
+            events={events.map(e => ({ ...e, bid_id: bidId, event_type: e.event_type || e.status || 'unknown' }))}
             currentStatus={currentStatus}
             bidId={bidId}
           />

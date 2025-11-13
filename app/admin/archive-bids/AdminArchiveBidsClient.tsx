@@ -8,19 +8,40 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatMoney, formatPickupDateTime, formatStopCount } from "@/lib/format";
 import {
-    Archive,
-    Calendar,
-    Clock,
-    Filter,
-    MapPin,
-    Navigation,
-    RefreshCw,
-    Truck
+  Archive,
+  Calendar,
+  Clock,
+  Filter,
+  MapPin,
+  Navigation,
+  RefreshCw,
+  Truck
 } from "lucide-react";
 import { useState } from "react";
 import useSWR from "swr";
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
+
+interface ArchiveBid {
+  id: number;
+  bid_number: string;
+  distance_miles: number;
+  pickup_timestamp: string;
+  delivery_timestamp: string;
+  stops: string[];
+  tag: string;
+  source_channel: string;
+  forwarded_to: string;
+  received_at: string;
+  archived_at: string;
+  original_id: number;
+  state_tag: string;
+  bids_count: number;
+  lowest_bid_amount: number;
+  highest_bid_amount: number;
+  avg_bid_amount: number;
+  hours_active?: number;
+}
 
 // Helper function to safely parse stops data
 const parseStops = (stops: string | string[] | null): string[] => {
@@ -43,7 +64,7 @@ export function AdminArchiveBidsClient() {
   const [milesMin, setMilesMin] = useState("");
   const [milesMax, setMilesMax] = useState("");
   const [sortBy, setSortBy] = useState("archived_at");
-  const [limit, setLimit] = useState("100");
+  const [limit] = useState("100");
   const [offset, setOffset] = useState(0);
 
   // Build query parameters
@@ -236,7 +257,7 @@ export function AdminArchiveBidsClient() {
           </Card>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-            {archivedBids.map((bid: any) => (
+            {archivedBids.map((bid: ArchiveBid) => (
               <Glass key={bid.bid_number} className="p-4">
                 <div className="space-y-3">
                   {/* Header */}
@@ -309,7 +330,7 @@ export function AdminArchiveBidsClient() {
                     )}
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Hours Active:</span>
-                      <span className="font-medium">{Math.round(bid.hours_active || 0)}h</span>
+                      <span className="font-medium">{bid.hours_active ? Math.round(bid.hours_active) : 0}h</span>
                     </div>
                   </div>
                 </div>

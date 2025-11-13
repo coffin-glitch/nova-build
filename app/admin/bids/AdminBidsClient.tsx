@@ -1,27 +1,22 @@
 "use client";
 
-import { useState } from "react";
-import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerTrigger } from "@/components/ui/drawer";
-import { 
-  FileText, 
-  MapPin, 
-  Clock, 
-  Eye, 
-  Users,
-  Filter,
-  Search,
-  ToggleLeft,
-  ToggleRight,
-  Truck
-} from "lucide-react";
-import useSWR from "swr";
 import { getActiveBids, getBidOffers } from "@/lib/actions";
+import {
+  Eye,
+  MapPin,
+  Search,
+  Truck,
+  Users
+} from "lucide-react";
+import { useState } from "react";
+import useSWR from "swr";
 
 interface TelegramBid {
   id: number;
@@ -50,14 +45,15 @@ export function AdminBidsClient({ initialBids, initialTags }: AdminBidsClientPro
   const [bidOffers, setBidOffers] = useState<any[]>([]);
 
   // Use SWR for real-time updates
-  const { data: bids = initialBids } = useSWR(
+  const { data: bidsData } = useSWR(
     "admin-bids",
     getActiveBids,
     {
       refreshInterval: 10000, // 10 seconds
-      fallbackData: initialBids,
+      fallbackData: initialBids as any,
     }
   );
+  const bids: TelegramBid[] = (bidsData as TelegramBid[]) || initialBids;
 
   const filterBids = () => {
     let filtered = bids;

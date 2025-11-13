@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
     // Test the requireApiAdmin function (Supabase-only)
     const auth = await requireApiAdmin(request);
     const userId = auth.userId;
-    const role = auth.role;
+    const role = auth.userRole;
     
     console.log("Authentication successful:", { userId, role });
     

@@ -1,16 +1,17 @@
-import sql from "@/lib/db";
 import { requireApiCarrier } from "@/lib/auth-api-helper";
+import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ offerId: string }> }
 ) {
   try {
     const auth = await requireApiCarrier(request);
     const userId = auth.userId;
 
-    const { id } = await params;
+    const { offerId } = await params;
+    const id = offerId;
     const body = await request.json();
     const { 
       driver_name, 
@@ -99,13 +100,14 @@ export async function PUT(
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ offerId: string }> }
 ) {
   try {
     const auth = await requireApiCarrier(request);
     const userId = auth.userId;
 
-    const { id } = await params;
+    const { offerId } = await params;
+    const id = offerId;
 
     // Carrier can only see their own offers
     const offerResult = await sql`

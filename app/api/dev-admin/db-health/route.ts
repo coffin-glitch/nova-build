@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
 import sql from "@/lib/db.server";
+import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
       )
     `;
     
-    console.log("📋 user_roles table exists:", tableExists[0]?.exists);
+    console.log("📋 user_roles table exists:", Array.isArray(tableExists) ? tableExists[0]?.exists : false);
     
     // Get all tables in public schema
     const allTables = await sql`
@@ -35,13 +35,14 @@ export async function GET(request: NextRequest) {
       ORDER BY table_name
     `;
     
-    console.log("📚 All tables:", allTables.map(t => t.table_name));
+    const allTablesArray = Array.isArray(allTables) ? allTables : [];
+    console.log("📚 All tables:", allTablesArray.map((t: any) => t.table_name));
     
     return NextResponse.json({
       success: true,
-      userRolesTableExists: tableExists[0]?.exists || false,
+      userRolesTableExists: Array.isArray(tableExists) ? (tableExists[0]?.exists || false) : false,
       userRolesColumns: tableInfo,
-      allTables: allTables.map(t => t.table_name)
+      allTables: allTablesArray.map((t: any) => t.table_name)
     });
     
   } catch (error: any) {

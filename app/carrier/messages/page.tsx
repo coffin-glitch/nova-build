@@ -411,7 +411,7 @@ export default function CarrierMessagesPage() {
                         return message?.admin_user_id === adminId;
                       });
                       const unreadCount = adminMessages.filter((msg: any) => !msg.is_read).length;
-                      const allMessages = [...adminMessages, ...adminResponses.map(r => ({ ...r, type: 'response' }))];
+                      const allMessages = [...adminMessages, ...adminResponses.map((r: any) => ({ ...r, type: 'response' }))];
                       const latestMessage = allMessages
                         .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
                         .pop();

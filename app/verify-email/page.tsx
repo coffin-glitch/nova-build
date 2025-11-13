@@ -34,6 +34,7 @@ export default function VerifyEmailPage() {
 
     // Check if user is already verified
     const checkVerificationStatus = async () => {
+      if (!supabase) return;
       try {
         const { data: { session } } = await supabase.auth.getSession();
         
@@ -74,6 +75,7 @@ export default function VerifyEmailPage() {
     if (!email) return;
     
     try {
+      if (!supabase) return;
       const { error: resendError } = await supabase.auth.resend({
         type: 'signup',
         email: email,

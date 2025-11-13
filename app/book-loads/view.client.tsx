@@ -5,7 +5,7 @@ import useSWR from "swr";
 import SearchPanel, { Filters } from "@/components/loads/SearchPanel";
 import LoadCard from "@/components/loads/LoadCard";
 import LoadsMap from "@/components/map/LoadsMap";
-import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription, DrawerTrigger } from "vaul";
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription, DrawerTrigger } from "@/components/ui/drawer";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useAccentColor } from "@/hooks/useAccentColor";
@@ -109,7 +109,7 @@ export default function BookLoadsClient() {
       </div>
 
       {/* OFFER DRAWER */}
-      <Drawer.Root open={!!offerRR} onOpenChange={(o)=>!o && setOfferRR(null)}>
+      <Drawer open={!!offerRR} onOpenChange={(o)=>!o && setOfferRR(null)}>
         <DrawerContent className="p-4 sm:p-6">
           <DrawerHeader>
             <DrawerTitle>Make an Offer</DrawerTitle>
@@ -130,7 +130,7 @@ export default function BookLoadsClient() {
             <Button className="bg-blue-600 hover:bg-blue-700" onClick={()=>alert("Offer flow will be implemented next")}>Submit Offer</Button>
           </div>
         </DrawerContent>
-      </Drawer.Root>
+      </Drawer>
     </div>
   );
 }

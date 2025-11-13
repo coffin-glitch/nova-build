@@ -8,19 +8,19 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatDistance, formatMoney } from "@/lib/format";
 import {
-    ArrowLeft,
-    CheckCircle2,
-    Clock,
-    DollarSign,
-    Edit,
-    FileText,
-    MapPin,
-    MessageSquare,
-    Package,
-    TrendingUp,
-    Truck,
-    User,
-    XCircle
+  ArrowLeft,
+  CheckCircle2,
+  Clock,
+  DollarSign,
+  Edit,
+  FileText,
+  MapPin,
+  MessageSquare,
+  Package,
+  TrendingUp,
+  Truck,
+  User,
+  XCircle
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -51,8 +51,6 @@ export function LoadDetailsDialog({ load, offer, children }: LoadDetailsDialogPr
   const [offerHistory, setOfferHistory] = useState<OfferHistoryEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
-  if (!load && !offer) return null;
-
   const loadData = load || offer?.load;
   const isOffer = !!offer;
 
@@ -75,6 +73,8 @@ export function LoadDetailsDialog({ load, offer, children }: LoadDetailsDialogPr
         });
     }
   }, [isOpen, isOffer, offer?.id]);
+
+  if (!load && !offer) return null;
 
   const getStatusBadge = (status: string) => {
     const variants = {

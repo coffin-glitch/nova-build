@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
       const sheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[sheetName];
       const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-      parsedLoads = parseEAXExcel(jsonData);
+      parsedLoads = parseEAXExcel(jsonData as any[][]);
     }
 
     console.log("File processing started:", {
@@ -100,8 +100,8 @@ export async function POST(request: NextRequest) {
           if (load.pickup_date) {
             try {
               let parsed;
-              if (load.pickup_date instanceof Date) {
-                parsed = load.pickup_date;
+              if ((load.pickup_date as any) instanceof Date) {
+                parsed = load.pickup_date as unknown as Date;
               } else {
                 // Handle MM/DD/YY format (common in EAX files)
                 const dateStr = load.pickup_date.toString().trim();
@@ -128,8 +128,8 @@ export async function POST(request: NextRequest) {
           if (load.delivery_date) {
             try {
               let parsed;
-              if (load.delivery_date instanceof Date) {
-                parsed = load.delivery_date;
+              if ((load.delivery_date as any) instanceof Date) {
+                parsed = load.delivery_date as unknown as Date;
               } else {
                 // Handle MM/DD/YY format (common in EAX files)
                 const dateStr = load.delivery_date.toString().trim();
@@ -198,8 +198,8 @@ export async function POST(request: NextRequest) {
           if (load.pickup_date) {
             try {
               let parsed;
-              if (load.pickup_date instanceof Date) {
-                parsed = load.pickup_date;
+              if ((load.pickup_date as any) instanceof Date) {
+                parsed = load.pickup_date as unknown as Date;
               } else {
                 // Handle MM/DD/YY format (common in EAX files)
                 const dateStr = load.pickup_date.toString().trim();
@@ -224,8 +224,8 @@ export async function POST(request: NextRequest) {
           if (load.delivery_date) {
             try {
               let parsed;
-              if (load.delivery_date instanceof Date) {
-                parsed = load.delivery_date;
+              if ((load.delivery_date as any) instanceof Date) {
+                parsed = load.delivery_date as unknown as Date;
               } else {
                 // Handle MM/DD/YY format (common in EAX files)
                 const dateStr = load.delivery_date.toString().trim();

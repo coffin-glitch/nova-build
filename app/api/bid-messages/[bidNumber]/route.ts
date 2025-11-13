@@ -110,12 +110,16 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ bidNumber: string }> }
 ) {
+  let bidNumber: string | undefined;
+  let userId: string | undefined;
+  let userRole: 'admin' | 'carrier' | undefined;
+  let is_internal: boolean | undefined;
+  
   try {
-    const { bidNumber } = await params;
+    const paramsResult = await params;
+    bidNumber = paramsResult.bidNumber;
     
     // Check if user is admin or carrier (Supabase-only)
-    let userId: string;
-    let userRole: 'admin' | 'carrier';
     
     try {
       const adminAuth = await requireApiAdmin(request);
@@ -128,7 +132,8 @@ export async function POST(
       userRole = 'carrier';
     }
 
-    const { message, is_internal = false } = await request.json();
+    const { message, is_internal: isInternal = false } = await request.json();
+    is_internal = isInternal;
 
     if (!message || !message.trim()) {
       return NextResponse.json(
@@ -171,7 +176,7 @@ export async function POST(
       // Try with is_internal column and supabase_sender_id only
       result = await sql`
         INSERT INTO bid_messages (bid_number, supabase_sender_id, sender_role, message, is_internal)
-        VALUES (${bidNumber}, ${userId}, ${userRole}, ${message.trim()}, ${is_internal})
+        VALUES (${bidNumber!}, ${userId!}, ${userRole!}, ${message.trim()}, ${is_internal!})
         RETURNING *
       `;
     } catch (error: any) {
@@ -185,7 +190,7 @@ export async function POST(
         // Try again with supabase_sender_id only
         result = await sql`
           INSERT INTO bid_messages (bid_number, supabase_sender_id, sender_role, message, is_internal)
-          VALUES (${bidNumber}, ${userId}, ${userRole}, ${message.trim()}, ${is_internal})
+          VALUES (${bidNumber!}, ${userId!}, ${userRole!}, ${message.trim()}, ${is_internal!})
           RETURNING *
         `;
       } 
@@ -195,7 +200,7 @@ export async function POST(
         try {
           result = await sql`
             INSERT INTO bid_messages (bid_number, supabase_sender_id, sender_id, sender_role, message, is_internal)
-            VALUES (${bidNumber}, ${userId}, ${userId}, ${userRole}, ${message.trim()}, ${is_internal})
+            VALUES (${bidNumber!}, ${userId!}, ${userId!}, ${userRole!}, ${message.trim()}, ${is_internal!})
             RETURNING *
           `;
         } catch (innerError: any) {
@@ -204,7 +209,7 @@ export async function POST(
             await sql`ALTER TABLE bid_messages ADD COLUMN IF NOT EXISTS is_internal BOOLEAN DEFAULT false`;
             result = await sql`
               INSERT INTO bid_messages (bid_number, supabase_sender_id, sender_id, sender_role, message, is_internal)
-              VALUES (${bidNumber}, ${userId}, ${userId}, ${userRole}, ${message.trim()}, ${is_internal})
+              VALUES (${bidNumber!}, ${userId!}, ${userId!}, ${userRole!}, ${message.trim()}, ${is_internal!})
               RETURNING *
             `;
           } else {

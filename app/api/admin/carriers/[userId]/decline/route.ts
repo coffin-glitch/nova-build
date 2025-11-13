@@ -1,7 +1,7 @@
 import { forbiddenResponse, requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
+import { clearCarrierRelatedCaches } from "@/lib/cache-invalidation";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
-import { clearCarrierRelatedCaches } from "@/lib/cache-invalidation";
 
 export async function POST(
   request: NextRequest,
@@ -88,7 +88,7 @@ export async function POST(
         ${profileUserId},
         ${JSON.stringify(currentProfile[0])},
         'declined',
-        ${currentProfile[0].submitted_at || NOW()},
+        ${currentProfile[0].submitted_at || new Date().toISOString()},
         NOW(),
         ${adminUserId},
         ${review_notes || null},

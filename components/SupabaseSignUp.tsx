@@ -1,18 +1,18 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import { useSupabase } from "@/components/providers/SupabaseProvider";
-import { useRouter } from "next/navigation";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useAccentColor } from "@/hooks/useAccentColor";
-import { useTheme } from "next-themes";
-import { Truck, Mail, Lock, ArrowRight, Sparkles, CheckCircle } from "lucide-react";
-import Link from "next/link";
 import { getButtonTextColor as getTextColor } from "@/lib/utils";
+import { ArrowRight, CheckCircle, Lock, Mail, Sparkles, Truck } from "lucide-react";
+import { useTheme } from "next-themes";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 
 /**
  * Supabase Sign Up Component
@@ -93,7 +93,7 @@ export default function SupabaseSignUp() {
       
       // Check what URL the client is using
       if (supabase) {
-        // @ts-ignore - accessing internal property for debugging
+        // @ts-expect-error - accessing internal property for debugging
         const clientUrl = supabase.supabaseUrl || 'unknown';
         console.log('🐛 [SIGN-UP DEBUG] Client URL:', clientUrl);
       }
