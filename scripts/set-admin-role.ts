@@ -1,4 +1,5 @@
 import { config } from "dotenv";
+// @ts-ignore - Clerk removed, this script is obsolete
 import { setClerkUserRole } from "../lib/clerk-server";
 
 // Load environment variables

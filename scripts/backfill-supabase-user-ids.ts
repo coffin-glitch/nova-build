@@ -44,7 +44,7 @@ async function getClerkUsers(): Promise<ClerkUser[]> {
     ORDER BY clerk_user_id
   `;
   
-  return users as ClerkUser[];
+  return users as unknown as ClerkUser[];
 }
 
 async function findSupabaseUserByEmail(email: string): Promise<string | null> {

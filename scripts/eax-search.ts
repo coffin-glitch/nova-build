@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { chromium, Page, Frame } from 'playwright';
 import { load as loadHtml } from 'cheerio';
+// @ts-ignore - luxon types not available
 import { DateTime } from 'luxon';
 
 // ====== CONFIG (from .env) ======
@@ -230,7 +231,7 @@ async function parseResultsFromCurrentPage(ctx: Page|Frame) {
   const rows: any[] = [];
   const trs = table!.find('tr');
 
-  trs.each((i, tr) => {
+  trs.each((i: number, tr: any) => {
     const tds = $(tr).children('td');
     if (tds.length < 20) return;
 

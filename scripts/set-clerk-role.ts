@@ -1,4 +1,5 @@
 import 'dotenv/config';
+// @ts-ignore - Clerk removed, this script is obsolete
 import { users } from '@clerk/clerk-sdk-node';
 
 async function main() {

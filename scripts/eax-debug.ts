@@ -1,6 +1,6 @@
 import 'dotenv/config';
-import { chromium } from 'playwright';
 import { promises as fs } from 'fs';
+import { chromium } from 'playwright';
 
 (async () => {
   const browser = await chromium.launch({ headless: true });

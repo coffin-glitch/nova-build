@@ -84,9 +84,10 @@ class OptimizedRoleManager {
         LIMIT 1
       `;
       
-      if (result.length === 0) return null;
+      const rows = result as any[];
+      if (rows.length === 0) return null;
       
-      const row = result[0];
+      const row = rows[0];
       return {
         clerk_user_id: row.supabase_user_id, // Legacy name, contains supabase_user_id
         role: row.role as UserRole,

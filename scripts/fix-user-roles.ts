@@ -18,11 +18,11 @@ async function fixUserRoles() {
     // Update user_roles table
     await sql`
       INSERT INTO user_roles (user_id, role, created_at)
-      VALUES (?, ?, datetime('now'))
+      VALUES (${adminUserId}, ${'admin'}, datetime('now'))
       ON CONFLICT (user_id)
       DO UPDATE SET 
-        role = ?
-    `(adminUserId, 'admin', 'admin');
+        role = ${'admin'}
+    `;
     
     // Update user_roles_cache table
     await sql`
@@ -32,20 +32,20 @@ async function fixUserRoles() {
         email, 
         last_synced, 
         clerk_updated_at
-      ) VALUES (?, ?, ?, datetime('now'), ?)
+      ) VALUES (${adminUserId}, ${'admin'}, ${'dukeisaac12@gmail.com'}, datetime('now'), ${Date.now()})
       ON CONFLICT (clerk_user_id) 
       DO UPDATE SET 
-        role = ?,
-        email = ?,
+        role = ${'admin'},
+        email = ${'dukeisaac12@gmail.com'},
         last_synced = datetime('now'),
-        clerk_updated_at = ?
-    `(adminUserId, 'admin', 'dukeisaac12@gmail.com', Date.now(), 'admin', 'dukeisaac12@gmail.com', Date.now());
+        clerk_updated_at = ${Date.now()}
+    `;
     
     console.log('✅ Fixed user roles');
     
     // Verify the fix
-    const updatedRoles = await sql`SELECT * FROM user_roles WHERE user_id = ?`(adminUserId);
-    const updatedCache = await sql`SELECT * FROM user_roles_cache WHERE clerk_user_id = ?`(adminUserId);
+    const updatedRoles = await sql`SELECT * FROM user_roles WHERE user_id = ${adminUserId}`;
+    const updatedCache = await sql`SELECT * FROM user_roles_cache WHERE clerk_user_id = ${adminUserId}`;
     
     console.log('✅ Updated user_roles:', updatedRoles);
     console.log('✅ Updated user_roles_cache:', updatedCache);

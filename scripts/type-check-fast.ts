@@ -6,17 +6,34 @@
  */
 
 import { execSync } from 'child_process';
-import { glob } from 'glob';
-import { resolve } from 'path';
+import { readdirSync, statSync } from 'fs';
+import { join, resolve } from 'path';
+
+function findTsFiles(dir: string, ignore: string[] = []): string[] {
+  const files: string[] = [];
+  try {
+    const entries = readdirSync(dir);
+    for (const entry of entries) {
+      const fullPath = join(dir, entry);
+      if (ignore.some(ig => fullPath.includes(ig))) continue;
+      const stat = statSync(fullPath);
+      if (stat.isDirectory()) {
+        files.push(...findTsFiles(fullPath, ignore));
+      } else if (entry.endsWith('.ts') && !entry.endsWith('.d.ts')) {
+        files.push(fullPath);
+      }
+    }
+  } catch (e) {
+    // Ignore permission errors
+  }
+  return files;
+}
 
 const files = process.argv.slice(2);
 
 if (files.length === 0) {
   // Check all TypeScript files
-  const tsFiles = glob.sync('**/*.ts', {
-    ignore: ['**/node_modules/**', '**/.next/**', '**/dist/**'],
-    cwd: process.cwd(),
-  });
+  const tsFiles = findTsFiles(process.cwd(), ['node_modules', '.next', 'dist']);
   
   console.log(`Checking ${tsFiles.length} TypeScript files...`);
   const startTime = Date.now();

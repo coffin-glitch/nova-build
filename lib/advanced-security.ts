@@ -1,7 +1,7 @@
+import { cookies, headers } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseServer, createCookieAdapter } from "./supabase";
-import { headers, cookies } from "next/headers";
 import { getUserRole } from "./auth";
+import { createCookieAdapter, getSupabaseServer } from "./supabase";
 
 /**
  * Advanced Security Middleware for Next.js API Routes

@@ -14,6 +14,10 @@ async function runMigration() {
 
   const migrationSQL = readFileSync('db/migrations/050_create_bid_messages_table.sql', 'utf-8');
 
+  if (!DATABASE_URL) {
+    console.error('❌ DATABASE_URL environment variable is not set');
+    process.exit(1);
+  }
   const sql = postgres(DATABASE_URL, {
     ssl: 'require',
     max: 1,

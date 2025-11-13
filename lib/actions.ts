@@ -2,9 +2,9 @@
 
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { requireAdmin } from "./auth-unified";
 import sql from "./db";
 import { createCookieAdapter, getSupabaseServer } from "./supabase";
-import { requireAdmin } from "./auth-unified";
 
 // Profile Actions
 export async function getCarrierProfile() {

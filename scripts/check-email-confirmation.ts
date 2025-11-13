@@ -94,7 +94,11 @@ async function checkEmailConfirmation(email: string) {
     
     if (!user.email_confirmed_at) {
       console.log('\n💡 To resend confirmation email, use Supabase Dashboard:');
-      console.log(`   https://app.supabase.com/project/${SUPABASE_URL.split('//')[1].split('.')[0]}/auth/users`);
+      if (SUPABASE_URL) {
+        console.log(`   https://app.supabase.com/project/${SUPABASE_URL.split('//')[1].split('.')[0]}/auth/users`);
+      } else {
+        console.log(`   https://app.supabase.com/project/[YOUR_PROJECT_ID]/auth/users`);
+      }
       console.log(`   Or run: tsx scripts/resend-confirmation.ts ${email}`);
     }
 

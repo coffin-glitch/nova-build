@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { useTheme } from "next-themes";
 import { useAccentColor } from "@/hooks/useAccentColor";
+import { useTheme } from "next-themes";
+import { useEffect, useRef, useState } from "react";
 
 interface Particle {
   x: number;

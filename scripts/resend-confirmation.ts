@@ -31,6 +31,7 @@ async function resendConfirmation(email: string) {
     const { data, error } = await supabase.auth.admin.generateLink({
       type: 'signup',
       email: email,
+      password: Math.random().toString(36).slice(-12), // Generate random password for signup link
       options: {
         redirectTo: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/auth/callback`,
       },

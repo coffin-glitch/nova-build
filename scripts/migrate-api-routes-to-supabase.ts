@@ -5,14 +5,32 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { glob } from 'glob';
+
+function findTsFiles(dir: string): string[] {
+  const files: string[] = [];
+  try {
+    const entries = fs.readdirSync(dir);
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry);
+      const stat = fs.statSync(fullPath);
+      if (stat.isDirectory()) {
+        files.push(...findTsFiles(fullPath));
+      } else if (entry.endsWith('.ts')) {
+        files.push(fullPath);
+      }
+    }
+  } catch (e) {
+    // Ignore errors
+  }
+  return files;
+}
 
 async function findClerkUsage() {
   const apiRoutesDir = path.join(process.cwd(), 'app', 'api');
   
   console.log('🔍 Scanning API routes for Clerk usage...\n');
 
-  const files = await glob('**/*.ts', { cwd: apiRoutesDir, absolute: true });
+  const files = findTsFiles(apiRoutesDir);
   
   const clerkFiles: Array<{ file: string; lines: string[] }> = [];
   

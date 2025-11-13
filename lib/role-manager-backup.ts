@@ -257,9 +257,10 @@ class RoleManager {
       
       console.log(`📊 RoleManager: Cache query result for ${userId}:`, result);
       
-      if (result.length === 0) return null;
+      const rows = result as any[];
+      if (rows.length === 0) return null;
       
-      const row = result[0];
+      const row = rows[0];
       return {
         clerk_user_id: row.clerk_user_id,
         role: row.role as UserRole,
@@ -358,8 +359,9 @@ class RoleManager {
         SELECT role FROM user_roles WHERE user_id = ${userId}
       `;
       
-      if (result.length > 0) {
-        return result[0].role as UserRole;
+      const rows = result as any[];
+      if (rows.length > 0) {
+        return rows[0].role as UserRole;
       }
       
       return null;
@@ -442,7 +444,8 @@ class RoleManager {
         FROM user_roles_cache
       `;
       
-      const row = result[0];
+      const rows = result as any[];
+      const row = rows[0];
       return {
         total: parseInt(row.total),
         admins: parseInt(row.admins),

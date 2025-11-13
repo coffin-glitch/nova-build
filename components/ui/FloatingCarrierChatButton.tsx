@@ -7,18 +7,18 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useUnifiedRole } from "@/hooks/useUnifiedRole";
-import { cn } from "@/lib/utils";
 import { useUnifiedUser } from "@/hooks/useUnifiedUser";
+import { cn } from "@/lib/utils";
 import {
-    ArrowLeft,
-    Maximize2,
-    MessageCircle,
-    Minimize2,
-    MoreVertical,
-    Search,
-    Send,
-    Users,
-    X
+  ArrowLeft,
+  Maximize2,
+  MessageCircle,
+  Minimize2,
+  MoreVertical,
+  Search,
+  Send,
+  Users,
+  X
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";

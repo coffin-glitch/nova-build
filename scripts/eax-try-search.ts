@@ -63,8 +63,9 @@ async function submitSearch(ctx: Page|Frame) {
 
   // Capture popups (results sometimes open as new window)
   const popups: Page[] = [];
-  context.on('page', (p) => {
-    if (p.opener()) {
+  context.on('page', async (p) => {
+    const opener = await p.opener();
+    if (opener) {
       popups.push(p);
       console.log('>> Popup opened:', p.url());
     }
