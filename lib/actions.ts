@@ -1,9 +1,10 @@
 "use server";
 
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { getSupabaseServer, createCookieAdapter } from "./supabase";
 import sql from "./db";
-import { headers, cookies } from "next/headers";
+import { createCookieAdapter, getSupabaseServer } from "./supabase";
+import { requireAdmin } from "./auth-unified";
 
 // Profile Actions
 export async function getCarrierProfile() {
@@ -289,7 +290,7 @@ export async function getLoadOffers(loadId?: number) {
 
 export async function acceptOffer(offerId: number) {
   try {
-    const { userId } = await requireAdmin(); // Get userId from requireAdmin
+    const userId = await requireAdmin(); // Get userId from requireAdmin
     
     // Get offer details (Supabase-only)
     const offer = await sql`
