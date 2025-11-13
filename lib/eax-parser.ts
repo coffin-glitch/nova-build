@@ -446,7 +446,7 @@ export function parseEAXLoadRow(row: string[], headers: Partial<EAXCSVHeaders>):
   }
 
   // Apply stops modification logic for all loads
-  stops = modifyStops(stopsRaw);
+  stops = modifyStops(stopsRaw ?? 1);
 
   // Calculate derived values
   const rateCents = revenue ? Math.round(revenue * 100) : undefined;

@@ -63,7 +63,8 @@ export function getSupabaseServer(
 	return createServerClient(url, anon, {
 		cookies: {
 			get(name: string) {
-				return cookies.get(name);
+				const cookie = cookies.get(name);
+				return cookie?.value ?? null;
 			},
 			set(name: string, value: string, options?: any) {
 				cookies.set(name, value, options);

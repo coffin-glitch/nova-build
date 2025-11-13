@@ -15,6 +15,7 @@ import { getSupabaseService } from "./supabase";
 
 export interface EmailOptions {
   email: string;
+  password?: string;
   redirectTo?: string;
   data?: Record<string, any>;
 }
@@ -30,6 +31,7 @@ export async function sendSignUpEmail(options: EmailOptions): Promise<{ success:
     const { data, error } = await supabase.auth.admin.generateLink({
       type: 'signup',
       email: options.email,
+      password: options.password || Math.random().toString(36).slice(-12), // Generate random password if not provided
       options: {
         redirectTo: options.redirectTo || `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/auth/callback`,
         data: options.data || {},
@@ -115,14 +117,25 @@ export async function sendMagicLinkEmail(options: EmailOptions): Promise<{ succe
 export async function sendEmailChangeConfirmation(
   userId: string,
   newEmail: string,
-  options?: { redirectTo?: string }
+  options?: { redirectTo?: string; currentEmail?: string }
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const supabase = getSupabaseService();
     
+    // Fetch current email if not provided
+    let currentEmail = options?.currentEmail;
+    if (!currentEmail) {
+      const { data: userData, error: userError } = await supabase.auth.admin.getUserById(userId);
+      if (userError || !userData?.user?.email) {
+        return { success: false, error: 'Could not fetch current email address' };
+      }
+      currentEmail = userData.user.email;
+    }
+    
     const { data, error } = await supabase.auth.admin.generateLink({
-      type: 'email_change',
-      email: newEmail,
+      type: 'email_change_new',
+      email: currentEmail,
+      newEmail: newEmail,
       options: {
         redirectTo: options?.redirectTo || `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/auth/callback`,
       },
