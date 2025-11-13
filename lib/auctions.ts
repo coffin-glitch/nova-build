@@ -368,7 +368,7 @@ export async function upsertCarrierBid({
       // Don't throw error - bid creation should still succeed
     }
 
-    return result[0];
+    return result[0] as unknown as CarrierBid;
   } catch (error) {
     console.error('Database error in upsertCarrierBid:', error);
     throw error; // Re-throw to maintain API contract
@@ -1032,7 +1032,7 @@ export async function updateCarrierProfile({
       // Don't throw - cache clearing is best effort
     }
 
-    return result[0];
+    return result[0] as unknown as CarrierProfile;
   } catch (error) {
     console.error('Database error in updateCarrierProfile:', error);
     throw error; // Re-throw to maintain API contract
