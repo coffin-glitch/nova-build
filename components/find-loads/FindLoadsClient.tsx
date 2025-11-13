@@ -241,7 +241,6 @@ export default function FindLoadsClient() {
               <LoadCard
                 key={load.rr_number}
                 {...load}
-                onBookLoad={handleBookLoad}
               />
             ))
           )}
