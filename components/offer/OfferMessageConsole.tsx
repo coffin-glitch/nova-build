@@ -130,7 +130,7 @@ export function OfferMessageConsole({ offerId, isOpen, onClose }: OfferMessageCo
                   <p className="text-sm">Start a conversation about this offer</p>
                 </div>
               ) : (
-                comments.map((comment) => (
+                comments.map((comment: OfferComment) => (
                   <div
                     key={comment.id}
                     className={`flex gap-3 ${
