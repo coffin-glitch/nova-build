@@ -297,7 +297,7 @@ export default function NotificationPreferences() {
           <Button
             onClick={handleSave}
             disabled={isSaving}
-            className={accentBgStyle}
+            style={accentBgStyle}
           >
             {isSaving ? (
               <>
