@@ -89,14 +89,30 @@ class ResendEmailProvider implements EmailProvider {
         };
       }
 
-      // Fallback to HTML/text if no React template
-      const { data, error } = await this.resend.emails.send({
-        from: fromEmail,
-        to: options.to,
-        subject: options.subject,
-        html: options.html,
-        text: options.text,
-      });
+              // Fallback to HTML/text if no React template
+              const emailPayload: any = {
+                from: fromEmail,
+                to: options.to,
+                subject: options.subject,
+              };
+              
+              if (options.html) {
+                emailPayload.html = options.html;
+              }
+              
+              if (options.text) {
+                emailPayload.text = options.text;
+              }
+              
+              // Ensure at least html or text is provided
+              if (!emailPayload.html && !emailPayload.text) {
+                return {
+                  success: false,
+                  error: 'Either html, text, or react must be provided',
+                };
+              }
+              
+              const { data, error } = await this.resend.emails.send(emailPayload);
 
       if (error) {
         console.error('[Email - Resend] Error:', error);
