@@ -20,8 +20,144 @@ import {
   checkRateLimit 
 } from '../lib/notification-cache';
 import { shouldTriggerNotification, type AdvancedNotificationPreferences } from '../lib/advanced-notification-preferences';
+import { sendEmail } from '../lib/email/notify';
+import {
+  ExactMatchNotificationTemplate,
+  SimilarLoadNotificationTemplate,
+  FavoriteAvailableNotificationTemplate,
+  BidWonNotificationTemplate,
+  BidLostNotificationTemplate,
+  DeadlineApproachingNotificationTemplate,
+} from '../lib/email-templates/notification-templates';
 import sql from '../lib/db';
 import { Job } from 'bullmq';
+import { createClient } from '@supabase/supabase-js';
+
+// Helper function to get carrier email from Supabase
+async function getCarrierEmail(userId: string): Promise<string | null> {
+  try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    
+    if (!supabaseUrl || !supabaseKey) {
+      console.warn('[Email] Supabase credentials not configured');
+      return null;
+    }
+    
+    const supabase = createClient(supabaseUrl, supabaseKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    
+    const { data: { user }, error } = await supabase.auth.admin.getUserById(userId);
+    
+    if (error || !user?.email) {
+      console.warn(`[Email] Could not get email for user ${userId}:`, error?.message);
+      return null;
+    }
+    
+    return user.email;
+  } catch (error: any) {
+    console.error(`[Email] Error fetching email for user ${userId}:`, error?.message);
+    return null;
+  }
+}
+
+// Helper function to get load details from bid_number
+async function getLoadDetails(bidNumber: string): Promise<{
+  origin: string;
+  destination: string;
+  revenue?: number;
+  miles?: number;
+} | null> {
+  try {
+    // Try telegram_bids first (most common)
+    const bidInfo = await sql`
+      SELECT 
+        pickup_timestamp,
+        delivery_timestamp,
+        distance_miles,
+        tag
+      FROM telegram_bids
+      WHERE bid_number = ${bidNumber}
+      LIMIT 1
+    `;
+    
+    if (bidInfo.length > 0) {
+      const bid = bidInfo[0];
+      // Tag format is typically "ORIGIN_STATE-DEST_STATE" (e.g., "CA-NY", "TX-FL")
+      // Or could be city names. Try to extract or use tag as-is
+      let origin = 'Origin';
+      let destination = 'Destination';
+      
+      if (bid.tag) {
+        const parts = bid.tag.split('-');
+        if (parts.length >= 2) {
+          origin = parts[0].trim();
+          destination = parts[1].trim();
+        } else {
+          // If no dash, use tag as origin
+          origin = bid.tag;
+        }
+      }
+      
+      return {
+        origin,
+        destination,
+        miles: bid.distance_miles || undefined,
+      };
+    }
+    
+    // Fallback to loads table if available
+    const loadInfo = await sql`
+      SELECT 
+        origin_city,
+        origin_state,
+        destination_city,
+        destination_state,
+        revenue,
+        total_miles
+      FROM loads
+      WHERE rr_number = ${bidNumber} OR tm_number = ${bidNumber}
+      LIMIT 1
+    `;
+    
+    if (loadInfo.length > 0) {
+      const load = loadInfo[0];
+      return {
+        origin: `${load.origin_city || ''}, ${load.origin_state || ''}`.trim() || 'Origin',
+        destination: `${load.destination_city || ''}, ${load.destination_state || ''}`.trim() || 'Destination',
+        revenue: load.revenue || undefined,
+        miles: load.total_miles || undefined,
+      };
+    }
+    
+    return null;
+  } catch (error: any) {
+    console.error(`[Email] Error fetching load details for ${bidNumber}:`, error?.message);
+    return null;
+  }
+}
+
+// Helper function to get carrier name
+async function getCarrierName(userId: string): Promise<string | null> {
+  try {
+    const profile = await sql`
+      SELECT legal_name, company_name
+      FROM carrier_profiles
+      WHERE supabase_user_id = ${userId}
+      LIMIT 1
+    `;
+    
+    if (profile.length > 0) {
+      return profile[0].legal_name || profile[0].company_name || null;
+    }
+    
+    return null;
+  } catch (error: any) {
+    console.error(`[Email] Error fetching carrier name for ${userId}:`, error?.message);
+    return null;
+  }
+}
 
 // Process a notification job
 async function processNotificationJob(job: Job): Promise<void> {
@@ -186,12 +322,18 @@ async function processSimilarLoadTrigger(
       if (shouldTrigger.shouldNotify) {
         const message = `High-match load found! ${load.bid_number} - ${load.distance_miles}mi, ${load.tag}. Match: ${shouldTrigger.matchScore || load.similarity_score}%.`;
         
+        // Get load details for email
+        const loadDetails = await getLoadDetails(load.bid_number);
+        
         await sendNotification({
           carrierUserId: userId,
           triggerId: trigger.id,
           notificationType: 'similar_load',
           bidNumber: load.bid_number,
-          message
+          message,
+          loadDetails: loadDetails || undefined,
+          matchScore: shouldTrigger.matchScore || load.similarity_score,
+          reasons: shouldTrigger.reason ? [shouldTrigger.reason] : [],
         });
         count++;
       }
@@ -239,19 +381,27 @@ async function processDeadlineApproachingTrigger(
   return 0;
 }
 
-// Helper function to send notifications
+// Helper function to send notifications (in-app + email)
 async function sendNotification({
   carrierUserId,
   triggerId,
   notificationType,
   bidNumber,
-  message
+  message,
+  loadDetails,
+  matchScore,
+  reasons,
+  minutesRemaining,
 }: {
   carrierUserId: string;
   triggerId: number;
   notificationType: string;
   bidNumber: string;
   message: string;
+  loadDetails?: { origin: string; destination: string; revenue?: number; miles?: number };
+  matchScore?: number;
+  reasons?: string[];
+  minutesRemaining?: number;
 }) {
   try {
     // Insert into notification_logs
@@ -293,6 +443,128 @@ async function sendNotification({
         false
       )
     `;
+
+    // Send email notification (if enabled)
+    try {
+      // Check if email notifications are enabled
+      const prefsResult = await sql`
+        SELECT email_notifications
+        FROM carrier_notification_preferences
+        WHERE supabase_carrier_user_id = ${carrierUserId}
+        LIMIT 1
+      `;
+      
+      const emailEnabled = prefsResult[0]?.email_notifications ?? true; // Default to true
+      
+      if (!emailEnabled) {
+        console.log(`[Email] Email notifications disabled for user ${carrierUserId}`);
+        return;
+      }
+
+      // Get carrier email
+      const carrierEmail = await getCarrierEmail(carrierUserId);
+      if (!carrierEmail) {
+        console.warn(`[Email] No email found for user ${carrierUserId}, skipping email`);
+        return;
+      }
+
+      // Get load details if not provided
+      const loadInfo = loadDetails || await getLoadDetails(bidNumber);
+      if (!loadInfo) {
+        console.warn(`[Email] Could not get load details for ${bidNumber}, skipping email`);
+        return;
+      }
+
+      // Get carrier name
+      const carrierName = await getCarrierName(carrierUserId);
+
+      // Build view URL
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://novafreight.io';
+      const viewUrl = `${baseUrl}/find-loads?bid=${bidNumber}`;
+
+      // Send email based on notification type
+      let emailResult;
+      switch (notificationType) {
+        case 'exact_match':
+          emailResult = await sendEmail({
+            to: carrierEmail,
+            subject: `🎯 Exact Match Found: ${loadInfo.origin} → ${loadInfo.destination}`,
+            react: ExactMatchNotificationTemplate({
+              bidNumber,
+              origin: loadInfo.origin,
+              destination: loadInfo.destination,
+              revenue: loadInfo.revenue,
+              miles: loadInfo.miles,
+              viewUrl,
+              carrierName: carrierName || undefined,
+            }),
+          });
+          break;
+
+        case 'similar_load':
+          emailResult = await sendEmail({
+            to: carrierEmail,
+            subject: `🚚 Similar Load Found: ${bidNumber} (${matchScore || 0}% match)`,
+            react: SimilarLoadNotificationTemplate({
+              bidNumber,
+              origin: loadInfo.origin,
+              destination: loadInfo.destination,
+              matchScore: matchScore || 0,
+              reasons: reasons || [],
+              revenue: loadInfo.revenue,
+              miles: loadInfo.miles,
+              viewUrl,
+              carrierName: carrierName || undefined,
+            }),
+          });
+          break;
+
+        case 'favorite_available':
+          emailResult = await sendEmail({
+            to: carrierEmail,
+            subject: `⭐ Your Favorite Load is Available: ${bidNumber}`,
+            react: FavoriteAvailableNotificationTemplate({
+              bidNumber,
+              origin: loadInfo.origin,
+              destination: loadInfo.destination,
+              revenue: loadInfo.revenue,
+              miles: loadInfo.miles,
+              viewUrl,
+              carrierName: carrierName || undefined,
+            }),
+          });
+          break;
+
+        case 'deadline_approaching':
+          if (minutesRemaining) {
+            emailResult = await sendEmail({
+              to: carrierEmail,
+              subject: `⏰ Bid ${bidNumber} Closing in ${minutesRemaining} Minutes`,
+              react: DeadlineApproachingNotificationTemplate({
+                bidNumber,
+                origin: loadInfo.origin,
+                destination: loadInfo.destination,
+                minutesRemaining,
+                viewUrl,
+                carrierName: carrierName || undefined,
+              }),
+            });
+          }
+          break;
+
+        // Note: bid_won and bid_lost are typically sent from auction functions, not here
+        // But we can add them if needed
+      }
+
+      if (emailResult?.success) {
+        console.log(`✅ Email sent to ${carrierEmail} for ${notificationType} notification`);
+      } else {
+        console.warn(`⚠️  Email failed for ${carrierEmail}:`, emailResult?.error);
+      }
+    } catch (emailError: any) {
+      // Don't fail the notification if email fails
+      console.error(`[Email] Error sending email notification:`, emailError?.message);
+    }
   } catch (error) {
     console.error("Error sending notification:", error);
     throw error; // Re-throw to trigger job retry

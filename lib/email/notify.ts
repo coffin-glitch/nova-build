@@ -1,13 +1,19 @@
 /**
  * Email Notification System
  * Provider-agnostic email sending with feature flag support
+ * 
+ * Supports Resend (recommended) with React Email templates
  */
+
+import { Resend } from 'resend';
+import * as React from 'react';
 
 interface EmailOptions {
   to: string;
   subject: string;
   html?: string;
   text?: string;
+  react?: React.ReactElement; // For React Email templates
 }
 
 interface EmailProvider {
@@ -16,14 +22,12 @@ interface EmailProvider {
 
 /**
  * No-op email provider for development/testing
- * When Google Enterprise account is ready, replace with actual provider
  */
 class NoOpEmailProvider implements EmailProvider {
   async sendEmail(options: EmailOptions): Promise<{ success: boolean; messageId?: string; error?: string }> {
     console.log('[Email - NoOp] Would send email:', {
       to: options.to,
       subject: options.subject,
-      html: options.html?.substring(0, 100) + '...',
     });
     
     // Return success for development - prevents blocking notifications
@@ -35,27 +39,94 @@ class NoOpEmailProvider implements EmailProvider {
 }
 
 /**
+ * Resend Email Provider
+ * Uses Resend API with React Email templates (2024-2025 best practice)
+ */
+class ResendEmailProvider implements EmailProvider {
+  private resend: Resend | null = null;
+
+  constructor() {
+    const apiKey = process.env.RESEND_API_KEY;
+    if (apiKey) {
+      this.resend = new Resend(apiKey);
+    } else {
+      console.warn('[Email - Resend] RESEND_API_KEY not set, emails will not be sent');
+    }
+  }
+
+  async sendEmail(options: EmailOptions): Promise<{ success: boolean; messageId?: string; error?: string }> {
+    if (!this.resend) {
+      console.warn('[Email - Resend] Resend client not initialized');
+      return {
+        success: false,
+        error: 'Resend API key not configured',
+      };
+    }
+
+    try {
+      const fromEmail = process.env.RESEND_FROM_EMAIL || 'NOVA Build <onboarding@resend.dev>';
+      
+      // Use React Email template if provided (best practice for 2024-2025)
+      if (options.react) {
+        const { data, error } = await this.resend.emails.send({
+          from: fromEmail,
+          to: options.to,
+          subject: options.subject,
+          react: options.react,
+        });
+
+        if (error) {
+          console.error('[Email - Resend] Error:', error);
+          return {
+            success: false,
+            error: error.message || 'Failed to send email',
+          };
+        }
+
+        return {
+          success: true,
+          messageId: data?.id,
+        };
+      }
+
+      // Fallback to HTML/text if no React template
+      const { data, error } = await this.resend.emails.send({
+        from: fromEmail,
+        to: options.to,
+        subject: options.subject,
+        html: options.html,
+        text: options.text,
+      });
+
+      if (error) {
+        console.error('[Email - Resend] Error:', error);
+        return {
+          success: false,
+          error: error.message || 'Failed to send email',
+        };
+      }
+
+      return {
+        success: true,
+        messageId: data?.id,
+      };
+    } catch (error: any) {
+      console.error('[Email - Resend] Exception:', error);
+      return {
+        success: false,
+        error: error?.message || 'Unknown error sending email',
+      };
+    }
+  }
+}
+
+/**
  * Google Enterprise Email Provider (placeholder - implement when account is ready)
- * Use Google Workspace SMTP or Google Cloud SendGrid/Resend
  */
 class GoogleEnterpriseEmailProvider implements EmailProvider {
   async sendEmail(options: EmailOptions): Promise<{ success: boolean; messageId?: string; error?: string }> {
-    // TODO: Implement when Google Enterprise account is set up
-    // This will use SMTP or a service like SendGrid/Resend via Google Cloud
-    try {
-      // Example implementation structure:
-      // const result = await sendViaGoogleSMTP(options);
-      // return { success: true, messageId: result.messageId };
-      
-      console.warn('[Email - Google Enterprise] Not yet implemented - using NoOp fallback');
-      return new NoOpEmailProvider().sendEmail(options);
-    } catch (error: any) {
-      console.error('[Email - Google Enterprise] Failed:', error);
-      return {
-        success: false,
-        error: error?.message || 'Email send failed',
-      };
-    }
+    console.warn('[Email - Google Enterprise] Not yet implemented - using NoOp fallback');
+    return new NoOpEmailProvider().sendEmail(options);
   }
 }
 
@@ -66,16 +137,14 @@ function getEmailProvider(): EmailProvider {
   const provider = process.env.EMAIL_PROVIDER || 'none';
   
   switch (provider.toLowerCase()) {
+    case 'resend':
+      return new ResendEmailProvider();
     case 'google':
     case 'google-enterprise':
     case 'google-workspace':
       return new GoogleEnterpriseEmailProvider();
-    case 'resend':
-      // Could add Resend provider here
-      return new NoOpEmailProvider();
     case 'sendgrid':
-      // Could add SendGrid provider here
-      return new NoOpEmailProvider();
+      return new NoOpEmailProvider(); // TODO: Implement SendGrid
     case 'none':
     default:
       return new NoOpEmailProvider();
