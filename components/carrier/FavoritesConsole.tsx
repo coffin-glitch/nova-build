@@ -834,14 +834,16 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                         <TooltipContent side="bottom" className="max-w-sm">
                           <div className="space-y-2 text-xs">
                             <p className="font-semibold">Example Notification Scheme:</p>
+                            <p><strong>Distance Range:</strong> 100-500 miles</p>
                             <p><strong>Distance Threshold:</strong> 50 miles</p>
-                            <p><strong>Min/Max Distance:</strong> 100-500 miles</p>
                             <p><strong>State Preferences:</strong> IL, PA</p>
+                            <p><strong>Min Match Score:</strong> 70 (filtering: ON)</p>
                             <p className="mt-2 font-semibold">What Will Trigger:</p>
                             <ul className="list-disc list-inside space-y-1 ml-2">
-                              <li><strong>Exact Match:</strong> Any load matching your favorite route (e.g., City A → City B), regardless of distance</li>
-                              <li><strong>State Pref Bid:</strong> Loads within 50 miles of your favorite's distance (e.g., favorite is 300mi → matches 250-350mi), AND between 100-500 miles total, AND from IL or PA</li>
-                              <li><strong>Backhaul:</strong> If enabled, reverse routes (City B → City A) also trigger exact match alerts</li>
+                              <li><strong>Exact Match:</strong> Loads matching your favorite route (e.g., City A → City B) AND within your distance range (100-500 miles)</li>
+                              <li><strong>State Pref Bid:</strong> Loads within 50 miles of your favorite's distance (e.g., favorite is 300mi → matches 250-350mi), AND between 100-500 miles total, AND from IL or PA, AND match score ≥ 70</li>
+                              <li><strong>Backhaul:</strong> If enabled, reverse routes (City B → City A) also trigger exact match alerts (within distance range)</li>
+                              <li className="mt-1 text-muted-foreground"><strong>Note:</strong> Triggers use your distance range (min/max) instead of specific bid numbers, so all favorites within that range are monitored</li>
                             </ul>
                           </div>
                         </TooltipContent>
@@ -898,7 +900,23 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                         <div className="flex items-center justify-between mb-1">
                           <label className="text-xs font-medium flex items-center gap-1">
                             Min Match Score (0-100)
-                            <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-muted text-[10px] cursor-help" title="Only alert when similarity is above this threshold (0–100). Higher = fewer but better alerts.">?</span>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-muted text-[10px] cursor-help">?</span>
+                                </TooltipTrigger>
+                                <TooltipContent className="max-w-xs">
+                                  <div className="text-xs space-y-1">
+                                    <p><strong>How it works:</strong></p>
+                                    <p>Minimum similarity score (0-100) required to trigger notifications. Higher = fewer but better alerts.</p>
+                                    <p className="mt-2"><strong>Filter Toggle:</strong></p>
+                                    <p><strong>ON:</strong> Only sends notifications when match score ≥ this threshold</p>
+                                    <p><strong>OFF:</strong> Sends notifications for all matches, but scores still display on cards</p>
+                                    <p className="mt-2 text-muted-foreground">Example: Score = 65, Threshold = 70 → Notification sent only if filter is OFF</p>
+                                  </div>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
                           </label>
                           <div className="flex items-center gap-2">
                             <span className="text-xs text-muted-foreground">Use for filtering</span>
@@ -1095,7 +1113,7 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                                 <p>If your favorite is 300 miles and threshold is 50 miles:</p>
                                 <p>✅ Matches: 250-350 miles (300 ± 50)</p>
                                 <p>❌ Doesn&apos;t match: 200 miles (difference = 100, &gt; 50)</p>
-                                <p className="mt-2 text-muted-foreground">Note: Only used for state preference bid matching. Exact matches ignore distance.</p>
+                                <p className="mt-2 text-muted-foreground">Note: Only used for state preference bid matching. Exact matches use your distance range (min/max) instead.</p>
                               </div>
                             </TooltipContent>
                           </Tooltip>
