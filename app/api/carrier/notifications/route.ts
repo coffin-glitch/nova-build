@@ -33,8 +33,21 @@ export async function GET(request: NextRequest) {
     const typeFilter = searchParams.get('type'); // Filter by notification type
     const groupByType = searchParams.get('group_by_type') === 'true'; // Group notifications by type
 
+    // Auto-cleanup: Mark notifications as read if older than 7 days
+    await sql`
+      UPDATE notifications
+      SET read = true
+      WHERE user_id = ${userId}
+        AND read = false
+        AND created_at < NOW() - INTERVAL '7 days'
+    `;
+
     // Build WHERE clause
     let whereClause = sql`WHERE user_id = ${userId}`;
+    
+    // Auto-cleanup: Hide notifications older than 30 days (still in DB, just not shown)
+    whereClause = sql`${whereClause} AND created_at >= NOW() - INTERVAL '30 days'`;
+    
     if (unreadOnly) {
       whereClause = sql`${whereClause} AND read = false`;
     }
@@ -58,11 +71,12 @@ export async function GET(request: NextRequest) {
       LIMIT ${limit} OFFSET ${offset}
     `;
 
-    // Get total count
+    // Get total count (only for notifications within 30 days)
     const countResult = await sql`
       SELECT COUNT(*) as count 
       FROM notifications 
       WHERE user_id = ${userId}
+        AND created_at >= NOW() - INTERVAL '30 days'
       ${unreadOnly ? sql`AND read = false` : sql``}
     `;
     
