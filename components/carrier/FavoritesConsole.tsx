@@ -2508,7 +2508,7 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
               <div className="space-y-4">
                 <div>
                   <label className="text-sm font-medium">Trigger Type</label>
-                  <div className="flex items-center gap-2 mt-1">
+                  <div className="mt-1">
                     <Badge variant="outline" className={`text-xs ${
                       editingTrigger.trigger_config?.matchType === 'state' 
                         ? 'border-purple-400 text-purple-400' 
@@ -2516,9 +2516,6 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                     }`}>
                       {editingTrigger.trigger_config?.matchType === 'state' ? 'State Match' : 'Exact Match'}
                     </Badge>
-                    <span className="text-sm text-muted-foreground">
-                      ({editingTrigger.trigger_type.replace('_', ' ')})
-                    </span>
                   </div>
                 </div>
                 {/* Only show distance range for non-exact-match triggers */}
