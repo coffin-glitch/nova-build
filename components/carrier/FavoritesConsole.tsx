@@ -184,7 +184,8 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
   // Use a ref to track the last known good data to prevent any clearing
   const lastKnownGoodTriggersRef = useRef<NotificationTrigger[]>([]);
   
-  // Update stable triggers only when we receive valid data
+  // BULLETPROOF: Update stable triggers only when we receive valid data
+  // Never clear once loaded - always merge/update, never replace
   useEffect(() => {
     if (triggersData?.ok && Array.isArray(triggersData?.data)) {
       // Always update the ref with the latest good data
@@ -192,17 +193,20 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
       
       // If we already have loaded triggers, merge the new data instead of replacing
       if (hasLoadedTriggersRef.current) {
-        // Merge strategy: update existing, add new, never remove
-        const existingMap = new Map(stableTriggers.map(t => [t.id, t]));
-        
-        // Update existing and add new triggers
-        triggersData.data.forEach((newTrigger: NotificationTrigger) => {
-          existingMap.set(newTrigger.id, { ...existingMap.get(newTrigger.id), ...newTrigger });
+        // Use functional update to avoid dependency on stableTriggers
+        setStableTriggers(prev => {
+          // Merge strategy: update existing, add new, never remove
+          const existingMap = new Map(prev.map(t => [t.id, t]));
+          
+          // Update existing and add new triggers
+          triggersData.data.forEach((newTrigger: NotificationTrigger) => {
+            const existing = existingMap.get(newTrigger.id);
+            existingMap.set(newTrigger.id, existing ? { ...existing, ...newTrigger } : newTrigger);
+          });
+          
+          // Convert back to array - this preserves all existing triggers
+          return Array.from(existingMap.values());
         });
-        
-        // Convert back to array - this preserves all existing triggers
-        const merged = Array.from(existingMap.values());
-        setStableTriggers(merged);
       } else {
         // First load - set initial data
         setStableTriggers(triggersData.data);
