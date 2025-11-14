@@ -844,8 +844,9 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                               <p className="font-semibold mb-2">What Will Trigger:</p>
                               <ul className="list-disc list-inside space-y-2 ml-2">
                                 <li><strong>Exact Match:</strong> Loads matching your favorite route (e.g., City A → City B) AND within your distance range (100-500 miles). The system monitors all your favorites that fall within this distance range.</li>
-                                <li><strong>State Pref Bid:</strong> Loads within 50 miles of your favorite's distance (e.g., favorite is 300mi → matches 250-350mi), AND between 100-500 miles total, AND from IL or PA, AND match score ≥ 70</li>
-                                <li><strong>Backhaul:</strong> If enabled, reverse routes (City B → City A) also trigger exact match alerts (within distance range)</li>
+                                <li><strong>State Match:</strong> Loads matching the same state-to-state route (e.g., IL → PA) regardless of specific cities, AND within your distance range (100-500 miles). More flexible than exact match - gives you more opportunities.</li>
+                                <li><strong>State Pref Bid:</strong> Loads within 50 miles of your favorite's distance (e.g., favorite is 300mi → matches 250-350mi), AND between 100-500 miles total, AND from IL or PA, AND match score ≥ 70 (if filtering enabled)</li>
+                                <li><strong>Backhaul:</strong> If enabled, reverse routes (City B → City A or PA → IL) also trigger exact/state match alerts (within distance range)</li>
                               </ul>
                             </div>
                             <div className="mt-3 pt-3 border-t bg-muted/30 p-2 rounded">

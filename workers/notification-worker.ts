@@ -123,6 +123,37 @@ function countStops(stops: any): number | undefined {
   return 1; // Single stop as object
 }
 
+// Helper function to extract state from stop string
+function extractStateFromStop(stop: string): string | null {
+  if (!stop || typeof stop !== 'string') return null;
+  
+  const trimmed = stop.trim().toUpperCase();
+  
+  // List of valid US state abbreviations
+  const validStates = new Set([
+    'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
+    'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
+    'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
+    'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
+    'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY'
+  ]);
+  
+  // Try to find state abbreviation in various patterns
+  // Pattern 1: "CITY, ST" or "CITY, ST ZIP"
+  let match = trimmed.match(/,\s*([A-Z]{2})(?:\s|$)/);
+  if (match && validStates.has(match[1])) return match[1];
+  
+  // Pattern 2: "CITY ST" (no comma)
+  match = trimmed.match(/\s+([A-Z]{2})$/);
+  if (match && validStates.has(match[1])) return match[1];
+  
+  // Pattern 3: "ST" at the end
+  match = trimmed.match(/([A-Z]{2})$/);
+  if (match && validStates.has(match[1])) return match[1];
+  
+  return null;
+}
+
 // Helper function to get load details from bid_number
 async function getLoadDetails(bidNumber: string): Promise<{
   origin: string;
@@ -517,7 +548,12 @@ async function processExactMatchTrigger(
 
   let count = 0;
 
-  // For each favorite route, find exact matches in active bids
+  // Determine match type from config
+  const matchType = config.matchType || 'exact'; // 'exact' or 'state'
+  const originState = config.originState;
+  const destinationState = config.destinationState;
+
+  // For each favorite route, find matches in active bids
   for (const favorite of favoriteRoutes) {
     const favoriteStops = parseStops(favorite.favorite_stops);
     if (favoriteStops.length === 0) continue;
@@ -525,61 +561,65 @@ async function processExactMatchTrigger(
     const origin = favoriteStops[0];
     const destination = favoriteStops[favoriteStops.length - 1];
 
-      // Find active bids with exact route match
-      // Also filter by distance range if using new format
-      let exactMatches;
-      if (favoriteDistanceRange) {
-        exactMatches = await sql`
-          SELECT 
-            tb.bid_number,
-            tb.stops,
-            tb.distance_miles,
-            tb.tag,
-            tb.pickup_timestamp,
-            tb.delivery_timestamp,
-            tb.received_at
-          FROM telegram_bids tb
-          WHERE tb.is_archived = false
-            AND NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes')
-            AND tb.distance_miles >= ${favoriteDistanceRange.minDistance}
-            AND tb.distance_miles <= ${favoriteDistanceRange.maxDistance}
-            AND (
-              -- Exact route match: same origin and destination
-              (tb.stops::text LIKE ${`%${origin}%`} AND tb.stops::text LIKE ${`%${destination}%`})
-              OR
-              -- Tag match (state-based)
-              (tb.tag = ${favorite.favorite_tag})
-            )
-          ORDER BY tb.received_at DESC
-          LIMIT 5
-        `;
-      } else {
-        exactMatches = await sql`
-          SELECT 
-            tb.bid_number,
-            tb.stops,
-            tb.distance_miles,
-            tb.tag,
-            tb.pickup_timestamp,
-            tb.delivery_timestamp,
-            tb.received_at
-          FROM telegram_bids tb
-          WHERE tb.is_archived = false
-            AND NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes')
-            AND tb.bid_number != ${favorite.favorite_bid}
-            AND (
-              -- Exact route match: same origin and destination
-              (tb.stops::text LIKE ${`%${origin}%`} AND tb.stops::text LIKE ${`%${destination}%`})
-              OR
-              -- Tag match (state-based)
-              (tb.tag = ${favorite.favorite_tag})
-            )
-          ORDER BY tb.received_at DESC
-          LIMIT 5
-        `;
-      }
+    // Extract states from favorite for state matching
+    const favoriteOriginState = extractStateFromStop(origin);
+    const favoriteDestState = extractStateFromStop(destination);
 
-    for (const match of exactMatches) {
+    // Find active bids with route match
+    // Also filter by distance range if using new format
+    let routeMatches;
+    if (favoriteDistanceRange) {
+      routeMatches = await sql`
+        SELECT 
+          tb.bid_number,
+          tb.stops,
+          tb.distance_miles,
+          tb.tag,
+          tb.pickup_timestamp,
+          tb.delivery_timestamp,
+          tb.received_at
+        FROM telegram_bids tb
+        WHERE tb.is_archived = false
+          AND NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes')
+          AND tb.distance_miles >= ${favoriteDistanceRange.minDistance}
+          AND tb.distance_miles <= ${favoriteDistanceRange.maxDistance}
+          AND (
+            -- Exact route match: same origin and destination
+            (tb.stops::text LIKE ${`%${origin}%`} AND tb.stops::text LIKE ${`%${destination}%`})
+            OR
+            -- Tag match (state-based)
+            (tb.tag = ${favorite.favorite_tag})
+          )
+        ORDER BY tb.received_at DESC
+        LIMIT 10
+      `;
+    } else {
+      routeMatches = await sql`
+        SELECT 
+          tb.bid_number,
+          tb.stops,
+          tb.distance_miles,
+          tb.tag,
+          tb.pickup_timestamp,
+          tb.delivery_timestamp,
+          tb.received_at
+        FROM telegram_bids tb
+        WHERE tb.is_archived = false
+          AND NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes')
+          AND tb.bid_number != ${favorite.favorite_bid}
+          AND (
+            -- Exact route match: same origin and destination
+            (tb.stops::text LIKE ${`%${origin}%`} AND tb.stops::text LIKE ${`%${destination}%`})
+            OR
+            -- Tag match (state-based)
+            (tb.tag = ${favorite.favorite_tag})
+          )
+        ORDER BY tb.received_at DESC
+        LIMIT 10
+      `;
+    }
+
+    for (const match of routeMatches) {
       // Check if we've already notified about this bid
       const recentNotification = await sql`
         SELECT id
@@ -593,17 +633,35 @@ async function processExactMatchTrigger(
 
       if (recentNotification.length > 0) continue;
 
-      // Verify it's actually an exact match by checking stops
+      // Verify it's actually a match by checking stops
       const matchStops = parseStops(match.stops);
       if (matchStops.length === 0) continue;
 
       const matchOrigin = matchStops[0];
       const matchDest = matchStops[matchStops.length - 1];
 
-      // Check if origin and destination match (case-insensitive)
+      // Extract states from match
+      const matchOriginState = extractStateFromStop(matchOrigin);
+      const matchDestState = extractStateFromStop(matchDest);
+
+      // Check for exact match (city-to-city)
       const isExactMatch = (
         matchOrigin.toUpperCase().trim() === origin.toUpperCase().trim() &&
         matchDest.toUpperCase().trim() === destination.toUpperCase().trim()
+      );
+
+      // Check for state match (state-to-state)
+      const isStateMatch = (
+        matchType === 'state' &&
+        matchOriginState && matchDestState &&
+        favoriteOriginState && favoriteDestState &&
+        matchOriginState === favoriteOriginState &&
+        matchDestState === favoriteDestState
+      ) || (
+        matchType === 'state' &&
+        originState && destinationState &&
+        matchOriginState === originState &&
+        matchDestState === destinationState
       );
 
       // Check for backhaul match (reverse route) if enabled
@@ -612,20 +670,67 @@ async function processExactMatchTrigger(
         matchDest.toUpperCase().trim() === origin.toUpperCase().trim()
       );
 
+      // Check for backhaul state match if enabled
+      const isBackhaulStateMatch = (
+        matchType === 'state' &&
+        matchOriginState && matchDestState &&
+        favoriteOriginState && favoriteDestState &&
+        matchOriginState === favoriteDestState &&
+        matchDestState === favoriteOriginState
+      ) || (
+        matchType === 'state' &&
+        originState && destinationState &&
+        matchOriginState === destinationState &&
+        matchDestState === originState
+      );
+
       // Check if backhaul is enabled in preferences or trigger config
       const backhaulEnabled = preferences?.prioritize_backhaul || 
                              preferences?.prioritizeBackhaul || 
                              config.backhaulEnabled || 
                              false;
 
-      if (isExactMatch || (isBackhaulMatch && backhaulEnabled)) {
+      // Determine if this match should trigger notification
+      const shouldNotify = 
+        (matchType === 'exact' && (isExactMatch || (isBackhaulMatch && backhaulEnabled))) ||
+        (matchType === 'state' && (isStateMatch || (isBackhaulStateMatch && backhaulEnabled)));
+
+      if (shouldNotify) {
+        // Apply min match score filter if enabled
+        const useMinMatchScoreFilter = preferences?.use_min_match_score_filter !== false;
+        if (useMinMatchScoreFilter && preferences?.min_match_score) {
+          // For exact/state matches, we can calculate a simple score based on distance match
+          const distanceDiff = Math.abs((match.distance_miles || 0) - (favorite.favorite_distance || 0));
+          const maxDistance = Math.max(match.distance_miles || 0, favorite.favorite_distance || 0);
+          const distanceScore = maxDistance > 0 ? Math.max(0, 100 - (distanceDiff / maxDistance * 100)) : 100;
+          
+          // Exact matches get higher score, state matches get slightly lower
+          const matchScore = matchType === 'exact' ? Math.min(100, distanceScore + 20) : distanceScore;
+          
+          if (matchScore < preferences.min_match_score) {
+            console.log(`[${matchType === 'exact' ? 'ExactMatch' : 'StateMatch'}] Match score ${matchScore}% below threshold ${preferences.min_match_score}%, skipping`);
+            continue;
+          }
+        }
+
+        // Check distance range if specified in preferences
+        if (preferences?.min_distance !== undefined && preferences?.max_distance !== undefined) {
+          const loadDistance = match.distance_miles || 0;
+          if (loadDistance < preferences.min_distance || loadDistance > preferences.max_distance) {
+            console.log(`[${matchType === 'exact' ? 'ExactMatch' : 'StateMatch'}] Load distance ${loadDistance} outside range ${preferences.min_distance}-${preferences.max_distance}, skipping`);
+            continue;
+          }
+        }
+
         const loadDetails = await getLoadDetails(match.bid_number);
-        const matchType = isBackhaulMatch ? 'backhaul' : 'exact';
-        const message = isBackhaulMatch 
-          ? `Backhaul match found! ${match.bid_number} - ${destination} → ${origin} (return route)`
+        const finalMatchType = isBackhaulMatch || isBackhaulStateMatch ? 'backhaul' : matchType;
+        const message = isBackhaulMatch || isBackhaulStateMatch
+          ? `Backhaul ${matchType} match found! ${match.bid_number} - ${matchDest} → ${matchOrigin} (return route)`
+          : matchType === 'state'
+          ? `State match found! ${match.bid_number} - ${matchOriginState} → ${matchDestState}`
           : `Exact match found! ${match.bid_number} - ${origin} → ${destination}`;
 
-        console.log(`[ExactMatch] ${matchType.toUpperCase()} match: ${match.bid_number} (backhaul enabled: ${backhaulEnabled})`);
+        console.log(`[${matchType === 'exact' ? 'ExactMatch' : 'StateMatch'}] ${finalMatchType.toUpperCase()} match: ${match.bid_number} (backhaul enabled: ${backhaulEnabled})`);
 
         await sendNotification({
           carrierUserId: userId,
