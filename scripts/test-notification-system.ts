@@ -165,12 +165,12 @@ async function testNotificationSystem() {
       const notificationsAfter = await sql`
         SELECT 
           cn.id,
-          cn.supabase_carrier_user_id,
-          cn.notification_type,
+          cn.supabase_user_id,
+          cn.type as notification_type,
           cn.title,
           cn.message,
           cn.bid_number,
-          cn.is_read,
+          cn.read as is_read,
           cn.created_at
         FROM carrier_notifications cn
         WHERE cn.created_at > NOW() - INTERVAL '10 minutes'

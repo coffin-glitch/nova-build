@@ -541,12 +541,12 @@ async function sendNotification({
     // Insert into carrier_notifications for in-app notifications
     await sql`
       INSERT INTO carrier_notifications (
-        supabase_carrier_user_id,
-        notification_type,
+        supabase_user_id,
+        type,
         title,
         message,
         bid_number,
-        is_read
+        read
       )
       VALUES (
         ${carrierUserId},
