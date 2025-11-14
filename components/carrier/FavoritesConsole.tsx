@@ -801,7 +801,7 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                             ?
                           </span>
                         </TooltipTrigger>
-                        <TooltipContent className="max-w-sm">
+                        <TooltipContent side="bottom" className="max-w-sm">
                           <div className="space-y-2 text-xs">
                             <p className="font-semibold">Example Notification Scheme:</p>
                             <p><strong>Distance Threshold:</strong> 50 miles</p>
