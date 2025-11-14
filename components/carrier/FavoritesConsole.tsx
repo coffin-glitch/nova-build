@@ -2365,6 +2365,105 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
             })()}
           </DialogContent>
         </Dialog>
+
+        {/* Edit Trigger Dialog */}
+        <Dialog open={showEditTriggerDialog} onOpenChange={setShowEditTriggerDialog}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Edit Notification Trigger</DialogTitle>
+              <DialogDescription>
+                Update trigger settings without deleting and recreating
+              </DialogDescription>
+            </DialogHeader>
+            {editingTrigger && (
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium">Trigger Type</label>
+                  <p className="text-sm text-muted-foreground capitalize">
+                    {editingTrigger.trigger_type.replace('_', ' ')}
+                  </p>
+                </div>
+                {editingTrigger.trigger_config?.favoriteDistanceRange && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-medium">Min Distance (Miles)</label>
+                      <Input
+                        type="number"
+                        min="0"
+                        defaultValue={editingTrigger.trigger_config.favoriteDistanceRange.minDistance}
+                        onChange={(e) => {
+                          const newConfig = {
+                            ...editingTrigger.trigger_config,
+                            favoriteDistanceRange: {
+                              ...editingTrigger.trigger_config.favoriteDistanceRange,
+                              minDistance: parseInt(e.target.value) || 0
+                            }
+                          };
+                          setEditingTrigger({ ...editingTrigger, trigger_config: newConfig });
+                        }}
+                        className="mt-1 text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium">Max Distance (Miles)</label>
+                      <Input
+                        type="number"
+                        min="0"
+                        defaultValue={editingTrigger.trigger_config.favoriteDistanceRange.maxDistance}
+                        onChange={(e) => {
+                          const newConfig = {
+                            ...editingTrigger.trigger_config,
+                            favoriteDistanceRange: {
+                              ...editingTrigger.trigger_config.favoriteDistanceRange,
+                              maxDistance: parseInt(e.target.value) || 2000
+                            }
+                          };
+                          setEditingTrigger({ ...editingTrigger, trigger_config: newConfig });
+                        }}
+                        className="mt-1 text-xs"
+                      />
+                    </div>
+                  </div>
+                )}
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium">Active</label>
+                  <Button
+                    variant={editingTrigger.is_active ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => {
+                      setEditingTrigger({ ...editingTrigger, is_active: !editingTrigger.is_active });
+                    }}
+                  >
+                    {editingTrigger.is_active ? "Active" : "Inactive"}
+                  </Button>
+                </div>
+                <div className="flex gap-2 pt-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setShowEditTriggerDialog(false);
+                      setEditingTrigger(null);
+                    }}
+                    className="flex-1"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      handleEditTrigger(editingTrigger.id, {
+                        triggerConfig: editingTrigger.trigger_config,
+                        isActive: editingTrigger.is_active
+                      });
+                    }}
+                    className="flex-1"
+                  >
+                    Save Changes
+                  </Button>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </DialogContent>
       
       {/* State Preference Selection Dialog */}
