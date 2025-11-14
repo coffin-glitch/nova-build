@@ -1,30 +1,31 @@
 "use client";
 
+import PageHeader from "@/components/layout/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { 
-  Bell, 
-  CheckCircle, 
-  XCircle, 
-  AlertTriangle, 
-  MessageSquare, 
-  FileText, 
-  Target,
-  Info,
-  Filter,
-  Search,
-  Volume2,
-  VolumeX
-} from "lucide-react";
-import { useState, useEffect, useMemo, useRef } from "react";
-import useSWR from "swr";
-import { swrFetcher } from "@/lib/safe-fetcher";
-import { useUnifiedRole } from "@/hooks/useUnifiedRole";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
 import { useAccentColor } from "@/hooks/useAccentColor";
+import { useUnifiedRole } from "@/hooks/useUnifiedRole";
+import { swrFetcher } from "@/lib/safe-fetcher";
+import {
+  AlertTriangle,
+  Bell,
+  CheckCircle,
+  Info,
+  MessageSquare,
+  Target,
+  Volume2,
+  VolumeX,
+  XCircle,
+  Settings
+} from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import PageHeader from "@/components/layout/PageHeader";
+import useSWR from "swr";
 
 interface Notification {
   id: string;
@@ -36,26 +37,46 @@ interface Notification {
   data?: any;
 }
 
-// Notification types for filtering
-const NOTIFICATION_TYPES = [
-  { value: 'all', label: 'All', icon: Bell },
-  { value: 'exact_match', label: 'Exact Match', icon: Target },
-  { value: 'state_match', label: 'State Match', icon: Target },
-  { value: 'state_pref_bid', label: 'State Pref Bid', icon: Target },
-  { value: 'deadline_approaching', label: 'Deadline Approaching', icon: AlertTriangle },
-  { value: 'bid_won', label: 'Bid Won', icon: CheckCircle },
-  { value: 'bid_lost', label: 'Bid Lost', icon: XCircle },
-  { value: 'admin_message', label: 'Messages', icon: MessageSquare },
-  { value: 'system', label: 'System', icon: Info },
+// Simple filter options
+const FILTER_OPTIONS = [
+  { value: 'all', label: 'All Notifications' },
+  { value: 'unread', label: 'Unread Only' },
 ] as const;
 
 export default function NotificationsPage() {
   const { isCarrier } = useUnifiedRole();
   const { accentColor } = useAccentColor();
-  const [selectedType, setSelectedType] = useState<string>('all');
-  const [soundEnabled, setSoundEnabled] = useState(true);
-  const [desktopNotificationsEnabled, setDesktopNotificationsEnabled] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [filter, setFilter] = useState<string>('all');
+  
+  // Load preferences from localStorage
+  const [soundEnabled, setSoundEnabled] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('notification_sound_enabled');
+      return stored !== null ? stored === 'true' : true;
+    }
+    return true;
+  });
+  
+  const [desktopNotificationsEnabled, setDesktopNotificationsEnabled] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('notification_desktop_enabled');
+      return stored !== null ? stored === 'true' : false;
+    }
+    return false;
+  });
+
+  // Save preferences to localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('notification_sound_enabled', String(soundEnabled));
+    }
+  }, [soundEnabled]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('notification_desktop_enabled', String(desktopNotificationsEnabled));
+    }
+  }, [desktopNotificationsEnabled]);
 
   // Request desktop notification permission
   useEffect(() => {
@@ -69,14 +90,15 @@ export default function NotificationsPage() {
     }
   }, [desktopNotificationsEnabled]);
 
-  // Build API endpoint with filters
+  // Build API endpoint - limit to last 50 notifications
   const notificationsEndpoint = useMemo(() => {
     const params = new URLSearchParams();
-    if (selectedType !== 'all') {
-      params.append('type', selectedType);
+    params.append('limit', '50');
+    if (filter === 'unread') {
+      params.append('unread_only', 'true');
     }
     return `/api/carrier/notifications?${params.toString()}`;
-  }, [selectedType]);
+  }, [filter]);
 
   const { data, mutate, error } = useSWR(
     isCarrier ? notificationsEndpoint : null,
@@ -90,7 +112,7 @@ export default function NotificationsPage() {
 
   const notifications: Notification[] = data?.notifications || [];
 
-  // Group notifications by type and time window (5 minutes)
+  // Simple grouping: Group 3+ notifications of same type in 5-minute windows
   const groupedNotifications = useMemo(() => {
     if (!notifications.length) return [];
 
@@ -130,10 +152,9 @@ export default function NotificationsPage() {
         timeGroups.get(windowKey)!.push(notif);
       });
 
-      // Create groups - if more than 2 in a 5-minute window, group them
-      timeGroups.forEach((windowNotifs, windowKey) => {
-        if (windowNotifs.length > 2 && ['exact_match', 'state_match', 'state_pref_bid'].includes(type)) {
-          // Group these notifications
+      // Create groups - if 3+ in a 5-minute window, group them
+      timeGroups.forEach((windowNotifs) => {
+        if (windowNotifs.length >= 3 && ['exact_match', 'state_match', 'state_pref_bid'].includes(type)) {
           groups.push({
             type,
             notifications: windowNotifs,
@@ -159,19 +180,6 @@ export default function NotificationsPage() {
     // Sort by latest time
     return groups.sort((a, b) => b.latestTime.getTime() - a.latestTime.getTime());
   }, [notifications]);
-
-  // Filter by search term
-  const filteredNotifications = useMemo(() => {
-    if (!searchTerm) return groupedNotifications;
-    
-    const term = searchTerm.toLowerCase();
-    return groupedNotifications.filter((group) => {
-      return group.notifications.some((notif) => 
-        notif.title.toLowerCase().includes(term) ||
-        notif.message.toLowerCase().includes(term)
-      );
-    });
-  }, [groupedNotifications, searchTerm]);
 
   // Track previous unread notification IDs to only play sound/show desktop notifications for NEW ones
   const previousUnreadIdsRef = useRef<Set<string>>(new Set());
@@ -304,8 +312,8 @@ export default function NotificationsPage() {
   return (
     <div className="py-8">
       <PageHeader 
-        title="Notifications" 
-        subtitle="View and manage your notifications"
+        title="Notification Settings" 
+        subtitle="Manage your notification preferences and view recent activity"
         breadcrumbs={[
           { label: "Carrier", href: "/carrier" },
           { label: "Notifications" }
@@ -313,70 +321,79 @@ export default function NotificationsPage() {
       />
 
       <div className="space-y-6 mt-6">
-        {/* Controls */}
+        {/* Preferences Section */}
         <Card>
-          <CardContent className="p-4">
-            <div className="flex flex-col md:flex-row gap-4">
-              {/* Search */}
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <input
-                  type="text"
-                  placeholder="Search notifications..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border rounded-lg"
-                />
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Settings className="h-5 w-5" />
+              <CardTitle>Notification Preferences</CardTitle>
+            </div>
+            <CardDescription>
+              Control how you receive notifications
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Sound Toggle */}
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label htmlFor="sound-toggle" className="flex items-center gap-2">
+                  <Volume2 className="h-4 w-4" />
+                  Sound Notifications
+                </Label>
+                <p className="text-sm text-muted-foreground">
+                  Play a sound when new notifications arrive
+                </p>
               </div>
+              <Switch
+                id="sound-toggle"
+                checked={soundEnabled}
+                onCheckedChange={setSoundEnabled}
+              />
+            </div>
 
-              {/* Type Filter */}
-              <div className="flex gap-2 overflow-x-auto">
-                {NOTIFICATION_TYPES.map(({ value, label, icon: Icon }) => (
-                  <Button
-                    key={value}
-                    variant={selectedType === value ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setSelectedType(value)}
-                    className="whitespace-nowrap"
-                  >
-                    <Icon className="h-4 w-4 mr-2" />
-                    {label}
-                  </Button>
-                ))}
-              </div>
+            <Separator />
 
-              {/* Sound/Desktop Toggles */}
-              <div className="flex gap-2">
-                <Button
-                  variant={soundEnabled ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setSoundEnabled(!soundEnabled)}
-                  title={soundEnabled ? 'Disable sound' : 'Enable sound'}
-                >
-                  {soundEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
-                </Button>
-                <Button
-                  variant={desktopNotificationsEnabled ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setDesktopNotificationsEnabled(!desktopNotificationsEnabled)}
-                  title={desktopNotificationsEnabled ? 'Disable desktop notifications' : 'Enable desktop notifications'}
-                >
+            {/* Desktop Notifications Toggle */}
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label htmlFor="desktop-toggle" className="flex items-center gap-2">
                   <Bell className="h-4 w-4" />
-                </Button>
+                  Desktop Notifications
+                </Label>
+                <p className="text-sm text-muted-foreground">
+                  Show browser notifications for new alerts
+                </p>
               </div>
+              <Switch
+                id="desktop-toggle"
+                checked={desktopNotificationsEnabled}
+                onCheckedChange={setDesktopNotificationsEnabled}
+              />
             </div>
           </CardContent>
         </Card>
 
-        {/* Notifications List */}
+        {/* Recent Notifications Section */}
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
-              <CardTitle>Recent Notifications</CardTitle>
+              <div>
+                <CardTitle>Recent Activity</CardTitle>
+                <CardDescription className="mt-1">
+                  Last 50 notifications (older notifications are automatically archived)
+                </CardDescription>
+              </div>
               <div className="flex items-center gap-2">
-                {unreadCount > 0 && (
-                  <Badge variant="default">{unreadCount} unread</Badge>
-                )}
+                {FILTER_OPTIONS.map(({ value, label }) => (
+                  <Button
+                    key={value}
+                    variant={filter === value ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setFilter(value)}
+                  >
+                    {label}
+                  </Button>
+                ))}
                 {unreadCount > 0 && (
                   <Button variant="outline" size="sm" onClick={markAllAsRead}>
                     Mark all as read
@@ -387,14 +404,17 @@ export default function NotificationsPage() {
           </CardHeader>
           <CardContent>
             <ScrollArea className="h-[600px]">
-              {filteredNotifications.length === 0 ? (
+              {groupedNotifications.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground">
                   <Bell className="h-12 w-12 mx-auto mb-4 opacity-50" />
                   <p>No notifications found</p>
+                  {filter === 'unread' && (
+                    <p className="text-xs mt-2">Try switching to "All Notifications"</p>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {filteredNotifications.map((group) => (
+                  {groupedNotifications.map((group) => (
                     <div
                       key={group.isGrouped ? `group-${group.type}-${group.latestTime.getTime()}` : group.notifications[0].id}
                       className={`p-4 rounded-lg border cursor-pointer hover:bg-muted/50 transition-colors ${
@@ -412,7 +432,7 @@ export default function NotificationsPage() {
                             <div className="flex items-center gap-2">
                               {getNotificationIcon(group.type)}
                               <span className="font-semibold">
-                                {group.count} new {NOTIFICATION_TYPES.find(t => t.value === group.type)?.label || group.type} notifications
+                                {group.count} new {group.type.replace(/_/g, ' ')} notifications
                               </span>
                             </div>
                             <span className="text-xs text-muted-foreground">

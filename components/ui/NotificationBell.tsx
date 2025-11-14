@@ -5,10 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
 import { useAccentColor } from "@/hooks/useAccentColor";
 import { useUnifiedRole } from "@/hooks/useUnifiedRole";
 import { swrFetcher } from "@/lib/safe-fetcher";
-import { AlertTriangle, Bell, CheckCircle, FileText, Info, MessageSquare, Settings, Target, XCircle } from "lucide-react";
+import { AlertTriangle, Bell, CheckCircle, FileText, Info, MessageSquare, Settings, Target, Volume2, VolumeX, XCircle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
@@ -33,6 +36,47 @@ export function NotificationBell() {
   const { isAdmin, isCarrier } = useUnifiedRole();
   const { accentColor } = useAccentColor();
   
+  // Load preferences from localStorage (shared with notifications page)
+  const [soundEnabled, setSoundEnabled] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('notification_sound_enabled');
+      return stored !== null ? stored === 'true' : true;
+    }
+    return true;
+  });
+  
+  const [desktopNotificationsEnabled, setDesktopNotificationsEnabled] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('notification_desktop_enabled');
+      return stored !== null ? stored === 'true' : false;
+    }
+    return false;
+  });
+  
+  // Save preferences to localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('notification_sound_enabled', String(soundEnabled));
+    }
+  }, [soundEnabled]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('notification_desktop_enabled', String(desktopNotificationsEnabled));
+    }
+  }, [desktopNotificationsEnabled]);
+
+  // Request desktop notification permission
+  useEffect(() => {
+    if (desktopNotificationsEnabled && 'Notification' in window) {
+      Notification.requestPermission().then((permission) => {
+        if (permission !== 'granted') {
+          setDesktopNotificationsEnabled(false);
+        }
+      });
+    }
+  }, [desktopNotificationsEnabled]);
+  
   // Use appropriate endpoint based on user role
   const notificationsEndpoint = isAdmin ? '/api/notifications' : '/api/carrier/notifications';
   
@@ -43,6 +87,60 @@ export function NotificationBell() {
     keepPreviousData: true, // Keep previous data during refetch to prevent flashing
     onError: (err) => console.error('Notification fetch error:', err),
   });
+  
+  // Play sound for new notifications
+  useEffect(() => {
+    if (soundEnabled && notifications.length > 0) {
+      const unread = notifications.filter((n: Notification) => !n.read);
+      const currentUnreadIds = new Set(unread.map((n: Notification) => n.id));
+      
+      // Find new unread notifications (not in previous set)
+      const newUnread = unread.filter((n: Notification) => !previousUnreadIdsRef.current.has(n.id));
+      
+      // Only play sound if there are new unread notifications (and we had previous data)
+      if (newUnread.length > 0 && previousUnreadIdsRef.current.size > 0) {
+        try {
+          const audio = new Audio('/notification-sound.wav');
+          audio.volume = 0.5;
+          audio.play().catch(() => {
+            const mp3Audio = new Audio('/notification-sound.mp3');
+            mp3Audio.volume = 0.5;
+            mp3Audio.play().catch(() => {
+              // Ignore errors
+            });
+          });
+        } catch (error) {
+          // Ignore errors
+        }
+      }
+      
+      previousUnreadIdsRef.current = currentUnreadIds;
+    }
+  }, [notifications, soundEnabled]);
+
+  // Show desktop notifications for new unread
+  useEffect(() => {
+    if (desktopNotificationsEnabled && 'Notification' in window && Notification.permission === 'granted') {
+      const unread = notifications.filter((n: Notification) => !n.read);
+      const currentUnreadIds = new Set(unread.map((n: Notification) => n.id));
+      
+      // Find new unread notifications (not in previous set)
+      const newUnread = unread.filter((n: Notification) => !previousUnreadIdsRef.current.has(n.id));
+      
+      if (newUnread.length > 0 && previousUnreadIdsRef.current.size > 0) {
+        // Show notification for the latest new unread
+        const latest = newUnread[0];
+        new Notification(latest.title, {
+          body: latest.message,
+          icon: '/favicon.ico',
+          tag: latest.id,
+          requireInteraction: false,
+        });
+      }
+      
+      previousUnreadIdsRef.current = currentUnreadIds;
+    }
+  }, [notifications, desktopNotificationsEnabled]);
 
   // Debug logging
   useEffect(() => {
@@ -552,6 +650,53 @@ export function NotificationBell() {
               </div>
             )}
           </ScrollArea>
+          
+          {/* Preferences Section (for carriers only) */}
+          {isCarrier && (
+            <>
+              <Separator className="my-4" />
+              <div className="px-6 pb-4 space-y-4">
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Quick Settings</Label>
+                  <div className="space-y-3">
+                    {/* Sound Toggle */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        {soundEnabled ? (
+                          <Volume2 className="h-4 w-4 text-muted-foreground" />
+                        ) : (
+                          <VolumeX className="h-4 w-4 text-muted-foreground" />
+                        )}
+                        <Label htmlFor="bell-sound-toggle" className="text-sm cursor-pointer">
+                          Sound
+                        </Label>
+                      </div>
+                      <Switch
+                        id="bell-sound-toggle"
+                        checked={soundEnabled}
+                        onCheckedChange={setSoundEnabled}
+                      />
+                    </div>
+                    
+                    {/* Desktop Notifications Toggle */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Bell className="h-4 w-4 text-muted-foreground" />
+                        <Label htmlFor="bell-desktop-toggle" className="text-sm cursor-pointer">
+                          Desktop Notifications
+                        </Label>
+                      </div>
+                      <Switch
+                        id="bell-desktop-toggle"
+                        checked={desktopNotificationsEnabled}
+                        onCheckedChange={setDesktopNotificationsEnabled}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </div>
