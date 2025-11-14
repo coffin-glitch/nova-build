@@ -676,7 +676,7 @@ export const DeadlineApproachingNotificationTemplate = ({
 }: DeadlineApproachingNotificationProps) => (
   <Html>
     <Head />
-    <Preview>⏰ Bid #{bidNumber} closing in {minutesRemaining} minutes</Preview>
+    <Preview>⏰ Bid #{bidNumber} closing in {String(minutesRemaining)} minutes</Preview>
     <Body style={main}>
       <Container style={gradientContainer}>
         <Container style={container}>
