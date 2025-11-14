@@ -18,7 +18,7 @@ import {
   Volume2,
   VolumeX
 } from "lucide-react";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import useSWR from "swr";
 import { swrFetcher } from "@/lib/safe-fetcher";
 import { useUnifiedRole } from "@/hooks/useUnifiedRole";
@@ -174,7 +174,7 @@ export default function NotificationsPage() {
   }, [groupedNotifications, searchTerm]);
 
   // Track previous unread notification IDs to only play sound/show desktop notifications for NEW ones
-  const [previousUnreadIds, setPreviousUnreadIds] = useState<Set<string>>(new Set());
+  const previousUnreadIdsRef = useRef<Set<string>>(new Set());
 
   // Play sound for new notifications
   useEffect(() => {
@@ -183,10 +183,10 @@ export default function NotificationsPage() {
       const currentUnreadIds = new Set(unread.map(n => n.id));
       
       // Find new unread notifications (not in previous set)
-      const newUnread = unread.filter(n => !previousUnreadIds.has(n.id));
+      const newUnread = unread.filter(n => !previousUnreadIdsRef.current.has(n.id));
       
       // Only play sound if there are new unread notifications (and we had previous data)
-      if (newUnread.length > 0 && previousUnreadIds.size > 0) {
+      if (newUnread.length > 0 && previousUnreadIdsRef.current.size > 0) {
         try {
           // Try WAV first (we have this file), fallback to MP3
           const audio = new Audio('/notification-sound.wav');
@@ -205,9 +205,10 @@ export default function NotificationsPage() {
         }
       }
       
-      setPreviousUnreadIds(currentUnreadIds);
+      // Update ref (doesn't trigger re-render)
+      previousUnreadIdsRef.current = currentUnreadIds;
     }
-  }, [notifications, soundEnabled, previousUnreadIds]);
+  }, [notifications, soundEnabled]);
 
   // Show desktop notifications for new unread
   useEffect(() => {
@@ -216,9 +217,9 @@ export default function NotificationsPage() {
       const currentUnreadIds = new Set(unread.map(n => n.id));
       
       // Find new unread notifications (not in previous set)
-      const newUnread = unread.filter(n => !previousUnreadIds.has(n.id));
+      const newUnread = unread.filter(n => !previousUnreadIdsRef.current.has(n.id));
       
-      if (newUnread.length > 0) {
+      if (newUnread.length > 0 && previousUnreadIdsRef.current.size > 0) {
         // Show notification for the latest new unread
         const latest = newUnread[0];
         new Notification(latest.title, {
@@ -229,9 +230,10 @@ export default function NotificationsPage() {
         });
       }
       
-      setPreviousUnreadIds(currentUnreadIds);
+      // Update ref (doesn't trigger re-render)
+      previousUnreadIdsRef.current = currentUnreadIds;
     }
-  }, [notifications, desktopNotificationsEnabled, previousUnreadIds]);
+  }, [notifications, desktopNotificationsEnabled]);
 
   const markAsRead = async (notificationId: string) => {
     try {
