@@ -2508,12 +2508,21 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
               <div className="space-y-4">
                 <div>
                   <label className="text-sm font-medium">Trigger Type</label>
-                  <p className="text-sm text-muted-foreground capitalize">
-                    {editingTrigger.trigger_type.replace('_', ' ')}
-                  </p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Badge variant="outline" className={`text-xs ${
+                      editingTrigger.trigger_config?.matchType === 'state' 
+                        ? 'border-purple-400 text-purple-400' 
+                        : 'border-blue-400 text-blue-400'
+                    }`}>
+                      {editingTrigger.trigger_config?.matchType === 'state' ? 'State Match' : 'Exact Match'}
+                    </Badge>
+                    <span className="text-sm text-muted-foreground">
+                      ({editingTrigger.trigger_type.replace('_', ' ')})
+                    </span>
+                  </div>
                 </div>
                 {/* Only show distance range for non-exact-match triggers */}
-                {editingTrigger.trigger_config?.favoriteDistanceRange && editingTrigger.trigger_type !== 'exact_match' && (
+                {editingTrigger.trigger_config?.favoriteDistanceRange && editingTrigger.trigger_config?.matchType !== 'exact' && (
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="text-xs font-medium">Min Distance (Miles)</label>
@@ -2555,9 +2564,15 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                     </div>
                   </div>
                 )}
-                {editingTrigger.trigger_type === 'exact_match' && (
+                {editingTrigger.trigger_config?.matchType === 'exact' && (
                   <div className="text-sm text-muted-foreground p-3 bg-muted/30 rounded">
                     <p>Exact match triggers are based on route matching only. Distance settings do not apply.</p>
+                  </div>
+                )}
+                {editingTrigger.trigger_config?.matchType === 'state' && editingTrigger.trigger_config?.originState && editingTrigger.trigger_config?.destinationState && (
+                  <div className="text-sm text-muted-foreground p-3 bg-muted/30 rounded">
+                    <p className="font-mono mb-1">{editingTrigger.trigger_config.originState} → {editingTrigger.trigger_config.destinationState}</p>
+                    <p className="text-xs">State match triggers notify you when any load matches this state-to-state route.</p>
                   </div>
                 )}
                 <div className="flex items-center justify-between">
