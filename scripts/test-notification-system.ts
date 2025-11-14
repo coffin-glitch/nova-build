@@ -65,14 +65,16 @@ async function testNotificationSystem() {
     console.log('\n📊 Step 2: Checking queue stats (before)...');
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
     
+    let beforeCompleted = 0;
     try {
       const queueStatsBefore = await fetch(`${baseUrl}/api/notifications/queue-stats`);
       if (queueStatsBefore.ok) {
         const stats = await queueStatsBefore.json();
+        beforeCompleted = stats.completed || 0;
         console.log('   Queue Stats:');
         console.log(`   - Waiting: ${stats.waiting || 0}`);
         console.log(`   - Active: ${stats.active || 0}`);
-        console.log(`   - Completed: ${stats.completed || 0}`);
+        console.log(`   - Completed: ${beforeCompleted}`);
         console.log(`   - Failed: ${stats.failed || 0}`);
       }
     } catch (error) {
@@ -144,7 +146,7 @@ async function testNotificationSystem() {
           console.log(`   - Completed: ${stats.completed || 0}`);
           console.log(`   - Failed: ${stats.failed || 0}`);
           
-          const completedDiff = (stats.completed || 0) - (queueStatsBefore.ok ? (await queueStatsBefore.json()).completed || 0 : 0);
+          const completedDiff = (stats.completed || 0) - beforeCompleted;
           if (completedDiff > 0) {
             console.log(`   ✅ ${completedDiff} new job(s) completed!`);
           }
@@ -184,7 +186,7 @@ async function testNotificationSystem() {
         console.log('   ⚠️  No new notifications found');
         console.log('   💡 This could mean:');
         console.log('      - No matches found for triggers');
-        console('      - Rate limit reached');
+        console.log('      - Rate limit reached');
         console.log('      - Worker not running');
         console.log('      - Preferences filtered out notifications');
       }
