@@ -566,6 +566,7 @@ export async function updateNotificationPreferences(
           min_distance,
           max_distance,
           min_match_score,
+          use_min_match_score_filter,
           timing_relevance_days,
           prioritize_backhaul,
           avoid_high_competition,
