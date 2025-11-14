@@ -173,27 +173,41 @@ export default function NotificationsPage() {
     });
   }, [groupedNotifications, searchTerm]);
 
+  // Track previous unread notification IDs to only play sound for NEW notifications
+  const [previousUnreadIds, setPreviousUnreadIds] = useState<Set<string>>(new Set());
+
   // Play sound for new notifications
   useEffect(() => {
     if (soundEnabled && notifications.length > 0) {
       const unread = notifications.filter(n => !n.read);
-      if (unread.length > 0) {
-        // Play notification sound
-          // Try MP3 first, fallback to WAV
-          const audio = new Audio('/notification-sound.mp3');
-          audio.addEventListener('error', () => {
-            // If MP3 fails, try WAV
-            const wavAudio = new Audio('/notification-sound.wav');
-            wavAudio.volume = 0.5;
-            wavAudio.play().catch(() => {});
-          }); // You'll need to add this file
-        audio.volume = 0.5;
-        audio.play().catch(() => {
-          // Ignore errors if sound file doesn't exist
-        });
+      const currentUnreadIds = new Set(unread.map(n => n.id));
+      
+      // Find new unread notifications (not in previous set)
+      const newUnread = unread.filter(n => !previousUnreadIds.has(n.id));
+      
+      // Only play sound if there are new unread notifications (and we had previous data)
+      if (newUnread.length > 0 && previousUnreadIds.size > 0) {
+        try {
+          // Try WAV first (we have this file), fallback to MP3
+          const audio = new Audio('/notification-sound.wav');
+          audio.volume = 0.5;
+          audio.play().catch(() => {
+            // If WAV fails, try MP3
+            const mp3Audio = new Audio('/notification-sound.mp3');
+            mp3Audio.volume = 0.5;
+            mp3Audio.play().catch(() => {
+              // Ignore errors if sound files don't exist
+              console.log('Could not play notification sound');
+            });
+          });
+        } catch (error) {
+          // Ignore errors
+        }
       }
+      
+      setPreviousUnreadIds(currentUnreadIds);
     }
-  }, [notifications, soundEnabled]);
+  }, [notifications, soundEnabled, previousUnreadIds]);
 
   // Track previous unread notifications to only show desktop notifications for NEW ones
   const [previousUnreadIds, setPreviousUnreadIds] = useState<Set<string>>(new Set());
