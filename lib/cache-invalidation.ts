@@ -5,6 +5,8 @@
  * to ensure data consistency across the application.
  */
 
+import { redisConnection } from "./notification-queue";
+
 /**
  * Clear the leaderboard in-memory cache
  * This ensures that when a carrier profile is updated, the leaderboard
@@ -43,13 +45,23 @@ export function clearGroupedLeaderboardCache(): void {
  * Clear all caches related to a specific carrier
  * This is called when a carrier profile is updated
  */
-export function clearCarrierRelatedCaches(carrierUserId?: string): void {
+export async function clearCarrierRelatedCaches(carrierUserId?: string): Promise<void> {
   try {
     // Clear individual leaderboard cache
     clearLeaderboardCache();
     
     // Clear grouped leaderboard cache
     clearGroupedLeaderboardCache();
+    
+    // Clear notification tier cache if userId provided
+    if (carrierUserId) {
+      try {
+        await redisConnection.del(`user_tier:${carrierUserId}`);
+        console.log(`[Cache Invalidation] Cleared tier cache for carrier: ${carrierUserId}`);
+      } catch (error) {
+        console.error('[Cache Invalidation] Error clearing tier cache:', error);
+      }
+    }
     
     // Log for debugging
     if (carrierUserId) {

@@ -98,8 +98,8 @@ export async function checkRateLimit(
         LIMIT 1
       `;
       
-      userTier = tierResult[0]?.tier || 'standard';
-      await redisConnection.setex(tierCacheKey, 3600, userTier); // Cache for 1 hour
+      userTier = (tierResult[0]?.tier as string) || 'standard';
+      await redisConnection.setex(tierCacheKey, 3600, userTier as string); // Cache for 1 hour
     } catch (error) {
       console.error(`[RateLimit] Error fetching user tier for ${userId}:`, error);
       userTier = 'standard'; // Default to standard on error

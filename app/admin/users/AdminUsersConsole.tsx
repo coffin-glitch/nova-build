@@ -20,7 +20,8 @@ import {
   Shield,
   Unlock,
   Users,
-  X
+  X,
+  Zap
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -54,6 +55,7 @@ interface CarrierProfile {
   updated_at: string;
   urgent_contact_email?: boolean;
   urgent_contact_phone?: boolean;
+  notification_tier?: 'premium' | 'standard' | 'new';
 }
 
 interface AdminMessage {
@@ -109,6 +111,9 @@ export function AdminUsersConsole() {
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const [newAppealMessage, setNewAppealMessage] = useState("");
   const [isSendingAppealMessage, setIsSendingAppealMessage] = useState(false);
+  const [showTierDialog, setShowTierDialog] = useState(false);
+  const [selectedTier, setSelectedTier] = useState<'premium' | 'standard' | 'new'>('standard');
+  const [isUpdatingTier, setIsUpdatingTier] = useState(false);
   
   // Profile edit state
   const [editFormData, setEditFormData] = useState<Partial<CarrierProfile>>({});
@@ -282,6 +287,52 @@ export function AdminUsersConsole() {
   const handleViewHistory = (carrier: CarrierProfile) => {
     setSelectedCarrier(carrier);
     setShowHistoryDialog(true);
+  };
+
+  const handleManageTier = async (carrier: CarrierProfile) => {
+    setSelectedCarrier(carrier);
+    // Fetch current tier
+    try {
+      const response = await fetch(`/api/admin/carriers/${carrier.user_id}/tier`);
+      if (response.ok) {
+        const data = await response.json();
+        setSelectedTier(data.tier || 'standard');
+      } else {
+        setSelectedTier(carrier.notification_tier || 'standard');
+      }
+    } catch (error) {
+      console.error('Error fetching tier:', error);
+      setSelectedTier(carrier.notification_tier || 'standard');
+    }
+    setShowTierDialog(true);
+  };
+
+  const handleUpdateTier = async () => {
+    if (!selectedCarrier) return;
+    
+    setIsUpdatingTier(true);
+    try {
+      const response = await fetch(`/api/admin/carriers/${selectedCarrier.user_id}/tier`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tier: selectedTier })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        toast.success(data.message || `Tier updated to ${selectedTier}`);
+        mutateCarriers();
+        setShowTierDialog(false);
+      } else {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to update tier');
+      }
+    } catch (error: any) {
+      toast.error(error.message || "Failed to update tier");
+      console.error(error);
+    } finally {
+      setIsUpdatingTier(false);
+    }
   };
 
   const handleViewHealth = async (carrier: CarrierProfile) => {
@@ -644,6 +695,25 @@ export function AdminUsersConsole() {
           </div>
         )}
 
+        {/* Notification Tier Badge */}
+        {carrier.notification_tier && (
+          <div className="flex items-center gap-2 pt-2 border-t border-border/50">
+            <span className="text-xs text-muted-foreground font-medium">Notification Tier:</span>
+            <Badge 
+              variant={carrier.notification_tier === 'premium' ? 'default' : 'secondary'}
+              className={
+                carrier.notification_tier === 'premium' 
+                  ? 'bg-purple-100 text-purple-800 border-purple-300' 
+                  : carrier.notification_tier === 'standard'
+                  ? 'bg-blue-100 text-blue-800 border-blue-300'
+                  : 'bg-gray-100 text-gray-800 border-gray-300'
+              }
+            >
+              {carrier.notification_tier.toUpperCase()}
+            </Badge>
+          </div>
+        )}
+
         {/* Action Buttons */}
         <div className="grid grid-cols-2 gap-2 pt-2">
           <Button 
@@ -664,6 +734,15 @@ export function AdminUsersConsole() {
             <History className="h-4 w-4 mr-2" />
             History
           </Button>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="w-full"
+            onClick={() => handleManageTier(carrier)}
+          >
+            <Zap className="h-4 w-4 mr-2" />
+            Manage Tier
+          </Button>
           {carrier.mc_number && (
             <Button 
               variant="outline" 
@@ -677,7 +756,7 @@ export function AdminUsersConsole() {
           )}
           <Button
             size="sm" 
-            className="w-full relative"
+            className="w-full relative col-span-2"
             style={{ backgroundColor: accentColor }}
             onClick={() => handleOpenAppeal(carrier)}
           >

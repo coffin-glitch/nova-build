@@ -70,7 +70,7 @@ export async function POST(
     `;
     
     // Clear caches to ensure updated data appears immediately
-    clearCarrierRelatedCaches(profileUserId);
+    await clearCarrierRelatedCaches(profileUserId);
 
     // Create history record for decline
     await sql`

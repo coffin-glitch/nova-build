@@ -117,7 +117,7 @@ export async function PUT(
     `;
 
     // Clear caches to ensure updated data appears immediately
-    clearCarrierRelatedCaches(carrierUserId);
+    await clearCarrierRelatedCaches(carrierUserId);
 
     return NextResponse.json({ 
       ok: true, 
