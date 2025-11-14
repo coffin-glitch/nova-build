@@ -1510,6 +1510,102 @@ export function AdminUsersConsole() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Tier Management Dialog */}
+      <Dialog open={showTierDialog} onOpenChange={setShowTierDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Manage Notification Tier</DialogTitle>
+          </DialogHeader>
+          {selectedCarrier && (
+            <div className="space-y-4">
+              <div>
+                <Label className="text-sm font-medium">Carrier</Label>
+                <p className="text-sm text-muted-foreground mt-1">{selectedCarrier.company_name}</p>
+              </div>
+              
+              <div>
+                <Label className="text-sm font-medium mb-2 block">Notification Tier</Label>
+                <div className="space-y-2">
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="radio"
+                      id="tier-premium"
+                      name="tier"
+                      value="premium"
+                      checked={selectedTier === 'premium'}
+                      onChange={(e) => setSelectedTier(e.target.value as 'premium')}
+                      className="h-4 w-4"
+                    />
+                    <label htmlFor="tier-premium" className="flex-1 cursor-pointer">
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium">Premium</span>
+                        <Badge className="bg-purple-100 text-purple-800 border-purple-300">200/hr</Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Highest notification rate limit</p>
+                    </label>
+                  </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="radio"
+                      id="tier-standard"
+                      name="tier"
+                      value="standard"
+                      checked={selectedTier === 'standard'}
+                      onChange={(e) => setSelectedTier(e.target.value as 'standard')}
+                      className="h-4 w-4"
+                    />
+                    <label htmlFor="tier-standard" className="flex-1 cursor-pointer">
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium">Standard</span>
+                        <Badge className="bg-blue-100 text-blue-800 border-blue-300">50/hr</Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Default notification rate limit</p>
+                    </label>
+                  </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="radio"
+                      id="tier-new"
+                      name="tier"
+                      value="new"
+                      checked={selectedTier === 'new'}
+                      onChange={(e) => setSelectedTier(e.target.value as 'new')}
+                      className="h-4 w-4"
+                    />
+                    <label htmlFor="tier-new" className="flex-1 cursor-pointer">
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium">New</span>
+                        <Badge className="bg-gray-100 text-gray-800 border-gray-300">20/hr</Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Lower limit for new users</p>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-4">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowTierDialog(false)}
+                  disabled={isUpdatingTier}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleUpdateTier}
+                  disabled={isUpdatingTier}
+                  style={{ backgroundColor: accentColor }}
+                >
+                  {isUpdatingTier ? 'Updating...' : 'Update Tier'}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
