@@ -426,7 +426,7 @@ export function NotificationBell() {
                   Notifications
                 </span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 {isCarrier && (
                   <Button
                     variant="ghost"
@@ -435,7 +435,7 @@ export function NotificationBell() {
                       setIsOpen(false);
                       window.location.href = '/carrier/notifications';
                     }}
-                    className="h-8 w-8 backdrop-blur-sm border-opacity-30 hover:border-opacity-50"
+                    className="h-8 w-8 -mr-1 backdrop-blur-sm border-opacity-30 hover:border-opacity-50"
                     style={{
                       backgroundColor: accentColor ? `${accentColor}15` : undefined,
                       borderColor: accentColor ? `${accentColor}30` : undefined,
