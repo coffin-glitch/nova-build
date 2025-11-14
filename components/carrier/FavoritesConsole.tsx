@@ -897,7 +897,7 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                               <ul className="list-disc list-inside space-y-2 ml-2">
                                 <li><strong>Exact Match:</strong> Loads matching your exact favorite route (e.g., City A → City B). <strong>Distance does NOT matter</strong> - only the exact city-to-city route. The system monitors all your favorites that fall within your distance range for route matching.</li>
                                 <li><strong>State Match:</strong> Loads matching the same state-to-state route (e.g., IL → PA) regardless of specific cities, AND within your distance range (100-500 miles). More flexible than exact match - gives you more opportunities.</li>
-                                <li><strong>State Pref Bid:</strong> Loads within 50 miles of your favorite's distance (e.g., favorite is 300mi → matches 250-350mi), AND between 100-500 miles total, AND from IL or PA, AND match score ≥ 70 (if filtering enabled)</li>
+                                <li><strong>State Pref Bid:</strong> Loads within 50 miles of your favorite's distance range (e.g., favorite range is 250-350mi → matches 200-400mi with 50mi threshold), AND between 100-500 miles total, AND from IL or PA, AND match score ≥ 70 (if filtering enabled)</li>
                                 <li><strong>Backhaul:</strong> If enabled, reverse routes (City B → City A or PA → IL) also trigger exact/state match alerts. For exact match, distance doesn't matter. For state match, distance range applies.</li>
                               </ul>
                             </div>
@@ -1189,19 +1189,19 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                               <div className="space-y-3 text-xs">
                                 <div>
                                   <p className="font-semibold text-sm mb-2">How Distance Threshold Works:</p>
-                                  <p>Controls how similar a new load's distance must be to your favorites for <strong>"State Pref Bid"</strong> notifications. This creates a flexible matching window around your favorite loads' distances.</p>
+                                  <p>Controls how similar a new bid's distance must be to your favorite distance range for <strong>"State Pref Bid"</strong> notifications. This creates a flexible matching window around your favorite distance range.</p>
                                 </div>
                                 
                                 <div className="mt-3 pt-3 border-t">
                                   <p className="font-semibold mb-2">Step-by-Step Example:</p>
-                                  <p className="mb-2">If you have a favorite load that is <strong>300 miles</strong> and your threshold is <strong>50 miles</strong>:</p>
+                                  <p className="mb-2">If you have a favorite with distance range <strong>250-350 miles</strong> and your threshold is <strong>50 miles</strong>:</p>
                                   <div className="space-y-1 ml-2">
-                                    <p>✅ <strong>Matches:</strong> 250-350 miles (300 ± 50)</p>
-                                    <p className="text-muted-foreground">   → Loads between 250-350 miles will trigger notifications</p>
-                                    <p>❌ <strong>Doesn&apos;t match:</strong> 200 miles (difference = 100, &gt; 50)</p>
-                                    <p className="text-muted-foreground">   → Loads outside the ±50 mile window won&apos;t trigger</p>
-                                    <p>❌ <strong>Doesn&apos;t match:</strong> 400 miles (difference = 100, &gt; 50)</p>
-                                    <p className="text-muted-foreground">   → Too far from your favorite&apos;s distance</p>
+                                    <p>✅ <strong>Matches:</strong> 200-400 miles (250-50 to 350+50)</p>
+                                    <p className="text-muted-foreground">   → Bids between 200-400 miles will trigger notifications</p>
+                                    <p>❌ <strong>Doesn&apos;t match:</strong> 150 miles (difference = 100, &gt; 50 from range)</p>
+                                    <p className="text-muted-foreground">   → Bids outside the ±50 mile window from your range won&apos;t trigger</p>
+                                    <p>❌ <strong>Doesn&apos;t match:</strong> 450 miles (difference = 100, &gt; 50 from range)</p>
+                                    <p className="text-muted-foreground">   → Too far from your favorite&apos;s distance range</p>
                                   </div>
                                 </div>
                                 
@@ -1217,7 +1217,7 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                                 </div>
                                 
                                 <div className="mt-3 pt-3 border-t bg-muted/30 p-2 rounded">
-                                  <p className="text-xs"><strong>Formula:</strong> |New Load Distance - Favorite Distance| ≤ Distance Threshold</p>
+                                  <p className="text-xs"><strong>Formula:</strong> New bid distance must be within ±Distance Threshold of your favorite distance range (min-max)</p>
                                 </div>
                               </div>
                             </TooltipContent>
