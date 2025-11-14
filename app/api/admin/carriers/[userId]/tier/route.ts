@@ -63,7 +63,7 @@ export async function PUT(
     await redisConnection.del(`user_tier:${userId}`);
     
     // Clear other related caches
-    clearCarrierRelatedCaches(userId);
+    await clearCarrierRelatedCaches(userId);
 
     return NextResponse.json({ 
       ok: true, 
