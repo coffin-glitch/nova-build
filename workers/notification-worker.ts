@@ -927,23 +927,24 @@ async function sendNotification({
       )
     `;
 
-    // Insert into carrier_notifications for in-app notifications
+    // Insert into notifications table for in-app notifications (unified table)
+    // Include bid_number in data JSONB for reference
     await sql`
-      INSERT INTO carrier_notifications (
-        supabase_user_id,
+      INSERT INTO notifications (
+        user_id,
         type,
         title,
         message,
-        bid_number,
-        read
+        read,
+        data
       )
       VALUES (
         ${carrierUserId},
         ${notificationType},
         ${getNotificationTitle(notificationType)},
         ${message},
-        ${bidNumber},
-        false
+        false,
+        ${JSON.stringify({ bid_number: bidNumber })}
       )
     `;
 

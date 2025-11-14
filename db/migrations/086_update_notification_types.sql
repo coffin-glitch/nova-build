@@ -24,7 +24,13 @@ CHECK (type IN (
   -- New carrier notification types
   'admin_message',        -- Carrier: Admin sent message
   'profile_approved',     -- Carrier: Profile approved by admin
-  'profile_declined'       -- Carrier: Profile declined by admin
+  'profile_declined',     -- Carrier: Profile declined by admin
+  -- Favorites notification types
+  'exact_match',          -- Carrier: Exact route match found
+  'state_match',          -- Carrier: State-to-state route match found
+  'state_pref_bid',      -- Carrier: State preference bid match found (formerly similar_load)
+  'similar_load',        -- Carrier: Similar load match found (legacy, maps to state_pref_bid)
+  'favorite_available'    -- Carrier: Favorite load is available
 ));
 
 -- Add index for optimized unread count queries (using user_id column)
