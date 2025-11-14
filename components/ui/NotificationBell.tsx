@@ -8,7 +8,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAccentColor } from "@/hooks/useAccentColor";
 import { useUnifiedRole } from "@/hooks/useUnifiedRole";
 import { swrFetcher } from "@/lib/safe-fetcher";
-import { AlertTriangle, Bell, CheckCircle, FileText, Info, MessageSquare, Target, XCircle } from "lucide-react";
+import { AlertTriangle, Bell, CheckCircle, FileText, Info, MessageSquare, Settings, Target, XCircle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
