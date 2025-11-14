@@ -457,8 +457,111 @@ async function processExactMatchTrigger(
   preferences: any,
   favorites: any[]
 ): Promise<number> {
-  // TODO: Implement full exact match processing
-  return 0;
+  const config = trigger.triggerConfig || {};
+  const favoriteBidNumbers = config.favoriteBidNumbers || [];
+  
+  if (favoriteBidNumbers.length === 0) {
+    console.log(`[ExactMatch] No favorite bid numbers configured for trigger ${trigger.id}`);
+    return 0;
+  }
+
+  // Get favorite routes from the favorite bid numbers
+  const favoriteRoutes = await sql`
+    SELECT 
+      cf.bid_number as favorite_bid,
+      tb.stops as favorite_stops,
+      tb.tag as favorite_tag,
+      tb.distance_miles as favorite_distance
+    FROM carrier_favorites cf
+    JOIN telegram_bids tb ON cf.bid_number = tb.bid_number
+    WHERE cf.supabase_carrier_user_id = ${userId}
+      AND cf.bid_number = ANY(${favoriteBidNumbers})
+  `;
+
+  if (favoriteRoutes.length === 0) {
+    console.log(`[ExactMatch] No favorite routes found for user ${userId}`);
+    return 0;
+  }
+
+  let count = 0;
+
+  // For each favorite route, find exact matches in active bids
+  for (const favorite of favoriteRoutes) {
+    const favoriteStops = parseStops(favorite.favorite_stops);
+    if (favoriteStops.length === 0) continue;
+
+    const origin = favoriteStops[0];
+    const destination = favoriteStops[favoriteStops.length - 1];
+
+    // Find active bids with exact route match
+    const exactMatches = await sql`
+      SELECT 
+        tb.bid_number,
+        tb.stops,
+        tb.distance_miles,
+        tb.tag,
+        tb.pickup_timestamp,
+        tb.delivery_timestamp,
+        tb.received_at
+      FROM telegram_bids tb
+      WHERE tb.is_archived = false
+        AND NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes')
+        AND tb.bid_number != ${favorite.favorite_bid}
+        AND (
+          -- Exact route match: same origin and destination
+          (tb.stops::text LIKE ${`%${origin}%`} AND tb.stops::text LIKE ${`%${destination}%`})
+          OR
+          -- Tag match (state-based)
+          (tb.tag = ${favorite.favorite_tag})
+        )
+      ORDER BY tb.received_at DESC
+      LIMIT 5
+    `;
+
+    for (const match of exactMatches) {
+      // Check if we've already notified about this bid
+      const recentNotification = await sql`
+        SELECT id
+        FROM notification_logs
+        WHERE supabase_carrier_user_id = ${userId}
+          AND trigger_id = ${trigger.id}
+          AND bid_number = ${match.bid_number}
+          AND sent_at > NOW() - INTERVAL '1 hour'
+        LIMIT 1
+      `;
+
+      if (recentNotification.length > 0) continue;
+
+      // Verify it's actually an exact match by checking stops
+      const matchStops = parseStops(match.stops);
+      if (matchStops.length === 0) continue;
+
+      const matchOrigin = matchStops[0];
+      const matchDest = matchStops[matchStops.length - 1];
+
+      // Check if origin and destination match (case-insensitive)
+      if (
+        matchOrigin.toUpperCase().trim() === origin.toUpperCase().trim() &&
+        matchDest.toUpperCase().trim() === destination.toUpperCase().trim()
+      ) {
+        const loadDetails = await getLoadDetails(match.bid_number);
+        const message = `Exact match found! ${match.bid_number} - ${origin} → ${destination}`;
+
+        await sendNotification({
+          carrierUserId: userId,
+          triggerId: trigger.id,
+          notificationType: 'exact_match',
+          bidNumber: match.bid_number,
+          message,
+          loadDetails: loadDetails || undefined,
+        });
+
+        count++;
+      }
+    }
+  }
+
+  return count;
 }
 
 // Process new route trigger (simplified)
@@ -470,13 +573,85 @@ async function processNewRouteTrigger(
   return 0;
 }
 
-// Process favorite available trigger (simplified)
+// Process favorite available trigger
 async function processFavoriteAvailableTrigger(
   userId: string,
   trigger: { id: number; triggerType: string; triggerConfig: any }
 ): Promise<number> {
-  // TODO: Implement full favorite available processing
-  return 0;
+  const config = trigger.triggerConfig || {};
+  const favoriteBidNumbers = config.favoriteBidNumbers || [];
+
+  if (favoriteBidNumbers.length === 0) {
+    console.log(`[FavoriteAvailable] No favorite bid numbers configured for trigger ${trigger.id}`);
+    return 0;
+  }
+
+  let count = 0;
+
+  // Check each favorite bid to see if it's still available
+  for (const bidNumber of favoriteBidNumbers) {
+    // Check if bid is still active (not archived and not expired)
+    const activeBid = await sql`
+      SELECT 
+        tb.bid_number,
+        tb.stops,
+        tb.distance_miles,
+        tb.tag,
+        tb.pickup_timestamp,
+        tb.delivery_timestamp,
+        tb.received_at,
+        (tb.received_at::timestamp + INTERVAL '25 minutes') as expires_at
+      FROM telegram_bids tb
+      WHERE tb.bid_number = ${bidNumber}
+        AND tb.is_archived = false
+        AND NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes')
+      LIMIT 1
+    `;
+
+    if (activeBid.length === 0) {
+      // Bid is not available (archived or expired)
+      continue;
+    }
+
+    const bid = activeBid[0];
+
+    // Check if we've already notified about this bid recently
+    const recentNotification = await sql`
+      SELECT id
+      FROM notification_logs
+      WHERE supabase_carrier_user_id = ${userId}
+        AND trigger_id = ${trigger.id}
+        AND bid_number = ${bidNumber}
+        AND sent_at > NOW() - INTERVAL '6 hours'
+      LIMIT 1
+    `;
+
+    if (recentNotification.length > 0) {
+      // Already notified recently
+      continue;
+    }
+
+    // Get load details for email
+    const loadDetails = await getLoadDetails(bidNumber);
+    const stops = parseStops(bid.stops);
+    const origin = stops.length > 0 ? stops[0] : 'Origin';
+    const destination = stops.length > 0 ? stops[stops.length - 1] : 'Destination';
+
+    const message = `Your favorite load is available! ${bidNumber} - ${origin} → ${destination}`;
+
+    await sendNotification({
+      carrierUserId: userId,
+      triggerId: trigger.id,
+      notificationType: 'favorite_available',
+      bidNumber: bidNumber,
+      message,
+      loadDetails: loadDetails || undefined,
+    });
+
+    count++;
+  }
+
+  return count;
 }
 
 // Process deadline approaching trigger (simplified)
