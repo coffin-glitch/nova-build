@@ -163,8 +163,23 @@ export function shouldTriggerNotification(
   }
   
   // 6. Timing preferences
-  if (bid.pickup_timestamp || bid.pickupDate) {
+  // Check timing relevance window if enabled
+  const useTimingRelevance = (preferences as any).useTimingRelevance !== false; // Default to true for backward compatibility
+  if (useTimingRelevance && (bid.pickup_timestamp || bid.pickupDate)) {
     const pickupDate = new Date(bid.pickup_timestamp || bid.pickupDate);
+    const now = new Date();
+    const daysUntilPickup = (pickupDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+    const relevanceWindow = preferences.timingRelevanceDays || 7;
+    
+    // Check if pickup is within the relevance window
+    if (daysUntilPickup < 0) {
+      return { shouldNotify: false, reason: 'Pickup time has passed' };
+    }
+    
+    if (daysUntilPickup > relevanceWindow) {
+      return { shouldNotify: false, reason: `Pickup is ${daysUntilPickup.toFixed(1)} days away, beyond ${relevanceWindow} day window` };
+    }
+    
     const dayOfWeek = pickupDate.toLocaleDateString('en-US', { weekday: 'long' });
     
     if (preferences.avoidWeekends && (dayOfWeek === 'Saturday' || dayOfWeek === 'Sunday')) {

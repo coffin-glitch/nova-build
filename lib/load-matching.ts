@@ -423,6 +423,7 @@ export async function getNotificationPreferences(carrierUserId: string) {
           min_match_score,
           use_min_match_score_filter,
           timing_relevance_days,
+          use_timing_relevance,
           prioritize_backhaul,
           avoid_high_competition,
           max_competition_bids
@@ -438,6 +439,7 @@ export async function getNotificationPreferences(carrierUserId: string) {
           70,
           true,
           7,
+          true,
           true,
           false,
           10
@@ -510,6 +512,7 @@ export async function updateNotificationPreferences(
     routeMatchThreshold?: number;
     distanceFlexibility?: number;
     timingRelevanceDays?: number;
+    useTimingRelevance?: boolean;
     prioritizeBackhaul?: boolean;
     avoidHighCompetition?: boolean;
     maxCompetitionBids?: number;
@@ -543,6 +546,7 @@ export async function updateNotificationPreferences(
           min_match_score = ${preferences.minMatchScore ?? 70},
           use_min_match_score_filter = ${preferences.useMinMatchScoreFilter !== false},
           timing_relevance_days = ${preferences.timingRelevanceDays ?? 7},
+          use_timing_relevance = ${preferences.useTimingRelevance !== false},
           prioritize_backhaul = ${preferences.prioritizeBackhaul ?? true},
           avoid_high_competition = ${preferences.avoidHighCompetition ?? false},
           max_competition_bids = ${preferences.maxCompetitionBids ?? 10},

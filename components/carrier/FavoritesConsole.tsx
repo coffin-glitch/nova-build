@@ -90,8 +90,9 @@ interface NotificationPreferences {
   minMatchScore: number; // Minimum similarity score to trigger notification (0-100)
   useMinMatchScoreFilter: boolean; // Whether to apply min match score filter to notifications
   timingRelevanceDays: number; // How many days ahead to consider for timing
+  useTimingRelevance: boolean; // Whether to apply timing relevance filtering
   backhaulMatcher: boolean; // Enable backhaul matching for exact/state match alerts
-  avoidHighCompetition: boolean; // Filter out loads with too many bids
+  avoidHighCompetition: boolean; // Filter out bids with too many bids (competition filter)
   maxCompetitionBids: number; // Maximum number of bids before filtering (if avoidHighCompetition is true)
 }
 
@@ -206,6 +207,7 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
     minMatchScore: 70,
     useMinMatchScoreFilter: true,
     timingRelevanceDays: 7,
+    useTimingRelevance: true,
     backhaulMatcher: true,
     avoidHighCompetition: false,
     maxCompetitionBids: 10,
@@ -1041,7 +1043,39 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
 
                       {/* Timing Relevance Window */}
                       <div>
-                        <label className="text-xs font-medium">Timing Relevance Window (days)</label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-xs font-medium flex items-center gap-1">
+                            Timing Relevance Window (days)
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-muted text-[10px] cursor-help">?</span>
+                                </TooltipTrigger>
+                                <TooltipContent className="max-w-xs">
+                                  <div className="text-xs space-y-1">
+                                    <p><strong>How it works:</strong></p>
+                                    <p>Only notify about bids with pickup dates within this many days from now. Helps focus on immediate opportunities.</p>
+                                    <p className="mt-2"><strong>Example:</strong> If set to 7 days, only bids picking up within the next week will trigger notifications.</p>
+                                  </div>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground">Use filter</span>
+                            <Button
+                              type="button"
+                              variant={(preferences.useTimingRelevance !== false) ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => {
+                                setEditingPreferences(prev => ({ ...(prev || preferences), useTimingRelevance: !((prev || preferences).useTimingRelevance !== false) }));
+                              }}
+                              className={`h-6 px-2 text-xs ${(preferences.useTimingRelevance !== false) ? "bg-primary text-primary-foreground" : ""}`}
+                            >
+                              {(preferences.useTimingRelevance !== false) ? "ON" : "OFF"}
+                            </Button>
+                          </div>
+                        </div>
                         <Input
                           type="number"
                           min="0"
@@ -1061,6 +1095,7 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                             }
                           }}
                           className="mt-1 text-xs"
+                          disabled={preferences.useTimingRelevance === false}
                         />
                         <p className="text-xs text-muted-foreground mt-1">
                           How far ahead pickups can be and still be relevant.
@@ -1092,25 +1127,36 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                         </Button>
                       </div>
 
-                      {/* Avoid High Competition (local filter) */}
-                      <div className="flex items-center justify-between mt-6">
-                        <div>
-                          <label className="text-xs font-medium">Avoid High Competition</label>
-                          <p className="text-xs text-muted-foreground">Hide favorites with more than N bids</p>
+                      {/* Competition Filter */}
+                      <div className="mt-6">
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-xs font-medium flex items-center gap-1">
+                            Competition Filter
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-muted text-[10px] cursor-help">?</span>
+                                </TooltipTrigger>
+                                <TooltipContent className="max-w-xs">
+                                  <div className="text-xs space-y-1">
+                                    <p><strong>How it works:</strong></p>
+                                    <p>When enabled, only notify about bids with fewer than the maximum number of competing bids. Helps you focus on less competitive opportunities.</p>
+                                    <p className="mt-2"><strong>Example:</strong> If set to 10 bids, you&apos;ll only get notified about bids with 9 or fewer competing bids.</p>
+                                    <p className="mt-2 text-muted-foreground"><strong>OFF:</strong> All bids will be considered regardless of competition level.</p>
+                                  </div>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </label>
+                          <Button
+                            variant={avoidHighCompetition ? "default" : "outline"}
+                            size="sm"
+                            className="text-xs"
+                            onClick={() => setAvoidHighCompetition(!avoidHighCompetition)}
+                          >
+                            {avoidHighCompetition ? 'ON' : 'OFF'}
+                          </Button>
                         </div>
-                        <Button
-                          variant={avoidHighCompetition ? "default" : "outline"}
-                          size="sm"
-                          className="text-xs"
-                          onClick={() => setAvoidHighCompetition(!avoidHighCompetition)}
-                        >
-                          {avoidHighCompetition ? 'ON' : 'OFF'}
-                        </Button>
-                      </div>
-
-                      {/* Max Competition Bids (local filter) */}
-                      <div>
-                        <label className="text-xs font-medium">Max Competition Bids</label>
                         <Input
                           type="number"
                           min="0"
@@ -1130,7 +1176,12 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                             }
                           }}
                           className="mt-1 text-xs"
+                          disabled={!avoidHighCompetition}
+                          placeholder="Max competing bids"
                         />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Maximum number of competing bids (only applies when filter is ON)
+                        </p>
                       </div>
                     </div>
                   </div>
