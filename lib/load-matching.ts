@@ -506,6 +506,7 @@ export async function updateNotificationPreferences(
     maxDistance: number;
     // Advanced fields
     minMatchScore?: number;
+    useMinMatchScoreFilter?: boolean;
     routeMatchThreshold?: number;
     distanceFlexibility?: number;
     timingRelevanceDays?: number;
