@@ -301,8 +301,9 @@ async function processNotificationJob(job: Job): Promise<void> {
   
   console.log(`Processing notifications for user ${userId}, ${triggers.length} triggers`);
 
-  // Check rate limit
-  const canSend = await checkRateLimit(userId, 20, 3600);
+  // Check rate limit with tiered system (limit determined by user tier)
+  // No explicit limit passed - will use tier-based limits
+  const canSend = await checkRateLimit(userId, undefined, 3600);
   if (!canSend) {
     console.log(`Rate limit exceeded for user ${userId}, skipping`);
     return;
