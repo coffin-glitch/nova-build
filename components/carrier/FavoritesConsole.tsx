@@ -40,7 +40,7 @@ import {
   Zap
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
 import { US_STATES } from "./US_STATES";
