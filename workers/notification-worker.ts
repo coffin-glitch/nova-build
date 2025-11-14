@@ -475,7 +475,6 @@ async function processSimilarLoadTrigger(
           loadDetails: loadDetails || undefined,
           matchScore: shouldTrigger.matchScore || load.similarity_score,
           reasons: shouldTrigger.reason ? [shouldTrigger.reason] : [],
-          scoreBreakdown: shouldTrigger.scoreBreakdown,
         });
         count++;
       }
