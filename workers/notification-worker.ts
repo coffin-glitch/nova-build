@@ -62,12 +62,56 @@ async function getCarrierEmail(userId: string): Promise<string | null> {
   }
 }
 
+// Helper function to format timestamp for display
+function formatTimestamp(timestamp: Date | string | null | undefined): string | undefined {
+  if (!timestamp) return undefined;
+  try {
+    const date = typeof timestamp === 'string' ? new Date(timestamp) : timestamp;
+    if (isNaN(date.getTime())) return undefined;
+    
+    // Format as: "MM/DD/YYYY HH:MM AM/PM"
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const year = date.getFullYear();
+    let hours = date.getHours();
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    hours = hours ? hours : 12; // the hour '0' should be '12'
+    const hoursStr = String(hours).padStart(2, '0');
+    
+    return `${month}/${day}/${year} ${hoursStr}:${minutes} ${ampm}`;
+  } catch {
+    return undefined;
+  }
+}
+
+// Helper function to count stops
+function countStops(stops: any): number | undefined {
+  if (!stops) return undefined;
+  if (Array.isArray(stops)) {
+    return stops.length;
+  }
+  if (typeof stops === 'string') {
+    try {
+      const parsed = JSON.parse(stops);
+      return Array.isArray(parsed) ? parsed.length : 1;
+    } catch {
+      return 1; // Single stop as string
+    }
+  }
+  return 1; // Single stop as object
+}
+
 // Helper function to get load details from bid_number
 async function getLoadDetails(bidNumber: string): Promise<{
   origin: string;
   destination: string;
   revenue?: number;
   miles?: number;
+  stops?: number;
+  pickupTime?: string;
+  deliveryTime?: string;
 } | null> {
   try {
     // Try telegram_bids first (most common)
@@ -76,6 +120,7 @@ async function getLoadDetails(bidNumber: string): Promise<{
         pickup_timestamp,
         delivery_timestamp,
         distance_miles,
+        stops,
         tag
       FROM telegram_bids
       WHERE bid_number = ${bidNumber}
@@ -104,6 +149,9 @@ async function getLoadDetails(bidNumber: string): Promise<{
         origin,
         destination,
         miles: bid.distance_miles || undefined,
+        stops: countStops(bid.stops),
+        pickupTime: formatTimestamp(bid.pickup_timestamp),
+        deliveryTime: formatTimestamp(bid.delivery_timestamp),
       };
     }
     
@@ -115,7 +163,12 @@ async function getLoadDetails(bidNumber: string): Promise<{
         destination_city,
         destination_state,
         revenue,
-        total_miles
+        total_miles,
+        pickup_date,
+        pickup_time,
+        delivery_date,
+        delivery_time,
+        nbr_of_stops
       FROM loads
       WHERE rr_number = ${bidNumber} OR tm_number = ${bidNumber}
       LIMIT 1
@@ -123,11 +176,41 @@ async function getLoadDetails(bidNumber: string): Promise<{
     
     if (loadInfo.length > 0) {
       const load = loadInfo[0];
+      
+      // Format pickup time
+      let pickupTime: string | undefined = undefined;
+      if (load.pickup_date) {
+        const pickupDate = new Date(load.pickup_date);
+        if (load.pickup_time) {
+          const [hours, minutes] = load.pickup_time.split(':');
+          if (hours && minutes) {
+            pickupDate.setHours(parseInt(hours), parseInt(minutes));
+          }
+        }
+        pickupTime = formatTimestamp(pickupDate);
+      }
+      
+      // Format delivery time
+      let deliveryTime: string | undefined = undefined;
+      if (load.delivery_date) {
+        const deliveryDate = new Date(load.delivery_date);
+        if (load.delivery_time) {
+          const [hours, minutes] = load.delivery_time.split(':');
+          if (hours && minutes) {
+            deliveryDate.setHours(parseInt(hours), parseInt(minutes));
+          }
+        }
+        deliveryTime = formatTimestamp(deliveryDate);
+      }
+      
       return {
         origin: `${load.origin_city || ''}, ${load.origin_state || ''}`.trim() || 'Origin',
         destination: `${load.destination_city || ''}, ${load.destination_state || ''}`.trim() || 'Destination',
         revenue: load.revenue || undefined,
         miles: load.total_miles || undefined,
+        stops: load.nbr_of_stops || undefined,
+        pickupTime,
+        deliveryTime,
       };
     }
     
@@ -398,7 +481,15 @@ async function sendNotification({
   notificationType: string;
   bidNumber: string;
   message: string;
-  loadDetails?: { origin: string; destination: string; revenue?: number; miles?: number };
+  loadDetails?: { 
+    origin: string; 
+    destination: string; 
+    revenue?: number; 
+    miles?: number;
+    stops?: number;
+    pickupTime?: string;
+    deliveryTime?: string;
+  };
   matchScore?: number;
   reasons?: string[];
   minutesRemaining?: number;
@@ -495,6 +586,9 @@ async function sendNotification({
               destination: loadInfo.destination,
               revenue: loadInfo.revenue,
               miles: loadInfo.miles,
+              stops: loadInfo.stops,
+              pickupTime: loadInfo.pickupTime,
+              deliveryTime: loadInfo.deliveryTime,
               viewUrl,
               carrierName: carrierName || undefined,
             }),
@@ -513,6 +607,9 @@ async function sendNotification({
               reasons: reasons || [],
               revenue: loadInfo.revenue,
               miles: loadInfo.miles,
+              stops: loadInfo.stops,
+              pickupTime: loadInfo.pickupTime,
+              deliveryTime: loadInfo.deliveryTime,
               viewUrl,
               carrierName: carrierName || undefined,
             }),
@@ -529,6 +626,9 @@ async function sendNotification({
               destination: loadInfo.destination,
               revenue: loadInfo.revenue,
               miles: loadInfo.miles,
+              stops: loadInfo.stops,
+              pickupTime: loadInfo.pickupTime,
+              deliveryTime: loadInfo.deliveryTime,
               viewUrl,
               carrierName: carrierName || undefined,
             }),
@@ -545,6 +645,10 @@ async function sendNotification({
                 origin: loadInfo.origin,
                 destination: loadInfo.destination,
                 minutesRemaining,
+                miles: loadInfo.miles,
+                stops: loadInfo.stops,
+                pickupTime: loadInfo.pickupTime,
+                deliveryTime: loadInfo.deliveryTime,
                 viewUrl,
                 carrierName: carrierName || undefined,
               }),
