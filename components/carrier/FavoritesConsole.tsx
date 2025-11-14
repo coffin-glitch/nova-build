@@ -358,9 +358,10 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
   const handleSavePreferences = async () => {
     setIsSavingPreferences(true);
     try {
-      // Include avoidHighCompetition and maxCompetitionBids in saved preferences
+      // Include all preferences in saved preferences
       const preferencesToSave = {
         ...preferences,
+        useTimingRelevance: preferences.useTimingRelevance !== false, // Ensure boolean
         avoidHighCompetition,
         maxCompetitionBids,
       };
