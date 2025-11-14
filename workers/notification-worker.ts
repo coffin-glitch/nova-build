@@ -367,6 +367,13 @@ async function processTrigger(
   preferences: any,
   favorites: any[]
 ): Promise<number> {
+  // Check per-trigger-type rate limit (allows higher limits for high-priority triggers)
+  const canSend = await checkRateLimit(userId, undefined, 3600, trigger.triggerType);
+  if (!canSend) {
+    console.log(`Rate limit exceeded for user ${userId} on trigger type ${trigger.triggerType}, skipping`);
+    return 0;
+  }
+  
   let count = 0;
 
   switch (trigger.triggerType) {
