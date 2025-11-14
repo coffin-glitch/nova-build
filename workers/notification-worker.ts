@@ -648,14 +648,14 @@ async function processExactMatchTrigger(
     }
 
     for (const match of routeMatches) {
-      // Check if we've already notified about this bid
+      // Check if we've already notified about this bid (30 second cooldown to allow rapid notifications for different matching bids)
       const recentNotification = await sql`
         SELECT id
         FROM notification_logs
         WHERE supabase_carrier_user_id = ${userId}
           AND trigger_id = ${trigger.id}
           AND bid_number = ${match.bid_number}
-          AND sent_at > NOW() - INTERVAL '1 hour'
+          AND sent_at > NOW() - INTERVAL '30 seconds'
         LIMIT 1
       `;
 
