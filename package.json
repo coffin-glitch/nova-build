@@ -28,6 +28,7 @@
     "worker:notifications:dev": "tsx --watch workers/notification-worker.ts",
     "test:redis": "tsx scripts/test-redis-connection.ts",
     "test:upstash": "tsx scripts/test-upstash-notification.ts",
+    "test:notifications": "tsx scripts/test-notification-system.ts",
     "typecheck": "tsc --noEmit",
     "typecheck:fast": "tsc --noEmit --skipLibCheck",
     "worker:status": "tsx scripts/check-worker-status.ts",
