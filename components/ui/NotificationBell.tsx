@@ -77,6 +77,9 @@ export function NotificationBell() {
     }
   }, [desktopNotificationsEnabled]);
   
+  // Track previous unread notification IDs for sound/desktop notifications
+  const previousUnreadIdsRef = useRef<Set<string>>(new Set());
+  
   // Use appropriate endpoint based on user role
   const notificationsEndpoint = isAdmin ? '/api/notifications' : '/api/carrier/notifications';
   

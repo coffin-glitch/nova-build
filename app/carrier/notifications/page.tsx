@@ -1,13 +1,12 @@
 "use client";
 
 import PageHeader from "@/components/layout/PageHeader";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Switch } from "@/components/ui/switch";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
 import { useAccentColor } from "@/hooks/useAccentColor";
 import { useUnifiedRole } from "@/hooks/useUnifiedRole";
 import { swrFetcher } from "@/lib/safe-fetcher";
@@ -17,11 +16,10 @@ import {
   CheckCircle,
   Info,
   MessageSquare,
+  Settings,
   Target,
   Volume2,
-  VolumeX,
-  XCircle,
-  Settings
+  XCircle
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
