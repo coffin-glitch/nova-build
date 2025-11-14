@@ -362,7 +362,7 @@ export function NotificationBell() {
                 window.location.href = '/carrier/notifications';
               }}
             >
-              View All Notifications
+              Manage Notifications
             </Button>
           </div>
         </div>
