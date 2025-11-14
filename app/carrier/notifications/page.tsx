@@ -179,7 +179,14 @@ export default function NotificationsPage() {
       const unread = notifications.filter(n => !n.read);
       if (unread.length > 0) {
         // Play notification sound
-        const audio = new Audio('/notification-sound.mp3'); // You'll need to add this file
+          // Try MP3 first, fallback to WAV
+          const audio = new Audio('/notification-sound.mp3');
+          audio.addEventListener('error', () => {
+            // If MP3 fails, try WAV
+            const wavAudio = new Audio('/notification-sound.wav');
+            wavAudio.volume = 0.5;
+            wavAudio.play().catch(() => {});
+          }); // You'll need to add this file
         audio.volume = 0.5;
         audio.play().catch(() => {
           // Ignore errors if sound file doesn't exist
