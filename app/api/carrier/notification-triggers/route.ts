@@ -18,7 +18,11 @@ export interface NotificationTriggerConfig {
   maxDistance?: number;
   priceThreshold?: number;
   timeThreshold?: number; // hours
-  favoriteBidNumbers?: string[];
+  favoriteBidNumbers?: string[]; // Legacy - for backward compatibility
+  favoriteDistanceRange?: { // New - preferred method
+    minDistance: number;
+    maxDistance: number;
+  };
 }
 
 export async function GET(request: NextRequest) {
@@ -61,48 +65,97 @@ export async function GET(request: NextRequest) {
         }
       }
       
-      // For exact_match triggers, get bid number and route
-      if (trigger.trigger_type === 'exact_match' && config?.favoriteBidNumbers?.length > 0) {
-        const bidNumber = config.favoriteBidNumbers[0];
+      // For exact_match triggers, get route info
+      if (trigger.trigger_type === 'exact_match') {
+        // New format: use distance range
+        if (config?.favoriteDistanceRange) {
+          // Find a favorite within the distance range for display
+          const favoriteResult = await sql`
+            SELECT cf.bid_number, tb.stops, tb.distance_miles
+            FROM carrier_favorites cf
+            JOIN telegram_bids tb ON cf.bid_number = tb.bid_number
+            WHERE cf.supabase_carrier_user_id = ${userId}
+              AND tb.distance_miles >= ${config.favoriteDistanceRange.minDistance}
+              AND tb.distance_miles <= ${config.favoriteDistanceRange.maxDistance}
+            LIMIT 1
+          `;
+          
+          return {
+            ...trigger,
+            trigger_config: config,
+            bid_number: favoriteResult[0]?.bid_number || null,
+            route: favoriteResult[0]?.stops || null,
+            distance_range: config.favoriteDistanceRange
+          };
+        }
         
-        // Get route for this bid
-        const routeResult = await sql`
-          SELECT tb.stops
-          FROM carrier_favorites cf
-          JOIN telegram_bids tb ON cf.bid_number = tb.bid_number
-          WHERE cf.supabase_carrier_user_id = ${userId}
-            AND cf.bid_number = ${bidNumber}
-          LIMIT 1
-        `;
-        
-        return {
-          ...trigger,
-          trigger_config: config,
-          bid_number: bidNumber,
-          route: routeResult[0]?.stops || null
-        };
+        // Legacy format: use bid numbers
+        if (config?.favoriteBidNumbers?.length > 0) {
+          const bidNumber = config.favoriteBidNumbers[0];
+          
+          // Get route for this bid
+          const routeResult = await sql`
+            SELECT tb.stops
+            FROM carrier_favorites cf
+            JOIN telegram_bids tb ON cf.bid_number = tb.bid_number
+            WHERE cf.supabase_carrier_user_id = ${userId}
+              AND cf.bid_number = ${bidNumber}
+            LIMIT 1
+          `;
+          
+          return {
+            ...trigger,
+            trigger_config: config,
+            bid_number: bidNumber,
+            route: routeResult[0]?.stops || null
+          };
+        }
       }
       
       // For similar_load triggers, get route from config if available
-      if (trigger.trigger_type === 'similar_load' && config?.favoriteBidNumbers?.length > 0) {
-        const bidNumber = config.favoriteBidNumbers[0];
+      if (trigger.trigger_type === 'similar_load') {
+        // New format: use distance range
+        if (config?.favoriteDistanceRange) {
+          const favoriteResult = await sql`
+            SELECT cf.bid_number, tb.stops, tb.distance_miles
+            FROM carrier_favorites cf
+            JOIN telegram_bids tb ON cf.bid_number = tb.bid_number
+            WHERE cf.supabase_carrier_user_id = ${userId}
+              AND tb.distance_miles >= ${config.favoriteDistanceRange.minDistance}
+              AND tb.distance_miles <= ${config.favoriteDistanceRange.maxDistance}
+            LIMIT 1
+          `;
+          
+          return {
+            ...trigger,
+            trigger_config: config,
+            bid_number: favoriteResult[0]?.bid_number || null,
+            route: favoriteResult[0]?.stops || null,
+            distance_range: config.favoriteDistanceRange
+          };
+        }
         
-        // Get route for this bid
-        const routeResult = await sql`
-          SELECT tb.stops
-          FROM carrier_favorites cf
-          JOIN telegram_bids tb ON cf.bid_number = tb.bid_number
-          WHERE cf.supabase_carrier_user_id = ${userId}
-            AND cf.bid_number = ${bidNumber}
-          LIMIT 1
-        `;
-        
-        return {
-          ...trigger,
-          trigger_config: config,
-          bid_number: bidNumber,
-          route: routeResult[0]?.stops || null
-        };
+        // Legacy format: use bid numbers
+        if (config?.favoriteBidNumbers?.length > 0) {
+          const bidNumber = config.favoriteBidNumbers[0];
+          
+          // Get route for this bid
+          const routeResult = await sql`
+            SELECT tb.stops
+            FROM carrier_favorites cf
+            JOIN telegram_bids tb ON cf.bid_number = tb.bid_number
+            WHERE cf.supabase_carrier_user_id = ${userId}
+              AND cf.bid_number = ${bidNumber}
+            LIMIT 1
+          `;
+          
+          return {
+            ...trigger,
+            trigger_config: config,
+            bid_number: bidNumber,
+            route: routeResult[0]?.stops || null
+          };
+        }
       }
       
       return {
@@ -385,8 +438,23 @@ function validateTriggerConfig(triggerType: NotificationTriggerType, config: Not
       break;
     
     case 'exact_match':
-      if (!config.favoriteBidNumbers || config.favoriteBidNumbers.length === 0) {
-        return "At least one favorite bid number is required for exact match";
+      // Check for new distance range format or legacy bid numbers
+      if (!config.favoriteDistanceRange && (!config.favoriteBidNumbers || config.favoriteBidNumbers.length === 0)) {
+        return "Either favorite distance range or favorite bid numbers are required for exact match";
+      }
+      
+      // Validate distance range if provided
+      if (config.favoriteDistanceRange) {
+        if (typeof config.favoriteDistanceRange.minDistance !== 'number' || 
+            typeof config.favoriteDistanceRange.maxDistance !== 'number') {
+          return "Distance range must have valid minDistance and maxDistance numbers";
+        }
+        if (config.favoriteDistanceRange.minDistance < 0 || config.favoriteDistanceRange.maxDistance < 0) {
+          return "Distance values must be non-negative";
+        }
+        if (config.favoriteDistanceRange.minDistance > config.favoriteDistanceRange.maxDistance) {
+          return "Min distance cannot be greater than max distance";
+        }
       }
       break;
     
@@ -397,8 +465,23 @@ function validateTriggerConfig(triggerType: NotificationTriggerType, config: Not
       break;
     
     case 'favorite_available':
-      if (!config.favoriteBidNumbers || config.favoriteBidNumbers.length === 0) {
-        return "At least one favorite bid number is required";
+      // Check for new distance range format or legacy bid numbers
+      if (!config.favoriteDistanceRange && (!config.favoriteBidNumbers || config.favoriteBidNumbers.length === 0)) {
+        return "Either favorite distance range or favorite bid numbers are required";
+      }
+      
+      // Validate distance range if provided
+      if (config.favoriteDistanceRange) {
+        if (typeof config.favoriteDistanceRange.minDistance !== 'number' || 
+            typeof config.favoriteDistanceRange.maxDistance !== 'number') {
+          return "Distance range must have valid minDistance and maxDistance numbers";
+        }
+        if (config.favoriteDistanceRange.minDistance < 0 || config.favoriteDistanceRange.maxDistance < 0) {
+          return "Distance values must be non-negative";
+        }
+        if (config.favoriteDistanceRange.minDistance > config.favoriteDistanceRange.maxDistance) {
+          return "Min distance cannot be greater than max distance";
+        }
       }
       break;
     

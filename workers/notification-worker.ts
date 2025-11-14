@@ -466,28 +466,49 @@ async function processExactMatchTrigger(
     }
   }
   
+  // Check for new distance range format or legacy bid numbers
+  const favoriteDistanceRange = config.favoriteDistanceRange;
   const favoriteBidNumbers = config.favoriteBidNumbers || [];
   
-  if (favoriteBidNumbers.length === 0) {
-    console.log(`[ExactMatch] No favorite bid numbers configured for trigger ${trigger.id}`);
+  let favoriteRoutes: any[] = [];
+  
+  if (favoriteDistanceRange) {
+    // New format: use distance range
+    console.log(`[ExactMatch] Processing trigger ${trigger.id} with distance range: ${favoriteDistanceRange.minDistance}-${favoriteDistanceRange.maxDistance} miles`);
+    
+    // Get favorite routes within the distance range
+    favoriteRoutes = await sql`
+      SELECT 
+        cf.bid_number as favorite_bid,
+        tb.stops as favorite_stops,
+        tb.tag as favorite_tag,
+        tb.distance_miles as favorite_distance
+      FROM carrier_favorites cf
+      JOIN telegram_bids tb ON cf.bid_number = tb.bid_number
+      WHERE cf.supabase_carrier_user_id = ${userId}
+        AND tb.distance_miles >= ${favoriteDistanceRange.minDistance}
+        AND tb.distance_miles <= ${favoriteDistanceRange.maxDistance}
+    `;
+  } else if (favoriteBidNumbers.length > 0) {
+    // Legacy format: use bid numbers
+    console.log(`[ExactMatch] Processing trigger ${trigger.id} with ${favoriteBidNumbers.length} favorite bid(s): ${favoriteBidNumbers.join(', ')}`);
+    
+    favoriteRoutes = await sql`
+      SELECT 
+        cf.bid_number as favorite_bid,
+        tb.stops as favorite_stops,
+        tb.tag as favorite_tag,
+        tb.distance_miles as favorite_distance
+      FROM carrier_favorites cf
+      JOIN telegram_bids tb ON cf.bid_number = tb.bid_number
+      WHERE cf.supabase_carrier_user_id = ${userId}
+        AND cf.bid_number = ANY(${favoriteBidNumbers})
+    `;
+  } else {
+    console.log(`[ExactMatch] No favorite distance range or bid numbers configured for trigger ${trigger.id}`);
     console.log(`[ExactMatch] Config received:`, JSON.stringify(config));
     return 0;
   }
-  
-  console.log(`[ExactMatch] Processing trigger ${trigger.id} with ${favoriteBidNumbers.length} favorite bid(s): ${favoriteBidNumbers.join(', ')}`);
-
-  // Get favorite routes from the favorite bid numbers
-  const favoriteRoutes = await sql`
-    SELECT 
-      cf.bid_number as favorite_bid,
-      tb.stops as favorite_stops,
-      tb.tag as favorite_tag,
-      tb.distance_miles as favorite_distance
-    FROM carrier_favorites cf
-    JOIN telegram_bids tb ON cf.bid_number = tb.bid_number
-    WHERE cf.supabase_carrier_user_id = ${userId}
-      AND cf.bid_number = ANY(${favoriteBidNumbers})
-  `;
 
   if (favoriteRoutes.length === 0) {
     console.log(`[ExactMatch] No favorite routes found for user ${userId}`);
@@ -504,30 +525,59 @@ async function processExactMatchTrigger(
     const origin = favoriteStops[0];
     const destination = favoriteStops[favoriteStops.length - 1];
 
-    // Find active bids with exact route match
-    const exactMatches = await sql`
-      SELECT 
-        tb.bid_number,
-        tb.stops,
-        tb.distance_miles,
-        tb.tag,
-        tb.pickup_timestamp,
-        tb.delivery_timestamp,
-        tb.received_at
-      FROM telegram_bids tb
-      WHERE tb.is_archived = false
-        AND NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes')
-        AND tb.bid_number != ${favorite.favorite_bid}
-        AND (
-          -- Exact route match: same origin and destination
-          (tb.stops::text LIKE ${`%${origin}%`} AND tb.stops::text LIKE ${`%${destination}%`})
-          OR
-          -- Tag match (state-based)
-          (tb.tag = ${favorite.favorite_tag})
-        )
-      ORDER BY tb.received_at DESC
-      LIMIT 5
-    `;
+      // Find active bids with exact route match
+      // Also filter by distance range if using new format
+      let exactMatches;
+      if (favoriteDistanceRange) {
+        exactMatches = await sql`
+          SELECT 
+            tb.bid_number,
+            tb.stops,
+            tb.distance_miles,
+            tb.tag,
+            tb.pickup_timestamp,
+            tb.delivery_timestamp,
+            tb.received_at
+          FROM telegram_bids tb
+          WHERE tb.is_archived = false
+            AND NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes')
+            AND tb.distance_miles >= ${favoriteDistanceRange.minDistance}
+            AND tb.distance_miles <= ${favoriteDistanceRange.maxDistance}
+            AND (
+              -- Exact route match: same origin and destination
+              (tb.stops::text LIKE ${`%${origin}%`} AND tb.stops::text LIKE ${`%${destination}%`})
+              OR
+              -- Tag match (state-based)
+              (tb.tag = ${favorite.favorite_tag})
+            )
+          ORDER BY tb.received_at DESC
+          LIMIT 5
+        `;
+      } else {
+        exactMatches = await sql`
+          SELECT 
+            tb.bid_number,
+            tb.stops,
+            tb.distance_miles,
+            tb.tag,
+            tb.pickup_timestamp,
+            tb.delivery_timestamp,
+            tb.received_at
+          FROM telegram_bids tb
+          WHERE tb.is_archived = false
+            AND NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes')
+            AND tb.bid_number != ${favorite.favorite_bid}
+            AND (
+              -- Exact route match: same origin and destination
+              (tb.stops::text LIKE ${`%${origin}%`} AND tb.stops::text LIKE ${`%${destination}%`})
+              OR
+              -- Tag match (state-based)
+              (tb.tag = ${favorite.favorite_tag})
+            )
+          ORDER BY tb.received_at DESC
+          LIMIT 5
+        `;
+      }
 
     for (const match of exactMatches) {
       // Check if we've already notified about this bid

@@ -214,8 +214,11 @@ export function shouldTriggerNotification(
     }
   }
   
-  // Final decision based on match score
-  if (maxMatchScore < preferences.minMatchScore) {
+  // Final decision based on match score (only if filtering is enabled)
+  // Note: useMinMatchScoreFilter is not in AdvancedNotificationPreferences interface yet,
+  // but we check it if available. For now, default to true for backward compatibility.
+  const useMinMatchScoreFilter = (preferences as any).useMinMatchScoreFilter !== false;
+  if (useMinMatchScoreFilter && maxMatchScore < preferences.minMatchScore) {
     return { shouldNotify: false, reason: `Match score ${maxMatchScore}% below threshold ${preferences.minMatchScore}%` };
   }
   

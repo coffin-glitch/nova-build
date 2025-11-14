@@ -88,6 +88,7 @@ interface NotificationPreferences {
   maxDistance: number;
   // Advanced matching criteria
   minMatchScore: number; // Minimum similarity score to trigger notification (0-100)
+  useMinMatchScoreFilter: boolean; // Whether to apply min match score filter to notifications
   timingRelevanceDays: number; // How many days ahead to consider for timing
   backhaulMatcher: boolean; // Enable backhaul matching for exact/state match alerts
   avoidHighCompetition: boolean; // Filter out loads with too many bids
@@ -201,6 +202,7 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
     minDistance: 0,
     maxDistance: 2000,
     minMatchScore: 70,
+    useMinMatchScoreFilter: true,
     timingRelevanceDays: 7,
     backhaulMatcher: true,
     avoidHighCompetition: false,
@@ -499,13 +501,28 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
   const handleCreateExactMatchTrigger = async (bidNumber: string) => {
     setIsCreatingTrigger(true);
     try {
+      // Get the favorite bid to extract distance information
+      const favorite = favorites.find(f => f.bid_number === bidNumber);
+      if (!favorite || favorite.distance === undefined) {
+        toast.error("Cannot create trigger: distance information missing");
+        setIsCreatingTrigger(false);
+        return;
+      }
+
+      // Use distance range from preferences, or default to favorite distance ± 50 miles
+      const minDistance = preferences.minDistance || Math.max(0, favorite.distance - 50);
+      const maxDistance = preferences.maxDistance || favorite.distance + 50;
+
       const response = await fetch('/api/carrier/notification-triggers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           triggerType: 'exact_match',
           triggerConfig: {
-            favoriteBidNumbers: [bidNumber],
+            favoriteDistanceRange: {
+              minDistance,
+              maxDistance
+            },
             matchType: 'exact' // Exact city-to-city match
           },
           isActive: true
@@ -536,10 +553,16 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
   const handleCreateStateMatchTrigger = async (bidNumber: string) => {
     setIsCreatingTrigger(true);
     try {
-      // Get the favorite bid to extract state information
+      // Get the favorite bid to extract state and distance information
       const favorite = favorites.find(f => f.bid_number === bidNumber);
       if (!favorite || !favorite.stops || favorite.stops.length < 2) {
         toast.error("Cannot create state match: route information missing");
+        setIsCreatingTrigger(false);
+        return;
+      }
+
+      if (favorite.distance === undefined) {
+        toast.error("Cannot create state match: distance information missing");
         setIsCreatingTrigger(false);
         return;
       }
@@ -556,13 +579,20 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
         return;
       }
 
+      // Use distance range from preferences, or default to favorite distance ± 50 miles
+      const minDistance = preferences.minDistance || Math.max(0, favorite.distance - 50);
+      const maxDistance = preferences.maxDistance || favorite.distance + 50;
+
       const response = await fetch('/api/carrier/notification-triggers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           triggerType: 'exact_match', // Using same type but with state match config
           triggerConfig: {
-            favoriteBidNumbers: [bidNumber],
+            favoriteDistanceRange: {
+              minDistance,
+              maxDistance
+            },
             matchType: 'state', // State-to-state match
             originState,
             destinationState
@@ -865,10 +895,26 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {/* Min Match Score */}
                       <div>
-                        <label className="text-xs font-medium flex items-center gap-1">
-                          Min Match Score (0-100)
-                          <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-muted text-[10px] cursor-help" title="Only alert when similarity is above this threshold (0–100). Higher = fewer but better alerts.">?</span>
-                        </label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-xs font-medium flex items-center gap-1">
+                            Min Match Score (0-100)
+                            <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-muted text-[10px] cursor-help" title="Only alert when similarity is above this threshold (0–100). Higher = fewer but better alerts.">?</span>
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground">Use for filtering</span>
+                            <Button
+                              type="button"
+                              variant={preferences.useMinMatchScoreFilter ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => {
+                                setEditingPreferences(prev => ({ ...(prev || preferences), useMinMatchScoreFilter: !(prev || preferences).useMinMatchScoreFilter }));
+                              }}
+                              className={`h-6 px-2 text-xs ${preferences.useMinMatchScoreFilter ? "bg-primary text-primary-foreground" : ""}`}
+                            >
+                              {preferences.useMinMatchScoreFilter ? "ON" : "OFF"}
+                            </Button>
+                          </div>
+                        </div>
                         <Input
                           type="number"
                           min="0"
@@ -890,6 +936,9 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                           }}
                           className="mt-1 text-xs"
                         />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Score still displays on cards even when filtering is {preferences.useMinMatchScoreFilter ? "enabled" : "disabled"}
+                        </p>
                       </div>
 
                       {/* Timing Relevance Window */}
@@ -1074,7 +1123,7 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                     {/* Min/Max Distance */}
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="text-xs font-medium">Min Distance</label>
+                        <label className="text-xs font-medium">Min Distance (Miles)</label>
                         <Input
                           type="number"
                           min="0"
@@ -1096,7 +1145,7 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                         />
                       </div>
                       <div>
-                        <label className="text-xs font-medium">Max Distance</label>
+                        <label className="text-xs font-medium">Max Distance (Miles)</label>
                         <Input
                           type="number"
                           min="0"
@@ -1224,8 +1273,22 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                           {exactMatchTriggers.map((trigger) => {
                           const config = trigger.trigger_config || {};
                           const matchType = config.matchType || 'exact';
+                          // Check if trigger uses distance range (new) or bid numbers (legacy)
+                          const favoriteDistanceRange = config.favoriteDistanceRange;
                           const favoriteBidNumbers = config.favoriteBidNumbers || [];
-                          const favorite = favorites.find(f => favoriteBidNumbers.includes(f.bid_number));
+                          
+                          // For new triggers, find favorites within the distance range
+                          // For legacy triggers, find by bid number
+                          let favorite = null;
+                          if (favoriteDistanceRange) {
+                            favorite = favorites.find(f => 
+                              f.distance !== undefined &&
+                              f.distance >= favoriteDistanceRange.minDistance &&
+                              f.distance <= favoriteDistanceRange.maxDistance
+                            );
+                          } else if (favoriteBidNumbers.length > 0) {
+                            favorite = favorites.find(f => favoriteBidNumbers.includes(f.bid_number));
+                          }
                           
                           return (
                             <div key={trigger.id} className="flex items-center justify-between p-3 bg-muted/20 rounded-lg border border-border/50 hover:bg-muted/30 transition-colors">
@@ -1628,11 +1691,22 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                             <div className="flex items-center gap-2">
                               {/* Check if trigger already exists for this bid */}
                               {(() => {
-                                const existingTrigger = notificationTriggers.find(
-                                  (t: NotificationTrigger) => 
-                                    t.trigger_type === 'exact_match' && 
-                                    t.trigger_config?.favoriteBidNumbers?.includes(favorite.bid_number)
-                                );
+                                  const existingTrigger = notificationTriggers.find(
+                                    (t: NotificationTrigger) => {
+                                      if (t.trigger_type !== 'exact_match') return false;
+                                      const config = t.trigger_config || {};
+                                      
+                                      // Check new distance range format
+                                      if (config.favoriteDistanceRange) {
+                                        return favorite.distance !== undefined &&
+                                          favorite.distance >= config.favoriteDistanceRange.minDistance &&
+                                          favorite.distance <= config.favoriteDistanceRange.maxDistance;
+                                      }
+                                      
+                                      // Check legacy bid number format
+                                      return config.favoriteBidNumbers?.includes(favorite.bid_number);
+                                    }
+                                  );
                                 
                                 if (existingTrigger) {
                                   const matchType = existingTrigger.trigger_config?.matchType || 'exact';
@@ -1800,9 +1874,20 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                               <div className="flex items-center gap-1">
                                 {(() => {
                                   const existingTrigger = notificationTriggers.find(
-                                    (t: NotificationTrigger) => 
-                                      t.trigger_type === 'exact_match' && 
-                                      t.trigger_config?.favoriteBidNumbers?.includes(favorite.bid_number)
+                                    (t: NotificationTrigger) => {
+                                      if (t.trigger_type !== 'exact_match') return false;
+                                      const config = t.trigger_config || {};
+                                      
+                                      // Check new distance range format
+                                      if (config.favoriteDistanceRange) {
+                                        return favorite.distance !== undefined &&
+                                          favorite.distance >= config.favoriteDistanceRange.minDistance &&
+                                          favorite.distance <= config.favoriteDistanceRange.maxDistance;
+                                      }
+                                      
+                                      // Check legacy bid number format
+                                      return config.favoriteBidNumbers?.includes(favorite.bid_number);
+                                    }
                                   );
                                   
                                   return (

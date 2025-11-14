@@ -261,6 +261,7 @@ export async function processNewLoadForMatching(bidNumber: string): Promise<void
       const prefsResult = await sql`
         SELECT 
           min_match_score,
+          use_min_match_score_filter,
           distance_flexibility,
           timing_relevance_days,
           avoid_high_competition,
@@ -271,6 +272,7 @@ export async function processNewLoadForMatching(bidNumber: string): Promise<void
       `;
 
       const prefs = prefsResult[0] || {};
+      const useMinMatchScoreFilter = prefs.use_min_match_score_filter !== false; // Default to true if not set
       const minMatchScore = (prefs.min_match_score || 70) / 100; // Convert from 0-100 to 0-1
 
       const criteria: LoadMatchingCriteria = {
@@ -287,9 +289,10 @@ export async function processNewLoadForMatching(bidNumber: string): Promise<void
         criteria
       );
 
-      // Send notifications for matches above user's minimum score threshold
+      // Send notifications for matches above user's minimum score threshold (if filtering is enabled)
       for (const similarity of similarities) {
-        if (similarity.score >= minMatchScore) {
+        // Only filter by min match score if the toggle is enabled
+        if (!useMinMatchScoreFilter || similarity.score >= minMatchScore) {
           await createNotification({
             carrierUserId: carrier.supabase_carrier_user_id,
             notificationType: 'similar_load',
@@ -418,6 +421,7 @@ export async function getNotificationPreferences(carrierUserId: string) {
           min_distance,
           max_distance,
           min_match_score,
+          use_min_match_score_filter,
           timing_relevance_days,
           prioritize_backhaul,
           avoid_high_competition,
@@ -432,6 +436,7 @@ export async function getNotificationPreferences(carrierUserId: string) {
           0,
           2000,
           70,
+          true,
           7,
           true,
           false,
@@ -469,6 +474,7 @@ export async function getNotificationPreferences(carrierUserId: string) {
       minDistance: pref.min_distance ?? 0,
       maxDistance: pref.max_distance ?? 2000,
       minMatchScore: pref.min_match_score ?? 70,
+      useMinMatchScoreFilter: pref.use_min_match_score_filter !== false, // Default to true
       timingRelevanceDays: pref.timing_relevance_days ?? 7,
       backhaulMatcher: pref.prioritize_backhaul ?? true, // Map prioritize_backhaul to backhaulMatcher
       avoidHighCompetition: pref.avoid_high_competition ?? false,
@@ -534,6 +540,7 @@ export async function updateNotificationPreferences(
           min_distance = ${preferences.minDistance ?? 0},
           max_distance = ${preferences.maxDistance ?? 2000},
           min_match_score = ${preferences.minMatchScore ?? 70},
+          use_min_match_score_filter = ${preferences.useMinMatchScoreFilter !== false},
           timing_relevance_days = ${preferences.timingRelevanceDays ?? 7},
           prioritize_backhaul = ${preferences.prioritizeBackhaul ?? true},
           avoid_high_competition = ${preferences.avoidHighCompetition ?? false},
