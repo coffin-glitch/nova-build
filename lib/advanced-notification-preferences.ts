@@ -193,8 +193,8 @@ export function shouldTriggerNotification(
     // Calculate match score (simplified for now)
     let matchScore = 0;
     
-    // Route match
-    const routeMatch = calculateRouteMatch(favorite.stops, load.stops);
+    // Route match (includes backhaul if enabled)
+    const routeMatch = calculateRouteMatch(favorite.stops, load.stops, preferences.prioritizeBackhaul);
     if (routeMatch >= preferences.routeMatchThreshold) {
       matchScore += 40;
     }
@@ -238,7 +238,7 @@ function extractDestination(stops: string | string[]): string {
   return stopsArray[stopsArray.length - 1] || '';
 }
 
-function calculateRouteMatch(favoriteRoute: any, newRoute: any): number {
+function calculateRouteMatch(favoriteRoute: any, newRoute: any, prioritizeBackhaul: boolean = false): number {
   const favStops = parseStops(favoriteRoute);
   const newStops = parseStops(newRoute);
   
@@ -249,9 +249,22 @@ function calculateRouteMatch(favoriteRoute: any, newRoute: any): number {
   const newOrigin = newStops[0]?.toUpperCase().trim();
   const newDest = newStops[newStops.length - 1]?.toUpperCase().trim();
   
+  // Exact match (forward route)
   let score = 0;
   if (favOrigin === newOrigin) score += 50;
   if (favDest === newDest) score += 50;
+  
+  // Backhaul match (reverse route) - if enabled
+  if (prioritizeBackhaul) {
+    let backhaulScore = 0;
+    if (favOrigin === newDest) backhaulScore += 50; // Favorite origin matches new destination
+    if (favDest === newOrigin) backhaulScore += 50; // Favorite destination matches new origin
+    
+    // Return the higher score (exact or backhaul)
+    if (backhaulScore > score) {
+      return backhaulScore;
+    }
+  }
   
   return score;
 }

@@ -551,12 +551,31 @@ async function processExactMatchTrigger(
       const matchDest = matchStops[matchStops.length - 1];
 
       // Check if origin and destination match (case-insensitive)
-      if (
+      const isExactMatch = (
         matchOrigin.toUpperCase().trim() === origin.toUpperCase().trim() &&
         matchDest.toUpperCase().trim() === destination.toUpperCase().trim()
-      ) {
+      );
+
+      // Check for backhaul match (reverse route) if enabled
+      const isBackhaulMatch = (
+        matchOrigin.toUpperCase().trim() === destination.toUpperCase().trim() &&
+        matchDest.toUpperCase().trim() === origin.toUpperCase().trim()
+      );
+
+      // Check if backhaul is enabled in preferences or trigger config
+      const backhaulEnabled = preferences?.prioritize_backhaul || 
+                             preferences?.prioritizeBackhaul || 
+                             config.backhaulEnabled || 
+                             false;
+
+      if (isExactMatch || (isBackhaulMatch && backhaulEnabled)) {
         const loadDetails = await getLoadDetails(match.bid_number);
-        const message = `Exact match found! ${match.bid_number} - ${origin} → ${destination}`;
+        const matchType = isBackhaulMatch ? 'backhaul' : 'exact';
+        const message = isBackhaulMatch 
+          ? `Backhaul match found! ${match.bid_number} - ${destination} → ${origin} (return route)`
+          : `Exact match found! ${match.bid_number} - ${origin} → ${destination}`;
+
+        console.log(`[ExactMatch] ${matchType.toUpperCase()} match: ${match.bid_number} (backhaul enabled: ${backhaulEnabled})`);
 
         await sendNotification({
           carrierUserId: userId,
