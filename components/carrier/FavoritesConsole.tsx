@@ -2555,44 +2555,81 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                 </div>
                 {/* Only show distance range for non-exact-match triggers */}
                 {editingTrigger.trigger_config?.favoriteDistanceRange && editingTrigger.trigger_config?.matchType !== 'exact' && (
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-xs font-medium">Min Distance (Miles)</label>
-                      <Input
-                        type="number"
-                        min="0"
-                        defaultValue={editingTrigger.trigger_config.favoriteDistanceRange.minDistance}
-                        onChange={(e) => {
-                          const newConfig = {
-                            ...editingTrigger.trigger_config,
-                            favoriteDistanceRange: {
-                              ...editingTrigger.trigger_config.favoriteDistanceRange,
-                              minDistance: parseInt(e.target.value) || 0
-                            }
-                          };
-                          setEditingTrigger({ ...editingTrigger, trigger_config: newConfig });
-                        }}
-                        className="mt-1 text-xs"
-                      />
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs font-medium flex items-center gap-1">
+                          Min Distance (Miles)
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="inline-flex items-center justify-center w-3 h-3 rounded-full bg-muted text-[10px] cursor-help">?</span>
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs">
+                                <div className="text-xs space-y-1">
+                                  <p><strong>Trigger Distance Range:</strong></p>
+                                  <p>This determines which favorites to monitor for this trigger. Only favorites within this distance range will be watched.</p>
+                                  <p className="mt-2"><strong>Note:</strong> Your Notification Preferences min/max distance will also filter the actual matching bids. Both filters apply.</p>
+                                </div>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </label>
+                        <Input
+                          type="number"
+                          min="0"
+                          defaultValue={editingTrigger.trigger_config.favoriteDistanceRange.minDistance}
+                          onChange={(e) => {
+                            const newConfig = {
+                              ...editingTrigger.trigger_config,
+                              favoriteDistanceRange: {
+                                ...editingTrigger.trigger_config.favoriteDistanceRange,
+                                minDistance: parseInt(e.target.value) || 0
+                              }
+                            };
+                            setEditingTrigger({ ...editingTrigger, trigger_config: newConfig });
+                          }}
+                          className="mt-1 text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium flex items-center gap-1">
+                          Max Distance (Miles)
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="inline-flex items-center justify-center w-3 h-3 rounded-full bg-muted text-[10px] cursor-help">?</span>
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs">
+                                <div className="text-xs space-y-1">
+                                  <p><strong>Trigger Distance Range:</strong></p>
+                                  <p>This determines which favorites to monitor for this trigger. Only favorites within this distance range will be watched.</p>
+                                  <p className="mt-2"><strong>Note:</strong> Your Notification Preferences min/max distance will also filter the actual matching bids. Both filters apply.</p>
+                                </div>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </label>
+                        <Input
+                          type="number"
+                          min="0"
+                          defaultValue={editingTrigger.trigger_config.favoriteDistanceRange.maxDistance}
+                          onChange={(e) => {
+                            const newConfig = {
+                              ...editingTrigger.trigger_config,
+                              favoriteDistanceRange: {
+                                ...editingTrigger.trigger_config.favoriteDistanceRange,
+                                maxDistance: parseInt(e.target.value) || 2000
+                              }
+                            };
+                            setEditingTrigger({ ...editingTrigger, trigger_config: newConfig });
+                          }}
+                          className="mt-1 text-xs"
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <label className="text-xs font-medium">Max Distance (Miles)</label>
-                      <Input
-                        type="number"
-                        min="0"
-                        defaultValue={editingTrigger.trigger_config.favoriteDistanceRange.maxDistance}
-                        onChange={(e) => {
-                          const newConfig = {
-                            ...editingTrigger.trigger_config,
-                            favoriteDistanceRange: {
-                              ...editingTrigger.trigger_config.favoriteDistanceRange,
-                              maxDistance: parseInt(e.target.value) || 2000
-                            }
-                          };
-                          setEditingTrigger({ ...editingTrigger, trigger_config: newConfig });
-                        }}
-                        className="mt-1 text-xs"
-                      />
+                    <div className="text-xs text-muted-foreground p-2 bg-muted/30 rounded">
+                      <p><strong>How it works:</strong> This trigger&apos;s distance range determines which favorites to monitor. The actual matching bids are also filtered by your Notification Preferences min/max distance settings.</p>
                     </div>
                   </div>
                 )}
