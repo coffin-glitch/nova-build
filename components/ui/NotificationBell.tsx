@@ -427,6 +427,23 @@ export function NotificationBell() {
                 </span>
               </div>
               <div className="flex items-center gap-2">
+                {isCarrier && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setIsOpen(false);
+                      window.location.href = '/carrier/notifications';
+                    }}
+                    className="text-xs backdrop-blur-sm border-opacity-30 hover:border-opacity-50"
+                    style={{
+                      backgroundColor: accentColor ? `${accentColor}15` : undefined,
+                      borderColor: accentColor ? `${accentColor}30` : undefined,
+                    }}
+                  >
+                    Manage Notifications
+                  </Button>
+                )}
                 {unreadCount > 0 && (
                   <Button
                     variant="outline"
