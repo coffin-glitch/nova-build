@@ -40,7 +40,7 @@ import {
   Zap
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
 import { US_STATES } from "./US_STATES";
@@ -669,29 +669,51 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
   };
 
   const handleToggleTrigger = async (triggerId: string, isActive: boolean) => {
+    // Optimistic update - update local state immediately
+    const newActiveState = !isActive;
+    setStableTriggers(prev => prev.map(t => 
+      t.id === triggerId ? { ...t, is_active: newActiveState } : t
+    ));
+    
     try {
       const response = await fetch('/api/carrier/notification-triggers', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: triggerId,
-          isActive: !isActive
+          isActive: newActiveState
         })
       });
 
       const result = await response.json();
       if (result.ok) {
-        toast.success(`Notification trigger ${!isActive ? 'enabled' : 'disabled'}`);
-        mutateTriggers();
+        toast.success(`Notification trigger ${newActiveState ? 'enabled' : 'disabled'}`);
+        // Revalidate in background without causing flicker
+        mutateTriggers({ revalidate: false }).then(() => {
+          // Update stable state with fresh data after a short delay
+          setTimeout(() => mutateTriggers(), 100);
+        });
       } else {
+        // Revert optimistic update on error
+        setStableTriggers(prev => prev.map(t => 
+          t.id === triggerId ? { ...t, is_active: isActive } : t
+        ));
         toast.error(result.error || "Failed to update notification trigger");
       }
     } catch (error) {
+      // Revert optimistic update on error
+      setStableTriggers(prev => prev.map(t => 
+        t.id === triggerId ? { ...t, is_active: isActive } : t
+      ));
       toast.error("Failed to update notification trigger");
     }
   };
 
   const handleDeleteTrigger = async (triggerId: string) => {
+    // Optimistic update - remove from local state immediately
+    const deletedTrigger = stableTriggers.find(t => t.id === triggerId);
+    setStableTriggers(prev => prev.filter(t => t.id !== triggerId));
+    
     try {
       const response = await fetch(`/api/carrier/notification-triggers?id=${triggerId}`, {
         method: 'DELETE'
@@ -700,16 +722,39 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
       const result = await response.json();
       if (result.ok) {
         toast.success("Notification trigger deleted");
-        mutateTriggers();
+        // Revalidate in background without causing flicker
+        mutateTriggers({ revalidate: false }).then(() => {
+          setTimeout(() => mutateTriggers(), 100);
+        });
       } else {
+        // Revert optimistic update on error
+        if (deletedTrigger) {
+          setStableTriggers(prev => [...prev, deletedTrigger].sort((a, b) => 
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          ));
+        }
         toast.error(result.error || "Failed to delete notification trigger");
       }
     } catch (error) {
+      // Revert optimistic update on error
+      if (deletedTrigger) {
+        setStableTriggers(prev => [...prev, deletedTrigger].sort((a, b) => 
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        ));
+      }
       toast.error("Failed to delete notification trigger");
     }
   };
 
   const handleEditTrigger = async (triggerId: string, updates: { triggerConfig?: any; isActive?: boolean }) => {
+    // Optimistic update - update local state immediately
+    const originalTrigger = stableTriggers.find(t => t.id === triggerId);
+    setStableTriggers(prev => prev.map(t => 
+      t.id === triggerId 
+        ? { ...t, trigger_config: updates.triggerConfig || t.trigger_config, is_active: updates.isActive !== undefined ? updates.isActive : t.is_active }
+        : t
+    ));
+    
     try {
       const response = await fetch('/api/carrier/notification-triggers', {
         method: 'PUT',
@@ -722,13 +767,28 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
       const result = await response.json();
       if (result.ok) {
         toast.success("Trigger updated successfully");
-        mutateTriggers();
         setShowEditTriggerDialog(false);
         setEditingTrigger(null);
+        // Revalidate in background without causing flicker
+        mutateTriggers({ revalidate: false }).then(() => {
+          setTimeout(() => mutateTriggers(), 100);
+        });
       } else {
+        // Revert optimistic update on error
+        if (originalTrigger) {
+          setStableTriggers(prev => prev.map(t => 
+            t.id === triggerId ? originalTrigger : t
+          ));
+        }
         toast.error(result.error || "Failed to update trigger");
       }
     } catch (error) {
+      // Revert optimistic update on error
+      if (originalTrigger) {
+        setStableTriggers(prev => prev.map(t => 
+          t.id === triggerId ? originalTrigger : t
+        ));
+      }
       toast.error("Failed to update trigger");
     }
   };
@@ -2428,7 +2488,8 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                     {editingTrigger.trigger_type.replace('_', ' ')}
                   </p>
                 </div>
-                {editingTrigger.trigger_config?.favoriteDistanceRange && (
+                {/* Only show distance range for non-exact-match triggers */}
+                {editingTrigger.trigger_config?.favoriteDistanceRange && editingTrigger.trigger_type !== 'exact_match' && (
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="text-xs font-medium">Min Distance (Miles)</label>
@@ -2468,6 +2529,11 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                         className="mt-1 text-xs"
                       />
                     </div>
+                  </div>
+                )}
+                {editingTrigger.trigger_type === 'exact_match' && (
+                  <div className="text-sm text-muted-foreground p-3 bg-muted/30 rounded">
+                    <p>Exact match triggers are based on route matching only. Distance settings do not apply.</p>
                   </div>
                 )}
                 <div className="flex items-center justify-between">
