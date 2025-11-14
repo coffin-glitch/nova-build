@@ -1210,7 +1210,7 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                                   <ul className="list-disc list-inside space-y-1 ml-2 text-muted-foreground">
                                     <li>Only used for <strong>State Pref Bid</strong> matching</li>
                                     <li><strong>Exact Match</strong> notifications ignore distance completely - only route matters</li>
-                                    <li><strong>State Match</strong> notifications use your distance range (min/max) to filter loads</li>
+                                    <li><strong>State Match</strong> notifications use your distance range (min/max) to filter bids</li>
                                     <li>Lower threshold = stricter matching (fewer notifications)</li>
                                     <li>Higher threshold = more flexible matching (more notifications)</li>
                                   </ul>
