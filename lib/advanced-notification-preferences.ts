@@ -91,6 +91,12 @@ export function shouldTriggerNotification(
   shouldNotify: boolean;
   reason: string;
   matchScore?: number;
+  scoreBreakdown?: {
+    routeScore: number;
+    equipmentScore: number;
+    distanceScore: number;
+    totalScore: number;
+  };
 } {
   // 1. Basic checks
   if (!preferences.similarLoadNotifications) {
@@ -185,32 +191,50 @@ export function shouldTriggerNotification(
     }
   }
   
-  // 8. Favorite matching (highest priority)
+  // 8. Favorite matching (highest priority) with detailed scoring breakdown
   let maxMatchScore = 0;
   let bestMatch = null;
+  let scoreBreakdown: {
+    routeScore: number;
+    equipmentScore: number;
+    distanceScore: number;
+    totalScore: number;
+  } | null = null;
   
   for (const favorite of favoriteMatches) {
-    // Calculate match score (simplified for now)
+    // Calculate detailed match score breakdown
     let matchScore = 0;
+    let routeScore = 0;
+    let equipmentScore = 0;
+    let distanceScore = 0;
     
-    // Route match (includes backhaul if enabled)
+    // Route match (includes backhaul if enabled) - 40 points max
     const routeMatch = calculateRouteMatch(favorite.stops, load.stops, preferences.prioritizeBackhaul);
     if (routeMatch >= preferences.routeMatchThreshold) {
-      matchScore += 40;
+      routeScore = Math.min(40, routeMatch * 0.4); // Scale to 40 points
+      matchScore += routeScore;
     }
     
-    // Equipment match
+    // Equipment match - 30 points max
     if (favorite.tag && load.tag && favorite.tag === load.tag) {
-      matchScore += 30;
+      equipmentScore = 30;
+      matchScore += equipmentScore;
     }
     
-    // Distance match
+    // Distance match - 30 points max
     const distanceMatch = calculateDistanceMatch(favorite.distance, loadDistance, preferences.distanceFlexibility);
-    matchScore += distanceMatch * 0.3;
+    distanceScore = distanceMatch * 0.3; // Scale to 30 points
+    matchScore += distanceScore;
     
     if (matchScore > maxMatchScore) {
       maxMatchScore = matchScore;
       bestMatch = favorite;
+      scoreBreakdown = {
+        routeScore: Math.round(routeScore),
+        equipmentScore: Math.round(equipmentScore),
+        distanceScore: Math.round(distanceScore),
+        totalScore: Math.round(matchScore)
+      };
     }
   }
   
@@ -224,8 +248,9 @@ export function shouldTriggerNotification(
   
   return {
     shouldNotify: true,
-    reason: `High match score: ${maxMatchScore}%`,
-    matchScore: maxMatchScore
+    reason: `High match score: ${maxMatchScore}%${scoreBreakdown ? ` (Route: ${scoreBreakdown.routeScore}, Equipment: ${scoreBreakdown.equipmentScore}, Distance: ${scoreBreakdown.distanceScore})` : ''}`,
+    matchScore: maxMatchScore,
+    scoreBreakdown: scoreBreakdown || undefined
   };
 }
 

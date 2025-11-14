@@ -208,6 +208,68 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
     avoidHighCompetition: false,
     maxCompetitionBids: 10,
   };
+
+  // Preference presets/templates
+  const preferencePresets = {
+    'conservative': {
+      name: 'Conservative',
+      description: 'Fewer, high-quality notifications',
+      preferences: {
+        ...defaultPreferences,
+        minMatchScore: 85,
+        useMinMatchScoreFilter: true,
+        distanceThresholdMiles: 30,
+        avoidHighCompetition: true,
+        maxCompetitionBids: 5,
+      }
+    },
+    'balanced': {
+      name: 'Balanced',
+      description: 'Good mix of quality and quantity',
+      preferences: {
+        ...defaultPreferences,
+        minMatchScore: 70,
+        useMinMatchScoreFilter: true,
+        distanceThresholdMiles: 50,
+        avoidHighCompetition: false,
+        maxCompetitionBids: 10,
+      }
+    },
+    'aggressive': {
+      name: 'Aggressive',
+      description: 'More notifications, cast a wider net',
+      preferences: {
+        ...defaultPreferences,
+        minMatchScore: 50,
+        useMinMatchScoreFilter: false,
+        distanceThresholdMiles: 100,
+        avoidHighCompetition: false,
+        maxCompetitionBids: 20,
+      }
+    },
+    'local': {
+      name: 'Local Routes',
+      description: 'Optimized for short-distance loads',
+      preferences: {
+        ...defaultPreferences,
+        minDistance: 0,
+        maxDistance: 300,
+        distanceThresholdMiles: 25,
+        minMatchScore: 65,
+      }
+    },
+    'long-haul': {
+      name: 'Long Haul',
+      description: 'Optimized for long-distance loads',
+      preferences: {
+        ...defaultPreferences,
+        minDistance: 500,
+        maxDistance: 2000,
+        distanceThresholdMiles: 75,
+        minMatchScore: 75,
+      }
+    }
+  };
   
   // Initialize editingPreferences when preferences data loads, but only if we're not already editing
   useEffect(() => {
@@ -663,6 +725,30 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
     }
   };
 
+  const handleEditTrigger = async (triggerId: string, updates: { triggerConfig?: any; isActive?: boolean }) => {
+    try {
+      const response = await fetch('/api/carrier/notification-triggers', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: triggerId,
+          ...updates
+        })
+      });
+      const result = await response.json();
+      if (result.ok) {
+        toast.success("Trigger updated successfully");
+        mutateTriggers();
+        setShowEditTriggerDialog(false);
+        setEditingTrigger(null);
+      } else {
+        toast.error(result.error || "Failed to update trigger");
+      }
+    } catch (error) {
+      toast.error("Failed to update trigger");
+    }
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-7xl max-h-[95vh] overflow-hidden">
@@ -858,6 +944,27 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                     </TooltipProvider>
                   </div>
                   <div className="flex items-center gap-2">
+                    <select
+                      className="text-xs px-2 py-1 rounded border bg-background text-foreground"
+                      onChange={(e) => {
+                        const presetKey = e.target.value;
+                        if (presetKey && presetKey !== 'custom') {
+                          const preset = preferencePresets[presetKey as keyof typeof preferencePresets];
+                          if (preset) {
+                            setEditingPreferences(preset.preferences);
+                            toast.success(`Applied ${preset.name} preset`);
+                          }
+                        }
+                        e.target.value = 'custom'; // Reset to custom after selection
+                      }}
+                      defaultValue="custom"
+                      title="Load a preset configuration"
+                    >
+                      <option value="custom">Custom</option>
+                      {Object.entries(preferencePresets).map(([key, preset]) => (
+                        <option key={key} value={key}>{preset.name}</option>
+                      ))}
+                    </select>
                     <Button
                       variant={showSmartNotifications ? "default" : "outline"}
                       size="sm"
@@ -1422,6 +1529,18 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                                     </TooltipContent>
                                   </Tooltip>
                                 </TooltipProvider>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setEditingTrigger(trigger);
+                                    setShowEditTriggerDialog(true);
+                                  }}
+                                  className="text-xs px-2 py-1 text-blue-400 hover:text-blue-300"
+                                  title="Edit alert settings"
+                                >
+                                  <Settings className="h-3 w-3" />
+                                </Button>
                                 <Button
                                   variant={trigger.is_active ? "default" : "outline"}
                                   size="sm"

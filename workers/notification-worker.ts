@@ -868,13 +868,80 @@ async function processFavoriteAvailableTrigger(
   return count;
 }
 
-// Process deadline approaching trigger (simplified)
+// Process deadline approaching trigger
 async function processDeadlineApproachingTrigger(
   userId: string,
   trigger: { id: number; triggerType: string; triggerConfig: any }
 ): Promise<number> {
-  // TODO: Implement full deadline approaching processing
-  return 0;
+  let count = 0;
+  
+  try {
+    const config = trigger.triggerConfig || {};
+    // Default to 5 minutes warning (notify when 5 minutes left)
+    const timeThreshold = config.timeThreshold || 5; // minutes before deadline
+    
+    // Get user's favorites to check for deadline approaching
+    const favorites = await sql`
+      SELECT 
+        cf.bid_number,
+        tb.received_at,
+        tb.stops,
+        tb.distance_miles,
+        tb.tag
+      FROM carrier_favorites cf
+      JOIN telegram_bids tb ON cf.bid_number = tb.bid_number
+      WHERE cf.supabase_carrier_user_id = ${userId}
+        AND tb.is_archived = false
+        AND tb.received_at IS NOT NULL
+    `;
+
+    const now = new Date();
+    
+    for (const favorite of favorites) {
+      const receivedAt = new Date(favorite.received_at);
+      // Bids expire 25 minutes after received
+      const expiresAt = new Date(receivedAt.getTime() + (25 * 60 * 1000));
+      const minutesRemaining = Math.floor((expiresAt.getTime() - now.getTime()) / (1000 * 60));
+      
+      // Only notify if within the threshold (e.g., 5 minutes remaining)
+      if (minutesRemaining > 0 && minutesRemaining <= timeThreshold) {
+        // Check cooldown - don't spam notifications for the same bid
+        const recentNotification = await sql`
+          SELECT sent_at
+          FROM notification_logs
+          WHERE supabase_carrier_user_id = ${userId}
+            AND bid_number = ${favorite.bid_number}
+            AND notification_type = 'deadline_approaching'
+            AND sent_at > NOW() - INTERVAL '5 minutes'
+          ORDER BY sent_at DESC
+          LIMIT 1
+        `;
+        
+        if (recentNotification.length > 0) {
+          continue; // Already notified recently
+        }
+        
+        const loadDetails = await getLoadDetails(favorite.bid_number);
+        const message = `⏰ Bid ${favorite.bid_number} closing in ${minutesRemaining} minute${minutesRemaining !== 1 ? 's' : ''}! Act fast!`;
+        
+        await sendNotification({
+          carrierUserId: userId,
+          triggerId: trigger.id,
+          notificationType: 'deadline_approaching',
+          bidNumber: favorite.bid_number,
+          message,
+          loadDetails: loadDetails || undefined,
+          minutesRemaining,
+        });
+        
+        count++;
+      }
+    }
+  } catch (error: any) {
+    console.error(`[DeadlineApproaching] Error processing trigger ${trigger.id}:`, error?.message);
+  }
+  
+  return count;
 }
 
 // Helper function to send notifications (in-app + email)

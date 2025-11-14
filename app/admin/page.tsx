@@ -6,9 +6,12 @@ import {
   FileText,
   TrendingUp,
   Truck,
-  Users
+  Users,
+  BarChart3,
+  Bell
 } from "lucide-react";
 import Link from "next/link";
+import NotificationAnalytics from "@/components/admin/NotificationAnalytics";
 
 export default async function AdminDashboard() {
   await requireAdmin();
@@ -127,6 +130,19 @@ export default async function AdminDashboard() {
               </Button>
             </div>
           </Card>
+        </div>
+      </div>
+
+      {/* Notification Analytics Section */}
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold color: hsl(var(--foreground))">Notification Analytics</h2>
+            <p className="text-muted-foreground">
+              Monitor trigger performance and notification metrics
+            </p>
+          </div>
+          <NotificationAnalytics />
         </div>
       </div>
     </div>
