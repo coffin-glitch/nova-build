@@ -349,7 +349,7 @@ export const SimilarLoadNotificationTemplate = ({
 }: SimilarLoadNotificationProps) => (
   <Html>
     <Head />
-    <Preview>🚚 Similar load found: {origin} → {destination} ({matchScore}% match)</Preview>
+    <Preview>🚚 Similar load found: {origin} → {destination} ({String(matchScore)}% match)</Preview>
     <Body style={main}>
       <Container style={gradientContainer}>
         <Container style={container}>
