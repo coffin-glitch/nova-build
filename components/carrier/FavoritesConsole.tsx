@@ -1191,9 +1191,26 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <div>
-                        <label className="text-xs font-medium">Email Notifications</label>
-                        <p className="text-xs text-muted-foreground">Receive email alerts</p>
+                      <div className="flex items-center gap-2">
+                        <div>
+                          <label className="text-xs font-medium">Email Notifications</label>
+                          <p className="text-xs text-muted-foreground">Receive email alerts</p>
+                        </div>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-muted text-[10px] cursor-help">?</span>
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-xs">
+                              <div className="text-xs space-y-1">
+                                <p><strong>How it works:</strong></p>
+                                <p>When <strong>ON</strong>: You&apos;ll receive email notifications for matches AND see them in Recent Notifications.</p>
+                                <p>When <strong>OFF</strong>: You&apos;ll still see notifications in Recent Notifications, but won&apos;t receive emails.</p>
+                                <p className="mt-2 text-muted-foreground">In-app notifications are always enabled regardless of this setting.</p>
+                              </div>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
                       </div>
                       <Button
                         variant={preferences.emailNotifications ? "default" : "outline"}
