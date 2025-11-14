@@ -456,7 +456,11 @@ async function processSimilarLoadTrigger(
       );
 
       if (shouldTrigger.shouldNotify) {
-        const message = `High-match load found! ${load.bid_number} - ${load.distance_miles}mi, ${load.tag}. Match: ${shouldTrigger.matchScore || load.similarity_score}%.`;
+        // Build detailed message with score breakdown
+        let message = `High-match load found! ${load.bid_number} - ${load.distance_miles}mi, ${load.tag}. Match: ${Math.round(shouldTrigger.matchScore || load.similarity_score)}%.`;
+        if (shouldTrigger.scoreBreakdown) {
+          message += ` Breakdown: Route ${shouldTrigger.scoreBreakdown.routeScore}pts, Equipment ${shouldTrigger.scoreBreakdown.equipmentScore}pts, Distance ${shouldTrigger.scoreBreakdown.distanceScore}pts.`;
+        }
         
         // Get load details for email
         const loadDetails = await getLoadDetails(load.bid_number);
@@ -470,6 +474,7 @@ async function processSimilarLoadTrigger(
           loadDetails: loadDetails || undefined,
           matchScore: shouldTrigger.matchScore || load.similarity_score,
           reasons: shouldTrigger.reason ? [shouldTrigger.reason] : [],
+          scoreBreakdown: shouldTrigger.scoreBreakdown,
         });
         count++;
       }
