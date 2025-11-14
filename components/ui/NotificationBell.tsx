@@ -429,19 +429,20 @@ export function NotificationBell() {
               <div className="flex items-center gap-2">
                 {isCarrier && (
                   <Button
-                    variant="outline"
-                    size="sm"
+                    variant="ghost"
+                    size="icon"
                     onClick={() => {
                       setIsOpen(false);
                       window.location.href = '/carrier/notifications';
                     }}
-                    className="text-xs backdrop-blur-sm border-opacity-30 hover:border-opacity-50"
+                    className="h-8 w-8 backdrop-blur-sm border-opacity-30 hover:border-opacity-50"
                     style={{
                       backgroundColor: accentColor ? `${accentColor}15` : undefined,
                       borderColor: accentColor ? `${accentColor}30` : undefined,
                     }}
+                    title="Manage Notifications"
                   >
-                    Manage Notifications
+                    <Settings className="h-4 w-4" style={{ color: accentColor || undefined }} />
                   </Button>
                 )}
                 {unreadCount > 0 && (
