@@ -566,9 +566,36 @@ async function processExactMatchTrigger(
     const favoriteDestState = extractStateFromStop(destination);
 
     // Find active bids with route match
-    // Also filter by distance range if using new format
+    // For exact match: NO distance filtering (only route matters)
+    // For state match: Apply distance range filtering
     let routeMatches;
-    if (favoriteDistanceRange) {
+    if (matchType === 'exact') {
+      // Exact match: Only filter by route, NOT by distance
+      routeMatches = await sql`
+        SELECT 
+          tb.bid_number,
+          tb.stops,
+          tb.distance_miles,
+          tb.tag,
+          tb.pickup_timestamp,
+          tb.delivery_timestamp,
+          tb.received_at
+        FROM telegram_bids tb
+        WHERE tb.is_archived = false
+          AND NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes')
+          AND tb.bid_number != ${favorite.favorite_bid}
+          AND (
+            -- Exact route match: same origin and destination
+            (tb.stops::text LIKE ${`%${origin}%`} AND tb.stops::text LIKE ${`%${destination}%`})
+            OR
+            -- Tag match (state-based)
+            (tb.tag = ${favorite.favorite_tag})
+          )
+        ORDER BY tb.received_at DESC
+        LIMIT 10
+      `;
+    } else if (matchType === 'state' && favoriteDistanceRange) {
+      // State match: Apply distance range filtering to the load's distance
       routeMatches = await sql`
         SELECT 
           tb.bid_number,
@@ -584,7 +611,7 @@ async function processExactMatchTrigger(
           AND tb.distance_miles >= ${favoriteDistanceRange.minDistance}
           AND tb.distance_miles <= ${favoriteDistanceRange.maxDistance}
           AND (
-            -- Exact route match: same origin and destination
+            -- Exact route match: same origin and destination (for state matching, we'll verify states later)
             (tb.stops::text LIKE ${`%${origin}%`} AND tb.stops::text LIKE ${`%${destination}%`})
             OR
             -- Tag match (state-based)
@@ -594,6 +621,7 @@ async function processExactMatchTrigger(
         LIMIT 10
       `;
     } else {
+      // State match without distance range (legacy) or fallback
       routeMatches = await sql`
         SELECT 
           tb.bid_number,
@@ -713,11 +741,12 @@ async function processExactMatchTrigger(
           }
         }
 
-        // Check distance range if specified in preferences
-        if (preferences?.min_distance !== undefined && preferences?.max_distance !== undefined) {
+        // Check distance range if specified in preferences (ONLY for state match, NOT for exact match)
+        // Exact match should not be filtered by distance - only route matters
+        if (matchType === 'state' && preferences?.min_distance !== undefined && preferences?.max_distance !== undefined) {
           const loadDistance = match.distance_miles || 0;
           if (loadDistance < preferences.min_distance || loadDistance > preferences.max_distance) {
-            console.log(`[${matchType === 'exact' ? 'ExactMatch' : 'StateMatch'}] Load distance ${loadDistance} outside range ${preferences.min_distance}-${preferences.max_distance}, skipping`);
+            console.log(`[StateMatch] Load distance ${loadDistance} outside range ${preferences.min_distance}-${preferences.max_distance}, skipping`);
             continue;
           }
         }
