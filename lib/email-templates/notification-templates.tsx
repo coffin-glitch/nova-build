@@ -8,20 +8,19 @@
  * - Clear CTAs with deep links
  */
 
-import {
-  Body,
-  Button,
-  Container,
-  Head,
-  Heading,
-  Html,
-  Link,
-  Preview,
-  Section,
-  Text,
-  Hr,
-} from '@react-email/components';
 import * as React from 'react';
+import {
+    Body,
+    Button,
+    Container,
+    Head,
+    Heading,
+    Html,
+    Link,
+    Preview,
+    Section,
+    Text
+} from '@react-email/components';
 
 // ============================================================================
 // ELEGANT NOVA DESIGN SYSTEM STYLES
