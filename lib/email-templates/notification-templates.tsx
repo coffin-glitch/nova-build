@@ -254,7 +254,6 @@ export const ExactMatchNotificationTemplate = ({
   bidNumber,
   origin,
   destination,
-  revenue,
   miles,
   stops,
   pickupTime,
@@ -351,7 +350,6 @@ export const SimilarLoadNotificationTemplate = ({
   destination,
   matchScore,
   reasons,
-  revenue,
   miles,
   stops,
   pickupTime,
@@ -438,8 +436,10 @@ interface FavoriteAvailableNotificationProps {
   bidNumber: string;
   origin: string;
   destination: string;
-  revenue?: number;
   miles?: number;
+  stops?: number;
+  pickupTime?: string;
+  deliveryTime?: string;
   viewUrl: string;
   carrierName?: string;
 }
@@ -448,7 +448,6 @@ export const FavoriteAvailableNotificationTemplate = ({
   bidNumber,
   origin,
   destination,
-  revenue,
   miles,
   stops,
   pickupTime,
@@ -530,6 +529,10 @@ interface BidWonNotificationProps {
   amount: number;
   origin: string;
   destination: string;
+  miles?: number;
+  stops?: number;
+  pickupTime?: string;
+  deliveryTime?: string;
   viewUrl: string;
   carrierName?: string;
 }
