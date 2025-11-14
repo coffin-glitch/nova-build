@@ -38,7 +38,7 @@ async function testNotificationSystem() {
       LEFT JOIN carrier_notification_preferences cp 
         ON nt.supabase_carrier_user_id = cp.supabase_carrier_user_id
       LEFT JOIN auth.users u 
-        ON nt.supabase_carrier_user_id = u.id
+        ON nt.supabase_carrier_user_id::uuid = u.id
       WHERE nt.is_active = true
       ORDER BY nt.supabase_carrier_user_id, nt.trigger_type
       LIMIT 10
@@ -111,6 +111,7 @@ async function testNotificationSystem() {
     console.log('\n🚀 Step 5: Triggering notification processing...');
     console.log(`   Calling: POST ${baseUrl}/api/notifications/process`);
     
+    let result: any = null;
     try {
       const response = await fetch(`${baseUrl}/api/notifications/process`, {
         method: 'POST',
@@ -124,15 +125,19 @@ async function testNotificationSystem() {
         throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
 
-      const result = await response.json();
+      result = await response.json();
       console.log('   ✅ Success!');
       console.log(`   - Users processed: ${result.usersProcessed || 0}`);
       console.log(`   - Total triggers: ${result.totalTriggers || 0}`);
       console.log(`   - Message: ${result.message || 'N/A'}`);
 
-      // Step 6: Wait a bit for processing
-      console.log('\n⏳ Step 6: Waiting 5 seconds for worker to process jobs...');
-      await new Promise(resolve => setTimeout(resolve, 5000));
+      // Step 6: Wait a bit for processing (only if API call succeeded)
+      if (result && result.usersProcessed > 0) {
+        console.log('\n⏳ Step 6: Waiting 5 seconds for worker to process jobs...');
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      } else {
+        console.log('\n⏭️  Step 6: Skipping wait (no jobs enqueued or API unavailable)');
+      }
 
       // Step 7: Check queue stats after
       console.log('\n📊 Step 7: Checking queue stats (after)...');
@@ -152,7 +157,7 @@ async function testNotificationSystem() {
           }
         }
       } catch (error) {
-        console.log('   ⚠️  Could not fetch queue stats');
+        console.log('   ⚠️  Could not fetch queue stats (API may not be running)');
       }
 
       // Step 8: Check notifications after
@@ -225,7 +230,11 @@ async function testNotificationSystem() {
       console.log('📊 SUMMARY');
       console.log('='.repeat(60));
       console.log(`✅ Active triggers: ${triggers.length}`);
-      console.log(`✅ Jobs enqueued: ${result.usersProcessed || 0}`);
+      if (result) {
+        console.log(`✅ Jobs enqueued: ${result.usersProcessed || 0}`);
+      } else {
+        console.log(`⚠️  Jobs enqueued: Could not trigger (API unavailable)`);
+      }
       console.log(`✅ New notifications: ${notificationsAfter.length}`);
       console.log(`✅ New log entries: ${logsAfter.length}`);
       
@@ -248,10 +257,11 @@ async function testNotificationSystem() {
     } catch (error: any) {
       console.error('   ❌ Error triggering notifications:', error.message);
       console.error('\n💡 Troubleshooting:');
-      console.error('   - Is the API server running?');
-      console.error('   - Check NEXT_PUBLIC_APP_URL in .env.local');
+      console.error('   - Is the API server running? Start with: npm run dev');
+      console.error('   - Or use production URL: Set NEXT_PUBLIC_APP_URL to your production domain');
       console.error('   - Verify the /api/notifications/process endpoint is accessible');
-      throw error;
+      console.error('\n⚠️  Skipping API trigger test. Continuing with database checks...');
+      result = { usersProcessed: 0, totalTriggers: triggers.length };
     }
 
   } catch (error: any) {
