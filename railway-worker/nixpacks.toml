@@ -1,0 +1,15 @@
+[phases.setup]
+nixPkgs = ["nodejs_20"]
+
+[phases.install]
+dependsOn = ["setup"]
+cmds = ["npm ci --legacy-peer-deps"]
+
+[phases.build]
+dependsOn = ["install"]
+# Skip Next.js build - worker doesn't need it
+cmds = ["echo 'Skipping Next.js build for worker'"]
+
+[start]
+cmd = "npm start"
+

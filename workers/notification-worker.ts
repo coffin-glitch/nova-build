@@ -450,16 +450,17 @@ async function processSimilarLoadTrigger(
     // Check if should trigger based on advanced preferences
     if (preferences) {
       const shouldTrigger = shouldTriggerNotification(
-        load,
+        load, // This is actually a bid from telegram_bids table
         preferences as AdvancedNotificationPreferences,
         favorites
       );
 
       if (shouldTrigger.shouldNotify) {
         // Build detailed message with score breakdown
-        let message = `High-match load found! ${load.bid_number} - ${load.distance_miles}mi, ${load.tag}. Match: ${Math.round(shouldTrigger.matchScore || load.similarity_score)}%.`;
+        // Note: All bids use the same equipment, so equipment score is not shown
+        let message = `High-match bid found! ${load.bid_number} - ${load.distance_miles}mi, ${load.tag}. Match: ${Math.round(shouldTrigger.matchScore || load.similarity_score)}%.`;
         if (shouldTrigger.scoreBreakdown) {
-          message += ` Breakdown: Route ${shouldTrigger.scoreBreakdown.routeScore}pts, Equipment ${shouldTrigger.scoreBreakdown.equipmentScore}pts, Distance ${shouldTrigger.scoreBreakdown.distanceScore}pts.`;
+          message += ` Breakdown: Route ${shouldTrigger.scoreBreakdown.routeScore}pts, Distance ${shouldTrigger.scoreBreakdown.distanceScore}pts.`;
         }
         
         // Get load details for email

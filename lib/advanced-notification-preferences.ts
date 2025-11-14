@@ -81,10 +81,11 @@ export const DEFAULT_ADVANCED_PREFERENCES: AdvancedNotificationPreferences = {
 };
 
 /**
- * Check if a load should trigger a notification based on advanced preferences
+ * Check if a bid should trigger a notification based on advanced preferences
+ * Note: This system works with bids (telegram_bids), not loads
  */
 export function shouldTriggerNotification(
-  load: any,
+  bid: any, // Bid from telegram_bids table (not a load)
   preferences: AdvancedNotificationPreferences,
   favoriteMatches: any[]
 ): {
@@ -93,7 +94,6 @@ export function shouldTriggerNotification(
   matchScore?: number;
   scoreBreakdown?: {
     routeScore: number;
-    equipmentScore: number;
     distanceScore: number;
     totalScore: number;
   };
@@ -107,41 +107,41 @@ export function shouldTriggerNotification(
     return { shouldNotify: false, reason: 'All notifications disabled' };
   }
   
-  // 2. Load Weight filtering (for dry van loads)
-  // Since all loads are dry van, we check for similar freight types by state/tag
+  // 2. Bid tag filtering (for bid urgency/preference matching)
+  // Since all bids use the same equipment, we check for bid tag preferences
   if (preferences.equipmentPreferences.length > 0) {
-    const loadTag = load.tag?.toUpperCase();
-    const matchesWeight = preferences.equipmentPreferences.some(
-      pref => loadTag?.includes(pref.toUpperCase())
+    const bidTag = bid.tag?.toUpperCase(); // tag from telegram_bids table
+    const matchesTag = preferences.equipmentPreferences.some(
+      pref => bidTag?.includes(pref.toUpperCase())
     );
     
-    if (preferences.urgencyStrict && !matchesWeight) {
-      return { shouldNotify: false, reason: 'Pickup urgency does not match requirements' };
+    if (preferences.urgencyStrict && !matchesTag) {
+      return { shouldNotify: false, reason: 'Bid tag does not match requirements' };
     }
     
-    if (!preferences.urgencyStrict && !matchesWeight) {
+    if (!preferences.urgencyStrict && !matchesTag) {
       // Partial match allowed
     }
   }
   
   // 3. Distance filtering
-  const loadDistance = load.distance || load.distance_miles;
-  if (loadDistance < preferences.minDistance) {
-    return { shouldNotify: false, reason: `Distance ${loadDistance}mi below minimum ${preferences.minDistance}mi` };
+  const bidDistance = bid.distance || bid.distance_miles;
+  if (bidDistance < preferences.minDistance) {
+    return { shouldNotify: false, reason: `Distance ${bidDistance}mi below minimum ${preferences.minDistance}mi` };
   }
   
-  if (loadDistance > preferences.maxDistance) {
-    return { shouldNotify: false, reason: `Distance ${loadDistance}mi above maximum ${preferences.maxDistance}mi` };
+  if (bidDistance > preferences.maxDistance) {
+    return { shouldNotify: false, reason: `Distance ${bidDistance}mi above maximum ${preferences.maxDistance}mi` };
   }
   
   // 4. Competition filtering
-  if (preferences.avoidHighCompetition && load.bids_count > preferences.maxCompetitionBids) {
-    return { shouldNotify: false, reason: `Competition too high (${load.bids_count} bids)` };
+  if (preferences.avoidHighCompetition && bid.bids_count > preferences.maxCompetitionBids) {
+    return { shouldNotify: false, reason: `Competition too high (${bid.bids_count} bids)` };
   }
   
   // 5. Route origin/destination preferences
   if (preferences.routeOrigins.length > 0) {
-    const origin = extractOrigin(load.stops);
+    const origin = extractOrigin(bid.stops);
     const matchesOrigin = preferences.routeOrigins.some(
       pref => similarCity(origin, pref)
     );
@@ -152,7 +152,7 @@ export function shouldTriggerNotification(
   }
   
   if (preferences.routeDestinations.length > 0) {
-    const destination = extractDestination(load.stops);
+    const destination = extractDestination(bid.stops);
     const matchesDestination = preferences.routeDestinations.some(
       pref => similarCity(destination, pref)
     );
@@ -163,8 +163,8 @@ export function shouldTriggerNotification(
   }
   
   // 6. Timing preferences
-  if (load.pickup_timestamp || load.pickupDate) {
-    const pickupDate = new Date(load.pickup_timestamp || load.pickupDate);
+  if (bid.pickup_timestamp || bid.pickupDate) {
+    const pickupDate = new Date(bid.pickup_timestamp || bid.pickupDate);
     const dayOfWeek = pickupDate.toLocaleDateString('en-US', { weekday: 'long' });
     
     if (preferences.avoidWeekends && (dayOfWeek === 'Saturday' || dayOfWeek === 'Sunday')) {
@@ -179,8 +179,8 @@ export function shouldTriggerNotification(
   }
   
   // 7. Transit time filtering
-  if (load.pickup_timestamp && load.delivery_timestamp) {
-    const transitTime = (new Date(load.delivery_timestamp).getTime() - new Date(load.pickup_timestamp).getTime()) / (1000 * 60 * 60);
+  if (bid.pickup_timestamp && bid.delivery_timestamp) {
+    const transitTime = (new Date(bid.delivery_timestamp).getTime() - new Date(bid.pickup_timestamp).getTime()) / (1000 * 60 * 60);
     
     if (transitTime < preferences.minimumTransitHours) {
       return { shouldNotify: false, reason: `Transit time too short (${transitTime.toFixed(1)}h < ${preferences.minimumTransitHours}h)` };
@@ -192,11 +192,11 @@ export function shouldTriggerNotification(
   }
   
   // 8. Favorite matching (highest priority) with detailed scoring breakdown
+  // Note: All bids use the same equipment, so equipment score is not included
   let maxMatchScore = 0;
   let bestMatch = null;
   let scoreBreakdown: {
     routeScore: number;
-    equipmentScore: number;
     distanceScore: number;
     totalScore: number;
   } | null = null;
@@ -205,25 +205,18 @@ export function shouldTriggerNotification(
     // Calculate detailed match score breakdown
     let matchScore = 0;
     let routeScore = 0;
-    let equipmentScore = 0;
     let distanceScore = 0;
     
-    // Route match (includes backhaul if enabled) - 40 points max
-    const routeMatch = calculateRouteMatch(favorite.stops, load.stops, preferences.prioritizeBackhaul);
+    // Route match (includes backhaul if enabled) - 50 points max
+    const routeMatch = calculateRouteMatch(favorite.stops, bid.stops, preferences.prioritizeBackhaul);
     if (routeMatch >= preferences.routeMatchThreshold) {
-      routeScore = Math.min(40, routeMatch * 0.4); // Scale to 40 points
+      routeScore = Math.min(50, routeMatch * 0.5); // Scale to 50 points
       matchScore += routeScore;
     }
     
-    // Equipment match - 30 points max
-    if (favorite.tag && load.tag && favorite.tag === load.tag) {
-      equipmentScore = 30;
-      matchScore += equipmentScore;
-    }
-    
-    // Distance match - 30 points max
-    const distanceMatch = calculateDistanceMatch(favorite.distance, loadDistance, preferences.distanceFlexibility);
-    distanceScore = distanceMatch * 0.3; // Scale to 30 points
+    // Distance match - 50 points max (equipment removed since all bids use same equipment)
+    const distanceMatch = calculateDistanceMatch(favorite.distance, bidDistance, preferences.distanceFlexibility);
+    distanceScore = distanceMatch * 0.5; // Scale to 50 points
     matchScore += distanceScore;
     
     if (matchScore > maxMatchScore) {
@@ -231,7 +224,6 @@ export function shouldTriggerNotification(
       bestMatch = favorite;
       scoreBreakdown = {
         routeScore: Math.round(routeScore),
-        equipmentScore: Math.round(equipmentScore),
         distanceScore: Math.round(distanceScore),
         totalScore: Math.round(matchScore)
       };
@@ -248,7 +240,7 @@ export function shouldTriggerNotification(
   
   return {
     shouldNotify: true,
-    reason: `High match score: ${maxMatchScore}%${scoreBreakdown ? ` (Route: ${scoreBreakdown.routeScore}, Equipment: ${scoreBreakdown.equipmentScore}, Distance: ${scoreBreakdown.distanceScore})` : ''}`,
+    reason: `High match score: ${maxMatchScore}%${scoreBreakdown ? ` (Route: ${scoreBreakdown.routeScore}pts, Distance: ${scoreBreakdown.distanceScore}pts)` : ''}`,
     matchScore: maxMatchScore,
     scoreBreakdown: scoreBreakdown || undefined
   };

@@ -213,61 +213,25 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
 
   // Preference presets/templates
   const preferencePresets = {
-    'conservative': {
-      name: 'Conservative',
-      description: 'Fewer, high-quality notifications',
-      preferences: {
-        ...defaultPreferences,
-        minMatchScore: 85,
-        useMinMatchScoreFilter: true,
-        distanceThresholdMiles: 30,
-        avoidHighCompetition: true,
-        maxCompetitionBids: 5,
-      }
-    },
-    'balanced': {
-      name: 'Balanced',
-      description: 'Good mix of quality and quantity',
-      preferences: {
-        ...defaultPreferences,
-        minMatchScore: 70,
-        useMinMatchScoreFilter: true,
-        distanceThresholdMiles: 50,
-        avoidHighCompetition: false,
-        maxCompetitionBids: 10,
-      }
-    },
-    'aggressive': {
-      name: 'Aggressive',
-      description: 'More notifications, cast a wider net',
-      preferences: {
-        ...defaultPreferences,
-        minMatchScore: 50,
-        useMinMatchScoreFilter: false,
-        distanceThresholdMiles: 100,
-        avoidHighCompetition: false,
-        maxCompetitionBids: 20,
-      }
-    },
     'local': {
       name: 'Local Routes',
-      description: 'Optimized for short-distance loads',
+      description: 'Optimized for short-distance bids (0-500 miles)',
       preferences: {
         ...defaultPreferences,
         minDistance: 0,
-        maxDistance: 300,
-        distanceThresholdMiles: 25,
+        maxDistance: 500,
+        distanceThresholdMiles: 100,
         minMatchScore: 65,
       }
     },
     'long-haul': {
       name: 'Long Haul',
-      description: 'Optimized for long-distance loads',
+      description: 'Optimized for long-distance bids (500-2000 miles)',
       preferences: {
         ...defaultPreferences,
         minDistance: 500,
         maxDistance: 2000,
-        distanceThresholdMiles: 75,
+        distanceThresholdMiles: 250,
         minMatchScore: 75,
       }
     }
