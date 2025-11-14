@@ -478,6 +478,7 @@ export async function getNotificationPreferences(carrierUserId: string) {
       minMatchScore: pref.min_match_score ?? 70,
       useMinMatchScoreFilter: pref.use_min_match_score_filter !== false, // Default to true
       timingRelevanceDays: pref.timing_relevance_days ?? 7,
+      useTimingRelevance: pref.use_timing_relevance !== false, // Default to true
       backhaulMatcher: pref.prioritize_backhaul ?? true, // Map prioritize_backhaul to backhaulMatcher
       avoidHighCompetition: pref.avoid_high_competition ?? false,
       maxCompetitionBids: pref.max_competition_bids ?? 10,
