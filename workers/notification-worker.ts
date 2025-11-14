@@ -62,28 +62,50 @@ async function getCarrierEmail(userId: string): Promise<string | null> {
   }
 }
 
-// Helper function to format timestamp for display
+// Helper function to format timestamp for display (matches telegram bid format)
 function formatTimestamp(timestamp: Date | string | null | undefined): string | undefined {
   if (!timestamp) return undefined;
   try {
     const date = typeof timestamp === 'string' ? new Date(timestamp) : timestamp;
     if (isNaN(date.getTime())) return undefined;
     
-    // Format as: "MM/DD/YYYY HH:MM AM/PM"
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const year = date.getFullYear();
-    let hours = date.getHours();
-    const minutes = String(date.getMinutes()).padStart(2, '0');
-    const ampm = hours >= 12 ? 'PM' : 'AM';
-    hours = hours % 12;
-    hours = hours ? hours : 12; // the hour '0' should be '12'
-    const hoursStr = String(hours).padStart(2, '0');
+    // Use the same format as formatPickupDateTime from lib/format.ts
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      month: '2-digit',
+      day: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
     
-    return `${month}/${day}/${year} ${hoursStr}:${minutes} ${ampm}`;
+    const parts = formatter.formatToParts(date);
+    const month = parts.find(part => part.type === 'month')?.value;
+    const day = parts.find(part => part.type === 'day')?.value;
+    const year = parts.find(part => part.type === 'year')?.value;
+    const hour = parts.find(part => part.type === 'hour')?.value;
+    const minute = parts.find(part => part.type === 'minute')?.value;
+    const dayPeriod = parts.find(part => part.type === 'dayPeriod')?.value;
+    
+    return `${month}/${day}/${year} ${hour}:${minute} ${dayPeriod}`;
   } catch {
     return undefined;
   }
+}
+
+// Helper function to parse stops and extract origin/destination
+function parseStops(stops: any): string[] {
+  if (!stops) return [];
+  if (Array.isArray(stops)) return stops;
+  if (typeof stops === 'string') {
+    try {
+      const parsed = JSON.parse(stops);
+      return Array.isArray(parsed) ? parsed : [parsed];
+    } catch {
+      return [stops];
+    }
+  }
+  return [];
 }
 
 // Helper function to count stops
@@ -107,7 +129,6 @@ function countStops(stops: any): number | undefined {
 async function getLoadDetails(bidNumber: string): Promise<{
   origin: string;
   destination: string;
-  revenue?: number;
   miles?: number;
   stops?: number;
   pickupTime?: string;
@@ -129,18 +150,22 @@ async function getLoadDetails(bidNumber: string): Promise<{
     
     if (bidInfo.length > 0) {
       const bid = bidInfo[0];
-      // Tag format is typically "ORIGIN_STATE-DEST_STATE" (e.g., "CA-NY", "TX-FL")
-      // Or could be city names. Try to extract or use tag as-is
+      
+      // Extract origin and destination from stops array (like telegram bids)
+      const stopsArray = parseStops(bid.stops);
       let origin = 'Origin';
       let destination = 'Destination';
       
-      if (bid.tag) {
+      if (stopsArray.length > 0) {
+        origin = stopsArray[0];
+        destination = stopsArray[stopsArray.length - 1];
+      } else if (bid.tag) {
+        // Fallback to tag if no stops
         const parts = bid.tag.split('-');
         if (parts.length >= 2) {
           origin = parts[0].trim();
           destination = parts[1].trim();
         } else {
-          // If no dash, use tag as origin
           origin = bid.tag;
         }
       }
@@ -148,7 +173,7 @@ async function getLoadDetails(bidNumber: string): Promise<{
       return {
         origin,
         destination,
-        miles: bid.distance_miles || undefined,
+        miles: bid.distance_miles ? parseFloat(bid.distance_miles) : undefined,
         stops: countStops(bid.stops),
         pickupTime: formatTimestamp(bid.pickup_timestamp),
         deliveryTime: formatTimestamp(bid.delivery_timestamp),
@@ -206,7 +231,6 @@ async function getLoadDetails(bidNumber: string): Promise<{
       return {
         origin: `${load.origin_city || ''}, ${load.origin_state || ''}`.trim() || 'Origin',
         destination: `${load.destination_city || ''}, ${load.destination_state || ''}`.trim() || 'Destination',
-        revenue: load.revenue || undefined,
         miles: load.total_miles || undefined,
         stops: load.nbr_of_stops || undefined,
         pickupTime,
@@ -484,7 +508,6 @@ async function sendNotification({
   loadDetails?: { 
     origin: string; 
     destination: string; 
-    revenue?: number; 
     miles?: number;
     stops?: number;
     pickupTime?: string;
@@ -584,7 +607,6 @@ async function sendNotification({
               bidNumber,
               origin: loadInfo.origin,
               destination: loadInfo.destination,
-              revenue: loadInfo.revenue,
               miles: loadInfo.miles,
               stops: loadInfo.stops,
               pickupTime: loadInfo.pickupTime,
@@ -605,7 +627,6 @@ async function sendNotification({
               destination: loadInfo.destination,
               matchScore: matchScore || 0,
               reasons: reasons || [],
-              revenue: loadInfo.revenue,
               miles: loadInfo.miles,
               stops: loadInfo.stops,
               pickupTime: loadInfo.pickupTime,
@@ -624,7 +645,6 @@ async function sendNotification({
               bidNumber,
               origin: loadInfo.origin,
               destination: loadInfo.destination,
-              revenue: loadInfo.revenue,
               miles: loadInfo.miles,
               stops: loadInfo.stops,
               pickupTime: loadInfo.pickupTime,

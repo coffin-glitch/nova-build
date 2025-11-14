@@ -242,7 +242,6 @@ interface ExactMatchNotificationProps {
   bidNumber: string;
   origin: string;
   destination: string;
-  revenue?: number;
   miles?: number;
   stops?: number;
   pickupTime?: string;
@@ -291,11 +290,10 @@ export const ExactMatchNotificationTemplate = ({
               <Text style={infoText}>
                 <strong>Bid Number:</strong> {bidNumber}<br />
                 <strong>Route:</strong> {origin} → {destination}<br />
-                {pickupTime && <><strong>Pickup Time:</strong> {pickupTime}<br /></>}
-                {deliveryTime && <><strong>Delivery Time:</strong> {deliveryTime}<br /></>}
+                {pickupTime && <><strong>Pickup:</strong> {pickupTime}<br /></>}
+                {deliveryTime && <><strong>Delivery:</strong> {deliveryTime}<br /></>}
                 {stops !== undefined && <><strong>Stops:</strong> {stops}<br /></>}
                 {miles !== undefined && <><strong>Miles:</strong> {miles.toLocaleString()}<br /></>}
-                {revenue && <><strong>Revenue:</strong> ${revenue.toLocaleString()}<br /></>}
               </Text>
             </Section>
 
@@ -339,7 +337,6 @@ interface SimilarLoadNotificationProps {
   destination: string;
   matchScore: number;
   reasons: string[];
-  revenue?: number;
   miles?: number;
   stops?: number;
   pickupTime?: string;
@@ -390,11 +387,10 @@ export const SimilarLoadNotificationTemplate = ({
               <Text style={infoText}>
                 <strong>Bid Number:</strong> {bidNumber}<br />
                 <strong>Route:</strong> {origin} → {destination}<br />
-                {pickupTime && <><strong>Pickup Time:</strong> {pickupTime}<br /></>}
-                {deliveryTime && <><strong>Delivery Time:</strong> {deliveryTime}<br /></>}
+                {pickupTime && <><strong>Pickup:</strong> {pickupTime}<br /></>}
+                {deliveryTime && <><strong>Delivery:</strong> {deliveryTime}<br /></>}
                 {stops !== undefined && <><strong>Stops:</strong> {stops}<br /></>}
                 {miles !== undefined && <><strong>Miles:</strong> {miles.toLocaleString()}<br /></>}
-                {revenue && <><strong>Revenue:</strong> ${revenue.toLocaleString()}<br /></>}
                 <strong>Match Score:</strong> {matchScore}%
               </Text>
             </Section>
@@ -488,11 +484,10 @@ export const FavoriteAvailableNotificationTemplate = ({
               <Text style={infoText}>
                 <strong>Bid Number:</strong> {bidNumber}<br />
                 <strong>Route:</strong> {origin} → {destination}<br />
-                {pickupTime && <><strong>Pickup Time:</strong> {pickupTime}<br /></>}
-                {deliveryTime && <><strong>Delivery Time:</strong> {deliveryTime}<br /></>}
+                {pickupTime && <><strong>Pickup:</strong> {pickupTime}<br /></>}
+                {deliveryTime && <><strong>Delivery:</strong> {deliveryTime}<br /></>}
                 {stops !== undefined && <><strong>Stops:</strong> {stops}<br /></>}
                 {miles !== undefined && <><strong>Miles:</strong> {miles.toLocaleString()}<br /></>}
-                {revenue && <><strong>Revenue:</strong> ${revenue.toLocaleString()}<br /></>}
               </Text>
             </Section>
 

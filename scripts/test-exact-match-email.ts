@@ -26,17 +26,20 @@ async function testExactMatchEmail() {
   const testEmail = 'dukeisaac12@gmail.com';
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://novafreight.io';
 
-  // Simulate an exact match notification
+  // Use actual bid #91671821 data from database
+  // Bid #91671821: SANDSTON, VA → HOPE MILLS, NC
+  // Pickup: 11/10/2025 10:00 PM (CST) = 11/11/2025 03:00 UTC
+  // Delivery: 11/11/2025 04:06 AM (CST) = 11/11/2025 09:06 UTC
+  // Distance: 218 miles, Stops: 2
   const testData = {
-    bidNumber: '12345',
-    origin: 'Los Angeles, CA',
-    destination: 'New York, NY',
-    revenue: 4500,
-    miles: 2789,
-    stops: 1,
-    pickupTime: '11/14/2025 08:00 AM',
-    deliveryTime: '11/16/2025 06:00 PM',
-    viewUrl: `${baseUrl}/find-loads?bid=12345`,
+    bidNumber: '91671821',
+    origin: 'SANDSTON, VA',
+    destination: 'HOPE MILLS, NC',
+    miles: 218,
+    stops: 2,
+    pickupTime: '11/10/2025 10:00 PM',
+    deliveryTime: '11/11/2025 04:06 AM',
+    viewUrl: `${baseUrl}/find-loads?bid=91671821`,
     carrierName: 'Duke Isaac',
   };
 

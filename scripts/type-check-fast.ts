@@ -7,7 +7,7 @@
 
 import { execSync } from 'child_process';
 import { readdirSync, statSync } from 'fs';
-import { join, resolve } from 'path';
+import { join } from 'path';
 
 function findTsFiles(dir: string, ignore: string[] = []): string[] {
   const files: string[] = [];
