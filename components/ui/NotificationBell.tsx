@@ -359,8 +359,7 @@ export function NotificationBell() {
                 backgroundColor: accentColor ? `${accentColor}15` : undefined,
               }}
               onClick={() => {
-                setIsOpen(true);
-                setShowPreview(false);
+                window.location.href = '/carrier/notifications';
               }}
             >
               View All Notifications

@@ -188,20 +188,32 @@ export default function NotificationsPage() {
     }
   }, [notifications, soundEnabled]);
 
+  // Track previous unread notifications to only show desktop notifications for NEW ones
+  const [previousUnreadIds, setPreviousUnreadIds] = useState<Set<string>>(new Set());
+
   // Show desktop notifications for new unread
   useEffect(() => {
     if (desktopNotificationsEnabled && 'Notification' in window && Notification.permission === 'granted') {
       const unread = notifications.filter(n => !n.read);
-      if (unread.length > 0) {
-        const latest = unread[0];
+      const currentUnreadIds = new Set(unread.map(n => n.id));
+      
+      // Find new unread notifications (not in previous set)
+      const newUnread = unread.filter(n => !previousUnreadIds.has(n.id));
+      
+      if (newUnread.length > 0) {
+        // Show notification for the latest new unread
+        const latest = newUnread[0];
         new Notification(latest.title, {
           body: latest.message,
           icon: '/favicon.ico',
           tag: latest.id, // Prevent duplicate notifications
+          requireInteraction: false,
         });
       }
+      
+      setPreviousUnreadIds(currentUnreadIds);
     }
-  }, [notifications, desktopNotificationsEnabled]);
+  }, [notifications, desktopNotificationsEnabled, previousUnreadIds]);
 
   const markAsRead = async (notificationId: string) => {
     try {
