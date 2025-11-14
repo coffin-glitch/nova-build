@@ -70,19 +70,35 @@ const logoSection = {
   position: 'relative' as const,
 };
 
-// Refined logo icon with gradient background
+// Glass-morphism bell icon with NOVA brand colors
 const logoIcon = {
-  width: '56px',
-  height: '56px',
-  borderRadius: '14px',
-  background: 'linear-gradient(135deg, hsl(221.2, 83.2%, 53.3%) 0%, hsl(221.2, 83.2%, 48%) 100%)',
+  width: '64px',
+  height: '64px',
+  borderRadius: '16px',
+  background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(147, 51, 234, 0.15) 50%, rgba(99, 102, 241, 0.15) 100%)',
+  backdropFilter: 'blur(10px)',
+  border: '1px solid rgba(255, 255, 255, 0.3)',
   display: 'inline-flex',
   alignItems: 'center',
   justifyContent: 'center',
-  fontSize: '28px',
-  boxShadow: '0 8px 16px -4px rgba(59, 130, 246, 0.25), 0 4px 8px -2px rgba(59, 130, 246, 0.15)',
+  boxShadow: '0 8px 32px -4px rgba(59, 130, 246, 0.2), 0 4px 16px -2px rgba(147, 51, 234, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.4)',
   margin: '0 auto 16px',
   position: 'relative' as const,
+  overflow: 'hidden' as const,
+};
+
+// Inner glow effect for glass bell
+const logoIconGlow = {
+  position: 'absolute' as const,
+  top: '50%',
+  left: '50%',
+  transform: 'translate(-50%, -50%)',
+  width: '48px',
+  height: '48px',
+  borderRadius: '12px',
+  background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.25) 0%, rgba(147, 51, 234, 0.25) 100%)',
+  filter: 'blur(8px)',
+  zIndex: 0,
 };
 
 const brandHeading = {
@@ -266,7 +282,41 @@ export const ExactMatchNotificationTemplate = ({
       <Container style={gradientContainer}>
         <Container style={container}>
           <Section style={logoSection}>
-            <div style={logoIcon}>🎯</div>
+            <div style={logoIcon}>
+              <div style={logoIconGlow}></div>
+              <svg 
+                width="32" 
+                height="32" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                xmlns="http://www.w3.org/2000/svg"
+                style={{ position: 'relative', zIndex: 1 }}
+              >
+                <defs>
+                  <linearGradient id="bellGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="#3b82f6" />
+                    <stop offset="50%" stopColor="#9333ea" />
+                    <stop offset="100%" stopColor="#6366f1" />
+                  </linearGradient>
+                </defs>
+                <path 
+                  d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" 
+                  stroke="url(#bellGradient)" 
+                  strokeWidth="2" 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round"
+                  fill="none"
+                />
+                <path 
+                  d="M13.73 21a2 2 0 0 1-3.46 0" 
+                  stroke="url(#bellGradient)" 
+                  strokeWidth="2" 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round"
+                  fill="none"
+                />
+              </svg>
+            </div>
             <Heading style={brandHeading}>
               <span style={brandGradient}>NOVA</span>
             </Heading>
@@ -362,7 +412,41 @@ export const SimilarLoadNotificationTemplate = ({
       <Container style={gradientContainer}>
         <Container style={container}>
           <Section style={logoSection}>
-            <div style={logoIcon}>🚚</div>
+            <div style={logoIcon}>
+              <div style={logoIconGlow}></div>
+              <svg 
+                width="32" 
+                height="32" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                xmlns="http://www.w3.org/2000/svg"
+                style={{ position: 'relative', zIndex: 1 }}
+              >
+                <defs>
+                  <linearGradient id="bellGradient2" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="#3b82f6" />
+                    <stop offset="50%" stopColor="#9333ea" />
+                    <stop offset="100%" stopColor="#6366f1" />
+                  </linearGradient>
+                </defs>
+                <path 
+                  d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" 
+                  stroke="url(#bellGradient2)" 
+                  strokeWidth="2" 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round"
+                  fill="none"
+                />
+                <path 
+                  d="M13.73 21a2 2 0 0 1-3.46 0" 
+                  stroke="url(#bellGradient2)" 
+                  strokeWidth="2" 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round"
+                  fill="none"
+                />
+              </svg>
+            </div>
             <Heading style={brandHeading}>
               <span style={brandGradient}>NOVA</span>
             </Heading>
@@ -460,7 +544,41 @@ export const FavoriteAvailableNotificationTemplate = ({
       <Container style={gradientContainer}>
         <Container style={container}>
           <Section style={logoSection}>
-            <div style={logoIcon}>⭐</div>
+            <div style={logoIcon}>
+              <div style={logoIconGlow}></div>
+              <svg 
+                width="32" 
+                height="32" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                xmlns="http://www.w3.org/2000/svg"
+                style={{ position: 'relative', zIndex: 1 }}
+              >
+                <defs>
+                  <linearGradient id="bellGradient3" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="#3b82f6" />
+                    <stop offset="50%" stopColor="#9333ea" />
+                    <stop offset="100%" stopColor="#6366f1" />
+                  </linearGradient>
+                </defs>
+                <path 
+                  d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" 
+                  stroke="url(#bellGradient3)" 
+                  strokeWidth="2" 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round"
+                  fill="none"
+                />
+                <path 
+                  d="M13.73 21a2 2 0 0 1-3.46 0" 
+                  stroke="url(#bellGradient3)" 
+                  strokeWidth="2" 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round"
+                  fill="none"
+                />
+              </svg>
+            </div>
             <Heading style={brandHeading}>
               <span style={brandGradient}>NOVA</span>
             </Heading>
@@ -554,7 +672,41 @@ export const BidWonNotificationTemplate = ({
       <Container style={gradientContainer}>
         <Container style={container}>
           <Section style={logoSection}>
-            <div style={logoIcon}>🎉</div>
+            <div style={logoIcon}>
+              <div style={logoIconGlow}></div>
+              <svg 
+                width="32" 
+                height="32" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                xmlns="http://www.w3.org/2000/svg"
+                style={{ position: 'relative', zIndex: 1 }}
+              >
+                <defs>
+                  <linearGradient id="bellGradient4" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="#3b82f6" />
+                    <stop offset="50%" stopColor="#9333ea" />
+                    <stop offset="100%" stopColor="#6366f1" />
+                  </linearGradient>
+                </defs>
+                <path 
+                  d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" 
+                  stroke="url(#bellGradient4)" 
+                  strokeWidth="2" 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round"
+                  fill="none"
+                />
+                <path 
+                  d="M13.73 21a2 2 0 0 1-3.46 0" 
+                  stroke="url(#bellGradient4)" 
+                  strokeWidth="2" 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round"
+                  fill="none"
+                />
+              </svg>
+            </div>
             <Heading style={brandHeading}>
               <span style={brandGradient}>NOVA</span>
             </Heading>
@@ -642,7 +794,41 @@ export const BidLostNotificationTemplate = ({
       <Container style={gradientContainer}>
         <Container style={container}>
           <Section style={logoSection}>
-            <div style={logoIcon}>📋</div>
+            <div style={logoIcon}>
+              <div style={logoIconGlow}></div>
+              <svg 
+                width="32" 
+                height="32" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                xmlns="http://www.w3.org/2000/svg"
+                style={{ position: 'relative', zIndex: 1 }}
+              >
+                <defs>
+                  <linearGradient id="bellGradient5" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="#3b82f6" />
+                    <stop offset="50%" stopColor="#9333ea" />
+                    <stop offset="100%" stopColor="#6366f1" />
+                  </linearGradient>
+                </defs>
+                <path 
+                  d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" 
+                  stroke="url(#bellGradient5)" 
+                  strokeWidth="2" 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round"
+                  fill="none"
+                />
+                <path 
+                  d="M13.73 21a2 2 0 0 1-3.46 0" 
+                  stroke="url(#bellGradient5)" 
+                  strokeWidth="2" 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round"
+                  fill="none"
+                />
+              </svg>
+            </div>
             <Heading style={brandHeading}>
               <span style={brandGradient}>NOVA</span>
             </Heading>
@@ -729,7 +915,41 @@ export const DeadlineApproachingNotificationTemplate = ({
       <Container style={gradientContainer}>
         <Container style={container}>
           <Section style={logoSection}>
-            <div style={logoIcon}>⏰</div>
+            <div style={logoIcon}>
+              <div style={logoIconGlow}></div>
+              <svg 
+                width="32" 
+                height="32" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                xmlns="http://www.w3.org/2000/svg"
+                style={{ position: 'relative', zIndex: 1 }}
+              >
+                <defs>
+                  <linearGradient id="bellGradient6" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="#3b82f6" />
+                    <stop offset="50%" stopColor="#9333ea" />
+                    <stop offset="100%" stopColor="#6366f1" />
+                  </linearGradient>
+                </defs>
+                <path 
+                  d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" 
+                  stroke="url(#bellGradient6)" 
+                  strokeWidth="2" 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round"
+                  fill="none"
+                />
+                <path 
+                  d="M13.73 21a2 2 0 0 1-3.46 0" 
+                  stroke="url(#bellGradient6)" 
+                  strokeWidth="2" 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round"
+                  fill="none"
+                />
+              </svg>
+            </div>
             <Heading style={brandHeading}>
               <span style={brandGradient}>NOVA</span>
             </Heading>
