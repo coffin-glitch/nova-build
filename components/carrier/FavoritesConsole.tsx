@@ -40,7 +40,7 @@ import {
   Zap
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
 import { US_STATES } from "./US_STATES";
@@ -151,6 +151,9 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
     }
   );
 
+  // Track if we've successfully loaded triggers at least once (prevents flickering)
+  const hasLoadedTriggersRef = useRef(false);
+  
   // Fetch notification triggers
   const { data: triggersData, mutate: mutateTriggers, isLoading: isLoadingTriggers } = useSWR(
     isOpen ? `/api/carrier/notification-triggers` : null,
@@ -161,25 +164,37 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
       keepPreviousData: true,
       revalidateOnFocus: false,
       revalidateOnReconnect: true,
-      dedupingInterval: 5000 // Prevent duplicate requests within 5 seconds
+      dedupingInterval: 5000, // Prevent duplicate requests within 5 seconds
+      onSuccess: (data) => {
+        // Mark that we've successfully loaded data at least once
+        if (data?.ok && Array.isArray(data?.data)) {
+          hasLoadedTriggersRef.current = true;
+        }
+      }
     }
   );
 
   const favorites: FavoriteBid[] = data?.data || [];
   
-  // Stabilize notification triggers array to prevent flashing
-  const notificationTriggers: NotificationTrigger[] = useMemo(() => {
-    // If we have valid data, use it
+  // Maintain stable triggers state - only update when we have valid new data
+  // This prevents flickering during SWR revalidation
+  const [stableTriggers, setStableTriggers] = useState<NotificationTrigger[]>([]);
+  
+  // Update stable triggers only when we receive valid data
+  useEffect(() => {
     if (triggersData?.ok && Array.isArray(triggersData?.data)) {
-      return triggersData.data;
+      setStableTriggers(triggersData.data);
+      hasLoadedTriggersRef.current = true;
+    } else if (triggersData && Array.isArray(triggersData?.data)) {
+      // Even if ok is false, if we have array data, use it
+      setStableTriggers(triggersData.data);
+      hasLoadedTriggersRef.current = true;
     }
-    // If data exists but not ok, still try to use it if it's an array
-    if (Array.isArray(triggersData?.data)) {
-      return triggersData.data;
-    }
-    // Return empty array as fallback
-    return [];
+    // Don't clear stableTriggers during revalidation - keep previous data
   }, [triggersData]);
+  
+  // Use stable triggers for rendering - this prevents flickering
+  const notificationTriggers: NotificationTrigger[] = stableTriggers;
   
   // Debug logging
   useEffect(() => {
@@ -1602,15 +1617,12 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                       );
                     }
                     
-                    // Only show "No active alerts" if we have confirmed there are no triggers
-                    // Use a more stable check to prevent flickering during refetches
-                    // Check if we've successfully loaded data at least once (use a ref or state to track this)
-                    const hasLoadedOnce = !isLoadingTriggers && (triggersData !== undefined);
-                    const hasValidResponse = triggersData?.ok === true;
-                    
-                    // Only show empty state if we've confirmed there are no triggers and we have a valid response
-                    // AND we're not currently loading
-                    if (!isLoadingTriggers && hasValidResponse && exactMatchTriggers.length === 0 && hasLoadedOnce) {
+                    // Only show "No active alerts" if:
+                    // 1. We've successfully loaded data at least once (tracked by ref)
+                    // 2. We're not currently in initial loading state
+                    // 3. We have confirmed there are no triggers
+                    // This prevents flickering during SWR revalidation
+                    if (hasLoadedTriggersRef.current && !isLoadingTriggers && exactMatchTriggers.length === 0) {
                       return (
                         <div className="text-center py-6 text-muted-foreground">
                           <Bell className="h-8 w-8 mx-auto mb-2 opacity-50" />
@@ -1620,13 +1632,13 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                       );
                     }
                     
-                    // During initial load (still loading), show nothing to prevent flickering
-                    if (isLoadingTriggers && exactMatchTriggers.length === 0) {
+                    // During initial load (before we've loaded once), show nothing to prevent flickering
+                    if (!hasLoadedTriggersRef.current) {
                       return null;
                     }
                     
-                    // If we're here, we're in a loading state but have no triggers yet
-                    // Return null to prevent flickering
+                    // If we have triggers, they're already shown above
+                    // If we don't have triggers but haven't loaded yet, return null
                     return null;
                   })()}
                   
