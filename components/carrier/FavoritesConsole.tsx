@@ -1620,7 +1620,16 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                                             const result = await response.json();
                                             if (result.ok) {
                                               toast.success(`Backhaul matching ${newBackhaulEnabled ? 'enabled' : 'disabled'}`);
-                                              mutateTriggers();
+                                              // Optimistic update
+                                              setStableTriggers(prev => prev.map(t => 
+                                                t.id === trigger.id 
+                                                  ? { ...t, trigger_config: { ...t.trigger_config, backhaulEnabled: newBackhaulEnabled } }
+                                                  : t
+                                              ));
+                                              // Revalidate in background
+                                              mutateTriggers({ revalidate: false }).then(() => {
+                                                setTimeout(() => mutateTriggers(), 100);
+                                              });
                                             } else {
                                               toast.error(result.error || "Failed to update backhaul setting");
                                             }
@@ -1768,7 +1777,16 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                                             const result = await response.json();
                                             if (result.ok) {
                                               toast.success(`Backhaul matching ${newBackhaulEnabled ? 'enabled' : 'disabled'}`);
-                                              mutateTriggers();
+                                              // Optimistic update
+                                              setStableTriggers(prev => prev.map(t => 
+                                                t.id === trigger.id 
+                                                  ? { ...t, trigger_config: { ...t.trigger_config, backhaulEnabled: newBackhaulEnabled } }
+                                                  : t
+                                              ));
+                                              // Revalidate in background
+                                              mutateTriggers({ revalidate: false }).then(() => {
+                                                setTimeout(() => mutateTriggers(), 100);
+                                              });
                                             } else {
                                               toast.error(result.error || "Failed to update backhaul setting");
                                             }
