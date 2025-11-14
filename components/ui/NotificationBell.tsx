@@ -5,13 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { AlertTriangle, Bell, CheckCircle, Info, XCircle, MessageSquare, FileText, Target } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import useSWR from "swr";
-import { swrFetcher } from "@/lib/safe-fetcher";
-import { useUnifiedRole } from "@/hooks/useUnifiedRole";
 import { useAccentColor } from "@/hooks/useAccentColor";
+import { useUnifiedRole } from "@/hooks/useUnifiedRole";
+import { swrFetcher } from "@/lib/safe-fetcher";
+import { AlertTriangle, Bell, CheckCircle, FileText, Info, MessageSquare, Target, XCircle } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import useSWR from "swr";
 
 interface Notification {
   id: string;
