@@ -173,7 +173,7 @@ export default function NotificationsPage() {
     });
   }, [groupedNotifications, searchTerm]);
 
-  // Track previous unread notification IDs to only play sound for NEW notifications
+  // Track previous unread notification IDs to only play sound/show desktop notifications for NEW ones
   const [previousUnreadIds, setPreviousUnreadIds] = useState<Set<string>>(new Set());
 
   // Play sound for new notifications
@@ -208,9 +208,6 @@ export default function NotificationsPage() {
       setPreviousUnreadIds(currentUnreadIds);
     }
   }, [notifications, soundEnabled, previousUnreadIds]);
-
-  // Track previous unread notifications to only show desktop notifications for NEW ones
-  const [previousUnreadIds, setPreviousUnreadIds] = useState<Set<string>>(new Set());
 
   // Show desktop notifications for new unread
   useEffect(() => {
