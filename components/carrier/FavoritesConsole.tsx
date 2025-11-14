@@ -578,9 +578,12 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
       const result = await response.json();
       if (result.ok) {
         toast.success(`Exact match notifications enabled for ${bidNumber}!`);
-        mutateTriggers();
         setShowMatchTypeDialog(null);
         setSelectedMatchType(null);
+        // Revalidate in background without causing flicker
+        mutateTriggers({ revalidate: false }).then(() => {
+          setTimeout(() => mutateTriggers(), 100);
+        });
       } else {
         // Check if it's a duplicate state match error
         if (result.error && result.error.includes('already have a state match')) {
@@ -650,9 +653,12 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
       const result = await response.json();
       if (result.ok) {
         toast.success(`State match notifications enabled for ${originState} → ${destinationState}!`);
-        mutateTriggers();
         setShowMatchTypeDialog(null);
         setSelectedMatchType(null);
+        // Revalidate in background without causing flicker
+        mutateTriggers({ revalidate: false }).then(() => {
+          setTimeout(() => mutateTriggers(), 100);
+        });
       } else {
         // Check if it's a duplicate state match error
         if (result.error && result.error.includes('already have a state match')) {
