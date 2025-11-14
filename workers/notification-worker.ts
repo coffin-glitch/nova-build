@@ -10,28 +10,26 @@
  */
 
 // Load environment variables first
+import { createClient } from '@supabase/supabase-js';
+import { Job } from 'bullmq';
 import 'dotenv/config';
-import { createNotificationWorker, createUrgentNotificationWorker } from '../lib/notification-queue';
-import { 
-  getCachedPreferences, 
-  setCachedPreferences,
-  getCachedFavorites,
-  setCachedFavorites,
-  checkRateLimit 
-} from '../lib/notification-cache';
 import { shouldTriggerNotification, type AdvancedNotificationPreferences } from '../lib/advanced-notification-preferences';
+import sql from '../lib/db';
+import {
+  DeadlineApproachingNotificationTemplate,
+  ExactMatchNotificationTemplate,
+  FavoriteAvailableNotificationTemplate,
+  SimilarLoadNotificationTemplate
+} from '../lib/email-templates/notification-templates';
 import { sendEmail } from '../lib/email/notify';
 import {
-  ExactMatchNotificationTemplate,
-  SimilarLoadNotificationTemplate,
-  FavoriteAvailableNotificationTemplate,
-  BidWonNotificationTemplate,
-  BidLostNotificationTemplate,
-  DeadlineApproachingNotificationTemplate,
-} from '../lib/email-templates/notification-templates';
-import sql from '../lib/db';
-import { Job } from 'bullmq';
-import { createClient } from '@supabase/supabase-js';
+  checkRateLimit,
+  getCachedFavorites,
+  getCachedPreferences,
+  setCachedFavorites,
+  setCachedPreferences
+} from '../lib/notification-cache';
+import { createNotificationWorker, createUrgentNotificationWorker } from '../lib/notification-queue';
 
 // Helper function to get carrier email from Supabase
 async function getCarrierEmail(userId: string): Promise<string | null> {
@@ -457,13 +455,26 @@ async function processExactMatchTrigger(
   preferences: any,
   favorites: any[]
 ): Promise<number> {
-  const config = trigger.triggerConfig || {};
+  // Parse triggerConfig if it's a string (JSONB from database might be stringified)
+  let config = trigger.triggerConfig || {};
+  if (typeof config === 'string') {
+    try {
+      config = JSON.parse(config);
+    } catch (e) {
+      console.error(`[ExactMatch] Error parsing trigger_config for trigger ${trigger.id}:`, e);
+      config = {};
+    }
+  }
+  
   const favoriteBidNumbers = config.favoriteBidNumbers || [];
   
   if (favoriteBidNumbers.length === 0) {
     console.log(`[ExactMatch] No favorite bid numbers configured for trigger ${trigger.id}`);
+    console.log(`[ExactMatch] Config received:`, JSON.stringify(config));
     return 0;
   }
+  
+  console.log(`[ExactMatch] Processing trigger ${trigger.id} with ${favoriteBidNumbers.length} favorite bid(s): ${favoriteBidNumbers.join(', ')}`);
 
   // Get favorite routes from the favorite bid numbers
   const favoriteRoutes = await sql`
