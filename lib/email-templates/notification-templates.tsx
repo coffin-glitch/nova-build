@@ -8,7 +8,6 @@
  * - Clear CTAs with deep links
  */
 
-import * as React from 'react';
 import {
     Body,
     Button,
@@ -327,7 +326,7 @@ export const ExactMatchNotificationTemplate = ({
 );
 
 /**
- * Similar Load Notification - Load similar to favorites
+ * State Pref Bid Notification - Load matching state preferences
  */
 interface SimilarLoadNotificationProps {
   bidNumber: string;
@@ -358,7 +357,7 @@ export const SimilarLoadNotificationTemplate = ({
 }: SimilarLoadNotificationProps) => (
   <Html>
     <Head />
-    <Preview>🚚 Similar load found: {origin} → {destination} ({String(matchScore)}% match)</Preview>
+    <Preview>🚚 State preference bid found: {origin} → {destination} ({String(matchScore)}% match)</Preview>
     <Body style={main}>
       <Container style={gradientContainer}>
         <Container style={container}>
@@ -370,14 +369,14 @@ export const SimilarLoadNotificationTemplate = ({
           </Section>
 
           <Section style={contentCard}>
-            <Heading style={h1}>Similar Load Found!</Heading>
+            <Heading style={h1}>State Preference Bid Found!</Heading>
             
             <Text style={text}>
               {carrierName ? `Hi ${carrierName},` : 'Hi there,'}
             </Text>
 
             <Text style={text}>
-              We found a load that's <strong>{matchScore}% similar</strong> to your preferences!
+              We found a load that matches your <strong>state preferences</strong> with a <strong>{matchScore}% match score</strong>!
             </Text>
 
             <Section style={infoBox}>

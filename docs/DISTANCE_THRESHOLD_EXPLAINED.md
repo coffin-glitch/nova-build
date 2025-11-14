@@ -2,7 +2,7 @@
 
 ## What is Distance Threshold?
 
-**Distance Threshold** (`distance_threshold_miles`) is a setting that controls how similar a new load's distance must be to your favorite loads for it to be considered a "similar load" match.
+**Distance Threshold** (`distance_threshold_miles`) is a setting that controls how similar a new load's distance must be to your favorite loads for it to be considered a "state preference bid" match.
 
 ## How It Works
 
@@ -28,9 +28,9 @@ WHERE ABS(tb.distance_miles - fr.distance_miles) <= cp.dist_threshold
 - Matches: **250-350 miles** (300 ± 50)
 - Does NOT match: **200 miles** (difference = 100, > 50)
 
-### 2. **In Similar Load Matching**
+### 2. **In State Preference Bid Matching**
 
-When processing similar load triggers, the system:
+When processing state preference bid triggers, the system:
 1. Gets your favorite loads
 2. Finds new loads where: `|new_distance - favorite_distance| ≤ threshold`
 3. Calculates similarity score based on how close the distances are
@@ -42,7 +42,7 @@ Your system has **THREE different distance-related settings**:
 #### **A. Distance Threshold** (`distance_threshold_miles`)
 - **Purpose:** How close must a load's distance be to your favorites?
 - **Default:** 50 miles
-- **Used for:** Similar load matching
+- **Used for:** State preference bid matching
 - **Example:** Favorite = 300mi, Threshold = 50mi → Matches 250-350mi
 
 #### **B. Min/Max Distance** (`min_distance`, `max_distance`)
@@ -59,7 +59,7 @@ Your system has **THREE different distance-related settings**:
 
 ## Is Distance Threshold Necessary?
 
-### ✅ **YES, it's necessary for similar load matching**
+### ✅ **YES, it's necessary for state preference bid matching**
 
 **Why:**
 1. **Prevents irrelevant matches:** Without it, a 50-mile favorite could match a 2000-mile load
@@ -82,7 +82,7 @@ Your system has **THREE different distance-related settings**:
 
 ## How It Works in Practice
 
-### Scenario 1: Similar Load Matching
+### Scenario 1: State Preference Bid Matching
 ```
 Favorite: NILES, IL → FORT DODGE, IA (355 miles)
 Threshold: 50 miles
@@ -110,7 +110,7 @@ Distance doesn't matter - only route matters!
 
 ## Recommendations
 
-### **For Similar Loads:**
+### **For State Preference Bids:**
 - **Keep distance threshold:** 50 miles is good for most carriers
 - **Adjust if needed:** 
   - Increase to 100mi if you want more matches
@@ -122,16 +122,16 @@ Distance doesn't matter - only route matters!
 
 ### **Best Practice:**
 Use **both**:
-- **Distance threshold** for similar load matching (flexible, relative)
+- **Distance threshold** for state preference bid matching (flexible, relative)
 - **Min/Max distance** for absolute limits (strict, absolute)
 
 ## Summary
 
 | Setting | Purpose | Used For | Default |
 |---------|---------|----------|---------|
-| **Distance Threshold** | Relative distance matching | Similar loads | 50 miles |
+| **Distance Threshold** | Relative distance matching | State preference bids | 50 miles |
 | **Min/Max Distance** | Absolute distance limits | All notifications | 0-2000 miles |
 | **Distance Flexibility** | Percentage variance | Advanced scoring | 25% |
 
-**Distance threshold is necessary for similar load matching but NOT for exact matches.**
+**Distance threshold is necessary for state preference bid matching but NOT for exact matches.**
 

@@ -83,7 +83,7 @@ interface NotificationPreferences {
   similarLoadNotifications: boolean;
   statePreferences: string[];
   equipmentPreferences: string[];
-  distanceThresholdMiles: number; // Distance threshold for similar load matching (0-1000)
+  distanceThresholdMiles: number; // Distance threshold for state preference bid matching (0-1000)
   minDistance: number;
   maxDistance: number;
   // Advanced matching criteria
@@ -810,7 +810,7 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                             <p className="mt-2 font-semibold">What Will Trigger:</p>
                             <ul className="list-disc list-inside space-y-1 ml-2">
                               <li><strong>Exact Match:</strong> Any load matching your favorite route (e.g., City A → City B), regardless of distance</li>
-                              <li><strong>Similar Load:</strong> Loads within 50 miles of your favorite's distance (e.g., favorite is 300mi → matches 250-350mi), AND between 100-500 miles total, AND from IL or PA</li>
+                              <li><strong>State Pref Bid:</strong> Loads within 50 miles of your favorite's distance (e.g., favorite is 300mi → matches 250-350mi), AND between 100-500 miles total, AND from IL or PA</li>
                               <li><strong>Backhaul:</strong> If enabled, reverse routes (City B → City A) also trigger exact match alerts</li>
                             </ul>
                           </div>
@@ -1041,12 +1041,12 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                             <TooltipContent className="max-w-xs">
                               <div className="text-xs space-y-1">
                                 <p><strong>How it works:</strong></p>
-                                <p>Controls how similar a new load's distance must be to your favorites for "Similar Load" notifications.</p>
+                                <p>Controls how similar a new load's distance must be to your favorites for "State Pref Bid" notifications.</p>
                                 <p className="mt-2"><strong>Example:</strong></p>
                                 <p>If your favorite is 300 miles and threshold is 50 miles:</p>
                                 <p>✅ Matches: 250-350 miles (300 ± 50)</p>
                                 <p>❌ Doesn&apos;t match: 200 miles (difference = 100, &gt; 50)</p>
-                                <p className="mt-2 text-muted-foreground">Note: Only used for similar load matching. Exact matches ignore distance.</p>
+                                <p className="mt-2 text-muted-foreground">Note: Only used for state preference bid matching. Exact matches ignore distance.</p>
                               </div>
                             </TooltipContent>
                           </Tooltip>
@@ -1404,7 +1404,7 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                               </div>
                             </div>
                             <div className="flex items-center gap-1">
-                              {/* Backhaul Toggle for similar load triggers */}
+                              {/* Backhaul Toggle for state preference bid triggers */}
                               {trigger.trigger_type === 'similar_load' && (
                                 <TooltipProvider>
                                   <Tooltip>

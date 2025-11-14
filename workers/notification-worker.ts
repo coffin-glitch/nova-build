@@ -358,7 +358,7 @@ async function processTrigger(
   return count;
 }
 
-// Process similar load trigger
+// Process state preference bid trigger
 async function processSimilarLoadTrigger(
   userId: string,
   trigger: { id: number; triggerType: string; triggerConfig: any },
@@ -368,7 +368,7 @@ async function processSimilarLoadTrigger(
   const config = trigger.triggerConfig || {};
   const distanceThreshold = config.distanceThreshold || 50;
 
-  // Find similar loads
+  // Find state preference bid matches
   const similarLoads = await sql`
     SELECT * FROM find_similar_loads(
       ${userId},
@@ -825,7 +825,7 @@ async function sendNotification({
         case 'similar_load':
           emailResult = await sendEmail({
             to: carrierEmail,
-            subject: `🚚 Similar Load Found: ${bidNumber} (${matchScore || 0}% match)`,
+            subject: `🚚 State Preference Bid Found: ${bidNumber} (${matchScore || 0}% match)`,
             react: SimilarLoadNotificationTemplate({
               bidNumber,
               origin: loadInfo.origin,
@@ -903,7 +903,7 @@ async function sendNotification({
 function getNotificationTitle(notificationType: string): string {
   switch (notificationType) {
     case 'similar_load':
-      return 'Similar Load Found';
+      return 'State Preference Bid Found';
     case 'exact_match':
       return 'Exact Match Available';
     case 'new_route':
