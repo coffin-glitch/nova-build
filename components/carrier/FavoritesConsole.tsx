@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Glass } from "@/components/ui/glass";
 import { Input } from "@/components/ui/input";
 import { MapboxMap } from "@/components/ui/MapboxMap";
+import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAccentColor } from "@/hooks/useAccentColor";
@@ -82,6 +83,7 @@ interface NotificationPreferences {
   similarLoadNotifications: boolean;
   statePreferences: string[];
   equipmentPreferences: string[];
+  distanceThresholdMiles: number; // Distance threshold for similar load matching (0-1000)
   minDistance: number;
   maxDistance: number;
   // Advanced matching criteria
@@ -195,6 +197,7 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
     similarLoadNotifications: true,
     statePreferences: [],
     equipmentPreferences: [],
+    distanceThresholdMiles: 50,
     minDistance: 0,
     maxDistance: 2000,
     minMatchScore: 70,
@@ -791,6 +794,29 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                   <div className="flex items-center gap-2">
                     <Bell className="h-4 w-4 text-blue-400" />
                     <h3 className="text-sm font-semibold">Notification Preferences</h3>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-muted text-[10px] cursor-help">
+                            ?
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-sm">
+                          <div className="space-y-2 text-xs">
+                            <p className="font-semibold">Example Notification Scheme:</p>
+                            <p><strong>Distance Threshold:</strong> 50 miles</p>
+                            <p><strong>Min/Max Distance:</strong> 100-500 miles</p>
+                            <p><strong>State Preferences:</strong> IL, PA</p>
+                            <p className="mt-2 font-semibold">What Will Trigger:</p>
+                            <ul className="list-disc list-inside space-y-1 ml-2">
+                              <li><strong>Exact Match:</strong> Any load matching your favorite route (e.g., City A → City B), regardless of distance</li>
+                              <li><strong>Similar Load:</strong> Loads within 50 miles of your favorite's distance (e.g., favorite is 300mi → matches 250-350mi), AND between 100-500 miles total, AND from IL or PA</li>
+                              <li><strong>Backhaul:</strong> If enabled, reverse routes (City B → City A) also trigger exact match alerts</li>
+                            </ul>
+                          </div>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   </div>
                   <div className="flex items-center gap-2">
                     <Button
@@ -1000,7 +1026,52 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                     </div>
                   </div>
                   
-                  <div className="space-y-3">
+                  <div className="space-y-4">
+                    {/* Distance Threshold Slider */}
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs font-medium">Distance Threshold</label>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-muted text-[10px] cursor-help">
+                                ?
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-xs">
+                              <div className="text-xs space-y-1">
+                                <p><strong>How it works:</strong></p>
+                                <p>Controls how similar a new load's distance must be to your favorites for "Similar Load" notifications.</p>
+                                <p className="mt-2"><strong>Example:</strong></p>
+                                <p>If your favorite is 300 miles and threshold is 50 miles:</p>
+                                <p>✅ Matches: 250-350 miles (300 ± 50)</p>
+                                <p>❌ Doesn&apos;t match: 200 miles (difference = 100, &gt; 50)</p>
+                                <p className="mt-2 text-muted-foreground">Note: Only used for similar load matching. Exact matches ignore distance.</p>
+                              </div>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </div>
+                      <div className="px-2">
+                        <Slider
+                          value={[preferences.distanceThresholdMiles || 50]}
+                          onValueChange={(value) => {
+                            setEditingPreferences(prev => ({ ...(prev || preferences), distanceThresholdMiles: value[0] }));
+                          }}
+                          min={0}
+                          max={1000}
+                          step={10}
+                          className="w-full"
+                        />
+                        <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                          <span>0 mi</span>
+                          <span className="font-medium">{preferences.distanceThresholdMiles || 50} miles</span>
+                          <span>1000 mi</span>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Min/Max Distance */}
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="text-xs font-medium">Min Distance</label>
@@ -1265,13 +1336,14 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                     }
                     
                     // Only show "No active alerts" if we have confirmed there are no triggers
-                    // Use memoized notificationTriggers instead of triggersData to prevent flickering
-                    // Check if we've successfully loaded data at least once
-                    const hasLoadedOnce = triggersData !== undefined && triggersData !== null;
+                    // Use a more stable check to prevent flickering during refetches
+                    // Check if we've successfully loaded data at least once (use a ref or state to track this)
+                    const hasLoadedOnce = !isLoadingTriggers && (triggersData !== undefined);
                     const hasValidResponse = triggersData?.ok === true;
                     
                     // Only show empty state if we've confirmed there are no triggers and we have a valid response
-                    if (hasValidResponse && exactMatchTriggers.length === 0 && hasLoadedOnce) {
+                    // AND we're not currently loading
+                    if (!isLoadingTriggers && hasValidResponse && exactMatchTriggers.length === 0 && hasLoadedOnce) {
                       return (
                         <div className="text-center py-6 text-muted-foreground">
                           <Bell className="h-8 w-8 mx-auto mb-2 opacity-50" />
@@ -1281,8 +1353,8 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                       );
                     }
                     
-                    // During initial load (no data yet), show nothing to prevent flickering
-                    if (!hasLoadedOnce && exactMatchTriggers.length === 0) {
+                    // During initial load (still loading), show nothing to prevent flickering
+                    if (isLoadingTriggers && exactMatchTriggers.length === 0) {
                       return null;
                     }
                     
