@@ -180,18 +180,53 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
   // This prevents flickering during SWR revalidation
   const [stableTriggers, setStableTriggers] = useState<NotificationTrigger[]>([]);
   
+  // BULLETPROOF: Never clear stableTriggers once loaded - only merge/update
+  // Use a ref to track the last known good data to prevent any clearing
+  const lastKnownGoodTriggersRef = useRef<NotificationTrigger[]>([]);
+  
   // Update stable triggers only when we receive valid data
   useEffect(() => {
     if (triggersData?.ok && Array.isArray(triggersData?.data)) {
-      setStableTriggers(triggersData.data);
-      hasLoadedTriggersRef.current = true;
-    } else if (triggersData && Array.isArray(triggersData?.data)) {
-      // Even if ok is false, if we have array data, use it
-      setStableTriggers(triggersData.data);
-      hasLoadedTriggersRef.current = true;
+      // Always update the ref with the latest good data
+      lastKnownGoodTriggersRef.current = triggersData.data;
+      
+      // If we already have loaded triggers, merge the new data instead of replacing
+      if (hasLoadedTriggersRef.current) {
+        // Merge strategy: update existing, add new, never remove
+        const existingMap = new Map(stableTriggers.map(t => [t.id, t]));
+        
+        // Update existing and add new triggers
+        triggersData.data.forEach((newTrigger: NotificationTrigger) => {
+          existingMap.set(newTrigger.id, { ...existingMap.get(newTrigger.id), ...newTrigger });
+        });
+        
+        // Convert back to array - this preserves all existing triggers
+        const merged = Array.from(existingMap.values());
+        setStableTriggers(merged);
+      } else {
+        // First load - set initial data
+        setStableTriggers(triggersData.data);
+        hasLoadedTriggersRef.current = true;
+      }
+    } else if (triggersData && Array.isArray(triggersData?.data) && triggersData.data.length > 0) {
+      // Even if ok is false, if we have array data, use it (but only if we haven't loaded before)
+      if (!hasLoadedTriggersRef.current) {
+        lastKnownGoodTriggersRef.current = triggersData.data;
+        setStableTriggers(triggersData.data);
+        hasLoadedTriggersRef.current = true;
+      }
     }
-    // Don't clear stableTriggers during revalidation - keep previous data
+    // NEVER clear stableTriggers - always keep previous data
+    // If triggersData becomes undefined/null, keep using lastKnownGoodTriggersRef
   }, [triggersData]);
+  
+  // Safety net: if stableTriggers somehow becomes empty after being loaded, restore from ref
+  useEffect(() => {
+    if (hasLoadedTriggersRef.current && stableTriggers.length === 0 && lastKnownGoodTriggersRef.current.length > 0) {
+      console.warn('[FavoritesConsole] Stable triggers became empty, restoring from ref');
+      setStableTriggers(lastKnownGoodTriggersRef.current);
+    }
+  }, [stableTriggers.length]);
   
   // Use stable triggers for rendering - this prevents flickering
   const notificationTriggers: NotificationTrigger[] = stableTriggers;
