@@ -30,6 +30,17 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50');
     const offset = parseInt(searchParams.get('offset') || '0');
     const unreadOnly = searchParams.get('unread_only') === 'true';
+    const typeFilter = searchParams.get('type'); // Filter by notification type
+    const groupByType = searchParams.get('group_by_type') === 'true'; // Group notifications by type
+
+    // Build WHERE clause
+    let whereClause = sql`WHERE user_id = ${userId}`;
+    if (unreadOnly) {
+      whereClause = sql`${whereClause} AND read = false`;
+    }
+    if (typeFilter) {
+      whereClause = sql`${whereClause} AND type = ${typeFilter}`;
+    }
 
     // Get notifications from main notifications table (unified with admin notifications)
     const notifications = await sql`
@@ -42,8 +53,7 @@ export async function GET(request: NextRequest) {
         created_at,
         data
       FROM notifications
-      WHERE user_id = ${userId}
-      ${unreadOnly ? sql`AND read = false` : sql``}
+      ${whereClause}
       ORDER BY created_at DESC
       LIMIT ${limit} OFFSET ${offset}
     `;
