@@ -120,6 +120,8 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
   const [avoidHighCompetition, setAvoidHighCompetition] = useState<boolean>(false);
   const [showMatchTypeDialog, setShowMatchTypeDialog] = useState<string | null>(null); // bid_number when dialog is open
   const [selectedMatchType, setSelectedMatchType] = useState<'exact' | 'state' | null>(null);
+  const [editingTrigger, setEditingTrigger] = useState<NotificationTrigger | null>(null);
+  const [showEditTriggerDialog, setShowEditTriggerDialog] = useState(false);
   
   // Local state to track string input values (allows empty strings during editing)
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
