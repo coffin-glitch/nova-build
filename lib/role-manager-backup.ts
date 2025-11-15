@@ -262,11 +262,11 @@ class RoleManager {
       
       const row = rows[0];
       return {
-        clerk_user_id: row.clerk_user_id,
+        clerk_user_id: row.clerk_user_id as string,
         role: row.role as UserRole,
-        email: row.email,
-        last_synced: new Date(row.last_synced),
-        clerk_updated_at: row.clerk_updated_at,
+        email: row.email as string,
+        last_synced: new Date(row.last_synced as string | Date),
+        clerk_updated_at: row.clerk_updated_at as number,
       };
     } catch (error) {
       console.error("❌ RoleManager: Error getting cached role:", error);
@@ -361,7 +361,7 @@ class RoleManager {
       
       const rows = result as Array<Record<string, unknown>>;
       if (rows.length > 0) {
-        return rows[0].role as UserRole;
+        return (rows[0].role as string) as UserRole;
       }
       
       return null;
@@ -447,10 +447,10 @@ class RoleManager {
       const rows = result as Array<Record<string, unknown>>;
       const row = rows[0];
       return {
-        total: parseInt(row.total),
-        admins: parseInt(row.admins),
-        carriers: parseInt(row.carriers),
-        lastSync: row.last_sync ? new Date(row.last_sync) : null,
+        total: parseInt(row.total as string),
+        admins: parseInt(row.admins as string),
+        carriers: parseInt(row.carriers as string),
+        lastSync: row.last_sync ? new Date(row.last_sync as string | Date) : null,
       };
     } catch (error) {
       console.error("❌ RoleManager: Error getting role stats:", error);
