@@ -89,10 +89,10 @@ class OptimizedRoleManager {
       
       const row = rows[0];
       return {
-        clerk_user_id: row.supabase_user_id, // Legacy name, contains supabase_user_id
+        clerk_user_id: row.supabase_user_id as string, // Legacy name, contains supabase_user_id
         role: row.role as UserRole,
-        email: row.email,
-        last_synced: new Date(row.last_synced),
+        email: row.email as string,
+        last_synced: new Date(row.last_synced as string | Date),
       };
     } catch (error) {
       console.error("Error getting cached role from DB:", error);
