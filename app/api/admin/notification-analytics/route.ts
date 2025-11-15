@@ -84,6 +84,126 @@ export async function GET(request: NextRequest) {
       LIMIT 20
     `;
 
+    // Get delivery status breakdown
+    const deliveryStatusBreakdown = await sql`
+      SELECT 
+        nl.delivery_status,
+        COUNT(*) as count,
+        COUNT(DISTINCT COALESCE(nl.supabase_carrier_user_id, nt.supabase_carrier_user_id)) as unique_users,
+        COUNT(DISTINCT nl.bid_number) as unique_bids
+      FROM notification_logs nl
+      LEFT JOIN notification_triggers nt ON nl.trigger_id = nt.id
+      WHERE nl.sent_at >= NOW() - make_interval(days => ${days})
+      ${userId ? sql`AND COALESCE(nl.supabase_carrier_user_id, nt.supabase_carrier_user_id) = ${userId}` : sql``}
+      GROUP BY nl.delivery_status
+      ORDER BY count DESC
+    `;
+
+    // Get daily notification trends
+    const dailyTrends = await sql`
+      SELECT 
+        DATE(nl.sent_at) as date,
+        COUNT(*) as notification_count,
+        COUNT(DISTINCT COALESCE(nl.supabase_carrier_user_id, nt.supabase_carrier_user_id)) as unique_users,
+        COUNT(DISTINCT nl.bid_number) as unique_bids,
+        COUNT(DISTINCT nl.notification_type) as notification_types
+      FROM notification_logs nl
+      LEFT JOIN notification_triggers nt ON nl.trigger_id = nt.id
+      WHERE nl.sent_at >= NOW() - make_interval(days => ${days})
+      ${userId ? sql`AND COALESCE(nl.supabase_carrier_user_id, nt.supabase_carrier_user_id) = ${userId}` : sql``}
+      GROUP BY DATE(nl.sent_at)
+      ORDER BY date DESC
+    `;
+
+    // Get notification type breakdown
+    const notificationTypeBreakdown = await sql`
+      SELECT 
+        nl.notification_type,
+        COUNT(*) as count,
+        COUNT(DISTINCT COALESCE(nl.supabase_carrier_user_id, nt.supabase_carrier_user_id)) as unique_users,
+        COUNT(DISTINCT nl.bid_number) as unique_bids,
+        AVG(EXTRACT(EPOCH FROM (NOW() - nl.sent_at))/3600) as avg_hours_ago
+      FROM notification_logs nl
+      LEFT JOIN notification_triggers nt ON nl.trigger_id = nt.id
+      WHERE nl.sent_at >= NOW() - make_interval(days => ${days})
+      ${userId ? sql`AND COALESCE(nl.supabase_carrier_user_id, nt.supabase_carrier_user_id) = ${userId}` : sql``}
+      GROUP BY nl.notification_type
+      ORDER BY count DESC
+    `;
+
+    // Get inactive triggers (no notifications in period)
+    const inactiveTriggers = await sql`
+      SELECT 
+        nt.id,
+        nt.trigger_type,
+        nt.is_active,
+        nt.created_at,
+        nt.updated_at,
+        u.email as carrier_email,
+        (NOW() - nt.updated_at) as time_since_update,
+        (NOW() - nt.created_at) as age
+      FROM notification_triggers nt
+      LEFT JOIN auth.users u ON nt.supabase_carrier_user_id = u.id::text
+      WHERE nt.id NOT IN (
+        SELECT DISTINCT trigger_id 
+        FROM notification_logs 
+        WHERE sent_at >= NOW() - make_interval(days => ${days})
+        AND trigger_id IS NOT NULL
+      )
+      ${userId ? sql`AND nt.supabase_carrier_user_id = ${userId}` : sql``}
+      ORDER BY nt.updated_at DESC
+      LIMIT 50
+    `;
+
+    // Get trigger configuration summary (extract common config fields)
+    const triggerConfigSummary = await sql`
+      SELECT 
+        nt.trigger_type,
+        COUNT(*) as trigger_count,
+        COUNT(CASE WHEN nt.trigger_config->>'matchType' IS NOT NULL THEN 1 END) as has_match_type,
+        COUNT(CASE WHEN nt.trigger_config->>'favoriteDistanceRange' IS NOT NULL THEN 1 END) as has_distance_range,
+        COUNT(CASE WHEN nt.trigger_config->>'backhaulEnabled' = 'true' THEN 1 END) as backhaul_enabled_count
+      FROM notification_triggers nt
+      ${userId ? sql`WHERE nt.supabase_carrier_user_id = ${userId}` : sql``}
+      GROUP BY nt.trigger_type
+      ORDER BY trigger_count DESC
+    `;
+
+    // Get hourly distribution (most active hours)
+    const hourlyDistribution = await sql`
+      SELECT 
+        EXTRACT(HOUR FROM nl.sent_at) as hour,
+        COUNT(*) as notification_count,
+        COUNT(DISTINCT COALESCE(nl.supabase_carrier_user_id, nt.supabase_carrier_user_id)) as unique_users
+      FROM notification_logs nl
+      LEFT JOIN notification_triggers nt ON nl.trigger_id = nt.id
+      WHERE nl.sent_at >= NOW() - make_interval(days => ${days})
+      ${userId ? sql`AND COALESCE(nl.supabase_carrier_user_id, nt.supabase_carrier_user_id) = ${userId}` : sql``}
+      GROUP BY EXTRACT(HOUR FROM nl.sent_at)
+      ORDER BY hour
+    `;
+
+    // Get carrier profile information for top users
+    const topCarriers = await sql`
+      SELECT 
+        nt.supabase_carrier_user_id,
+        u.email as carrier_email,
+        cp.legal_name as carrier_name,
+        COUNT(DISTINCT nt.id) as trigger_count,
+        COUNT(DISTINCT nl.id) as notification_count,
+        COUNT(DISTINCT nl.bid_number) as unique_bids_notified,
+        MAX(nl.sent_at) as last_notification
+      FROM notification_triggers nt
+      LEFT JOIN notification_logs nl ON nt.id = nl.trigger_id
+        AND nl.sent_at >= NOW() - make_interval(days => ${days})
+      LEFT JOIN auth.users u ON nt.supabase_carrier_user_id = u.id::text
+      LEFT JOIN carrier_profiles cp ON nt.supabase_carrier_user_id = cp.supabase_user_id
+      ${userId ? sql`WHERE nt.supabase_carrier_user_id = ${userId}` : sql``}
+      GROUP BY nt.supabase_carrier_user_id, u.email, cp.legal_name
+      ORDER BY notification_count DESC
+      LIMIT 20
+    `;
+
     return NextResponse.json({
       ok: true,
       data: {
@@ -91,6 +211,13 @@ export async function GET(request: NextRequest) {
         triggers: triggerStats,
         typeBreakdown,
         topTriggers,
+        deliveryStatus: deliveryStatusBreakdown,
+        dailyTrends,
+        notificationTypes: notificationTypeBreakdown,
+        inactiveTriggers,
+        triggerConfigs: triggerConfigSummary,
+        hourlyDistribution,
+        topCarriers,
         period: `${days} days`
       }
     });

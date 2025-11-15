@@ -528,20 +528,24 @@ export function NotificationBell() {
                 </span>
               </div>
               <div className="flex items-center gap-1.5">
-                {isCarrier && (
+                {(isCarrier || isAdmin) && (
                   <Button
                     variant="ghost"
                     size="icon"
                     onClick={() => {
                       setIsOpen(false);
+                      if (isAdmin) {
+                        window.location.href = '/admin/settings';
+                      } else {
                       window.location.href = '/carrier/notifications';
+                      }
                     }}
                     className="h-8 w-8 -mr-1 backdrop-blur-sm border-opacity-30 hover:border-opacity-50"
                     style={{
                       backgroundColor: accentColor ? `${accentColor}15` : undefined,
                       borderColor: accentColor ? `${accentColor}30` : undefined,
                     }}
-                    title="Manage Notifications"
+                    title={isAdmin ? "Admin Settings" : "Manage Notifications"}
                   >
                     <Settings className="h-4 w-4" style={{ color: accentColor || undefined }} />
                   </Button>
@@ -654,8 +658,8 @@ export function NotificationBell() {
             )}
           </ScrollArea>
           
-          {/* Preferences Section (for carriers only) */}
-          {isCarrier && (
+          {/* Preferences Section (for carriers and admins) */}
+          {(isCarrier || isAdmin) && (
             <>
               <Separator className="my-4" />
               <div className="px-6 pb-4 space-y-4">

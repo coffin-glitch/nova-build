@@ -182,9 +182,35 @@ export default function FloatingAdminChatButton() {
   );
 
   // Fetcher already unwraps the data, so use directly
-  const messages: ConversationMessage[] = Array.isArray(messagesData) 
+  const rawMessages: ConversationMessage[] = Array.isArray(messagesData) 
     ? messagesData 
     : (messagesData?.data || []);
+
+  // Deduplicate messages by id (only for carrier chats to avoid duplicate keys)
+  const messages = useMemo(() => {
+    if (!selectedConversationId || conversations.length === 0) return rawMessages;
+    
+    // Find the selected conversation
+    const selectedConv = conversations.find(c => c.conversation_id === selectedConversationId);
+    if (!selectedConv) return rawMessages;
+    
+    // Only deduplicate for carrier chats
+    const isCarrierChat = selectedConv.conversation_with_type === 'carrier';
+    if (!isCarrierChat) return rawMessages;
+    
+    // Deduplicate by message id, keeping the most recent one
+    const seen = new Map<string, ConversationMessage>();
+    for (const msg of rawMessages) {
+      if (!seen.has(msg.id) || 
+          (seen.get(msg.id)?.created_at && msg.created_at && 
+           new Date(msg.created_at) > new Date(seen.get(msg.id)!.created_at))) {
+        seen.set(msg.id, msg);
+      }
+    }
+    return Array.from(seen.values()).sort((a, b) => 
+      new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    );
+  }, [rawMessages, selectedConversationId, conversations]);
 
   // Get unique carrier user IDs from conversations (exclude admins)
   // Only include actual carriers, not admins in admin-to-admin chats
@@ -1044,13 +1070,13 @@ export default function FloatingAdminChatButton() {
                             {/* Messages */}
                             <ScrollArea className="flex-1 p-4">
                               <div className="space-y-4">
-                                {messages.map((message) => {
+                                {messages.map((message, index) => {
                                   const isCurrentUser = message.sender_id === user?.id;
                                   const senderDisplayName = getDisplayName(message.sender_id, message.sender_type === 'admin');
                                   
                                   return (
                                     <div
-                                      key={message.id}
+                                      key={`${message.id}-${index}-${message.created_at}`}
                                       className={`flex ${isCurrentUser ? 'justify-end' : 'justify-start'}`}
                                     >
                                       <div className={`max-w-[80%] ${isCurrentUser ? 'items-end' : 'items-start'} flex flex-col`}>

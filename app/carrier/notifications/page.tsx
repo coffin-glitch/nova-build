@@ -62,7 +62,7 @@ export default function NotificationsPage() {
       const storedDesktop = localStorage.getItem('notification_desktop_enabled');
       if (storedDesktop !== null) {
         setDesktopNotificationsEnabled(storedDesktop === 'true');
-      }
+    }
     }
   }, []);
 

@@ -5,19 +5,19 @@ import { Button } from "@/components/ui/button";
 import { Glass } from "@/components/ui/glass";
 import { formatMoney, formatPickupDateTime } from "@/lib/format";
 import { formatArchiveDate, toLocalTime } from "@/lib/timezone";
-import { useTheme } from "next-themes";
 import { getButtonTextColor as getTextColor } from "@/lib/utils";
 import {
-    Archive,
-    Clock,
-    DollarSign,
-    Eye,
-    History,
-    MapPin,
-    Navigation,
-    Truck,
-    Users
+  Archive,
+  Clock,
+  DollarSign,
+  Eye,
+  History,
+  MapPin,
+  Navigation,
+  Truck,
+  Users
 } from "lucide-react";
+import { useTheme } from "next-themes";
 import { useState } from "react";
 
 interface ArchiveBid {
@@ -79,7 +79,7 @@ export function ArchiveBidCard({
   const dest = stops[stops.length - 1] || 'Unknown';
 
   return (
-    <Glass className="p-6 space-y-4 hover:shadow-card transition-all duration-300 hover:-translate-y-1">
+    <Glass className="p-6 space-y-4 hover:shadow-xl transition-all duration-300 hover:-translate-y-1 group cursor-pointer border-2 hover:border-primary/30">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">

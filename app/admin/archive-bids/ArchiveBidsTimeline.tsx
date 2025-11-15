@@ -1,8 +1,9 @@
 "use client";
 
 import { ArchiveBidCard } from "@/components/archive/ArchiveBidCard";
+import { ArchiveBidCompactCard } from "@/components/archive/ArchiveBidCompactCard";
+import { ArchiveDateRangeCalendar } from "@/components/archive/ArchiveDateRangeCalendar";
 import { BidHistoryModal } from "@/components/archive/BidHistoryModal";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -10,17 +11,21 @@ import { Glass } from "@/components/ui/glass";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAccentColor } from "@/hooks/useAccentColor";
+import { useInfiniteScroll } from "@/hooks/useInfiniteScroll";
 import { getButtonTextColor as getTextColor } from "@/lib/utils";
 import {
   Archive,
   Calendar,
+  ChevronDown,
+  ChevronUp,
   Eye,
   Filter,
+  Grid3x3,
   Navigation,
   RefreshCw
 } from "lucide-react";
 import { useTheme } from "next-themes";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
 
@@ -80,13 +85,28 @@ export function ArchiveBidsTimeline() {
   const [sourceChannel, setSourceChannel] = useState("");
   const [sortBy, setSortBy] = useState("archived_at");
   const [sortOrder, setSortOrder] = useState("desc");
-  const [limit] = useState("100");
+  // Load limit from localStorage or default to 50
+  const [limit, setLimit] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('archive_bids_limit');
+      return saved || "50";
+    }
+    return "50";
+  });
   const [offset, setOffset] = useState(0);
-  const [viewMode, setViewMode] = useState<"timeline" | "grid" | "analytics">("timeline");
+  const [viewMode, setViewMode] = useState<"timeline" | "grid" | "analytics">("grid");
   const [selectedBidNumber, setSelectedBidNumber] = useState<string | null>(null);
   const [showBidHistory, setShowBidHistory] = useState(false);
   const [selectedBid, setSelectedBid] = useState<ArchiveBid | null>(null);
   const [showBidDetails, setShowBidDetails] = useState(false);
+  
+  // Accumulate bids for infinite scroll
+  const [allBids, setAllBids] = useState<ArchiveBid[]>([]);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  
+  // Grid layout controls
+  const [gridColumns, setGridColumns] = useState(3);
   
   // Smart color handling for button text based on background color
   const getButtonTextColor = () => {
@@ -119,9 +139,82 @@ export function ArchiveBidsTimeline() {
   const statistics: ArchiveStats = data?.statistics || {};
   const dailyActivity: DailyActivity[] = data?.dailyActivity || [];
 
+  // Debug: Log when data changes
+  useEffect(() => {
+    console.log('ArchiveBidsTimeline - Data loaded:', {
+      archivedBidsCount: archivedBids.length,
+      allBidsCount: allBids.length,
+      pagination,
+      isLoading,
+      isLoadingMore
+    });
+  }, [archivedBids.length, allBids.length, pagination, isLoading, isLoadingMore]);
+
+  // Track if we've reached the end (got 0 bids in last response)
+  const [reachedEnd, setReachedEnd] = useState(false);
+
+  // Accumulate bids when new data arrives
+  useEffect(() => {
+    // Only process if we're not in the middle of a filter change
+    if (isLoading && offset === 0) {
+      // Initial load in progress, don't process yet
+      return;
+    }
+
+    if (archivedBids.length > 0) {
+      setReachedEnd(false); // Reset end flag when we get data
+      if (offset === 0) {
+        // Reset when filters change or initial load
+        setAllBids(archivedBids);
+        console.log('Reset allBids with', archivedBids.length, 'bids (limit:', limit, ')');
+      } else {
+        // Append new bids, avoiding duplicates
+        setAllBids(prev => {
+          const existingIds = new Set(prev.map(b => b.bid_number));
+          const newBids = archivedBids.filter(b => !existingIds.has(b.bid_number));
+          const updated = [...prev, ...newBids];
+          console.log('Appended', newBids.length, 'new bids. Total:', updated.length, '(limit:', limit, ')');
+          return updated;
+        });
+      }
+      setIsLoadingMore(false);
+    } else if (!isLoading) {
+      // No more data - reached the end
+      setIsLoadingMore(false);
+      if (offset === 0 && allBids.length === 0) {
+        console.log('No archived bids found for current filters');
+      } else if (offset > 0) {
+        console.log('Reached end of archived bids - no more data (limit:', limit, ')');
+        setReachedEnd(true);
+      }
+    }
+  }, [archivedBids, offset, isLoading, limit]);
+
+  // Reset accumulated bids when filters or limit change
+  useEffect(() => {
+    console.log('Filters or limit changed, resetting bids. New limit:', limit);
+    setAllBids([]);
+    setOffset(0);
+    setReachedEnd(false); // Reset end flag when filters change
+    setIsLoadingMore(false); // Reset loading state
+    // Note: SWR will automatically refetch when queryParams change (which includes limit)
+  }, [bidNumber, dateFrom, dateTo, city, tag, milesMin, milesMax, sourceChannel, sortBy, sortOrder, limit]);
+
   const handleRefresh = () => {
-    mutate();
-    setOffset(0); // Reset pagination when refreshing
+    console.log('Refreshing archive bids view...');
+    // Reset all state
+    setAllBids([]);
+    setOffset(0);
+    setReachedEnd(false);
+    setIsLoadingMore(false);
+    
+    // Force a fresh fetch by invalidating cache and revalidating
+    mutate(undefined, {
+      revalidate: true,
+      rollbackOnError: false
+    });
+    
+    toast.success('Refreshing archived bids...');
   };
 
   const [showArchiveDialog, setShowArchiveDialog] = useState(false);
@@ -232,9 +325,61 @@ export function ArchiveBidsTimeline() {
     setOffset(0);
   };
 
-  const handleLoadMore = () => {
-    setOffset(prev => prev + parseInt(limit));
-  };
+  const handleLoadMore = useCallback(() => {
+    if (isLoadingMore) {
+      console.log('Already loading more, skipping (limit:', limit, ')');
+      return;
+    }
+    
+    if (isLoading) {
+      console.log('Initial load in progress, skipping (limit:', limit, ')');
+      return;
+    }
+    
+    const hasDateFilters = dateFrom || dateTo;
+    const limitNum = parseInt(limit);
+    
+    // If we have date filters, only load if pagination says there's more
+    if (hasDateFilters) {
+      if (pagination.hasMore) {
+        console.log('Loading more with date filters, offset:', offset, 'limit:', limitNum);
+        setIsLoadingMore(true);
+        setOffset(prev => prev + limitNum);
+      } else {
+        console.log('No more data available (date filters set, limit:', limitNum, ')');
+      }
+      return;
+    }
+    
+    // If no date filters, continue loading (endless scroll)
+    // Only stop if we've reached the end (got 0 bids in last response)
+    if (reachedEnd) {
+      console.log('Reached end of all archived bids (limit:', limitNum, ')');
+      return;
+    }
+    
+    console.log('Loading more (endless scroll), offset:', offset, 'limit:', limitNum);
+    setIsLoadingMore(true);
+    setOffset(prev => prev + limitNum);
+  }, [isLoadingMore, isLoading, pagination.hasMore, limit, dateFrom, dateTo, offset, reachedEnd]);
+
+  // Use custom infinite scroll hook - works for all views
+  const { sentinelRef, setContainerRef } = useInfiniteScroll({
+    hasMore: pagination.hasMore || (!dateFrom && !dateTo && !reachedEnd),
+    isLoading,
+    isLoadingMore,
+    onLoadMore: handleLoadMore,
+    threshold: 0.1,
+    rootMargin: '200px', // Start loading 200px before reaching the sentinel
+    enabled: true, // Enable for all views (timeline, grid, analytics)
+  });
+  
+  // Set container ref when scroll container is available
+  useEffect(() => {
+    if (scrollContainerRef.current) {
+      setContainerRef(scrollContainerRef.current);
+    }
+  }, [setContainerRef, viewMode]);
 
   const handleViewDetails = (bid: ArchiveBid) => {
     setSelectedBid(bid);
@@ -299,20 +444,62 @@ export function ArchiveBidsTimeline() {
     return stops;
   };
 
-  // Group bids by CDT date for timeline view (using archived_at or received_at)
+  // Create a map of date to total bids count from dailyActivity
+  // Format dates exactly the same way as bidsByDate for perfect matching
+  const dateTotalCounts = useMemo(() => {
+    const counts: { [key: string]: number } = {};
+    
+    if (dailyActivity && dailyActivity.length > 0) {
+      dailyActivity.forEach(day => {
+        try {
+          // archive_date comes as YYYY-MM-DD string from database (DATE type)
+          const archiveDate = String(day.archive_date);
+          
+          // Parse the date - ensure we're in CDT timezone
+          // Use noon to avoid timezone boundary issues
+          const dateObj = new Date(archiveDate + 'T12:00:00');
+          
+          // Format to MM/DD/YYYY in CDT timezone - MUST match bidsByDate format exactly
+          const dateStr = dateObj.toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            timeZone: 'America/Chicago'
+          });
+          
+          counts[dateStr] = day.bids_archived || 0;
+        } catch (error) {
+          console.error('Error parsing archive_date:', day.archive_date, error);
+        }
+      });
+      
+      // Debug: Log the counts for troubleshooting
+      console.log('dateTotalCounts created:', counts);
+    } else {
+      console.warn('dailyActivity is empty or undefined');
+    }
+    
+    return counts;
+  }, [dailyActivity]);
+
+  // Group bids by CDT date for timeline view (using archived_at)
+  // Also count total archived bids per day from database
   const bidsByDate = useMemo(() => {
     const grouped: { [key: string]: ArchiveBid[] } = {};
-    archivedBids.forEach(bid => {
-      // Use archived_at if available, otherwise received_at
-      const dateToUse = bid.archived_at || bid.received_at;
-      const date = new Date(dateToUse);
+    const dateTotals: { [key: string]: number } = {};
+    
+    allBids.forEach(bid => {
+      // Use archived_at (required for archived bids)
+      if (!bid.archived_at) return;
       
-      // Get date in CDT timezone (system timezone) to match backend filtering
+      const date = new Date(bid.archived_at);
+      
+      // Get date in CDT timezone - format as MM/DD/YYYY
       const localDate = date.toLocaleDateString('en-US', {
         year: 'numeric',
         month: '2-digit',
         day: '2-digit',
-        timeZone: 'America/Chicago' // CDT
+        timeZone: 'America/Chicago'
       });
       
       if (!grouped[localDate]) {
@@ -320,8 +507,23 @@ export function ArchiveBidsTimeline() {
       }
       grouped[localDate].push(bid);
     });
-    return grouped;
-  }, [archivedBids]);
+    
+    // For each date, get the total from dateTotalCounts only
+    // Don't use pagination.total as it's the total across all days
+    Object.keys(grouped).forEach(date => {
+      const total = dateTotalCounts[date];
+      if (total !== undefined && total !== null) {
+        dateTotals[date] = total;
+      } else {
+        // If not found in dateTotalCounts, just use the loaded count for that day
+        dateTotals[date] = grouped[date].length;
+        console.log(`Date "${date}" not found in dateTotalCounts. Using loaded count: ${grouped[date].length}`);
+        console.log('Available dateTotalCounts keys:', Object.keys(dateTotalCounts));
+      }
+    });
+    
+    return { grouped, dateTotals };
+  }, [allBids, dateTotalCounts]);
 
   return (
     <div className="space-y-6">
@@ -334,6 +536,35 @@ export function ArchiveBidsTimeline() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-muted-foreground whitespace-nowrap">Bids per load:</label>
+            <Select 
+              value={limit} 
+              onValueChange={(value) => {
+                setLimit(value);
+                // Save to localStorage
+                if (typeof window !== 'undefined') {
+                  localStorage.setItem('archive_bids_limit', value);
+                }
+                // Reset and refresh
+                setAllBids([]);
+                setOffset(0);
+                setReachedEnd(false);
+                setIsLoadingMore(false);
+              }}
+            >
+              <SelectTrigger className="w-32">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {[50, 100, 150, 200, 250, 300, 400, 500, 600, 700, 800, 900, 1000].map(num => (
+                  <SelectItem key={num} value={num.toString()}>
+                    {num}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <Select value={viewMode} onValueChange={(value: "timeline" | "grid" | "analytics") => setViewMode(value)}>
             <SelectTrigger className="w-40">
               <SelectValue />
@@ -399,6 +630,29 @@ export function ArchiveBidsTimeline() {
         
       </div>
 
+      {/* Calendar Date Range Picker */}
+      <ArchiveDateRangeCalendar
+        dateFrom={dateFrom}
+        dateTo={dateTo}
+        onDateFromChange={(date) => {
+          setDateFrom(date);
+          setAllBids([]);
+          setOffset(0);
+        }}
+        onDateToChange={(date) => {
+          setDateTo(date);
+          setAllBids([]);
+          setOffset(0);
+        }}
+        onClear={() => {
+          setDateFrom("");
+          setDateTo("");
+          setAllBids([]);
+          setOffset(0);
+        }}
+        accentColor={accentColor}
+      />
+
       {/* Filters */}
       <Glass className="p-6">
         <div className="flex items-center gap-2 mb-4">
@@ -406,7 +660,7 @@ export function ArchiveBidsTimeline() {
           <h2 className="text-lg font-semibold">Advanced Filters</h2>
         </div>
         
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4">
           <div className="space-y-2">
             <label className="text-sm font-medium">Bid Number</label>
             <Input
@@ -414,30 +668,6 @@ export function ArchiveBidsTimeline() {
               onChange={(e) => setBidNumber(e.target.value)}
               placeholder="Search by bid number"
             />
-          </div>
-          
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Date From (CDT)</label>
-            <Input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">
-              Select date in CDT timezone
-            </p>
-          </div>
-          
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Date To (CDT)</label>
-            <Input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">
-              Select date in CDT timezone
-            </p>
           </div>
           
           <div className="space-y-2">
@@ -520,95 +750,334 @@ export function ArchiveBidsTimeline() {
 
       {/* Content based on view mode */}
       {viewMode === "timeline" && (
-        <div className="space-y-6">
-          {Object.entries(bidsByDate).map(([date, bids]) => (
-            <div key={date} className="space-y-4">
-              <div className="flex items-center gap-3">
-                <Calendar className="w-5 h-5 text-blue-500" />
-                <h3 className="text-xl font-semibold">
-                  {new Date(date).toLocaleDateString('en-US', { 
-                    weekday: 'long', 
-                    year: 'numeric', 
-                    month: 'long', 
-                    day: 'numeric',
-                    timeZone: 'America/Chicago' // CDT
+        <div className="relative">
+          <div
+            ref={scrollContainerRef}
+            className="h-[calc(100vh-400px)] overflow-y-auto overflow-x-hidden pr-6"
+            style={{
+              scrollbarWidth: 'thin',
+            }}
+          >
+            {isLoading && allBids.length === 0 ? (
+              <div className="text-center py-12">
+                <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-4 text-muted-foreground" />
+                <p className="text-muted-foreground">Loading archived bids...</p>
+              </div>
+            ) : Object.keys(bidsByDate.grouped).length === 0 ? (
+              <Card>
+                <CardContent className="p-8 text-center">
+                  <Archive className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold mb-2">No Archived Bids Found</h3>
+                  <p className="text-muted-foreground">
+                    {Object.values({ bidNumber, dateFrom, dateTo, city, tag, milesMin, milesMax }).some(v => v) 
+                      ? "Try adjusting your filters to see more results."
+                      : "No bids have been archived yet."
+                    }
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="relative pb-8 pr-4">
+                {/* Timeline line */}
+                <div className="absolute left-8 top-0 bottom-0 w-0.5 bg-gradient-to-b from-primary/20 via-primary/30 to-primary/20" />
+                
+                <div className="space-y-12 pl-4">
+                  {Object.entries(bidsByDate.grouped).map(([date, bids], dateIndex) => {
+                    // Parse the date key (MM/DD/YYYY format) to create a proper date object
+                    const [month, day, year] = date.split('/');
+                    const dateObj = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+                    const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'long', timeZone: 'America/Chicago' });
+                    const monthDay = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/Chicago' });
+                    const yearStr = dateObj.toLocaleDateString('en-US', { year: 'numeric', timeZone: 'America/Chicago' });
+                    
+                    // Get total count for this date from the computed totals
+                    const totalForDate = bidsByDate.dateTotals[date] ?? bids.length;
+                    
+                    return (
+                      <div 
+                        key={date} 
+                        className="relative animate-in fade-in slide-in-from-bottom-4 duration-700"
+                        style={{
+                          animationDelay: `${dateIndex * 100}ms`,
+                          animationFillMode: 'both',
+                        }}
+                      >
+                        {/* Timeline dot */}
+                        <div 
+                          className="absolute left-0 top-6 w-4 h-4 rounded-full border-4 border-background shadow-lg z-20"
+                          style={{
+                            backgroundColor: accentColor,
+                            transform: 'translateX(-50%)',
+                            left: '32px',
+                          }}
+                        />
+                        
+                        {/* Date Header - Premium Design */}
+                        <div 
+                          className="sticky top-4 z-10 mb-6 ml-12"
+                        >
+                          <Glass className="p-6 border-2 shadow-xl hover:shadow-2xl transition-all duration-300">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-4">
+                                <div 
+                                  className="p-3 rounded-xl shadow-lg"
+                                  style={{
+                                    backgroundColor: `${accentColor}15`,
+                                  }}
+                                >
+                                  <Calendar 
+                                    className="w-6 h-6" 
+                                    style={{ color: accentColor }}
+                                  />
+                                </div>
+                                <div>
+                                  <div className="flex items-center gap-3 mb-1">
+                                    <h3 className="text-2xl font-bold tracking-tight">
+                                      {dayName}
+                                    </h3>
+                                    <div 
+                                      className="px-3 py-1 rounded-full text-xs font-semibold border-2"
+                                      style={{
+                                        backgroundColor: `${accentColor}10`,
+                                        color: accentColor,
+                                        borderColor: `${accentColor}30`,
+                                      }}
+                                    >
+                                      {bids.length} of {totalForDate ?? '?'}
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                    <span className="font-medium">{monthDay}</span>
+                                    <span>•</span>
+                                    <span>{yearStr}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </Glass>
+                        </div>
+                        
+                        {/* Bids Grid */}
+                        <div className="ml-12 grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+                          {bids.map((bid, bidIndex) => (
+                            <div
+                              key={bid.bid_number}
+                              className="animate-in fade-in slide-in-from-bottom-4 duration-500"
+                              style={{
+                                animationDelay: `${bidIndex * 30}ms`,
+                                animationFillMode: 'both',
+                              }}
+                            >
+                              <ArchiveBidCard
+                                bid={bid}
+                                onViewDetails={handleViewDetails}
+                                onViewHistory={handleViewHistory}
+                                accentColor={accentColor}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
                   })}
-                </h3>
-                <Badge variant="secondary">{bids.length} bids</Badge>
+                  
+                  {/* Loading indicator and intersection observer trigger for timeline */}
+                  <div ref={sentinelRef} className="h-40 flex items-center justify-center ml-12">
+                    {isLoadingMore && (
+                      <Glass className="px-8 py-6 animate-in fade-in duration-300">
+                        <div className="flex flex-col items-center gap-3">
+                          <RefreshCw className="w-6 h-6 animate-spin" style={{ color: accentColor }} />
+                          <p className="text-sm font-medium">Loading more bids...</p>
+                        </div>
+                      </Glass>
+                    )}
+                    {!pagination.hasMore && allBids.length > 0 && (dateFrom || dateTo) && (
+                      <div className="text-center py-8 animate-in fade-in duration-500">
+                        <Glass className="px-6 py-4 inline-block">
+                          <p className="text-sm font-medium text-muted-foreground">
+                            All {allBids.length.toLocaleString()} bids loaded for selected date range
+                          </p>
+                        </Glass>
+                      </div>
+                    )}
+                    {!pagination.hasMore && allBids.length > 0 && !dateFrom && !dateTo && (
+                      <div className="text-center py-8 animate-in fade-in duration-500">
+                        <Glass className="px-6 py-4 inline-block">
+                          <p className="text-sm font-medium text-muted-foreground">
+                            Reached the earliest archived bid ({allBids.length.toLocaleString()} total)
+                          </p>
+                        </Glass>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
-              
-              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-                {bids.map((bid) => (
-                  <ArchiveBidCard
-                    key={bid.bid_number}
-                    bid={bid}
-                    onViewDetails={handleViewDetails}
-                    onViewHistory={handleViewHistory}
-                    accentColor={accentColor}
-                  />
-                ))}
-              </div>
-            </div>
-          ))}
+            )}
+          </div>
         </div>
       )}
 
       {viewMode === "grid" && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-          {archivedBids.map((bid) => (
-            <ArchiveBidCard
-              key={bid.bid_number}
-              bid={bid}
-              onViewDetails={handleViewDetails}
-              onViewHistory={handleViewHistory}
-              accentColor={accentColor}
-            />
-          ))}
+        <div className="space-y-4">
+          {/* Grid Controls */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <label className="text-sm text-muted-foreground flex items-center gap-2">
+                <Grid3x3 className="w-4 h-4" />
+                Columns:
+              </label>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setGridColumns(Math.max(1, gridColumns - 1))}
+                  disabled={gridColumns <= 1}
+                  className="h-8 w-8 p-0"
+                >
+                  <ChevronDown className="w-4 h-4" />
+                </Button>
+                <span className="text-sm font-medium w-8 text-center">{gridColumns}</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setGridColumns(Math.min(6, gridColumns + 1))}
+                  disabled={gridColumns >= 6}
+                  className="h-8 w-8 p-0"
+                >
+                  <ChevronUp className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {/* Scrollable Container */}
+          <div className="relative">
+            <div
+              ref={scrollContainerRef}
+              className="h-[calc(100vh-400px)] overflow-y-auto overflow-x-hidden"
+              style={{
+                scrollbarWidth: 'thin',
+              }}
+            >
+              {isLoading && allBids.length === 0 ? (
+                <div className="text-center py-12">
+                  <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-4 text-muted-foreground" />
+                  <p className="text-muted-foreground">Loading archived bids...</p>
+                </div>
+              ) : allBids.length === 0 ? (
+                <Card>
+                  <CardContent className="p-8 text-center">
+                    <Archive className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                    <h3 className="text-lg font-semibold mb-2">No Archived Bids Found</h3>
+                    <p className="text-muted-foreground">
+                      {Object.values({ bidNumber, dateFrom, dateTo, city, tag, milesMin, milesMax }).some(v => v) 
+                        ? "Try adjusting your filters to see more results."
+                        : "No bids have been archived yet."
+                      }
+                    </p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <>
+                  <div 
+                    className="grid gap-4 pb-4 pr-4"
+                    style={{
+                      gridTemplateColumns: `repeat(${gridColumns}, minmax(0, 1fr))`,
+                    }}
+                  >
+                    {allBids.map((bid, index) => (
+                      <div
+                        key={bid.bid_number}
+                        className="animate-in fade-in slide-in-from-bottom-4 duration-500"
+                        style={{
+                          animationDelay: `${Math.min(index * 20, 600)}ms`,
+                          animationFillMode: 'both',
+                        }}
+                      >
+                        <ArchiveBidCompactCard
+                          bid={bid}
+                          onClick={() => handleViewDetails(bid)}
+                          accentColor={accentColor}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  
+                  {/* Loading indicator and intersection observer trigger */}
+                  <div ref={sentinelRef} className="h-32 flex items-center justify-center">
+                    {isLoadingMore && (
+                      <div className="flex flex-col items-center gap-3 animate-in fade-in duration-300">
+                        <RefreshCw className="w-6 h-6 animate-spin text-muted-foreground" />
+                        <p className="text-sm text-muted-foreground">Loading more bids...</p>
+                      </div>
+                    )}
+                    {!pagination.hasMore && allBids.length > 0 && (
+                      <div className="text-center py-8 animate-in fade-in duration-500">
+                        <p className="text-sm text-muted-foreground">
+                          All {allBids.length.toLocaleString()} bids loaded
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+            
+          </div>
         </div>
       )}
 
       {viewMode === "analytics" && (
         <div className="space-y-6">
-          <Glass className="p-6">
-            <h3 className="text-lg font-semibold mb-4">Daily Archive Activity</h3>
-            <div className="space-y-4">
-              {dailyActivity.map((day) => (
-                <div key={day.archive_date} className="flex items-center justify-between p-3 bg-slate-800/50 rounded-lg">
-                  <div>
-                    <p className="font-medium">
-                      {new Date(day.archive_date).toLocaleDateString('en-US', { 
-                        weekday: 'long', 
-                        year: 'numeric', 
-                        month: 'long', 
-                        day: 'numeric' 
-                      })}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {day.first_archive_time} - {day.last_archive_time}
-                    </p>
+          <div
+            ref={scrollContainerRef}
+            className="h-[calc(100vh-400px)] overflow-y-auto overflow-x-hidden pr-6"
+            style={{
+              scrollbarWidth: 'thin',
+            }}
+          >
+            <Glass className="p-6">
+              <h3 className="text-lg font-semibold mb-4">Daily Archive Activity</h3>
+              <div className="space-y-4">
+                {dailyActivity.map((day) => (
+                  <div key={day.archive_date} className="flex items-center justify-between p-3 bg-slate-800/50 rounded-lg">
+                    <div>
+                      <p className="font-medium">
+                        {new Date(day.archive_date).toLocaleDateString('en-US', { 
+                          weekday: 'long', 
+                          year: 'numeric', 
+                          month: 'long', 
+                          day: 'numeric' 
+                        })}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {day.first_archive_time} - {day.last_archive_time}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-semibold">{day.bids_archived} bids</p>
+                      <p className="text-sm text-muted-foreground">
+                        Avg: {day.avg_hours_active ? Math.round(day.avg_hours_active) : 0}h active
+                      </p>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <p className="font-semibold">{day.bids_archived} bids</p>
-                    <p className="text-sm text-muted-foreground">
-                      Avg: {day.avg_hours_active ? Math.round(day.avg_hours_active) : 0}h active
-                    </p>
-                  </div>
+                ))}
+              </div>
+            </Glass>
+            
+            {/* Sentinel for infinite scroll in analytics view */}
+            <div ref={sentinelRef} className="h-32 flex items-center justify-center">
+              {isLoadingMore && (
+                <div className="flex flex-col items-center gap-3 animate-in fade-in duration-300">
+                  <RefreshCw className="w-6 h-6 animate-spin text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">Loading more...</p>
                 </div>
-              ))}
+              )}
             </div>
-          </Glass>
+          </div>
         </div>
       )}
 
-      {/* Load More Button */}
-      {pagination.hasMore && (
-        <div className="text-center">
-          <Button onClick={handleLoadMore} variant="outline" disabled={isLoading}>
-            <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-            Load More ({pagination.total - (offset + parseInt(limit))} remaining)
-          </Button>
-        </div>
-      )}
 
       {/* Bid Details Dialog */}
       <Dialog open={showBidDetails} onOpenChange={setShowBidDetails}>

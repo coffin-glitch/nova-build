@@ -157,7 +157,8 @@ export async function GET(request: NextRequest) {
       WHERE tb.archived_at IS NOT NULL ${sql.unsafe(wherePart)}
     `;
 
-    // Get archive activity by day
+    // Get archive activity by day - UNFILTERED totals for each day
+    // This shows the total archived bids per day regardless of current filters
     // Convert archived_at from UTC to CDT for grouping
     const dailyActivity = await sql`
       SELECT 
@@ -166,7 +167,7 @@ export async function GET(request: NextRequest) {
         MIN(archived_at::time) as first_archive_time,
         MAX(archived_at::time) as last_archive_time
       FROM telegram_bids tb
-      WHERE tb.archived_at IS NOT NULL ${sql.unsafe(wherePart)}
+      WHERE tb.archived_at IS NOT NULL
       GROUP BY DATE(archived_at AT TIME ZONE 'America/Chicago')
       ORDER BY archive_date DESC
       LIMIT 30
