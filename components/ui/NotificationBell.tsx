@@ -95,7 +95,7 @@ export function NotificationBell() {
   useEffect(() => {
     if (soundEnabled && notifications.length > 0) {
       const unread = notifications.filter((n: Notification) => !n.read);
-      const currentUnreadIds = new Set(unread.map((n: Notification) => n.id));
+      const currentUnreadIds = new Set<string>(unread.map((n: Notification) => n.id));
       
       // Find new unread notifications (not in previous set)
       const newUnread = unread.filter((n: Notification) => !previousUnreadIdsRef.current.has(n.id));
@@ -125,7 +125,7 @@ export function NotificationBell() {
   useEffect(() => {
     if (desktopNotificationsEnabled && 'Notification' in window && Notification.permission === 'granted') {
       const unread = notifications.filter((n: Notification) => !n.read);
-      const currentUnreadIds = new Set(unread.map((n: Notification) => n.id));
+      const currentUnreadIds = new Set<string>(unread.map((n: Notification) => n.id));
       
       // Find new unread notifications (not in previous set)
       const newUnread = unread.filter((n: Notification) => !previousUnreadIdsRef.current.has(n.id));
