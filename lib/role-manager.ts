@@ -50,8 +50,8 @@ class OptimizedRoleManager {
         return dbCached.role;
       }
 
-      // If cache is stale, try to get from Clerk (but don't block)
-      this.syncUserFromClerkAsync(userId);
+      // If cache is stale, try to get from Supabase (but don't block)
+      this.syncUserFromSupabaseAsync(userId);
 
       // Return cached role even if stale, or default to carrier
       if (dbCached) {
@@ -145,18 +145,18 @@ class OptimizedRoleManager {
   }
 
   /**
-   * Async sync from Clerk (non-blocking)
+   * Async sync from Supabase (non-blocking)
    */
-  private async syncUserFromClerkAsync(userId: string): Promise<void> {
+  private async syncUserFromSupabaseAsync(userId: string): Promise<void> {
     // Run in background without awaiting
     setImmediate(async () => {
       try {
-        const clerkUser = await this.fetchClerkUser(userId);
-        if (clerkUser) {
-          await this.updateCachedRole(clerkUser);
+        const supabaseUser = await this.fetchSupabaseUser(userId);
+        if (supabaseUser) {
+          await this.updateCachedRole(userId, supabaseUser);
           // Update memory cache
           this.roleCache.set(userId, {
-            role: this.extractRoleFromClerkUser(clerkUser),
+            role: this.extractRoleFromSupabaseUser(supabaseUser),
             timestamp: Date.now()
           });
         }
@@ -167,39 +167,35 @@ class OptimizedRoleManager {
   }
 
   /**
-   * Fetch user from Clerk API
+   * Fetch user from Supabase Auth Admin API
    */
-  private async fetchClerkUser(userId: string): Promise<Record<string, unknown> | null> {
-    const clerkSecretKey = process.env.CLERK_SECRET_KEY;
-    if (!clerkSecretKey) {
-      throw new Error("CLERK_SECRET_KEY not configured");
-    }
-
-    const response = await fetch(`https://api.clerk.com/v1/users/${userId}`, {
-      headers: {
-        Authorization: `Bearer ${clerkSecretKey}`,
-        "Content-Type": "application/json",
-      },
-    });
-
-    if (!response.ok) {
-      if (response.status === 404) {
+  private async fetchSupabaseUser(userId: string): Promise<{ email?: string; user_metadata?: Record<string, unknown> } | null> {
+    try {
+      const supabase = getSupabaseService();
+      const { data, error } = await supabase.auth.admin.getUserById(userId);
+      
+      if (error || !data?.user) {
+        console.error(`Supabase API error for ${userId}:`, error);
         return null;
       }
-      throw new Error(`Clerk API error: ${response.status} ${response.statusText}`);
-    }
 
-    return await response.json();
+      return {
+        email: data.user.email,
+        user_metadata: data.user.user_metadata,
+      };
+    } catch (error) {
+      console.error(`Error fetching Supabase user ${userId}:`, error);
+      return null;
+    }
   }
 
   /**
    * Update cached role in database
    */
-  private async updateCachedRole(clerkUser: Record<string, unknown>): Promise<void> {
+  private async updateCachedRole(userId: string, supabaseUser: { email?: string; user_metadata?: Record<string, unknown> }): Promise<void> {
     try {
-      const emailAddresses = clerkUser.email_addresses as Array<{ email_address?: string }> | undefined;
-      const email = emailAddresses?.[0]?.email_address || "";
-      const role = this.extractRoleFromClerkUser(clerkUser);
+      const email = supabaseUser.email || "";
+      const role = this.extractRoleFromSupabaseUser(supabaseUser);
 
       await sql`
         INSERT INTO user_roles_cache (
@@ -207,7 +203,7 @@ class OptimizedRoleManager {
           role, 
           email, 
           last_synced
-        ) VALUES (${clerkUser.id}, ${role}, ${email}, NOW())
+        ) VALUES (${userId}, ${role}, ${email}, NOW())
         ON CONFLICT (supabase_user_id) 
         DO UPDATE SET 
           role = ${role},
@@ -220,21 +216,12 @@ class OptimizedRoleManager {
   }
 
   /**
-   * Extract role from Clerk user metadata
+   * Extract role from Supabase user metadata
    */
-  private extractRoleFromClerkUser(clerkUser: Record<string, unknown>): UserRole {
-    // Check public metadata first
-    if (clerkUser.public_metadata?.role) {
-      const role = clerkUser.public_metadata.role.toLowerCase();
-      if (role === "admin" || role === "carrier") {
-        return role as UserRole;
-      }
-    }
-
-    // Check private metadata
-    const privateMetadata = clerkUser.private_metadata as { role?: string } | undefined;
-    if (privateMetadata?.role) {
-      const role = privateMetadata.role.toLowerCase();
+  private extractRoleFromSupabaseUser(supabaseUser: { user_metadata?: Record<string, unknown> }): UserRole {
+    // Check user_metadata for role
+    if (supabaseUser.user_metadata?.role) {
+      const role = String(supabaseUser.user_metadata.role).toLowerCase();
       if (role === "admin" || role === "carrier") {
         return role as UserRole;
       }
