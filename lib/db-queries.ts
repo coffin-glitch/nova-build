@@ -106,8 +106,8 @@ export async function getCurrentUserIds(): Promise<{
  * DEPRECATED: Use direct WHERE clauses with supabase_user_id instead
  */
 export async function getCurrentUserWhere(
-  columnName: 'clerk_user_id' | 'carrier_user_id' | 'admin_user_id' | 'winner_user_id' | 'sender_id' | 'user_id',
-  columnPrefix: string = ''
+  _columnName: 'clerk_user_id' | 'carrier_user_id' | 'admin_user_id' | 'winner_user_id' | 'sender_id' | 'user_id',
+  _columnPrefix: string = ''
 ): Promise<Sql<Record<string, unknown>>> {
   // This is a stub - routes should use direct WHERE clauses
   throw new Error("getCurrentUserWhere is deprecated. Use direct WHERE supabase_user_id = ${userId} queries instead");
@@ -117,8 +117,8 @@ export async function getCurrentUserWhere(
  * DEPRECATED: Insert directly with supabase_user_id instead
  */
 export async function insertWithUserIds<T extends Record<string, unknown>>(
-  table: string,
-  data: T & { supabase_user_id?: string }
+  _table: string,
+  _data: T & { supabase_user_id?: string }
 ): Promise<void> {
   throw new Error("insertWithUserIds is deprecated. Insert directly with supabase_user_id field");
 }

@@ -58,7 +58,7 @@ export async function secureApiEndpoint(
   userId?: string; 
   userRole?: string; 
   error?: NextResponse;
-  securityContext?: any;
+  securityContext?: Record<string, unknown>;
 }> {
   try {
     const clientIP = getClientIP(request);
@@ -145,7 +145,7 @@ export async function secureApiEndpoint(
           const supabase = getSupabaseServer(supabaseHeaders, cookieAdapter);
           const { data: { user } } = await supabase.auth.getUser();
           userId = user?.id;
-        } catch (error) {
+        } catch (error: unknown) {
           console.error('[advanced-security] Error getting user from Supabase:', error);
         }
       }
@@ -396,7 +396,7 @@ function getClientIP(request: NextRequest): string {
 /**
  * Enhanced input validation
  */
-export function validateInput(data: any, schema: Record<string, any>): { valid: boolean; errors: string[] } {
+export function validateInput(data: Record<string, unknown>, schema: Record<string, unknown>): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
 
   for (const [key, rules] of Object.entries(schema)) {
@@ -459,7 +459,7 @@ export function validateInput(data: any, schema: Record<string, any>): { valid: 
 /**
  * Advanced input sanitization
  */
-export function sanitizeInput(input: any): any {
+export function sanitizeInput(input: unknown): unknown {
   if (typeof input === 'string') {
     // Remove potentially dangerous characters and scripts
     return input
@@ -475,7 +475,7 @@ export function sanitizeInput(input: any): any {
   }
   
   if (typeof input === 'object' && input !== null) {
-    const sanitized: any = {};
+    const sanitized: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(input)) {
       sanitized[key] = sanitizeInput(value);
     }
@@ -527,7 +527,7 @@ export function addSecurityHeaders(response: NextResponse): NextResponse {
 export function logSecurityEvent(
   event: string,
   userId?: string,
-  details?: any
+  details?: Record<string, unknown>
 ): void {
   const logEntry = {
     timestamp: new Date().toISOString(),

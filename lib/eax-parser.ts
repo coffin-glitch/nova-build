@@ -62,7 +62,7 @@ export interface EAXLoadData {
   // Additional data
   notes?: string;
   archived?: boolean;
-  raw_data?: any;
+  raw_data?: Record<string, unknown>;
 }
 
 export interface EAXCSVHeaders {
@@ -551,7 +551,7 @@ export function parseEAXCSV(csvText: string): EAXLoadData[] {
 /**
  * Parse EAX Excel data into standardized load format
  */
-export function parseEAXExcel(jsonData: any[][]): EAXLoadData[] {
+export function parseEAXExcel(jsonData: unknown[][]): EAXLoadData[] {
   if (jsonData.length < 2) {
     throw new Error("Excel file appears to be empty or has no data rows");
   }

@@ -110,6 +110,7 @@ interface RunResult {
   lastInsertRowid: number;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 interface SelectResult extends Array<Record<string, unknown>> {}
 
 type QueryResult = RunResult | SelectResult;

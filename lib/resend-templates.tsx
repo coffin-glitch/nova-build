@@ -88,7 +88,7 @@ export const EmailConfirmationTemplate = ({
             {/* Expiry Notice */}
             <Section style={noticeSection}>
               <Text style={smallText}>
-                      ⏰ This link will expire in 24 hours. If you didn't create an account with NOVA,
+                      ⏰ This link will expire in 24 hours. If you didn&apos;t create an account with NOVA,
                 you can safely ignore this email.
               </Text>
             </Section>

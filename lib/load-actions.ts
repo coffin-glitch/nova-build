@@ -1,6 +1,5 @@
 "use server";
 
-import { redirect } from "next/navigation";
 import sql from "./db";
 import { requireAdmin } from "./auth";
 

@@ -6,7 +6,7 @@ import sql from '@/lib/db';
  */
 
 export interface NotificationData {
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 /**

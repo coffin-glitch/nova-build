@@ -83,8 +83,18 @@ export async function calculateLoadSimilarity(
 /**
  * Calculate similarity score between two loads
  */
+interface FavoriteLoad {
+  bid_number: string;
+  stops: string[] | string | null;
+  distance_miles: number | null;
+  tag: string | null;
+  pickup_timestamp: string | null;
+  delivery_timestamp: string | null;
+  source_channel: string | null;
+}
+
 async function calculateSimilarityScore(
-  favoriteLoad: any,
+  favoriteLoad: FavoriteLoad,
   newLoad: TelegramBid,
   criteria: LoadMatchingCriteria
 ): Promise<{ score: number; reasons: string[] }> {

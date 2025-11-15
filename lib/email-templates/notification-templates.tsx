@@ -345,7 +345,7 @@ export const ExactMatchNotificationTemplate = ({
             </Section>
 
             <Text style={text}>
-              This load matches your saved preferences perfectly. Don't miss out - act fast!
+              This load matches your saved preferences perfectly. Don&apos;t miss out - act fast!
             </Text>
 
             <Section style={buttonContainer}>
@@ -607,7 +607,7 @@ export const FavoriteAvailableNotificationTemplate = ({
             </Section>
 
             <Text style={text}>
-              This is one of your saved favorites. Don't miss this opportunity!
+              This is one of your saved favorites. Don&apos;t miss this opportunity!
             </Text>
 
             <Section style={buttonContainer}>
@@ -859,7 +859,7 @@ export const BidLostNotificationTemplate = ({
             </Section>
 
             <Text style={text}>
-              Don't worry - there are always more opportunities! Keep an eye out for new loads that match your preferences.
+              Don&apos;t worry - there are always more opportunities! Keep an eye out for new loads that match your preferences.
             </Text>
 
             <Section style={buttonContainer}>
@@ -963,7 +963,7 @@ export const DeadlineApproachingNotificationTemplate = ({
             </Text>
 
             <Text style={text}>
-              A bid you're watching is closing soon!
+              A bid you&apos;re watching is closing soon!
             </Text>
 
             <Section style={warningBox}>
@@ -979,7 +979,7 @@ export const DeadlineApproachingNotificationTemplate = ({
             </Section>
 
             <Text style={text}>
-              If you haven't placed a bid yet, now's your chance! This opportunity won't last long.
+              If you haven&apos;t placed a bid yet, now&apos;s your chance! This opportunity won&apos;t last long.
             </Text>
 
             <Section style={buttonContainer}>

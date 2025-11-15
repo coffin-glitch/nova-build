@@ -57,11 +57,11 @@ export async function updateCarrierProfileByUserId(
     edits_enabled_by?: string | null;
     edits_enabled_at?: Date | null;
     submitted_at?: Date | null;
-    [key: string]: any;
+    [key: string]: unknown;
   }
 ) {
   const updateFields: string[] = [];
-  const values: any[] = [];
+  const values: unknown[] = [];
   
   Object.entries(updates).forEach(([key, value], index) => {
     if (value !== undefined) {

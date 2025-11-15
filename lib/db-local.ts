@@ -131,31 +131,31 @@ const createTables = () => {
   // Add missing columns to existing carrier_profiles table if they don't exist
   try {
     db.exec(`ALTER TABLE carrier_profiles ADD COLUMN contact_name TEXT`);
-  } catch (e) {
+  } catch {
     // Column already exists, ignore error
   }
   
   try {
     db.exec(`ALTER TABLE carrier_profiles ADD COLUMN is_locked BOOLEAN DEFAULT FALSE`);
-  } catch (e) {
+  } catch {
     // Column already exists, ignore error
   }
   
   try {
     db.exec(`ALTER TABLE carrier_profiles ADD COLUMN locked_at DATETIME`);
-  } catch (e) {
+  } catch {
     // Column already exists, ignore error
   }
   
   try {
     db.exec(`ALTER TABLE carrier_profiles ADD COLUMN locked_by TEXT`);
-  } catch (e) {
+  } catch {
     // Column already exists, ignore error
   }
   
   try {
     db.exec(`ALTER TABLE carrier_profiles ADD COLUMN lock_reason TEXT`);
-  } catch (e) {
+  } catch {
     // Column already exists, ignore error
   }
 

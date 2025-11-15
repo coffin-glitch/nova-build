@@ -27,15 +27,6 @@ export function generateCSP(config: CSPConfig = { mode: 'strict' }): string {
     reportUri
   } = config;
 
-  const baseDomains = [
-    "'self'",
-    'https://clerk.com',
-    'https://*.clerk.com',
-    'https://fonts.googleapis.com',
-    'https://fonts.gstatic.com',
-    ...trustedDomains
-  ];
-
   // Add Supabase domains
   const supabaseDomains = [
     'https://*.supabase.co',
@@ -102,6 +93,9 @@ export function generateCSP(config: CSPConfig = { mode: 'strict' }): string {
     case 'moderate':
       if (allowInlineScripts) {
         directives['script-src'].push("'unsafe-inline'");
+      }
+      if (allowInlineStyles) {
+        directives['style-src'].push("'unsafe-inline'");
       }
       if (allowEval || process.env.NODE_ENV === 'development') {
         directives['script-src'].push("'unsafe-eval'");

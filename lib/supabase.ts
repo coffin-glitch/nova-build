@@ -40,7 +40,7 @@ export function createCookieAdapter(
 			} : undefined;
 			cookieStore.set(name, value, filteredOptions);
 		},
-		remove(name: string, options?: { path?: string; domain?: string }) {
+		remove(name: string, _options?: { path?: string; domain?: string }) {
 			if (readOnly) {
 				// In Server Components, we can't modify cookies
 				return;
