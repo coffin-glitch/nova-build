@@ -56,7 +56,7 @@ export function getSupabaseServer(
 	headers: Headers, 
 	cookies: {
 		get: (name: string) => { value?: string } | undefined;
-		set: (name: string, value: string, options?: { path?: string; maxAge?: number; domain?: string; secure?: boolean; httpOnly?: boolean; sameSite?: 'strict' | 'lax' | 'none' }) => void;
+		set: (name: string, value: string, options?: { path?: string; maxAge?: number; domain?: string; secure?: boolean; httpOnly?: boolean; sameSite?: boolean | 'strict' | 'lax' | 'none' }) => void;
 		remove: (name: string, options?: { path?: string; domain?: string }) => void;
 	}
 ) {
@@ -71,8 +71,8 @@ export function getSupabaseServer(
 				const cookie = cookies.get(name);
 				return cookie?.value ?? null;
 			},
-			set(name: string, value: string, options?: { path?: string; maxAge?: number; domain?: string; secure?: boolean; httpOnly?: boolean; sameSite?: 'strict' | 'lax' | 'none' }) {
-				// Filter out boolean sameSite values (Next.js accepts boolean, but we only want string values)
+			set(name: string, value: string, options?: { path?: string; maxAge?: number; domain?: string; secure?: boolean; httpOnly?: boolean; sameSite?: boolean | 'strict' | 'lax' | 'none' }) {
+				// Filter out boolean sameSite values (Supabase expects only string values)
 				const filteredOptions = options ? {
 					...options,
 					sameSite: typeof options.sameSite === 'string' ? options.sameSite : undefined
