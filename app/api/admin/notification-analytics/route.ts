@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
         MAX(nl.sent_at) as last_notification
       FROM notification_triggers nt
       LEFT JOIN notification_logs nl ON nt.id = nl.trigger_id
-        AND nl.sent_at >= NOW() - INTERVAL '${days} days'
+        AND nl.sent_at >= NOW() - make_interval(days => ${days})
       LEFT JOIN auth.users u ON nt.supabase_carrier_user_id = u.id::text
       ${userId ? sql`WHERE nt.supabase_carrier_user_id = ${userId}` : sql``}
       GROUP BY nt.id, nt.trigger_type, nt.is_active, nt.created_at, nt.updated_at, nt.supabase_carrier_user_id, u.email
@@ -42,10 +42,10 @@ export async function GET(request: NextRequest) {
         COUNT(DISTINCT nt.supabase_carrier_user_id) as total_users_with_triggers,
         COUNT(DISTINCT nl.id) as total_notifications_sent,
         COUNT(DISTINCT nl.bid_number) as unique_bids_notified,
-        AVG(CASE WHEN nl.sent_at >= NOW() - INTERVAL '${days} days' THEN 1 ELSE 0 END) as avg_notifications_per_trigger
+        AVG(CASE WHEN nl.sent_at >= NOW() - make_interval(days => ${days}) THEN 1 ELSE 0 END) as avg_notifications_per_trigger
       FROM notification_triggers nt
       LEFT JOIN notification_logs nl ON nt.id = nl.trigger_id
-        AND nl.sent_at >= NOW() - INTERVAL '${days} days'
+        AND nl.sent_at >= NOW() - make_interval(days => ${days})
       ${userId ? sql`WHERE nt.supabase_carrier_user_id = ${userId}` : sql``}
     `;
 
@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
         COUNT(DISTINCT nl.bid_number) as unique_bids
       FROM notification_triggers nt
       LEFT JOIN notification_logs nl ON nt.id = nl.trigger_id
-        AND nl.sent_at >= NOW() - INTERVAL '${days} days'
+        AND nl.sent_at >= NOW() - make_interval(days => ${days})
       ${userId ? sql`WHERE nt.supabase_carrier_user_id = ${userId}` : sql``}
       GROUP BY nt.trigger_type
       ORDER BY notification_count DESC
@@ -76,7 +76,7 @@ export async function GET(request: NextRequest) {
         MAX(nl.sent_at) as last_notification
       FROM notification_triggers nt
       LEFT JOIN notification_logs nl ON nt.id = nl.trigger_id
-        AND nl.sent_at >= NOW() - INTERVAL '${days} days'
+        AND nl.sent_at >= NOW() - make_interval(days => ${days})
       LEFT JOIN auth.users u ON nt.supabase_carrier_user_id = u.id::text
       ${userId ? sql`WHERE nt.supabase_carrier_user_id = ${userId}` : sql``}
       GROUP BY nt.id, nt.trigger_type, nt.is_active, u.email

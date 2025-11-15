@@ -47,21 +47,24 @@ export default function NotificationsPage() {
   const [filter, setFilter] = useState<string>('all');
   
   // Load preferences from localStorage
-  const [soundEnabled, setSoundEnabled] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('notification_sound_enabled');
-      return stored !== null ? stored === 'true' : true;
-    }
-    return true;
-  });
+  // Initialize with default values to avoid hydration mismatch
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [desktopNotificationsEnabled, setDesktopNotificationsEnabled] = useState(false);
   
-  const [desktopNotificationsEnabled, setDesktopNotificationsEnabled] = useState(() => {
+  // Load from localStorage after component mounts (client-side only)
+  useEffect(() => {
     if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('notification_desktop_enabled');
-      return stored !== null ? stored === 'true' : false;
+      const storedSound = localStorage.getItem('notification_sound_enabled');
+      if (storedSound !== null) {
+        setSoundEnabled(storedSound === 'true');
+      }
+      
+      const storedDesktop = localStorage.getItem('notification_desktop_enabled');
+      if (storedDesktop !== null) {
+        setDesktopNotificationsEnabled(storedDesktop === 'true');
+      }
     }
-    return false;
-  });
+  }, []);
 
   // Save preferences to localStorage
   useEffect(() => {
