@@ -394,9 +394,24 @@ function getClientIP(request: NextRequest): string {
 }
 
 /**
+ * Validation rule schema
+ */
+interface ValidationRule {
+  required?: boolean;
+  type?: 'string' | 'number' | 'boolean' | 'array' | 'object';
+  minLength?: number;
+  maxLength?: number;
+  min?: number;
+  max?: number;
+  pattern?: RegExp;
+  enum?: unknown[];
+  custom?: (value: unknown) => string | undefined;
+}
+
+/**
  * Enhanced input validation
  */
-export function validateInput(data: Record<string, unknown>, schema: Record<string, unknown>): { valid: boolean; errors: string[] } {
+export function validateInput(data: Record<string, unknown>, schema: Record<string, ValidationRule>): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
 
   for (const [key, rules] of Object.entries(schema)) {
