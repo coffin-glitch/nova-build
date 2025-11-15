@@ -90,6 +90,19 @@ export function NotificationBell() {
     keepPreviousData: true, // Keep previous data during refetch to prevent flashing
     onError: (err) => console.error('Notification fetch error:', err),
   });
+
+  // Get notifications - handle both API response formats
+  // swrFetcher unwraps: { success: true, data: {...} } -> {...}
+  // /api/notifications returns: { success: true, data: { notifications: [...], unreadCount: ... } }
+  // After swrFetcher: { notifications: [...], unreadCount: ... }
+  // /api/carrier/notifications returns: { data: { notifications: [...], pagination: ... } }
+  // After swrFetcher: { notifications: [...], pagination: ... }
+  const notifications = data?.notifications || [];
+  const pagination = data?.pagination;
+  
+  // Calculate unread count from notifications
+  const unreadCount = notifications.filter((n: Notification) => !n.read).length;
+  const recentNotifications = notifications.slice(0, 3); // Show only 3 most recent for preview
   
   // Play sound for new notifications
   useEffect(() => {
@@ -160,19 +173,6 @@ export function NotificationBell() {
       console.error('[NotificationBell] Error:', error);
     }
   }, [data, error, notificationsEndpoint, isAdmin]);
-
-  // Get notifications - handle both API response formats
-  // swrFetcher unwraps: { success: true, data: {...} } -> {...}
-  // /api/notifications returns: { success: true, data: { notifications: [...], unreadCount: ... } }
-  // After swrFetcher: { notifications: [...], unreadCount: ... }
-  // /api/carrier/notifications returns: { data: { notifications: [...], pagination: ... } }
-  // After swrFetcher: { notifications: [...], pagination: ... }
-  const notifications = data?.notifications || [];
-  const pagination = data?.pagination;
-  
-  // Calculate unread count from notifications
-  const unreadCount = notifications.filter((n: Notification) => !n.read).length;
-  const recentNotifications = notifications.slice(0, 3); // Show only 3 most recent for preview
 
   const getNotificationIcon = (type: string) => {
     switch (type) {
