@@ -61,7 +61,7 @@ export async function calculateLoadSimilarity(
     const similarities: SimilarityScore[] = [];
 
     for (const favorite of favoriteLoads) {
-      const score = await calculateSimilarityScore(favorite, newLoad, criteria);
+      const score = await calculateSimilarityScore(favorite as FavoriteLoad, newLoad, criteria);
       
       if (score.score > 0.3) { // Minimum threshold for notification
         similarities.push({
