@@ -21,11 +21,11 @@ export async function getUserWhereCondition(
   userId: string,
   provider: 'supabase', // Only 'supabase' is supported now
   columnPrefix: string = ''
-): Promise<Sql<any>> {
+): Promise<Sql<Record<string, unknown>>> {
   if (columnPrefix) {
-    return sql.unsafe(`${columnPrefix}.supabase_user_id = $1`, [userId]) as unknown as Sql<any>;
+    return sql.unsafe(`${columnPrefix}.supabase_user_id = $1`, [userId]) as unknown as Sql<Record<string, unknown>>;
   } else {
-    return sql`supabase_user_id = ${userId}` as unknown as Sql<any>;
+    return sql`supabase_user_id = ${userId}` as unknown as Sql<Record<string, unknown>>;
   }
 }
 
