@@ -130,7 +130,7 @@ class ResendEmailProvider implements EmailProvider {
       console.error('[Email - Resend] Exception:', error);
       return {
         success: false,
-        error: error?.message || 'Unknown error sending email',
+        error: error instanceof Error ? error.message : 'Unknown error sending email',
       };
     }
   }
@@ -182,11 +182,11 @@ export async function sendEmail(options: EmailOptions): Promise<{ success: boole
 
     const provider = getEmailProvider();
     return await provider.sendEmail(options);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[Email] Error sending email:', error);
     return {
       success: false,
-      error: error?.message || 'Unknown email error',
+      error: error instanceof Error ? error.message : 'Unknown email error',
     };
   }
 }
