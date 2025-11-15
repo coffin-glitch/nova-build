@@ -1,9 +1,10 @@
 import sql from "@/lib/db";
+import { getSupabaseService } from "@/lib/supabase";
 
 export type UserRole = "admin" | "carrier" | "none";
 
 interface CachedUserRole {
-  clerk_user_id: string; // Legacy field name for compatibility, but contains supabase_user_id
+  supabase_user_id: string;
   role: UserRole;
   email: string;
   last_synced: Date;
@@ -124,10 +125,10 @@ class OptimizedRoleManager {
       const row = result[0];
       console.log("🔍 Found cached role:", row);
       return {
-        clerk_user_id: row.supabase_user_id, // Keep for interface compatibility, but use supabase_user_id
+        supabase_user_id: row.supabase_user_id as string,
         role: row.role as UserRole,
-        email: row.email,
-        last_synced: new Date(row.last_synced),
+        email: row.email as string,
+        last_synced: new Date(row.last_synced as string | Date),
       };
     } catch (error) {
       console.error("Error getting cached role from DB:", error);
