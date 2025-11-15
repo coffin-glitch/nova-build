@@ -84,6 +84,6 @@ export async function updateCarrierProfileByUserId(
     WHERE supabase_user_id = $${values.length}
   `;
   
-  await sql.unsafe(query, values);
+  await sql.unsafe(query, values as (string | number | boolean | null | Date)[]);
 }
 
