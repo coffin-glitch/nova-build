@@ -33,7 +33,12 @@ export function createCookieAdapter(
 				// which happens in Route Handlers (like /auth/callback) where readOnly=false
 				return;
 			}
-			cookieStore.set(name, value, options);
+			// Filter out boolean sameSite values (Next.js accepts boolean, but we only want string values)
+			const filteredOptions = options ? {
+				...options,
+				sameSite: typeof options.sameSite === 'string' ? options.sameSite : undefined
+			} : undefined;
+			cookieStore.set(name, value, filteredOptions);
 		},
 		remove(name: string, options?: { path?: string; domain?: string }) {
 			if (readOnly) {
@@ -67,7 +72,12 @@ export function getSupabaseServer(
 				return cookie?.value ?? null;
 			},
 			set(name: string, value: string, options?: { path?: string; maxAge?: number; domain?: string; secure?: boolean; httpOnly?: boolean; sameSite?: 'strict' | 'lax' | 'none' }) {
-				cookies.set(name, value, options);
+				// Filter out boolean sameSite values (Next.js accepts boolean, but we only want string values)
+				const filteredOptions = options ? {
+					...options,
+					sameSite: typeof options.sameSite === 'string' ? options.sameSite : undefined
+				} : undefined;
+				cookies.set(name, value, filteredOptions);
 			},
 			remove(name: string, options?: { path?: string; domain?: string }) {
 				cookies.remove(name, options);
