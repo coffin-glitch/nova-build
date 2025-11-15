@@ -36,11 +36,11 @@ export async function getCarrierUserWhereCondition(
   userId: string,
   provider: 'supabase', // Only 'supabase' is supported now
   columnPrefix: string = ''
-): Promise<Sql<unknown>> {
+): Promise<Sql<Record<string, unknown>>> {
   if (columnPrefix) {
-    return sql.unsafe(`${columnPrefix}.supabase_carrier_user_id = $1`, [userId]) as unknown as Sql<unknown>;
+    return sql.unsafe(`${columnPrefix}.supabase_carrier_user_id = $1`, [userId]) as unknown as Sql<Record<string, unknown>>;
   } else {
-    return sql`supabase_carrier_user_id = ${userId}` as unknown as Sql<unknown>;
+    return sql`supabase_carrier_user_id = ${userId}` as unknown as Sql<Record<string, unknown>>;
   }
 }
 
@@ -51,11 +51,11 @@ export async function getAdminUserWhereCondition(
   userId: string,
   provider: 'supabase', // Only 'supabase' is supported now
   columnPrefix: string = ''
-): Promise<Sql<unknown>> {
+): Promise<Sql<Record<string, unknown>>> {
   if (columnPrefix) {
-    return sql.unsafe(`${columnPrefix}.supabase_admin_user_id = $1`, [userId]) as unknown as Sql<unknown>;
+    return sql.unsafe(`${columnPrefix}.supabase_admin_user_id = $1`, [userId]) as unknown as Sql<Record<string, unknown>>;
   } else {
-    return sql`supabase_admin_user_id = ${userId}` as unknown as Sql<unknown>;
+    return sql`supabase_admin_user_id = ${userId}` as unknown as Sql<Record<string, unknown>>;
   }
 }
 
@@ -66,11 +66,11 @@ export async function getWinnerUserWhereCondition(
   userId: string,
   provider: 'supabase', // Only 'supabase' is supported now
   columnPrefix: string = ''
-): Promise<Sql<unknown>> {
+): Promise<Sql<Record<string, unknown>>> {
   if (columnPrefix) {
-    return sql.unsafe(`${columnPrefix}.winner_user_id = $1`, [userId]) as unknown as Sql<unknown>;
+    return sql.unsafe(`${columnPrefix}.winner_user_id = $1`, [userId]) as unknown as Sql<Record<string, unknown>>;
   } else {
-    return sql`winner_user_id = ${userId}` as unknown as Sql<unknown>;
+    return sql`winner_user_id = ${userId}` as unknown as Sql<Record<string, unknown>>;
   }
 }
 
@@ -81,11 +81,11 @@ export async function getSenderUserWhereCondition(
   userId: string,
   provider: 'supabase', // Only 'supabase' is supported now
   columnPrefix: string = ''
-): Promise<Sql<unknown>> {
+): Promise<Sql<Record<string, unknown>>> {
   if (columnPrefix) {
-    return sql.unsafe(`${columnPrefix}.supabase_sender_id = $1`, [userId]) as unknown as Sql<unknown>;
+    return sql.unsafe(`${columnPrefix}.supabase_sender_id = $1`, [userId]) as unknown as Sql<Record<string, unknown>>;
   } else {
-    return sql`supabase_sender_id = ${userId}` as unknown as Sql<unknown>;
+    return sql`supabase_sender_id = ${userId}` as unknown as Sql<Record<string, unknown>>;
   }
 }
 
@@ -108,7 +108,7 @@ export async function getCurrentUserIds(): Promise<{
 export async function getCurrentUserWhere(
   columnName: 'clerk_user_id' | 'carrier_user_id' | 'admin_user_id' | 'winner_user_id' | 'sender_id' | 'user_id',
   columnPrefix: string = ''
-): Promise<Sql<unknown>> {
+): Promise<Sql<Record<string, unknown>>> {
   // This is a stub - routes should use direct WHERE clauses
   throw new Error("getCurrentUserWhere is deprecated. Use direct WHERE supabase_user_id = ${userId} queries instead");
 }
