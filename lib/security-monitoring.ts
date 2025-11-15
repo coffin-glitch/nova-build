@@ -14,7 +14,7 @@ export interface SecurityEvent {
   userAgent?: string;
   path?: string;
   method?: string;
-  details?: any;
+  details?: Record<string, unknown>;
   source: string;
   resolved?: boolean;
   resolvedAt?: string;
@@ -259,7 +259,7 @@ export class SecurityMonitor {
   /**
    * Check if user is suspicious
    */
-  private isSuspiciousUser(userId: string, userData: any): boolean {
+  private isSuspiciousUser(userId: string, userData: { count: number; lastActivity: string; suspicious: boolean }): boolean {
     // Unusual activity patterns
     const recentActivity = Array.from(this.events.values())
       .filter(e => e.userId === userId && 
@@ -272,7 +272,7 @@ export class SecurityMonitor {
   /**
    * Check for SQL injection patterns
    */
-  private containsSQLInjection(input: any): boolean {
+  private containsSQLInjection(input: unknown): boolean {
     const sqlPatterns = [
       /(\'|(\\)(\')|(;)|(\\)(\\)(;)|(--)|(\/\*)|(\*\/)|(xp_)|(sp_)|(exec)|(execute)|(select)|(insert)|(update)|(delete)|(drop)|(create)|(alter)|(union)|(script))/i
     ];
@@ -284,7 +284,7 @@ export class SecurityMonitor {
   /**
    * Check for XSS patterns
    */
-  private containsXSS(input: any): boolean {
+  private containsXSS(input: unknown): boolean {
     const xssPatterns = [
       /<script/i,
       /javascript:/i,
@@ -391,8 +391,8 @@ export class SecurityMonitor {
   /**
    * Get suspicious IPs
    */
-  getSuspiciousIPs(): Record<string, any> {
-    const result: Record<string, any> = {};
+  getSuspiciousIPs(): Record<string, { count: number; lastSeen: string; blocked: boolean }> {
+    const result: Record<string, { count: number; lastSeen: string; blocked: boolean }> = {};
     for (const [ip, data] of this.suspiciousIPs.entries()) {
       if (data.blocked || data.count > 10) {
         result[ip] = data;
@@ -404,7 +404,14 @@ export class SecurityMonitor {
   /**
    * Get security dashboard data
    */
-  getDashboardData(): any {
+  getDashboardData(): {
+    totalEvents: number;
+    totalAlerts: number;
+    eventCounts: Record<string, number>;
+    severityCounts: Record<string, number>;
+    suspiciousIPs: number;
+    recentActivity: SecurityEvent[];
+  } {
     const events = this.getEvents(1000);
     const alerts = this.getAlerts(100);
     
@@ -465,7 +472,14 @@ export function logSecurityAlert(
  */
 export class IncidentResponse {
   private static instance: IncidentResponse;
-  private incidents: Map<string, any> = new Map();
+  private incidents: Map<string, {
+    id: string;
+    alertId: string;
+    severity: SecurityAlert['severity'];
+    status: string;
+    createdAt: string;
+    steps: string[];
+  }> = new Map();
   
   static getInstance(): IncidentResponse {
     if (!IncidentResponse.instance) {
@@ -536,7 +550,14 @@ export class IncidentResponse {
   /**
    * Get incidents
    */
-  getIncidents(): any[] {
+  getIncidents(): Array<{
+    id: string;
+    alertId: string;
+    severity: SecurityAlert['severity'];
+    status: string;
+    createdAt: string;
+    steps: string[];
+  }> {
     return Array.from(this.incidents.values())
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }

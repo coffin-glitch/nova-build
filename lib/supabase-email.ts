@@ -48,9 +48,9 @@ export async function sendSignUpEmail(options: EmailOptions): Promise<{ success:
     console.log('[Supabase Email] Sign-up link generated:', data.properties?.hashed_token ? 'Token generated' : 'No token');
     
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[Supabase Email] Sign-up email exception:', error);
-    return { success: false, error: error?.message || 'Unknown error' };
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
   }
 }
 
@@ -76,9 +76,9 @@ export async function sendPasswordResetEmail(options: EmailOptions): Promise<{ s
     
     console.log('[Supabase Email] Password reset link generated');
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[Supabase Email] Password reset email exception:', error);
-    return { success: false, error: error?.message || 'Unknown error' };
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
   }
 }
 
@@ -105,9 +105,9 @@ export async function sendMagicLinkEmail(options: EmailOptions): Promise<{ succe
     
     console.log('[Supabase Email] Magic link generated');
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[Supabase Email] Magic link email exception:', error);
-    return { success: false, error: error?.message || 'Unknown error' };
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
   }
 }
 
@@ -148,9 +148,9 @@ export async function sendEmailChangeConfirmation(
     
     console.log('[Supabase Email] Email change confirmation link generated');
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[Supabase Email] Email change confirmation exception:', error);
-    return { success: false, error: error?.message || 'Unknown error' };
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
   }
 }
 
@@ -161,7 +161,7 @@ export async function inviteUserByEmail(
   email: string,
   options?: {
     redirectTo?: string;
-    data?: Record<string, any>;
+    data?: Record<string, unknown>;
     role?: 'admin' | 'carrier';
   }
 ): Promise<{ success: boolean; error?: string; userId?: string }> {
@@ -183,9 +183,9 @@ export async function inviteUserByEmail(
     
     console.log('[Supabase Email] User invitation sent:', data.user?.id);
     return { success: true, userId: data.user?.id };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[Supabase Email] User invitation exception:', error);
-    return { success: false, error: error?.message || 'Unknown error' };
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
   }
 }
 
@@ -214,10 +214,10 @@ export async function checkEmailConfiguration(): Promise<{
       configured: true,
       provider: 'supabase', // Assumes Supabase email is configured
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     return {
       configured: false,
-      error: error?.message || 'Unknown error',
+      error: error instanceof Error ? error.message : 'Unknown error',
     };
   }
 }

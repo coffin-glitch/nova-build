@@ -5,8 +5,8 @@
  * Supports Resend (recommended) with React Email templates
  */
 
-import { Resend } from 'resend';
 import * as React from 'react';
+import { Resend } from 'resend';
 
 interface EmailOptions {
   to: string;
@@ -126,7 +126,7 @@ class ResendEmailProvider implements EmailProvider {
         success: true,
         messageId: data?.id,
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('[Email - Resend] Exception:', error);
       return {
         success: false,

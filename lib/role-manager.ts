@@ -169,7 +169,7 @@ class OptimizedRoleManager {
   /**
    * Fetch user from Clerk API
    */
-  private async fetchClerkUser(userId: string): Promise<any | null> {
+  private async fetchClerkUser(userId: string): Promise<Record<string, unknown> | null> {
     const clerkSecretKey = process.env.CLERK_SECRET_KEY;
     if (!clerkSecretKey) {
       throw new Error("CLERK_SECRET_KEY not configured");
@@ -195,9 +195,10 @@ class OptimizedRoleManager {
   /**
    * Update cached role in database
    */
-  private async updateCachedRole(clerkUser: any): Promise<void> {
+  private async updateCachedRole(clerkUser: Record<string, unknown>): Promise<void> {
     try {
-      const email = clerkUser.email_addresses[0]?.email_address || "";
+      const emailAddresses = clerkUser.email_addresses as Array<{ email_address?: string }> | undefined;
+      const email = emailAddresses?.[0]?.email_address || "";
       const role = this.extractRoleFromClerkUser(clerkUser);
 
       await sql`
@@ -221,7 +222,7 @@ class OptimizedRoleManager {
   /**
    * Extract role from Clerk user metadata
    */
-  private extractRoleFromClerkUser(clerkUser: any): UserRole {
+  private extractRoleFromClerkUser(clerkUser: Record<string, unknown>): UserRole {
     // Check public metadata first
     if (clerkUser.public_metadata?.role) {
       const role = clerkUser.public_metadata.role.toLowerCase();
@@ -231,8 +232,9 @@ class OptimizedRoleManager {
     }
 
     // Check private metadata
-    if (clerkUser.private_metadata?.role) {
-      const role = clerkUser.private_metadata.role.toLowerCase();
+    const privateMetadata = clerkUser.private_metadata as { role?: string } | undefined;
+    if (privateMetadata?.role) {
+      const role = privateMetadata.role.toLowerCase();
       if (role === "admin" || role === "carrier") {
         return role as UserRole;
       }

@@ -609,8 +609,8 @@ export async function updateNotificationPreferences(
     }
 
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error updating notification preferences:', error);
-    return { success: false, error: error?.message || 'Unknown error' };
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
   }
 }

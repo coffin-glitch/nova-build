@@ -84,7 +84,7 @@ class OptimizedRoleManager {
         LIMIT 1
       `;
       
-      const rows = result as any[];
+      const rows = result as Array<Record<string, unknown>>;
       if (rows.length === 0) return null;
       
       const row = rows[0];
@@ -134,7 +134,7 @@ class OptimizedRoleManager {
   /**
    * Fetch user from Clerk API
    */
-  private async fetchClerkUser(userId: string): Promise<any | null> {
+  private async fetchClerkUser(userId: string): Promise<Record<string, unknown> | null> {
     const clerkSecretKey = process.env.CLERK_SECRET_KEY;
     if (!clerkSecretKey) {
       throw new Error("CLERK_SECRET_KEY not configured");
@@ -160,7 +160,7 @@ class OptimizedRoleManager {
   /**
    * Update cached role in database
    */
-  private async updateCachedRole(clerkUser: any): Promise<void> {
+  private async updateCachedRole(clerkUser: Record<string, unknown>): Promise<void> {
     try {
       const email = clerkUser.email_addresses[0]?.email_address || "";
       const role = this.extractRoleFromClerkUser(clerkUser);
@@ -191,18 +191,20 @@ class OptimizedRoleManager {
   /**
    * Extract role from Clerk user metadata
    */
-  private extractRoleFromClerkUser(clerkUser: any): UserRole {
+  private extractRoleFromClerkUser(clerkUser: Record<string, unknown>): UserRole {
     // Check public metadata first
-    if (clerkUser.public_metadata?.role) {
-      const role = clerkUser.public_metadata.role.toLowerCase();
+    const publicMetadata = clerkUser.public_metadata as { role?: string } | undefined;
+    if (publicMetadata?.role) {
+      const role = publicMetadata.role.toLowerCase();
       if (role === "admin" || role === "carrier") {
         return role as UserRole;
       }
     }
 
     // Check private metadata
-    if (clerkUser.private_metadata?.role) {
-      const role = clerkUser.private_metadata.role.toLowerCase();
+    const privateMetadata = clerkUser.private_metadata as { role?: string } | undefined;
+    if (privateMetadata?.role) {
+      const role = privateMetadata.role.toLowerCase();
       if (role === "admin" || role === "carrier") {
         return role as UserRole;
       }

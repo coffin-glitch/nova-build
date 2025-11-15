@@ -110,12 +110,12 @@ interface RunResult {
   lastInsertRowid: number;
 }
 
-interface SelectResult extends Array<any> {}
+interface SelectResult extends Array<Record<string, unknown>> {}
 
 type QueryResult = RunResult | SelectResult;
 
 // Add template literal support
-const sqlTemplate = (strings: TemplateStringsArray, ...values: any[]) => {
+const sqlTemplate = (strings: TemplateStringsArray, ...values: unknown[]) => {
   let query = strings[0];
   for (let i = 0; i < values.length; i++) {
     query += '?' + strings[i + 1];

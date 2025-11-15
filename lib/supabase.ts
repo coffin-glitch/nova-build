@@ -26,7 +26,7 @@ export function createCookieAdapter(
 			const cookie = cookieStore.get(name);
 			return cookie ? { value: cookie.value } : undefined;
 		},
-		set(name: string, value: string, options?: any) {
+		set(name: string, value: string, options?: { path?: string; maxAge?: number; domain?: string; secure?: boolean; httpOnly?: boolean; sameSite?: 'strict' | 'lax' | 'none' }) {
 			if (readOnly) {
 				// In Server Components, we can't modify cookies - Supabase will handle this client-side
 				// This is safe because Supabase only tries to set cookies during session refresh,
@@ -35,7 +35,7 @@ export function createCookieAdapter(
 			}
 			cookieStore.set(name, value, options);
 		},
-		remove(name: string, options?: any) {
+		remove(name: string, options?: { path?: string; domain?: string }) {
 			if (readOnly) {
 				// In Server Components, we can't modify cookies
 				return;
@@ -51,8 +51,8 @@ export function getSupabaseServer(
 	headers: Headers, 
 	cookies: {
 		get: (name: string) => { value?: string } | undefined;
-		set: (name: string, value: string, options?: any) => void;
-		remove: (name: string, options?: any) => void;
+		set: (name: string, value: string, options?: { path?: string; maxAge?: number; domain?: string; secure?: boolean; httpOnly?: boolean; sameSite?: 'strict' | 'lax' | 'none' }) => void;
+		remove: (name: string, options?: { path?: string; domain?: string }) => void;
 	}
 ) {
 	const url = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
@@ -66,10 +66,10 @@ export function getSupabaseServer(
 				const cookie = cookies.get(name);
 				return cookie?.value ?? null;
 			},
-			set(name: string, value: string, options?: any) {
+			set(name: string, value: string, options?: { path?: string; maxAge?: number; domain?: string; secure?: boolean; httpOnly?: boolean; sameSite?: 'strict' | 'lax' | 'none' }) {
 				cookies.set(name, value, options);
 			},
-			remove(name: string, options?: any) {
+			remove(name: string, options?: { path?: string; domain?: string }) {
 				cookies.remove(name, options);
 			},
 		},

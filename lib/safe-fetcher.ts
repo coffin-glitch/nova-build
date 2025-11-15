@@ -43,10 +43,10 @@ export async function safeFetcher(url: string) {
     }
 
     return data;
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error(`[SafeFetcher] Error fetching ${url}:`, error);
     return {
-      error: error.message || 'Network error',
+      error: error instanceof Error ? error.message : 'Network error',
       data: null,
       status: 0,
     };
