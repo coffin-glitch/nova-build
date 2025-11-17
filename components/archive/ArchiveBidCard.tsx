@@ -7,15 +7,15 @@ import { formatMoney, formatPickupDateTime } from "@/lib/format";
 import { formatArchiveDate, toLocalTime } from "@/lib/timezone";
 import { getButtonTextColor as getTextColor } from "@/lib/utils";
 import {
-  Archive,
-  Clock,
-  DollarSign,
-  Eye,
-  History,
-  MapPin,
-  Navigation,
-  Truck,
-  Users
+    Archive,
+    Clock,
+    DollarSign,
+    Eye,
+    History,
+    MapPin,
+    Navigation,
+    Truck,
+    Users
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useState } from "react";

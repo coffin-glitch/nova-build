@@ -1,13 +1,21 @@
 import type { NextConfig } from "next";
+
 const nextConfig: NextConfig = {
   outputFileTracingRoot: __dirname, // pin tracing to THIS folder
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
   typescript: {
     ignoreBuildErrors: true,
   },
-  // Removed experimental features for stability
+  
+  // Disable caching in development to prevent stale data issues
+  ...(process.env.NODE_ENV === 'development' && {
+    onDemandEntries: {
+      // period (in ms) where the server will keep pages in the buffer
+      maxInactiveAge: 25 * 1000,
+      // number of pages that should be kept simultaneously without being disposed
+      pagesBufferLength: 2,
+    },
+  }),
+
   // Image optimization
   images: {
     formats: ['image/webp', 'image/avif'],
@@ -15,8 +23,35 @@ const nextConfig: NextConfig = {
     dangerouslyAllowSVG: true,
     contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
   },
+  
   // Compression
   compress: true,
+  
+  // Webpack configuration
+  webpack: (config, { dev, isServer }) => {
+    if (dev) {
+      // Add cache busting for better HMR
+      config.watchOptions = {
+        poll: 1000,
+        aggregateTimeout: 300,
+        ignored: ['**/node_modules/**', '**/.next/**'],
+      };
+    }
+
+    // Handle SQLite properly
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+        net: false,
+        tls: false,
+        crypto: false,
+      };
+    }
+
+    return config;
+  },
+
   // Headers for caching
   async headers() {
     return [
@@ -25,7 +60,9 @@ const nextConfig: NextConfig = {
         headers: [
           {
             key: 'Cache-Control',
-            value: 'public, max-age=30, s-maxage=30',
+            value: process.env.NODE_ENV === 'development' 
+              ? 'no-store, max-age=0' 
+              : 'public, max-age=30, s-maxage=30',
           },
         ],
       },
@@ -40,5 +77,17 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+
+  // Redirects for better UX
+  async redirects() {
+    return [
+      {
+        source: '/book-loads',
+        destination: '/find-loads',
+        permanent: true,
+      },
+    ];
+  },
 };
+
 export default nextConfig;

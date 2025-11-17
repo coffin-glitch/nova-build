@@ -834,7 +834,7 @@ export function ArchiveBidsTimeline() {
                                   <div className="flex items-center gap-3 mb-1">
                                     <h3 className="text-2xl font-bold tracking-tight">
                                       {dayName}
-                                    </h3>
+                </h3>
                                     <div 
                                       className="px-3 py-1 rounded-full text-xs font-semibold border-2"
                                       style={{
@@ -855,13 +855,13 @@ export function ArchiveBidsTimeline() {
                               </div>
                             </div>
                           </Glass>
-                        </div>
-                        
+              </div>
+              
                         {/* Bids Grid */}
                         <div className="ml-12 grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
                           {bids.map((bid, bidIndex) => (
                             <div
-                              key={bid.bid_number}
+                    key={bid.bid_number}
                               className="animate-in fade-in slide-in-from-bottom-4 duration-500"
                               style={{
                                 animationDelay: `${bidIndex * 30}ms`,
@@ -869,15 +869,15 @@ export function ArchiveBidsTimeline() {
                               }}
                             >
                               <ArchiveBidCard
-                                bid={bid}
-                                onViewDetails={handleViewDetails}
-                                onViewHistory={handleViewHistory}
-                                accentColor={accentColor}
-                              />
+                    bid={bid}
+                    onViewDetails={handleViewDetails}
+                    onViewHistory={handleViewHistory}
+                    accentColor={accentColor}
+                  />
                             </div>
-                          ))}
-                        </div>
-                      </div>
+                ))}
+              </div>
+            </div>
                     );
                   })}
                   
@@ -987,7 +987,7 @@ export function ArchiveBidsTimeline() {
                   >
                     {allBids.map((bid, index) => (
                       <div
-                        key={bid.bid_number}
+              key={bid.bid_number}
                         className="animate-in fade-in slide-in-from-bottom-4 duration-500"
                         style={{
                           animationDelay: `${Math.min(index * 20, 600)}ms`,
@@ -995,12 +995,12 @@ export function ArchiveBidsTimeline() {
                         }}
                       >
                         <ArchiveBidCompactCard
-                          bid={bid}
+              bid={bid}
                           onClick={() => handleViewDetails(bid)}
-                          accentColor={accentColor}
-                        />
+              accentColor={accentColor}
+            />
                       </div>
-                    ))}
+          ))}
                   </div>
                   
                   {/* Loading indicator and intersection observer trigger */}
@@ -1036,34 +1036,34 @@ export function ArchiveBidsTimeline() {
               scrollbarWidth: 'thin',
             }}
           >
-            <Glass className="p-6">
-              <h3 className="text-lg font-semibold mb-4">Daily Archive Activity</h3>
-              <div className="space-y-4">
-                {dailyActivity.map((day) => (
-                  <div key={day.archive_date} className="flex items-center justify-between p-3 bg-slate-800/50 rounded-lg">
-                    <div>
-                      <p className="font-medium">
-                        {new Date(day.archive_date).toLocaleDateString('en-US', { 
-                          weekday: 'long', 
-                          year: 'numeric', 
-                          month: 'long', 
-                          day: 'numeric' 
-                        })}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {day.first_archive_time} - {day.last_archive_time}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-semibold">{day.bids_archived} bids</p>
-                      <p className="text-sm text-muted-foreground">
-                        Avg: {day.avg_hours_active ? Math.round(day.avg_hours_active) : 0}h active
-                      </p>
-                    </div>
+          <Glass className="p-6">
+            <h3 className="text-lg font-semibold mb-4">Daily Archive Activity</h3>
+            <div className="space-y-4">
+              {dailyActivity.map((day) => (
+                <div key={day.archive_date} className="flex items-center justify-between p-3 bg-slate-800/50 rounded-lg">
+                  <div>
+                    <p className="font-medium">
+                      {new Date(day.archive_date).toLocaleDateString('en-US', { 
+                        weekday: 'long', 
+                        year: 'numeric', 
+                        month: 'long', 
+                        day: 'numeric' 
+                      })}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {day.first_archive_time} - {day.last_archive_time}
+                    </p>
                   </div>
-                ))}
-              </div>
-            </Glass>
+                  <div className="text-right">
+                    <p className="font-semibold">{day.bids_archived} bids</p>
+                    <p className="text-sm text-muted-foreground">
+                      Avg: {day.avg_hours_active ? Math.round(day.avg_hours_active) : 0}h active
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Glass>
             
             {/* Sentinel for infinite scroll in analytics view */}
             <div ref={sentinelRef} className="h-32 flex items-center justify-center">
@@ -1071,8 +1071,8 @@ export function ArchiveBidsTimeline() {
                 <div className="flex flex-col items-center gap-3 animate-in fade-in duration-300">
                   <RefreshCw className="w-6 h-6 animate-spin text-muted-foreground" />
                   <p className="text-sm text-muted-foreground">Loading more...</p>
-                </div>
-              )}
+        </div>
+      )}
             </div>
           </div>
         </div>

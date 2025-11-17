@@ -1,5 +1,7 @@
 "use client";
 
+import { CarrierHealthConsole } from "@/components/admin/CarrierHealthConsole";
+import { MCAccessControlConsole } from "@/components/admin/MCAccessControlConsole";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,17 +9,22 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 import {
+  Activity,
   Bell,
   Building2,
   CheckCircle,
   Edit3,
   History,
+  Loader2,
   Mail,
   MessageSquare,
   Phone,
   Search,
+  Settings,
   Shield,
+  Trash2,
   Unlock,
   Users,
   X,
@@ -104,6 +111,7 @@ export function AdminUsersConsole() {
   const [showHealthDialog, setShowHealthDialog] = useState(false);
   const [healthData, setHealthData] = useState<any>(null);
   const [isLoadingHealth, setIsLoadingHealth] = useState(false);
+  const [showHighwayConsole, setShowHighwayConsole] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
@@ -114,6 +122,8 @@ export function AdminUsersConsole() {
   const [showTierDialog, setShowTierDialog] = useState(false);
   const [selectedTier, setSelectedTier] = useState<'premium' | 'standard' | 'new'>('standard');
   const [isUpdatingTier, setIsUpdatingTier] = useState(false);
+  const [isWipingData, setIsWipingData] = useState(false);
+  const [showMainControl, setShowMainControl] = useState(false);
   
   // Profile edit state
   const [editFormData, setEditFormData] = useState<Partial<CarrierProfile>>({});
@@ -127,6 +137,48 @@ export function AdminUsersConsole() {
     fetcher,
     { refreshInterval: 10000 }
   );
+  
+  // Ensure consistent defaults to prevent hydration mismatches
+  const carriers: CarrierProfile[] = Array.isArray(carriersData?.data) ? carriersData.data : [];
+  
+  // Fetch health scores for all carriers
+  const { data: healthScoresData } = useSWR(
+    carriers.length > 0 ? `/api/admin/carrier-health/scores?mcs=${carriers.map((c: CarrierProfile) => c.mc_number).filter(Boolean).join(',')}` : null,
+    fetcher,
+    { refreshInterval: 30000 } // Refresh every 30 seconds
+  );
+  
+  // Fetch MC access control data for all unique MC numbers
+  const uniqueMcNumbers = carriers.length > 0 
+    ? [...new Set(carriers.map((c: CarrierProfile) => c.mc_number).filter(Boolean))]
+    : [];
+  
+  const { data: mcAccessData } = useSWR(
+    uniqueMcNumbers.length > 0 ? '/api/admin/mc-access-control' : null,
+    fetcher,
+    { refreshInterval: 10000 } // Refresh every 10 seconds
+  );
+  
+  const getHealthScore = (mcNumber: string | null | undefined) => {
+    if (!mcNumber || !healthScoresData?.scores) return null;
+    return healthScoresData.scores[mcNumber] || null;
+  };
+  
+  // Check if MC is disabled
+  const isMcDisabled = (mcNumber: string | null | undefined): boolean => {
+    if (!mcNumber || !mcAccessData?.ok || !Array.isArray(mcAccessData.data)) return false;
+    const mcAccess = mcAccessData.data.find((mc: any) => mc.mc_number === mcNumber);
+    // If MC is not in the table, it's active by default
+    // If MC is in the table, check is_active
+    return mcAccess ? !mcAccess.is_active : false;
+  };
+  
+  // Get MC disabled reason
+  const getMcDisabledReason = (mcNumber: string | null | undefined): string | null => {
+    if (!mcNumber || !mcAccessData?.ok || !Array.isArray(mcAccessData.data)) return null;
+    const mcAccess = mcAccessData.data.find((mc: any) => mc.mc_number === mcNumber);
+    return mcAccess && !mcAccess.is_active ? (mcAccess.disabled_reason || 'MC access disabled') : null;
+  };
 
   const { data: historyData } = useSWR(
     showHistoryDialog && selectedCarrier ? `/api/admin/carriers/${selectedCarrier.user_id}/history` : null,
@@ -146,10 +198,10 @@ export function AdminUsersConsole() {
     { refreshInterval: 10000 } // Reduced from 2s to 10s to prevent rate limiting
   );
 
-  const carriers = carriersData?.data || [];
-  const conversations = conversationData?.data || [];
-  const conversationMessages = conversationMessagesData?.data || [];
-  const profileHistory: ProfileHistory[] = historyData?.data || [];
+  // Ensure consistent defaults to prevent hydration mismatches
+  const conversations = Array.isArray(conversationData?.data) ? conversationData.data : [];
+  const conversationMessages = Array.isArray(conversationMessagesData?.data) ? conversationMessagesData.data : [];
+  const profileHistory: ProfileHistory[] = Array.isArray(historyData?.data) ? historyData.data : [];
 
   // Helper function to safely parse unread count
   const parseUnreadCount = (count: any): number => {
@@ -335,6 +387,8 @@ export function AdminUsersConsole() {
     }
   };
 
+  const [showHealthConsole, setShowHealthConsole] = useState(false);
+  
   const handleViewHealth = async (carrier: CarrierProfile) => {
     if (!carrier.mc_number) {
       toast.error("MC number is required to fetch health data");
@@ -342,33 +396,70 @@ export function AdminUsersConsole() {
     }
 
     setSelectedCarrier(carrier);
-    setIsLoadingHealth(true);
-    setHealthData(null);
-    setShowHealthDialog(true);
+    setShowHealthConsole(true);
+  };
+
+  const handleLoadLatestHealth = async (carrier: CarrierProfile) => {
+    if (!carrier.mc_number) {
+      toast.error("MC number is required to fetch health data");
+      return;
+    }
 
     try {
-      const response = await fetch(`/api/admin/carrier-health?mc=${encodeURIComponent(carrier.mc_number)}`);
+      setIsLoadingHealth(true);
+      const response = await fetch(`/api/admin/carrier-health/get?mc=${encodeURIComponent(carrier.mc_number)}`);
       const data = await response.json();
-
-      if (!data.ok) {
-        const errorMessage = data.error || "Failed to fetch health data";
-        const errorDetails = data.details || "";
-        throw new Error(errorDetails ? `${errorMessage}\n${errorDetails}` : errorMessage);
+      
+      if (data.ok && data.data) {
+        setSelectedCarrier(carrier);
+        setHealthData(data.data);
+        setShowHealthConsole(true);
+        toast.success("Latest health data loaded");
+      } else {
+        toast.error("No health data found. Please scrape data first.");
+        // Open console in update mode
+        setSelectedCarrier(carrier);
+        setShowHealthConsole(true);
       }
-
-      setHealthData(data.data);
-    } catch (error: any) {
-      console.error("Error fetching health data:", error);
-      const errorMessage = error.message || "Failed to fetch carrier health data";
-      // Show error in toast - if it contains newlines, show the first line in toast and log the full message
-      const lines = errorMessage.split('\n');
-      toast.error(lines[0], {
-        description: lines.length > 1 ? lines.slice(1).join(' ') : undefined,
-        duration: 8000,
-      });
-      setHealthData(null);
+    } catch (error) {
+      toast.error("Failed to load health data");
     } finally {
       setIsLoadingHealth(false);
+    }
+  };
+
+  const handleWipeMCData = async (carrier: CarrierProfile) => {
+    if (!carrier.mc_number) {
+      toast.error("MC number is required");
+      return;
+    }
+
+    if (!confirm(`Are you sure you want to wipe all health data for MC ${carrier.mc_number}? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      setIsWipingData(true);
+      const response = await fetch(`/api/admin/carrier-health/wipe?mc=${encodeURIComponent(carrier.mc_number)}`, {
+        method: 'DELETE',
+      });
+      
+      const data = await response.json();
+      
+      if (data.ok) {
+        toast.success(`Successfully wiped all health data for MC ${carrier.mc_number}`);
+        // Refresh health scores
+        if (healthScoresData) {
+          mutateCarriers();
+        }
+      } else {
+        toast.error(data.error || "Failed to wipe health data");
+      }
+    } catch (error) {
+      toast.error("Failed to wipe health data");
+      console.error(error);
+    } finally {
+      setIsWipingData(false);
     }
   };
 
@@ -577,6 +668,16 @@ export function AdminUsersConsole() {
   };
 
   const getStatusBadge = (carrier: CarrierProfile) => {
+    // Check if MC is disabled - if so, show as declined regardless of profile_status
+    if (carrier.mc_number && isMcDisabled(carrier.mc_number)) {
+      return (
+        <Badge variant="destructive" className="flex items-center gap-1">
+          <Unlock className="h-3 w-3" />
+          Declined (MC Disabled)
+        </Badge>
+      );
+    }
+    
     switch (carrier.profile_status) {
       case 'pending':
         return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">Pending Review</Badge>;
@@ -591,13 +692,44 @@ export function AdminUsersConsole() {
     }
   };
 
-  const CarrierCard = ({ carrier }: { carrier: CarrierProfile }) => (
-    <Card className="hover:shadow-lg transition-shadow duration-200">
+  const CarrierCard = ({ carrier }: { carrier: CarrierProfile }) => {
+    const mcDisabled = carrier.mc_number && isMcDisabled(carrier.mc_number);
+    
+    return (
+    <Card className={cn(
+      "hover:shadow-lg transition-shadow duration-200",
+      mcDisabled && "border-red-300 bg-red-50/30"
+    )}>
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Building2 className="h-5 w-5 text-blue-600" />
             <CardTitle className="text-lg">{carrier.company_name}</CardTitle>
+            {carrier.mc_number && (() => {
+              const healthData = getHealthScore(carrier.mc_number);
+              const bluewireScore = healthData?.bluewireScore;
+              
+              return (
+                <div 
+                  className="relative p-1.5 rounded-lg transition-all hover:scale-110"
+                  style={{ backgroundColor: `${accentColor}15` }}
+                  title={healthData ? `Health Score: ${healthData.healthScore}/100 (${healthData.healthStatus})` : "Health Check Available - Click Health Check button to view"}
+                >
+                  <Shield className="h-4 w-4" style={{ color: accentColor }} />
+                  {bluewireScore !== null && bluewireScore !== undefined && (
+                    <div 
+                      className="absolute -top-1 -right-1 text-[8px] font-bold rounded-full w-4 h-4 flex items-center justify-center"
+                      style={{ 
+                        backgroundColor: accentColor,
+                        color: '#ffffff'
+                      }}
+                    >
+                      {Math.round(bluewireScore)}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
             {getUnreadCount(carrier.user_id) > 0 && (
               <div className="relative">
                 <Bell className="h-4 w-4 text-orange-500 animate-pulse" style={{ 
@@ -662,7 +794,22 @@ export function AdminUsersConsole() {
         )}
 
         {/* Profile Status Info */}
-        {carrier.profile_status === 'declined' && carrier.decline_reason && (
+        {/* Show MC disabled status if MC is disabled */}
+        {carrier.mc_number && isMcDisabled(carrier.mc_number) && (
+          <div className="p-3 bg-red-50 rounded-lg border border-red-200">
+            <div className="flex items-center gap-2 mb-1">
+              <Unlock className="h-4 w-4 text-red-600" />
+              <div className="text-sm font-semibold text-red-800">MC Access Disabled</div>
+            </div>
+            <div className="text-sm text-red-800">
+              <strong>Reason:</strong> {getMcDisabledReason(carrier.mc_number) || 'MC access disabled by admin'}
+            </div>
+            <div className="text-xs text-red-600 mt-1">
+              This carrier's MC number has been disabled in Main Control
+            </div>
+          </div>
+        )}
+        {carrier.profile_status === 'declined' && carrier.decline_reason && !isMcDisabled(carrier.mc_number) && (
           <div className="p-3 bg-red-50 rounded-lg border border-red-200">
             <div className="text-sm text-red-800">
               <strong>Decline Reason:</strong> {carrier.decline_reason}
@@ -744,15 +891,36 @@ export function AdminUsersConsole() {
             Manage Tier
           </Button>
           {carrier.mc_number && (
-            <Button 
-              variant="outline" 
-              size="sm" 
-              className="w-full"
-              onClick={() => handleViewHealth(carrier)}
-            >
-              <Shield className="h-4 w-4 mr-2" />
-              Health
-            </Button>
+            <>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="w-full relative"
+                onClick={() => handleLoadLatestHealth(carrier)}
+                disabled={isLoadingHealth}
+              >
+                {isLoadingHealth ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Activity className="h-4 w-4 mr-2" />
+                )}
+                Load Latest Scrape
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="w-full relative border-red-500/50 text-red-600 hover:bg-red-500/10"
+                onClick={() => handleWipeMCData(carrier)}
+                disabled={isWipingData}
+              >
+                {isWipingData ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4 mr-2" />
+                )}
+                Wipe MC Data
+              </Button>
+            </>
           )}
           <Button
             size="sm" 
@@ -901,7 +1069,8 @@ export function AdminUsersConsole() {
         )}
       </CardContent>
     </Card>
-  );
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -919,10 +1088,20 @@ export function AdminUsersConsole() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Users className="h-5 w-5 text-blue-600" />
-          <span className="text-sm text-muted-foreground">
-            {filteredCarriers.length} carriers
-          </span>
+          <Button
+            onClick={() => setShowMainControl(true)}
+            variant="outline"
+            className="bg-gradient-to-r from-purple-500/10 to-indigo-500/10 border-purple-500/20 hover:from-purple-500/20 hover:to-indigo-500/20"
+          >
+            <Settings className="h-4 w-4 mr-2" />
+            Main Control
+          </Button>
+          <div className="flex items-center gap-2">
+            <Users className="h-5 w-5 text-blue-600" />
+            <span className="text-sm text-muted-foreground">
+              {filteredCarriers.length} carriers
+            </span>
+          </div>
         </div>
       </div>
 
@@ -1464,7 +1643,21 @@ export function AdminUsersConsole() {
         </DialogContent>
       </Dialog>
 
-      {/* Health Dialog */}
+      {/* Carrier Health Console */}
+      {selectedCarrier && selectedCarrier.mc_number && (
+        <CarrierHealthConsole
+          mcNumber={selectedCarrier.mc_number}
+          carrierName={selectedCarrier.company_name}
+          isOpen={showHealthConsole}
+          onClose={() => {
+            setShowHealthConsole(false);
+            setSelectedCarrier(null);
+          }}
+          accentColor={accentColor}
+        />
+      )}
+
+      {/* Legacy Health Dialog (kept for fallback) */}
       <Dialog open={showHealthDialog} onOpenChange={setShowHealthDialog}>
         <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -1606,6 +1799,12 @@ export function AdminUsersConsole() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Main Control Console */}
+      <MCAccessControlConsole
+        isOpen={showMainControl}
+        onClose={() => setShowMainControl(false)}
+      />
     </div>
   );
 }

@@ -1,8 +1,8 @@
 import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
 import { requireApiCarrier, unauthorizedResponse } from "@/lib/auth-api-helper";
+import { clearCarrierRelatedCaches } from "@/lib/cache-invalidation";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
-import { clearCarrierRelatedCaches } from "@/lib/cache-invalidation";
 
 export async function GET(request: NextRequest) {
   try {
@@ -126,6 +126,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ 
         error: `Invalid input: ${validation.errors.join(', ')}` 
       }, { status: 400 });
+    }
+
+    // Check if MC is disabled in access control
+    const mcAccessCheck = await sql`
+      SELECT is_active, disabled_reason
+      FROM mc_access_control
+      WHERE mc_number = ${mcNumber}
+      LIMIT 1
+    `;
+    
+    if (mcAccessCheck.length > 0 && mcAccessCheck[0].is_active === false) {
+      const reason = mcAccessCheck[0].disabled_reason || 'DNU by USPS';
+      logSecurityEvent('blocked_signup_disabled_mc', userId, { mc_number: mcNumber, reason });
+      return NextResponse.json({ 
+        error: `Your MC number (${mcNumber}) is not allowed access to the bid board. ${reason}. Please contact support if you believe this is an error.` 
+      }, { status: 403 });
     }
 
     // Check if profile exists (Supabase-only)

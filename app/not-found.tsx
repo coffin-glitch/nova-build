@@ -8,7 +8,7 @@ export default function NotFound() {
       <Card className="p-8 text-center max-w-md">
         <div className="space-y-4">
           <div className="text-6xl">🔍</div>
-          <h1 className="text-2xl font-bold color: hsl(var(--foreground))">Page Not Found</h1>
+          <h1 className="text-2xl font-bold">Page Not Found</h1>
           <p className="text-muted-foreground">
             The page you're looking for doesn't exist or has been moved.
           </p>

@@ -327,6 +327,35 @@ export async function middleware(req: NextRequest) {
 
         const profile = profileResult;
 
+        // Check if MC is disabled in access control
+        if (profile.mc_number) {
+          const mcAccessCheck = await sql`
+            SELECT is_active
+            FROM mc_access_control
+            WHERE mc_number = ${profile.mc_number}
+            LIMIT 1
+          `;
+          
+          // If MC is explicitly disabled, set profile to declined
+          if (mcAccessCheck.length > 0 && mcAccessCheck[0].is_active === false) {
+            // Update profile to declined if not already
+            if (profile.profile_status !== 'declined') {
+              await sql`
+                UPDATE carrier_profiles
+                SET 
+                  profile_status = 'declined',
+                  decline_reason = 'MC access disabled by admin',
+                  reviewed_at = NOW(),
+                  updated_at = NOW()
+                WHERE supabase_user_id = ${userId}
+                AND profile_status != 'declined'
+              `;
+            }
+            // Redirect to declined page
+            return createResponse(NextResponse.redirect(new URL('/carrier/profile?status=declined&reason=MC+access+disabled', req.url)));
+          }
+        }
+
         // Check profile status and redirect accordingly
         const profileStatus = profile.profile_status;
         const isFirstLogin = profile.is_first_login;
