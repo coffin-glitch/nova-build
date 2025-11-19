@@ -34,7 +34,8 @@ export default function LoadsMap({ points }: Props) {
     }
     mapboxgl.accessToken = token as string;
     
-    // Choose map style based on theme
+    // Use theme-based v11 styles (stable and well-supported)
+    // TODO: Upgrade to Mapbox Standard style when GL JS version fully supports it
     const mapStyle = theme === "dark" ? "mapbox://styles/mapbox/dark-v11" : "mapbox://styles/mapbox/light-v11";
     
     const map = new mapboxgl.Map({

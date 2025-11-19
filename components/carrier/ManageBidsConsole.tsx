@@ -183,7 +183,7 @@ export default function ManageBidsConsole({ isOpen, onClose }: ManageBidsConsole
 
     setIsCancelling(true);
     try {
-      const response = await fetch(`/api/carrier/bids/${cancelBidDialog.id}`, {
+      const response = await fetch(`/api/carrier/bids/cancel/${cancelBidDialog.id}`, {
         method: "DELETE",
       });
 

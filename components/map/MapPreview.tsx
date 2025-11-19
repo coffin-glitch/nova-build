@@ -29,6 +29,8 @@ export default function MapPreview({ origin, dest }: Props) {
       return;
     }
     mapboxgl.accessToken = token as string;
+    // Use light v11 style (stable and well-supported)
+    // TODO: Upgrade to Mapbox Standard style when GL JS version fully supports it
     const map = new mapboxgl.Map({
       container: ref.current,
       style: "mapbox://styles/mapbox/light-v11",

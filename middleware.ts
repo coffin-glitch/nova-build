@@ -79,18 +79,22 @@ export async function middleware(req: NextRequest) {
     const isDev = process.env.NODE_ENV === 'development';
     
     // Build CSP with proper template literal interpolation (avoiding literal ${} strings)
-    const scriptSrc = `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ''} https://*.supabase.co https://*.supabase.in${supabaseBaseUrl ? ` ${supabaseBaseUrl}` : ''}`;
-    const connectSrc = `connect-src 'self' https://*.supabase.co https://*.supabase.in wss://*.supabase.co wss://*.supabase.in${supabaseBaseUrl ? ` ${supabaseBaseUrl} ${supabaseBaseUrl}/auth/v1 ${supabaseBaseUrl}/rest/v1` : ''}`;
-    const frameSrc = `frame-src 'self' https://*.supabase.co https://*.supabase.in${supabaseBaseUrl ? ` ${supabaseBaseUrl}` : ''}`;
+    // Add Mapbox domains for map functionality (including vector tiles)
+    const scriptSrc = `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ''} https://*.supabase.co https://*.supabase.in blob: https://api.mapbox.com https://*.mapbox.com${supabaseBaseUrl ? ` ${supabaseBaseUrl}` : ''}`;
+    const connectSrc = `connect-src 'self' https://*.supabase.co https://*.supabase.in wss://*.supabase.co wss://*.supabase.in https://api.mapbox.com https://*.mapbox.com https://*.tiles.mapbox.com${supabaseBaseUrl ? ` ${supabaseBaseUrl} ${supabaseBaseUrl}/auth/v1 ${supabaseBaseUrl}/rest/v1` : ''}`;
+    const frameSrc = `frame-src 'self' https://*.supabase.co https://*.supabase.in https://*.mapbox.com${supabaseBaseUrl ? ` ${supabaseBaseUrl}` : ''}`;
+    const workerSrc = `worker-src 'self' blob: https://api.mapbox.com`;
+    const imgSrc = `img-src 'self' data: https: blob: https://api.mapbox.com https://*.mapbox.com https://*.tiles.mapbox.com`;
     
     const csp = [
       "default-src 'self'",
       scriptSrc,
-      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-      "font-src 'self' https://fonts.gstatic.com data:",
-      "img-src 'self' data: https: blob:",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://api.mapbox.com",
+      "font-src 'self' https://fonts.gstatic.com data: https://api.mapbox.com",
+      imgSrc,
       connectSrc,
       frameSrc,
+      workerSrc,
       "object-src 'none'",
       "base-uri 'self'",
       "form-action 'self'"

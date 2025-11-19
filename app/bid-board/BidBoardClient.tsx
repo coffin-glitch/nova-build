@@ -5,7 +5,7 @@ import ManageBidsConsole from "@/components/carrier/ManageBidsConsole";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Countdown } from "@/components/ui/Countdown";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Glass } from "@/components/ui/glass";
 import { Input } from "@/components/ui/input";
 import { MapboxMap } from "@/components/ui/MapboxMap";
@@ -49,6 +49,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import useSWR, { mutate as globalMutate } from "swr";
+import { useSearchParams } from "next/navigation";
 
 import { swrFetcher } from "@/lib/safe-fetcher";
 
@@ -67,6 +68,7 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
   const [isTogglingFavorite, setIsTogglingFavorite] = useState<string | null>(null);
   const [showManageBidsConsole, setShowManageBidsConsole] = useState(false);
   const [showFavoritesConsole, setShowFavoritesConsole] = useState(false);
+  const searchParams = useSearchParams();
   
   // State for filtering and sorting - matching admin page exactly
   // Default to showing active bids for carriers (admin defaults to expired)
@@ -444,6 +446,21 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
     expiredBids: expiredBidsAll.length, // Always show actual expired count (not 0)
     totalCarrierBids: todaysActiveBids.reduce((sum: number, b: TelegramBid) => sum + (Number(b.bids_count) || 0), 0)
   };
+
+  // Handle URL parameter to open bid details dialog
+  useEffect(() => {
+    const bidNumber = searchParams?.get('bid');
+    if (bidNumber && bids.length > 0) {
+      const bid = bids.find((b: TelegramBid) => b.bid_number === bidNumber);
+      if (bid) {
+        setViewDetailsBid(bid);
+        // Remove the query parameter from URL without reloading
+        const url = new URL(window.location.href);
+        url.searchParams.delete('bid');
+        window.history.replaceState({}, '', url.toString());
+      }
+    }
+  }, [searchParams, bids]);
 
   // Calculate stats - matching admin page structure
   // Get unique states from today's active bids and all expired bids
@@ -975,6 +992,9 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Load Details - #{viewDetailsBid?.bid_number}</DialogTitle>
+            <DialogDescription>
+              View detailed information about this load including route map, stops, and auction details.
+            </DialogDescription>
           </DialogHeader>
           
           {viewDetailsBid && (
@@ -1036,11 +1056,15 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
               {/* Interactive Route Map */}
               <div className="space-y-3">
                 <h3 className="text-lg font-semibold">Route Map</h3>
-                <div className="rounded-lg overflow-hidden border border-border/40">
-                  <MapboxMap 
-                    stops={formatStopsDetailed(parseStops(viewDetailsBid.stops))} 
-                    className="w-full"
-                  />
+                <div className="rounded-lg overflow-hidden border border-border/40" style={{ width: '100%', height: '400px', minHeight: '400px' }}>
+                  {viewDetailsBid && (
+                    <MapboxMap 
+                      stops={formatStopsDetailed(parseStops(viewDetailsBid.stops))} 
+                      className="w-full h-full"
+                      lazy={false}
+                      minHeight="400px"
+                    />
+                  )}
                 </div>
               </div>
 
