@@ -1,11 +1,12 @@
-import { addSecurityHeaders, validateInput } from "@/lib/api-security";
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse, forbiddenResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
-    await requireApiAdmin(request);
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
 
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get("limit") || "50");
@@ -191,6 +192,8 @@ export async function GET(request: NextRequest) {
 
     const totalCount = allUsers.length;
 
+    logSecurityEvent('admin_users_accessed', userId);
+    
     const response = NextResponse.json({
       ok: true,
       data: paginatedUsers.map((u: any) => ({
@@ -220,8 +223,27 @@ export async function GET(request: NextRequest) {
     return addSecurityHeaders(response);
   } catch (error: any) {
     console.error("Admin users API error:", error);
+    
+    // Handle auth errors
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      if (error.message === "Unauthorized") {
+        return unauthorizedResponse();
+      }
+      return forbiddenResponse(error.message);
+    }
+    
+    logSecurityEvent('admin_users_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
     const response = NextResponse.json(
-      { ok: false, error: error.message },
+      { 
+        ok: false,
+        error: "Failed to fetch users",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
     return addSecurityHeaders(response);
@@ -230,7 +252,8 @@ export async function GET(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    await requireApiAdmin(request);
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
 
     const body = await request.json();
     const { user_id, role } = body;
@@ -488,6 +511,11 @@ export async function PATCH(request: NextRequest) {
     // Note: Middleware cache is in a different process, but this helps with API-level caching
     console.log(`✅ [Admin Users API] Role updated to ${role} for user ${user_id}. User should sign out and sign back in for changes to take effect immediately.`);
 
+    logSecurityEvent('admin_user_role_updated', userId, { 
+      target_user_id: user_id,
+      new_role: role
+    });
+
     const response = NextResponse.json({
       ok: true,
       message: `User role updated to ${role}. Please sign out and sign back in for changes to take effect immediately.`,
@@ -496,8 +524,27 @@ export async function PATCH(request: NextRequest) {
     return addSecurityHeaders(response);
   } catch (error: any) {
     console.error("Admin users PATCH API error:", error);
+    
+    // Handle auth errors
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      if (error.message === "Unauthorized") {
+        return unauthorizedResponse();
+      }
+      return forbiddenResponse(error.message);
+    }
+    
+    logSecurityEvent('admin_user_role_update_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
     const response = NextResponse.json(
-      { ok: false, error: error.message },
+      { 
+        ok: false,
+        error: "Failed to update user role",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
     return addSecurityHeaders(response);
@@ -681,6 +728,12 @@ export async function DELETE(request: NextRequest) {
         }
       }
       
+      logSecurityEvent('admin_user_deleted', auth.userId, { 
+        target_user_id: user_id,
+        action,
+        deletionResults
+      });
+      
       const response = NextResponse.json({
         ok: true,
         message: action === 'wipe' 
@@ -696,8 +749,27 @@ export async function DELETE(request: NextRequest) {
     }
   } catch (error: any) {
     console.error("Admin users DELETE API error:", error);
+    
+    // Handle auth errors
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      if (error.message === "Unauthorized") {
+        return unauthorizedResponse();
+      }
+      return forbiddenResponse(error.message);
+    }
+    
+    logSecurityEvent('admin_user_delete_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
     const response = NextResponse.json(
-      { ok: false, error: error.message },
+      { 
+        ok: false,
+        error: "Failed to delete user",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
     return addSecurityHeaders(response);

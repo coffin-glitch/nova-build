@@ -1,4 +1,5 @@
-import { requireApiCarrier } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiCarrier, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -27,11 +28,33 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    const limit = parseInt(searchParams.get('limit') || '50');
-    const offset = parseInt(searchParams.get('offset') || '0');
+    const limitParam = searchParams.get('limit') || '50';
+    const offsetParam = searchParams.get('offset') || '0';
     const unreadOnly = searchParams.get('unread_only') === 'true';
     const typeFilter = searchParams.get('type'); // Filter by notification type
     const groupByType = searchParams.get('group_by_type') === 'true'; // Group notifications by type
+
+    // Input validation
+    const validation = validateInput(
+      { limit: limitParam, offset: offsetParam, typeFilter },
+      {
+        limit: { type: 'string', pattern: /^\d+$/, required: false },
+        offset: { type: 'string', pattern: /^\d+$/, required: false },
+        typeFilter: { type: 'string', maxLength: 50, required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_notifications_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
+    const limit = Math.min(parseInt(limitParam), 100); // Max 100
+    const offset = Math.max(0, parseInt(offsetParam)); // Ensure non-negative
 
     // Auto-cleanup: Mark notifications as read if older than 7 days
     await sql`
@@ -82,7 +105,9 @@ export async function GET(request: NextRequest) {
     
     const totalCount = countResult[0]?.count || 0;
 
-    return NextResponse.json({ 
+    logSecurityEvent('carrier_notifications_accessed', userId);
+    
+    const response = NextResponse.json({ 
       ok: true, 
       data: {
         notifications,
@@ -94,37 +119,32 @@ export async function GET(request: NextRequest) {
         }
       }
     });
+    
+    return addSecurityHeaders(response);
 
   } catch (error: any) {
-    // Log full error details for debugging
-    console.error('[API /api/carrier/notifications] Full error:', {
-      message: error?.message,
-      stack: error?.stack,
-      name: error?.name,
-      error: error
-    });
     console.error('Error fetching notifications:', error);
     
     // Handle authentication/authorization errors properly
-    if (error instanceof Error) {
-      if (error.message === "Unauthorized" || error.message.includes("Unauthorized")) {
-        return NextResponse.json(
-          { error: "Authentication required" },
-          { status: 401 }
-        );
-      }
-      if (error.message === "Carrier access required" || error.message.includes("Carrier access")) {
-        return NextResponse.json(
-          { error: "Carrier access required" },
-          { status: 403 }
-        );
-      }
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
     }
     
-    return NextResponse.json(
-      { error: "Failed to fetch notifications", details: error?.message || String(error) },
+    logSecurityEvent('carrier_notifications_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to fetch notifications",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : String(error))
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 
@@ -157,6 +177,23 @@ export async function PUT(
     const body = await request.json();
     const { id } = body;
 
+    // Input validation
+    const validation = validateInput(
+      { id },
+      {
+        id: { required: true, type: 'string', minLength: 1, maxLength: 100 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_notification_read_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     const result = await sql`
       UPDATE carrier_notifications 
       SET read = true, updated_at = NOW()
@@ -165,23 +202,45 @@ export async function PUT(
     `;
 
     if (result.length === 0) {
-      return NextResponse.json(
+      logSecurityEvent('notification_not_found', userId, { notification_id: id });
+      const response = NextResponse.json(
         { error: "Notification not found" },
         { status: 404 }
       );
+      return addSecurityHeaders(response);
     }
 
-    return NextResponse.json({ 
+    logSecurityEvent('notification_marked_read', userId, { notification_id: id });
+    
+    const response = NextResponse.json({ 
       ok: true, 
       message: "Notification marked as read" 
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error marking notification as read:', error);
-    return NextResponse.json(
-      { error: "Failed to mark notification as read" },
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('notification_read_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to mark notification as read",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 
@@ -214,6 +273,23 @@ export async function DELETE(
     const body = await request.json();
     const { id } = body;
 
+    // Input validation
+    const validation = validateInput(
+      { id },
+      {
+        id: { required: true, type: 'string', minLength: 1, maxLength: 100 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_notification_delete_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     const result = await sql`
       DELETE FROM carrier_notifications 
       WHERE id = ${id} AND (supabase_user_id = ${userId} OR carrier_user_id = ${userId})
@@ -221,22 +297,44 @@ export async function DELETE(
     `;
 
     if (result.length === 0) {
-      return NextResponse.json(
+      logSecurityEvent('notification_delete_not_found', userId, { notification_id: id });
+      const response = NextResponse.json(
         { error: "Notification not found" },
         { status: 404 }
       );
+      return addSecurityHeaders(response);
     }
 
-    return NextResponse.json({ 
+    logSecurityEvent('notification_deleted', userId, { notification_id: id });
+    
+    const response = NextResponse.json({ 
       ok: true, 
       message: "Notification deleted" 
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error deleting notification:', error);
-    return NextResponse.json(
-      { error: "Failed to delete notification" },
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('notification_delete_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to delete notification",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }

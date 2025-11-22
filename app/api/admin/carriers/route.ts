@@ -1,3 +1,4 @@
+import { addSecurityHeaders, logSecurityEvent } from "@/lib/api-security";
 import sql from "@/lib/db";
 import { getApiAuth, requireApiAdmin, forbiddenResponse, unauthorizedResponse } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
@@ -124,7 +125,11 @@ export async function GET(request: NextRequest) {
     );
 
     console.log("✅ Returning carriers data with emails");
-    return NextResponse.json({ data: carriersWithEmails || [] });
+    
+    logSecurityEvent('admin_carriers_accessed', auth.userId);
+    
+    const response = NextResponse.json({ data: carriersWithEmails || [] });
+    return addSecurityHeaders(response);
   } catch (error: any) {
     console.error("❌ Error fetching carriers:", error);
     
@@ -136,9 +141,20 @@ export async function GET(request: NextRequest) {
       return forbiddenResponse(error.message || "Admin access required");
     }
     
-    return NextResponse.json(
-      { error: "Failed to fetch carriers", details: error instanceof Error ? error.message : "Unknown error" },
+    logSecurityEvent('admin_carriers_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to fetch carriers",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : "Unknown error")
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
