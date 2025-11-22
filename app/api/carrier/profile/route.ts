@@ -136,6 +136,29 @@ export async function POST(request: NextRequest) {
       LIMIT 1
     `;
     
+    // Check if MC or DOT is on DNU list
+    const dnuCheck = await sql`
+      SELECT id, mc_number, dot_number, status
+      FROM dnu_tracking
+      WHERE status = 'active'
+      AND (
+        mc_number = ${mcNumber}
+        OR (${dotNumber || null} IS NOT NULL AND dot_number = ${dotNumber || null})
+      )
+      LIMIT 1
+    `;
+    
+    if (dnuCheck.length > 0) {
+      logSecurityEvent('dnu_profile_blocked', userId, { 
+        mc_number: mcNumber, 
+        dot_number: dotNumber,
+        dnu_entry: dnuCheck[0]
+      });
+      return NextResponse.json({ 
+        error: "This MC or DOT number is on the Do Not Use (DNU) list and cannot be registered. Please contact support if you believe this is an error." 
+      }, { status: 403 });
+    }
+    
     if (mcAccessCheck.length > 0 && mcAccessCheck[0].is_active === false) {
       const reason = mcAccessCheck[0].disabled_reason || 'DNU by USPS';
       logSecurityEvent('blocked_signup_disabled_mc', userId, { mc_number: mcNumber, reason });

@@ -314,11 +314,22 @@ export function MapboxMap({
         try {
           // CRITICAL: Resize map multiple times to ensure it displays correctly in dialogs
           // Per web search: maps in hidden containers need resize() after becoming visible
-          map.resize();
+          // CRITICAL: Check if map still exists and is valid before calling resize()
+          if (map && typeof map.resize === 'function') {
+            try {
+              map.resize();
+            } catch (resizeError) {
+              console.warn('MapboxMap: Error resizing map on load (may be destroyed):', resizeError);
+            }
+          }
           // Additional resize after a short delay to handle dialog animations
           setTimeout(() => {
-            if (mapRef.current) {
-              mapRef.current.resize();
+            if (mapRef.current && typeof mapRef.current.resize === 'function') {
+              try {
+                mapRef.current.resize();
+              } catch (resizeError) {
+                console.warn('MapboxMap: Error resizing map after delay (may be destroyed):', resizeError);
+              }
             }
           }, 200);
 
@@ -601,7 +612,16 @@ export function MapboxMap({
           }
 
           // Ensure map is visible and properly sized
-          map.resize();
+          // CRITICAL: Check if map still exists and is valid before calling resize()
+          if (map && typeof map.resize === 'function') {
+            try {
+              map.resize();
+            } catch (resizeError) {
+              console.warn('MapboxMap: Error resizing map (may be destroyed):', resizeError);
+            }
+          } else {
+            console.warn('MapboxMap: Cannot resize map - map instance is not available');
+          }
           
           // Final summary
           console.log(`MapboxMap: Map setup complete - ${markersRef.current.length} markers, ${coordinates.length} waypoints`);
@@ -684,8 +704,12 @@ export function MapboxMap({
             // Map exists and stops haven't changed - ensure it's visible and resized
             // CRITICAL: Call resize() when dialog opens (per web search findings)
             setTimeout(() => {
-              if (mapRef.current) {
-                mapRef.current.resize();
+              if (mapRef.current && typeof mapRef.current.resize === 'function') {
+                try {
+                  mapRef.current.resize();
+                } catch (resizeError) {
+                  console.warn('MapboxMap: Error resizing map on dialog open (may be destroyed):', resizeError);
+                }
               }
             }, 100);
             return;
@@ -734,8 +758,12 @@ export function MapboxMap({
         if (entry.target === mapContainerRef.current && mapRef.current) {
           // Use requestAnimationFrame to ensure resize happens after layout
           requestAnimationFrame(() => {
-            if (mapRef.current) {
-              mapRef.current.resize();
+            if (mapRef.current && typeof mapRef.current.resize === 'function') {
+              try {
+                mapRef.current.resize();
+              } catch (resizeError) {
+                console.warn('MapboxMap: Error resizing map on container resize (may be destroyed):', resizeError);
+              }
             }
           });
         }
@@ -749,13 +777,21 @@ export function MapboxMap({
       if (mapRef.current) {
         // Multiple resize calls to ensure map renders in dialog
         setTimeout(() => {
-          if (mapRef.current) {
-            mapRef.current.resize();
+          if (mapRef.current && typeof mapRef.current.resize === 'function') {
+            try {
+              mapRef.current.resize();
+            } catch (resizeError) {
+              console.warn('MapboxMap: Error resizing map on dialog open (first attempt, may be destroyed):', resizeError);
+            }
           }
         }, 100);
         setTimeout(() => {
-          if (mapRef.current) {
-            mapRef.current.resize();
+          if (mapRef.current && typeof mapRef.current.resize === 'function') {
+            try {
+              mapRef.current.resize();
+            } catch (resizeError) {
+              console.warn('MapboxMap: Error resizing map on dialog open (second attempt, may be destroyed):', resizeError);
+            }
           }
         }, 300);
       }

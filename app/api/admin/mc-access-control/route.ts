@@ -55,8 +55,20 @@ export async function GET(request: NextRequest) {
         data: result[0]
       });
     } else {
-      // Get all MCs with their access states
-      const result = await sql`
+      // Get ALL unique MC numbers from carrier_profiles with their carrier counts
+      // This ensures all MCs are visible in Main Control, even if they're active by default
+      const allMcNumbersWithCounts = await sql`
+        SELECT 
+          mc_number,
+          COUNT(*)::int as carrier_count
+        FROM carrier_profiles
+        WHERE mc_number IS NOT NULL AND mc_number != ''
+        GROUP BY mc_number
+        ORDER BY mc_number ASC
+      `;
+      
+      // Get access control states for MCs that have entries
+      const accessControls = await sql`
         SELECT 
           id,
           mc_number,
@@ -67,18 +79,61 @@ export async function GET(request: NextRequest) {
           enabled_by,
           enabled_at,
           created_at,
-          updated_at,
-          (
-            SELECT COUNT(*)
-            FROM carrier_profiles
-            WHERE carrier_profiles.mc_number = mc_access_control.mc_number
-          ) as carrier_count
+          updated_at
         FROM mc_access_control
-        ORDER BY 
-          is_active DESC,
-          updated_at DESC,
-          mc_number ASC
       `;
+      
+      // Create a map of MC number to access control state
+      const accessControlMap = new Map();
+      accessControls.forEach((ac: any) => {
+        accessControlMap.set(ac.mc_number, ac);
+      });
+      
+      // Build result array with all MCs
+      const result = allMcNumbersWithCounts.map((row: any) => {
+        const mcNumber = row.mc_number;
+        const carrierCount = row.carrier_count || 0;
+        const accessControl = accessControlMap.get(mcNumber);
+        
+        // If MC has an access control entry, use it
+        if (accessControl) {
+          return {
+            ...accessControl,
+            carrier_count: carrierCount
+          };
+        }
+        
+        // If MC is not in table, it's active by default
+        return {
+          id: null,
+          mc_number: mcNumber,
+          is_active: true, // Active by default
+          disabled_reason: null,
+          disabled_by: null,
+          disabled_at: null,
+          enabled_by: null,
+          enabled_at: null,
+          created_at: null,
+          updated_at: null,
+          carrier_count: carrierCount
+        };
+      });
+      
+      // Sort: disabled first, then by updated_at desc, then by mc_number
+      result.sort((a: any, b: any) => {
+        // Disabled MCs first
+        if (a.is_active !== b.is_active) {
+          return a.is_active ? 1 : -1;
+        }
+        // Then by updated_at (most recent first)
+        if (a.updated_at && b.updated_at) {
+          return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+        }
+        if (a.updated_at) return -1;
+        if (b.updated_at) return 1;
+        // Finally by MC number
+        return a.mc_number.localeCompare(b.mc_number);
+      });
       
       return NextResponse.json({
         ok: true,

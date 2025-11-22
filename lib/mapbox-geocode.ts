@@ -9,6 +9,8 @@
  * This approach is simpler and more reliable than complex parsing
  */
 
+import { parseAddress } from '@/lib/format';
+
 interface GeocodeResult {
   lng: number;
   lat: number;
@@ -117,8 +119,9 @@ async function geocodeWithAPI(
   }
   
   // Strategy 3: Fallback to text search
-  console.log(`Geocoding API: Using text search strategy for "${location}"`);
-  return await geocodeByText(location, token);
+  // CRITICAL: Only use text search if we don't have state info, or validate state if we do
+  console.log(`Geocoding API: Using text search strategy for "${location}"${parsed.state ? ` (expected state: ${parsed.state})` : ''}`);
+  return await geocodeByText(location, token, parsed.state);
 }
 
 /**
@@ -281,10 +284,12 @@ async function geocodeByCityState(
 
 /**
  * Geocode by text search (fallback)
+ * CRITICAL: If expectedState is provided, validates result is in correct state
  */
 async function geocodeByText(
   location: string,
-  token: string
+  token: string,
+  expectedState?: string
 ): Promise<GeocodeResult | null> {
   try {
     const params = new URLSearchParams({
@@ -292,8 +297,13 @@ async function geocodeByText(
       q: location,
       country: 'us',
       types: 'place,locality,address',
-      limit: '1',
+      limit: '3', // Get multiple results to find one in correct state if expectedState is provided
     });
+    
+    // If we have expected state, add it to the query for better accuracy
+    if (expectedState) {
+      params.set('region', expectedState.toUpperCase());
+    }
     
     const url = `https://api.mapbox.com/search/geocode/v6/forward?${params.toString()}`;
     const response = await fetch(url);
@@ -306,7 +316,39 @@ async function geocodeByText(
     const data = await response.json();
     
     if (data.features && data.features.length > 0) {
-      const feature = data.features[0];
+      // If we have expected state, find a feature that matches it
+      let feature = data.features[0];
+      
+      if (expectedState) {
+        const expectedStateUpper = expectedState.toUpperCase().trim();
+        const matchingFeature = data.features.find((f: any) => {
+          const featureState = (f.properties?.region_code || f.properties?.region || '').toUpperCase().trim();
+          return featureState === expectedStateUpper;
+        });
+        
+        if (matchingFeature) {
+          feature = matchingFeature;
+        } else {
+          // No matching state found - validate the first result
+          const featureState = (feature.properties?.region_code || feature.properties?.region || '').toUpperCase().trim();
+          if (featureState !== expectedStateUpper) {
+            console.warn(`Geocoding API: Text search result state "${featureState}" doesn't match expected "${expectedStateUpper}" for "${location}" - rejecting`);
+            return null;
+          }
+        }
+      }
+      
+      const featureState = (feature.properties?.region_code || feature.properties?.region || '').toUpperCase().trim();
+      
+      // CRITICAL: Final validation - if we have expected state, it must match
+      if (expectedState) {
+        const expectedStateUpper = expectedState.toUpperCase().trim();
+        if (featureState !== expectedStateUpper) {
+          console.warn(`Geocoding API: Text search result state "${featureState}" doesn't match expected "${expectedStateUpper}" for "${location}" - rejecting`);
+          return null;
+        }
+      }
+      
       const coords = feature.properties?.coordinates;
       
       if (coords && coords.longitude && coords.latitude) {
@@ -336,7 +378,8 @@ async function geocodeByText(
 
 /**
  * Extract location components (ZIP, city, state) from address string
- * Simple extraction - no complex parsing
+ * CRITICAL: Uses parseAddress to properly separate street from city
+ * This ensures "PALMA AVE ANAHEIM, CA 92899" extracts "ANAHEIM" as city, not "PALMA AVE ANAHEIM"
  * CRITICAL: Ensures state is always extracted and validated
  */
 function extractLocationComponents(location: string): {
@@ -346,26 +389,63 @@ function extractLocationComponents(location: string): {
 } {
   const trimmed = location.trim();
   
+  // Use parseAddress to properly separate street from city
+  // This is critical for addresses like "PALMA AVE ANAHEIM, CA 92899"
+  // where we need "ANAHEIM" as the city, not "PALMA AVE ANAHEIM"
+  const parsed = parseAddress(trimmed);
+  
   // Extract ZIP code (5 digits, optionally followed by -4)
   const zipMatch = trimmed.match(/\b(\d{5}(?:-\d{4})?)\b/);
   const zipcode = zipMatch ? zipMatch[1] : undefined;
   
   // Extract state (2 uppercase letters, usually after comma or space)
   // Try multiple patterns to ensure we capture the state
+  // CRITICAL: State extraction must be robust - if address says "City, AZ ZIPCODE", 
+  // we MUST extract "AZ" and ensure geocoding is in Arizona, never another state
   let state: string | undefined;
   let stateMatch: RegExpMatchArray | null = null;
   
-  // Pattern 1: ", ST " or ", ST" (most common: "City, ST ZIPCODE")
-  stateMatch = trimmed.match(/,\s*([A-Z]{2})(?:\s|$)/i);
-  if (stateMatch) {
-    state = stateMatch[1].toUpperCase();
+  // First, try to use parsed state from parseAddress (most reliable)
+  if (parsed.state) {
+    state = parsed.state.toUpperCase().trim();
+  }
+  
+  // If parseAddress didn't extract state, try regex patterns
+  if (!state) {
+    // Pattern 1: ", ST " or ", ST" or ", ST ZIPCODE" (most common: "City, ST ZIPCODE")
+    // Updated regex to handle ", ST " followed by space or ZIP code
+    stateMatch = trimmed.match(/,\s*([A-Z]{2})(?:\s+|\s*\d|$)/i);
+    if (stateMatch) {
+      const stateCode = stateMatch[1].toUpperCase().trim();
+      // Validate it's a real state code
+      const validStates = new Set([
+        'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
+        'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
+        'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
+        'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
+        'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY', 'DC'
+      ]);
+      if (validStates.has(stateCode)) {
+        state = stateCode;
+      }
+    }
   }
   
   // Pattern 2: " ST " (space before and after state)
   if (!state) {
     stateMatch = trimmed.match(/\s+([A-Z]{2})\s+/i);
     if (stateMatch) {
-      state = stateMatch[1].toUpperCase();
+      const stateCode = stateMatch[1].toUpperCase().trim();
+      const validStates = new Set([
+        'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
+        'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
+        'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
+        'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
+        'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY', 'DC'
+      ]);
+      if (validStates.has(stateCode)) {
+        state = stateCode;
+      }
     }
   }
   
@@ -374,11 +454,22 @@ function extractLocationComponents(location: string): {
     const beforeZip = trimmed.substring(0, trimmed.indexOf(zipMatch![0])).trim();
     stateMatch = beforeZip.match(/\s+([A-Z]{2})\s*$/i);
     if (stateMatch) {
-      state = stateMatch[1].toUpperCase();
+      const stateCode = stateMatch[1].toUpperCase().trim();
+      const validStates = new Set([
+        'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
+        'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
+        'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
+        'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
+        'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY', 'DC'
+      ]);
+      if (validStates.has(stateCode)) {
+        state = stateCode;
+      }
     }
   }
   
-  // Validate state code (must be valid US state)
+  // Final validation: Ensure state code is valid US state
+  // CRITICAL: If we have a state, it must be valid - reject invalid codes
   const validStates = new Set([
     'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
     'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
@@ -392,21 +483,33 @@ function extractLocationComponents(location: string): {
     state = undefined;
   }
   
-  // Extract city (everything before state, or before ZIP if no state)
-  let city: string | undefined;
-  if (state && stateMatch) {
-    const beforeState = trimmed.substring(0, trimmed.indexOf(stateMatch[0])).trim();
-    // Remove trailing comma
-    city = beforeState.replace(/,\s*$/, '').trim();
-  } else if (zipcode) {
-    const beforeZip = trimmed.substring(0, trimmed.indexOf(zipMatch![0])).trim();
-    // If we found state before ZIP in pattern 3, extract city
+  // CRITICAL: Log state extraction for debugging
+  if (state) {
+    console.log(`Geocoding: Extracted state "${state}" from "${location}"`);
+  } else {
+    console.warn(`Geocoding: Could not extract valid state from "${location}"`);
+  }
+  
+  // Use parsed city from parseAddress (this properly separates street from city)
+  // This ensures "PALMA AVE ANAHEIM, CA 92899" gives us "ANAHEIM" as city
+  let city: string | undefined = parsed.city ? parsed.city.trim() : undefined;
+  
+  // Fallback: If parseAddress didn't extract city, try manual extraction
+  if (!city) {
     if (state && stateMatch) {
-      const beforeState = beforeZip.substring(0, beforeZip.indexOf(stateMatch[0])).trim();
+      const beforeState = trimmed.substring(0, trimmed.indexOf(stateMatch[0])).trim();
+      // Remove trailing comma
       city = beforeState.replace(/,\s*$/, '').trim();
-    } else {
-      // No state found, use everything before ZIP as city
-      city = beforeZip.replace(/,\s*$/, '').trim();
+    } else if (zipcode) {
+      const beforeZip = trimmed.substring(0, trimmed.indexOf(zipMatch![0])).trim();
+      // If we found state before ZIP in pattern 3, extract city
+      if (state && stateMatch) {
+        const beforeState = beforeZip.substring(0, beforeZip.indexOf(stateMatch[0])).trim();
+        city = beforeState.replace(/,\s*$/, '').trim();
+      } else {
+        // No state found, use everything before ZIP as city
+        city = beforeZip.replace(/,\s*$/, '').trim();
+      }
     }
   }
   

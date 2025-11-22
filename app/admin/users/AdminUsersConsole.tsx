@@ -2,6 +2,7 @@
 
 import { CarrierHealthConsole } from "@/components/admin/CarrierHealthConsole";
 import { MCAccessControlConsole } from "@/components/admin/MCAccessControlConsole";
+import { DNUTrackerConsole } from "@/components/admin/DNUTrackerConsole";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import {
   Activity,
+  AlertTriangle,
   Bell,
   Building2,
   CheckCircle,
@@ -30,7 +32,7 @@ import {
   X,
   Zap
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
 import { CarrierHealthCard } from "./CarrierHealthCard";
@@ -124,6 +126,8 @@ export function AdminUsersConsole() {
   const [isUpdatingTier, setIsUpdatingTier] = useState(false);
   const [isWipingData, setIsWipingData] = useState(false);
   const [showMainControl, setShowMainControl] = useState(false);
+  const [showDNUTracker, setShowDNUTracker] = useState(false);
+  const [dnuStatusMap, setDnuStatusMap] = useState<Map<string, boolean>>(new Map());
   
   // Profile edit state
   const [editFormData, setEditFormData] = useState<Partial<CarrierProfile>>({});
@@ -158,6 +162,48 @@ export function AdminUsersConsole() {
     fetcher,
     { refreshInterval: 10000 } // Refresh every 10 seconds
   );
+
+  // Fetch DNU status for all carriers
+  const mcNumbers = carriers.length > 0 
+    ? carriers.map((c: CarrierProfile) => c.mc_number).filter(Boolean)
+    : [];
+  const dotNumbers = carriers.length > 0
+    ? carriers.map((c: CarrierProfile) => c.dot_number).filter(Boolean)
+    : [];
+  
+  const { data: dnuStatusData } = useSWR(
+    carriers.length > 0 && (mcNumbers.length > 0 || dotNumbers.length > 0)
+      ? `/api/admin/dnu/check?mcs=${mcNumbers.join(',')}&dots=${dotNumbers.join(',')}`
+      : null,
+    async (url: string) => {
+      const [baseUrl, params] = url.split('?');
+      const urlParams = new URLSearchParams(params);
+      const mcs = urlParams.get('mcs')?.split(',').filter(Boolean) || [];
+      const dots = urlParams.get('dots')?.split(',').filter(Boolean) || [];
+      const response = await fetch('/api/admin/dnu/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mc_numbers: mcs, dot_numbers: dots })
+      });
+      return response.json();
+    },
+    { refreshInterval: 30000 } // Refresh every 30 seconds
+  );
+
+  // Build DNU status map
+  useEffect(() => {
+    if (dnuStatusData?.ok && dnuStatusData.data?.matching_entries) {
+      const newMap = new Map<string, boolean>();
+      carriers.forEach((carrier: CarrierProfile) => {
+        const isDNU = dnuStatusData.data.matching_entries.some((entry: any) => 
+          (carrier.mc_number && entry.mc_number === carrier.mc_number) ||
+          (carrier.dot_number && entry.dot_number === carrier.dot_number)
+        );
+        newMap.set(carrier.user_id, isDNU);
+      });
+      setDnuStatusMap(newMap);
+    }
+  }, [dnuStatusData, carriers]);
   
   const getHealthScore = (mcNumber: string | null | undefined) => {
     if (!mcNumber || !healthScoresData?.scores) return null;
@@ -708,25 +754,58 @@ export function AdminUsersConsole() {
             {carrier.mc_number && (() => {
               const healthData = getHealthScore(carrier.mc_number);
               const bluewireScore = healthData?.bluewireScore;
+              const isDNU = dnuStatusMap.get(carrier.user_id) || false;
               
               return (
-                <div 
-                  className="relative p-1.5 rounded-lg transition-all hover:scale-110"
-                  style={{ backgroundColor: `${accentColor}15` }}
-                  title={healthData ? `Health Score: ${healthData.healthScore}/100 (${healthData.healthStatus})` : "Health Check Available - Click Health Check button to view"}
-                >
-                  <Shield className="h-4 w-4" style={{ color: accentColor }} />
-                  {bluewireScore !== null && bluewireScore !== undefined && (
+                <div className="relative flex items-center gap-1">
+                  <div 
+                    className="relative p-1.5 rounded-lg transition-all hover:scale-110"
+                    style={{ backgroundColor: `${accentColor}15` }}
+                    title={healthData ? `Health Score: ${healthData.healthScore}/100 (${healthData.healthStatus})` : "Health Check Available - Click Health Check button to view"}
+                  >
+                    <Shield className="h-4 w-4" style={{ color: accentColor }} />
+                    {bluewireScore !== null && bluewireScore !== undefined && (
+                      <div 
+                        className="absolute -top-1 -right-1 text-[8px] font-bold rounded-full w-4 h-4 flex items-center justify-center"
+                        style={{ 
+                          backgroundColor: accentColor,
+                          color: '#ffffff'
+                        }}
+                      >
+                        {Math.round(bluewireScore)}
+                      </div>
+                    )}
+                  </div>
+                  {/* DNU Status Indicator */}
+                  <div className="relative">
+                    {isDNU ? (
+                      <div 
+                        className="w-3 h-3 rounded-full bg-red-500 animate-pulse"
+                        style={{ 
+                          filter: 'drop-shadow(0 0 4px rgba(239, 68, 68, 0.8))',
+                          animation: 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite'
+                        }}
+                        title="On DNU (Do Not Use) List"
+                      />
+                    ) : (
+                      <div 
+                        className="w-3 h-3 rounded-full bg-blue-500 animate-pulse"
+                        style={{ 
+                          filter: 'drop-shadow(0 0 4px rgba(59, 130, 246, 0.8))',
+                          animation: 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite'
+                        }}
+                        title="Not on DNU List"
+                      />
+                    )}
                     <div 
-                      className="absolute -top-1 -right-1 text-[8px] font-bold rounded-full w-4 h-4 flex items-center justify-center"
+                      className={`absolute inset-0 rounded-full animate-ping ${
+                        isDNU ? 'bg-red-500/30' : 'bg-blue-500/30'
+                      }`}
                       style={{ 
-                        backgroundColor: accentColor,
-                        color: '#ffffff'
+                        animation: 'ping 2s cubic-bezier(0, 0, 0.2, 1) infinite'
                       }}
-                    >
-                      {Math.round(bluewireScore)}
-                    </div>
-                  )}
+                    />
+                  </div>
                 </div>
               );
             })()}
@@ -1095,6 +1174,14 @@ export function AdminUsersConsole() {
           >
             <Settings className="h-4 w-4 mr-2" />
             Main Control
+          </Button>
+          <Button
+            onClick={() => setShowDNUTracker(true)}
+            variant="outline"
+            className="bg-gradient-to-r from-red-500/10 to-orange-500/10 border-red-500/20 hover:from-red-500/20 hover:to-orange-500/20"
+          >
+            <AlertTriangle className="h-4 w-4 mr-2" />
+            DNU Tracker
           </Button>
           <div className="flex items-center gap-2">
             <Users className="h-5 w-5 text-blue-600" />
@@ -1804,6 +1891,10 @@ export function AdminUsersConsole() {
       <MCAccessControlConsole
         isOpen={showMainControl}
         onClose={() => setShowMainControl(false)}
+      />
+      <DNUTrackerConsole
+        isOpen={showDNUTracker}
+        onClose={() => setShowDNUTracker(false)}
       />
     </div>
   );
