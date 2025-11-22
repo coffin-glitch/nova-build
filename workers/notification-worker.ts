@@ -16,6 +16,7 @@ import 'dotenv/config';
 import { shouldTriggerNotification, type AdvancedNotificationPreferences } from '../lib/advanced-notification-preferences';
 import sql from '../lib/db';
 import {
+  BackhaulNotificationTemplate,
   DeadlineApproachingNotificationTemplate,
   ExactMatchNotificationTemplate,
   FavoriteAvailableNotificationTemplate,
@@ -880,10 +881,11 @@ async function processExactMatchTrigger(
         await sendNotification({
           carrierUserId: userId,
           triggerId: trigger.id,
-          notificationType: 'exact_match',
+          notificationType: isBackhaulMatch || isBackhaulStateMatch ? 'backhaul' : 'exact_match',
           bidNumber: match.bid_number,
           message,
           loadDetails: loadDetails || undefined,
+          matchType: matchType, // Pass matchType for backhaul template
         });
 
         count++;
@@ -1071,6 +1073,7 @@ async function sendNotification({
   matchScore,
   reasons,
   minutesRemaining,
+  matchType,
 }: {
   carrierUserId: string;
   triggerId: number;
@@ -1088,6 +1091,7 @@ async function sendNotification({
   matchScore?: number;
   reasons?: string[];
   minutesRemaining?: number;
+  matchType?: 'exact' | 'state'; // For backhaul notifications
 }) {
   try {
     // Insert into notification_logs
@@ -1172,6 +1176,25 @@ async function sendNotification({
       // Send email based on notification type
       let emailResult;
       switch (notificationType) {
+        case 'backhaul':
+          emailResult = await sendEmail({
+            to: carrierEmail,
+            subject: `🔄 Backhaul Match Found: ${loadInfo.origin} → ${loadInfo.destination} (Return Route)`,
+            react: BackhaulNotificationTemplate({
+              bidNumber,
+              origin: loadInfo.origin,
+              destination: loadInfo.destination,
+              miles: loadInfo.miles,
+              stops: loadInfo.stops,
+              pickupTime: loadInfo.pickupTime,
+              deliveryTime: loadInfo.deliveryTime,
+              viewUrl,
+              carrierName: carrierName || undefined,
+              matchType: matchType || 'exact',
+            }),
+          });
+          break;
+
         case 'exact_match':
           emailResult = await sendEmail({
             to: carrierEmail,

@@ -1034,6 +1034,129 @@ export const AnnouncementNotificationTemplate = ({
   );
 };
 
+/**
+ * Backhaul Match Notification - Return route match (reverse of favorite)
+ */
+interface BackhaulNotificationProps {
+  bidNumber: string;
+  origin: string;
+  destination: string;
+  miles?: number;
+  stops?: number;
+  pickupTime?: string;
+  deliveryTime?: string;
+  viewUrl: string;
+  carrierName?: string;
+  matchType?: 'exact' | 'state'; // Whether it's an exact backhaul or state backhaul
+}
+
+export const BackhaulNotificationTemplate = ({
+  bidNumber,
+  origin,
+  destination,
+  miles,
+  stops,
+  pickupTime,
+  deliveryTime,
+  viewUrl,
+  carrierName,
+  matchType = 'exact',
+}: BackhaulNotificationProps) => (
+  <Html>
+    <Head />
+    <Preview>🔄 Backhaul match found: {origin} → {destination} (return route)</Preview>
+    <Body style={main}>
+      <Container style={gradientContainer}>
+        <Container style={container}>
+          <Section style={logoSection}>
+            <div style={logoIcon}>
+              <div style={logoIconGlow}></div>
+              <svg 
+                width="32" 
+                height="32" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                xmlns="http://www.w3.org/2000/svg"
+                style={{ position: 'relative', zIndex: 1 }}
+              >
+                <defs>
+                  <linearGradient id="backhaulGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="#f59e0b" />
+                    <stop offset="50%" stopColor="#f97316" />
+                    <stop offset="100%" stopColor="#ea580c" />
+                  </linearGradient>
+                </defs>
+                <path 
+                  d="M9 18l6-6-6-6" 
+                  stroke="url(#backhaulGradient)" 
+                  strokeWidth="2" 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round"
+                  fill="none"
+                  transform="translate(12, 12) rotate(180) translate(-12, -12)"
+                />
+                <path 
+                  d="M3 12h18" 
+                  stroke="url(#backhaulGradient)" 
+                  strokeWidth="2" 
+                  strokeLinecap="round"
+                />
+              </svg>
+            </div>
+            <Heading style={brandHeading}>
+              <span style={brandGradient}>NOVA</span>
+            </Heading>
+          </Section>
+
+          <Section style={contentCard}>
+            <Heading style={h1}>🔄 Backhaul Match Found!</Heading>
+            
+            <Text style={text}>
+              {carrierName ? `Hi ${carrierName},` : 'Hi there,'}
+            </Text>
+
+            <Text style={text}>
+              We found a <strong>return route</strong> that matches your favorite! This is a perfect opportunity to book a backhaul load on your way back.
+            </Text>
+
+            <Section style={successBox}>
+              <Text style={successText}>
+                <strong>Bid Number:</strong> {bidNumber}<br />
+                <strong>Route:</strong> {origin} → {destination}<br />
+                <strong>Match Type:</strong> {matchType === 'exact' ? 'Exact Backhaul' : 'State Backhaul'}<br />
+                {pickupTime && <><strong>Pickup Time:</strong> {pickupTime}<br /></>}
+                {deliveryTime && <><strong>Delivery Time:</strong> {deliveryTime}<br /></>}
+                {stops !== undefined && <><strong>Stops:</strong> {stops}<br /></>}
+                {miles !== undefined && <><strong>Miles:</strong> {miles.toLocaleString()}<br /></>}
+              </Text>
+            </Section>
+
+            <Text style={text}>
+              This load is the <strong>reverse route</strong> of your favorite, making it an ideal backhaul opportunity. Maximize your revenue by booking both legs of your trip!
+            </Text>
+
+            <Section style={buttonContainer}>
+              <Button style={button} href={viewUrl}>
+                View Backhaul Load →
+              </Button>
+            </Section>
+
+            <Text style={{ ...text, fontSize: '14px', color: '#6b7280', marginTop: '24px', textAlign: 'center' as const }}>
+              💡 <strong>Tip:</strong> Backhaul loads help you maximize revenue by booking return trips!
+            </Text>
+          </Section>
+
+          <Section style={footer}>
+            <Text style={footerText}>
+              © {new Date().getFullYear()} NOVA. All rights reserved.
+            </Text>
+          </Section>
+        </Container>
+      </Container>
+    </Body>
+  </Html>
+);
+
 export const DeadlineApproachingNotificationTemplate = ({
   bidNumber,
   origin,
