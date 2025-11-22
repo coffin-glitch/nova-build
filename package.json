@@ -13,7 +13,7 @@
     "dev:monitor": "node scripts/enhanced-cache-manager.js monitor",
     "cache:enhanced": "node scripts/enhanced-cache-manager.js clean",
     "health:check": "node scripts/enhanced-cache-manager.js health",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
     "clean": "rm -rf .next node_modules/.cache",

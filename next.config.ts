@@ -52,6 +52,10 @@ const nextConfig: NextConfig = {
     return config;
   },
 
+  // Turbopack configuration (empty to silence Next.js 16 warning)
+  // We're using webpack config above, so this is just to prevent the build error
+  turbopack: {},
+
   // Headers for caching
   async headers() {
     return [
