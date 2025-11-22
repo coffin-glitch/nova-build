@@ -1,4 +1,5 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
@@ -24,18 +25,40 @@ export async function POST(request: NextRequest) {
     const file = formData.get("file") as File;
 
     if (!file) {
-      return NextResponse.json(
+      logSecurityEvent('dnu_upload_no_file', adminUserId);
+      const response = NextResponse.json(
         { ok: false, error: "No file provided" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
+    }
+
+    // Validate file size (max 50MB for large DNU lists)
+    const maxSize = 50 * 1024 * 1024; // 50MB
+    if (file.size > maxSize) {
+      logSecurityEvent('dnu_upload_size_exceeded', adminUserId, { 
+        fileName: file.name,
+        fileSize: file.size,
+        maxSize
+      });
+      const response = NextResponse.json(
+        { ok: false, error: `File size exceeds ${maxSize / 1024 / 1024}MB limit` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
 
     // Validate file type
     if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls') && !file.name.endsWith('.csv')) {
-      return NextResponse.json(
+      logSecurityEvent('dnu_upload_invalid_type', adminUserId, { 
+        fileName: file.name,
+        fileType: file.type
+      });
+      const response = NextResponse.json(
         { ok: false, error: "Only Excel (.xlsx, .xls) and CSV (.csv) files are supported" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     console.log(`DNU Upload: Processing file "${file.name}"`);
@@ -230,7 +253,16 @@ export async function POST(request: NextRequest) {
 
     console.log(`DNU Upload: Final counts - Active: ${finalCount[0]?.count || 0}, Total in DB: ${totalInDb[0]?.count || 0}`);
 
-    return NextResponse.json({
+    logSecurityEvent('dnu_upload_success', adminUserId, {
+      fileName: file.name,
+      fileSize: file.size,
+      totalEntries: dnuEntries.length,
+      added: addedCount,
+      updated: updatedCount,
+      removed: removedCount
+    });
+
+    const response = NextResponse.json({
       ok: true,
       message: `DNU list updated successfully`,
       data: {
@@ -243,13 +275,33 @@ export async function POST(request: NextRequest) {
         upload_date: uploadDate.toISOString()
       }
     });
+    
+    return addSecurityHeaders(response);
 
   } catch (error: any) {
     console.error("Error processing DNU upload:", error);
-    return NextResponse.json(
-      { ok: false, error: error.message || "Failed to process DNU upload" },
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('dnu_upload_error', adminUserId, { 
+      error: error instanceof Error ? error.message : String(error),
+      fileName: file?.name
+    });
+    
+    const response = NextResponse.json(
+      { 
+        ok: false, 
+        error: error.message || "Failed to process DNU upload",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 

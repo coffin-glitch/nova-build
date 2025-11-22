@@ -1,4 +1,5 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { EAXLoadData, getLoadSummary, parseEAXCSV, parseEAXExcel, validateEAXLoad } from "@/lib/eax-parser";
 import { NextRequest, NextResponse } from "next/server";
@@ -7,24 +8,47 @@ import * as XLSX from "xlsx";
 export async function POST(request: NextRequest) {
   try {
     // Ensure user is admin (Supabase-only)
-    await requireApiAdmin(request);
+    const auth = await requireApiAdmin(request);
+    const adminUserId = auth.userId;
 
     const formData = await request.formData();
     const file = formData.get("file") as File;
 
     if (!file) {
-      return NextResponse.json(
+      logSecurityEvent('eax_upload_no_file', adminUserId);
+      const response = NextResponse.json(
         { error: "No file provided" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
+    }
+
+    // Validate file size (max 100MB for large EAX files)
+    const maxSize = 100 * 1024 * 1024; // 100MB
+    if (file.size > maxSize) {
+      logSecurityEvent('eax_upload_size_exceeded', adminUserId, { 
+        fileName: file.name,
+        fileSize: file.size,
+        maxSize
+      });
+      const response = NextResponse.json(
+        { error: `File size exceeds ${maxSize / 1024 / 1024}MB limit` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
 
     // Validate file type
     if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls') && !file.name.endsWith('.csv')) {
-      return NextResponse.json(
+      logSecurityEvent('eax_upload_invalid_type', adminUserId, { 
+        fileName: file.name,
+        fileType: file.type
+      });
+      const response = NextResponse.json(
         { error: "Only Excel (.xlsx, .xls) and CSV (.csv) files are supported" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Convert file to buffer
@@ -314,7 +338,16 @@ export async function POST(request: NextRequest) {
       
       console.log(`Successfully merged ${mergedCount} loads to main loads table`);
 
-      return NextResponse.json({
+      logSecurityEvent('eax_upload_success', adminUserId, {
+        fileName: file.name,
+        fileSize: file.size,
+        totalLoads: parsedLoads.length,
+        validLoads: validLoads.length,
+        invalidLoads: invalidLoads.length,
+        loadsCreated: mergedCount
+      });
+
+      const response = NextResponse.json({
         success: true,
         message: `Successfully processed ${parsedLoads.length} loads from ${file.name.endsWith('.csv') ? 'CSV' : 'Excel'} file`,
         data: {
@@ -334,6 +367,8 @@ export async function POST(request: NextRequest) {
           loads_created: mergedCount
         }
       });
+      
+      return addSecurityHeaders(response);
 
     } catch (dbError) {
       console.error("Database error during Excel processing:", dbError);
@@ -346,23 +381,30 @@ export async function POST(request: NextRequest) {
       );
     }
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Excel upload error:", error);
     
-    if (error instanceof Error && error.message.includes("403")) {
-      return NextResponse.json(
-        { error: "Access denied. Admin privileges required." },
-        { status: 403 }
-      );
+    if (error.message === "Unauthorized" || error.message === "Admin access required" || 
+        (error instanceof Error && error.message.includes("403"))) {
+      return unauthorizedResponse();
     }
 
-    return NextResponse.json(
+    logSecurityEvent('eax_upload_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error),
+      fileName: file?.name
+    });
+
+    const response = NextResponse.json(
       { 
         error: "Failed to process Excel file",
-        details: error instanceof Error ? error.message : "Unknown error"
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : "Unknown error")
+          : undefined
       },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 
