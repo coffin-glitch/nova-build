@@ -7,6 +7,8 @@
  * 3. Falling back to approximations for common locations
  */
 
+import { parseAddress } from '@/lib/format';
+
 interface GeocodeResult {
   lng: number;
   lat: number;
@@ -333,47 +335,70 @@ async function geocodeWithAPI(
 /**
  * Parse location string into structured components
  * Uses the robust parseAddress utility for better accuracy
+ * This ensures street names are properly separated from city names
  */
 function parseLocationString(location: string): { city?: string; state?: string; zipcode?: string } {
   const trimmed = location.trim();
   
-  // Import parseAddress dynamically to avoid circular dependencies
-  // Use a more robust parsing approach
   try {
-    // Try to extract city, state, and zipcode using regex patterns
+    // Use the robust parseAddress function which properly separates street from city
+    // This is critical for addresses like "PALMA AVE ANAHEIM, CA 92899" where
+    // "PALMA AVE" is the street and "ANAHEIM" is the city
+    const parsed = parseAddress(trimmed);
+    
+    if (parsed.city && parsed.state) {
+      // Return only city (not street), state, and zipcode
+      // This ensures geocoding searches for "ANAHEIM, CA" not "PALMA AVE ANAHEIM, CA"
+      // The parseAddress function already extracts just the city name (e.g., "ANAHEIM")
+      return {
+        city: parsed.city.trim(),
+        state: parsed.state.toUpperCase(),
+        zipcode: parsed.zipcode || undefined,
+      };
+    }
+    
+    // Fallback: If parseAddress didn't extract city/state, try simple patterns
     // Pattern 1: "City, State ZIP" (e.g., "OPA LOCKA, FL 33054")
     const cityStateZipMatch = trimmed.match(/^(.+?),\s*([A-Z]{2})\s+(\d{5}(?:-\d{4})?)$/i);
     if (cityStateZipMatch) {
+      // Try to extract just the city name (last word or two before comma)
+      const beforeComma = cityStateZipMatch[1].trim();
+      const words = beforeComma.split(/\s+/);
+      // If it looks like "STREET CITY" format, take last 1-2 words as city
+      let city = beforeComma;
+      if (words.length > 2) {
+        // Likely has street name - take last 1-2 words as city
+        city = words.slice(-2).join(' ');
+      }
+      
       return {
-        city: cityStateZipMatch[1].trim(),
+        city: city.trim(),
         state: cityStateZipMatch[2].trim().toUpperCase(),
         zipcode: cityStateZipMatch[3].trim(),
       };
     }
     
-    // Pattern 2: "City, State" (e.g., "Los Angeles, CA" or "Atlanta, Georgia")
-    const cityStateMatch = trimmed.match(/^(.+?),\s*([A-Z]{2}|[A-Za-z\s]+)$/);
+    // Pattern 2: "City, State" (e.g., "Los Angeles, CA")
+    const cityStateMatch = trimmed.match(/^(.+?),\s*([A-Z]{2})$/i);
     if (cityStateMatch) {
+      const beforeComma = cityStateMatch[1].trim();
+      const words = beforeComma.split(/\s+/);
+      let city = beforeComma;
+      if (words.length > 2) {
+        // Likely has street name - take last 1-2 words as city
+        city = words.slice(-2).join(' ');
+      }
+      
       return {
-        city: cityStateMatch[1].trim(),
+        city: city.trim(),
         state: cityStateMatch[2].trim().toUpperCase(),
       };
     }
     
-    // Pattern 3: "City State ZIP" (e.g., "OPA LOCKA FL 33054")
-    const cityStateZipNoCommaMatch = trimmed.match(/^(.+?)\s+([A-Z]{2})\s+(\d{5}(?:-\d{4})?)$/i);
-    if (cityStateZipNoCommaMatch) {
-      return {
-        city: cityStateZipNoCommaMatch[1].trim(),
-        state: cityStateZipNoCommaMatch[2].trim().toUpperCase(),
-        zipcode: cityStateZipNoCommaMatch[3].trim(),
-      };
-    }
-    
-    // Pattern 4: Extract state code from anywhere in the string
-    const stateCodeMatch = trimmed.match(/\b([A-Z]{2})\b/);
+    // Pattern 3: Extract state code from anywhere in the string
+    const stateCodeMatch = trimmed.match(/,\s*([A-Z]{2})(?:\s|$)/i);
     if (stateCodeMatch) {
-      const stateCode = stateCodeMatch[1];
+      const stateCode = stateCodeMatch[1].toUpperCase();
       const validStates = new Set([
         'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
         'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
@@ -384,12 +409,15 @@ function parseLocationString(location: string): { city?: string; state?: string;
       
       if (validStates.has(stateCode)) {
         // Extract city (everything before the state code)
-        const beforeState = trimmed.substring(0, trimmed.indexOf(stateCode)).trim();
-        // Remove common suffixes and clean up
+        const beforeState = trimmed.substring(0, trimmed.indexOf(stateCodeMatch[0])).trim();
+        // Remove comma and clean up
         const city = beforeState.replace(/[,\s]+$/, '').trim();
+        // If it looks like "STREET CITY" format, take last 1-2 words as city
+        const words = city.split(/\s+/);
+        const finalCity = words.length > 2 ? words.slice(-2).join(' ') : city;
         
         return {
-          city: city || undefined,
+          city: finalCity || undefined,
           state: stateCode,
         };
       }
