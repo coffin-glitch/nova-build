@@ -1,4 +1,5 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseService } from "@/lib/supabase";
@@ -53,16 +54,37 @@ export async function GET(
       ORDER BY cm.created_at ASC
     `;
 
-    return NextResponse.json({ 
+    logSecurityEvent('admin_conversation_messages_accessed', userId, { conversationId });
+    
+    const response = NextResponse.json({ 
       ok: true, 
       data: messages 
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching admin conversation messages:", error);
-    return NextResponse.json({ 
-      error: "Failed to fetch conversation messages" 
-    }, { status: 500 });
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('admin_conversation_messages_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to fetch conversation messages",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
+      { status: 500 }
+    );
+    
+    return addSecurityHeaders(response);
   }
 }
 
@@ -119,19 +141,31 @@ export async function POST(
         // Validate file size (max 10MB)
         const maxSize = 10 * 1024 * 1024; // 10MB
         if (file.size > maxSize) {
-          return NextResponse.json(
+          logSecurityEvent('admin_file_upload_size_exceeded', userId, { 
+            conversationId, 
+            fileSize: file.size,
+            fileName: file.name
+          });
+          const response = NextResponse.json(
             { error: "File size exceeds 10MB limit" },
             { status: 400 }
           );
+          return addSecurityHeaders(response);
         }
 
         // Validate file type
         const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf'];
         if (!allowedTypes.includes(file.type)) {
-          return NextResponse.json(
+          logSecurityEvent('admin_file_upload_invalid_type', userId, { 
+            conversationId, 
+            fileType: file.type,
+            fileName: file.name
+          });
+          const response = NextResponse.json(
             { error: "Invalid file type. Only JPEG, PNG, and PDF are allowed" },
             { status: 400 }
           );
+          return addSecurityHeaders(response);
         }
 
         // Upload file to Supabase Storage
@@ -274,18 +308,41 @@ export async function POST(
       // Don't throw - message sending should still succeed
     }
 
-    return NextResponse.json({ 
+    logSecurityEvent('admin_conversation_message_sent', userId, { 
+      conversationId, 
+      hasAttachment: !!attachmentUrl,
+      messageLength: message.length
+    });
+    
+    const response = NextResponse.json({ 
       ok: true, 
       message: "Message sent successfully",
       data: result[0]
     });
+    
+    return addSecurityHeaders(response);
 
   } catch (error: any) {
     console.error("Error sending admin message:", error);
-    const errorMessage = error?.message || "Failed to send message";
-    return NextResponse.json({ 
-      error: errorMessage,
-      details: process.env.NODE_ENV === 'development' ? error?.stack : undefined
-    }, { status: 500 });
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('admin_conversation_message_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to send message",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
+      { status: 500 }
+    );
+    
+    return addSecurityHeaders(response);
   }
 }

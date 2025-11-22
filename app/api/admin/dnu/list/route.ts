@@ -1,4 +1,5 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -14,6 +15,24 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const searchQuery = searchParams.get('search') || '';
     const statusFilter = searchParams.get('status'); // 'active' or 'removed' or null for all
+
+    // Input validation
+    const validation = validateInput(
+      { searchQuery, statusFilter },
+      {
+        searchQuery: { type: 'string', maxLength: 200, required: false },
+        statusFilter: { type: 'string', enum: ['active', 'removed'], required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_dnu_list_input', auth.userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { ok: false, error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
 
     // Build query with search and status filter
     let query = sql`
@@ -74,17 +93,42 @@ export async function GET(request: NextRequest) {
 
     const result = await query;
 
-    return NextResponse.json({
+    logSecurityEvent('dnu_list_accessed', auth.userId, { 
+      searchQuery: searchQuery || null,
+      statusFilter: statusFilter || null,
+      resultCount: result.length
+    });
+
+    const response = NextResponse.json({
       ok: true,
       data: result
     });
+    
+    return addSecurityHeaders(response);
 
   } catch (error: any) {
     console.error("Error getting DNU list:", error);
-    return NextResponse.json(
-      { ok: false, error: error.message || "Failed to get DNU list" },
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('dnu_list_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        ok: false, 
+        error: error.message || "Failed to get DNU list",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 
