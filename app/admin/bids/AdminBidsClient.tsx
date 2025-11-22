@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getActiveBids, getBidOffers } from "@/lib/actions";
+import { formatStops, formatStopsDetailed, ParsedAddress } from "@/lib/format";
 import {
   Eye,
   MapPin,
@@ -17,6 +18,21 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import useSWR from "swr";
+
+// Helper to parse stops (matching AdminBiddingConsole)
+const parseStops = (stops: string | string[] | null): string[] => {
+  if (!stops) return [];
+  if (Array.isArray(stops)) return stops;
+  if (typeof stops === 'string') {
+    try {
+      const parsed = JSON.parse(stops);
+      return Array.isArray(parsed) ? parsed : [parsed];
+    } catch (error) {
+      return [stops];
+    }
+  }
+  return [];
+};
 
 interface TelegramBid {
   id: number;
@@ -75,6 +91,21 @@ export function AdminBidsClient({ initialBids, initialTags }: AdminBidsClientPro
 
   const filteredBids = filterBids();
 
+  // Helper to parse stops (matching AdminBiddingConsole)
+  const parseStops = (stops: string | string[] | null): string[] => {
+    if (!stops) return [];
+    if (Array.isArray(stops)) return stops;
+    if (typeof stops === 'string') {
+      try {
+        const parsed = JSON.parse(stops);
+        return Array.isArray(parsed) ? parsed : [parsed];
+      } catch (error) {
+        return [stops];
+      }
+    }
+    return [];
+  };
+
   const formatDate = (dateString: string | null) => {
     if (!dateString) return "N/A";
     return new Date(dateString).toLocaleDateString("en-US", {
@@ -85,28 +116,19 @@ export function AdminBidsClient({ initialBids, initialTags }: AdminBidsClientPro
     });
   };
 
-  const formatStops = (stops: any) => {
-    if (!stops || typeof stops !== 'object') return "N/A";
-    
-    if (Array.isArray(stops)) {
-      return stops.length;
+  // Helper to get stop count
+  const getStopCount = (stops: any) => {
+    if (!stops) return 0;
+    if (Array.isArray(stops)) return stops.length;
+    if (typeof stops === 'string') {
+      try {
+        const parsed = JSON.parse(stops);
+        return Array.isArray(parsed) ? parsed.length : 1;
+      } catch {
+        return 1;
+      }
     }
-    
-    return "N/A";
-  };
-
-  const formatStopsList = (stops: any) => {
-    if (!stops || typeof stops !== 'object') return ["N/A"];
-    
-    if (Array.isArray(stops)) {
-      return stops.map((stop: any) => 
-        typeof stop === 'string' ? stop : 
-        stop.city && stop.state ? `${stop.city}, ${stop.state}` :
-        stop.address || "Unknown"
-      );
-    }
-    
-    return ["N/A"];
+    return 0;
   };
 
   const getExpiresIn = (expiresAt: string | null) => {
@@ -225,7 +247,7 @@ export function AdminBidsClient({ initialBids, initialTags }: AdminBidsClientPro
                   <TableCell>
                     <div className="flex items-center gap-1">
                       <Truck className="w-4 h-4 text-muted-foreground" />
-                      {formatStops(bid.stops)}
+                      <span className="text-sm">{formatStops(parseStops(bid.stops))}</span>
                     </div>
                   </TableCell>
                   <TableCell>
@@ -291,12 +313,29 @@ export function AdminBidsClient({ initialBids, initialTags }: AdminBidsClientPro
 
                 {/* Stops List */}
                 <div>
-                  <label className="text-sm font-medium text-muted-foreground">Stops ({formatStops(selectedBid.stops)})</label>
+                  <label className="text-sm font-medium text-muted-foreground">Stops ({getStopCount(selectedBid.stops)})</label>
                   <div className="mt-2 space-y-2">
-                    {formatStopsList(selectedBid.stops).map((stop, index) => (
-                      <div key={index} className="flex items-center gap-2 p-2 bg-muted/50 rounded">
-                        <MapPin className="w-4 h-4 text-muted-foreground" />
-                        <span>{stop}</span>
+                    {formatStopsDetailed(parseStops(selectedBid.stops)).map((address: ParsedAddress, index) => (
+                      <div key={index} className="flex items-start gap-3 p-3 bg-muted/30 rounded-lg">
+                        <div className="flex items-center justify-center w-6 h-6 bg-primary text-primary-foreground rounded-full text-sm font-bold flex-shrink-0">
+                          {index + 1}
+                        </div>
+                        <div className="flex-1">
+                          <p className="font-medium">{address.fullAddress}</p>
+                          <div className="text-sm text-muted-foreground mt-1 space-y-0.5">
+                            {address.streetNumber && address.streetName && (
+                              <p>Street: {address.streetNumber} {address.streetName}</p>
+                            )}
+                            <p>City: {address.city}</p>
+                            <p>State: {address.state}</p>
+                            {address.zipcode && <p>ZIP: {address.zipcode}</p>}
+                            <p className="text-xs mt-1">
+                              {index === 0 ? 'Pickup Location' :
+                               index === formatStopsDetailed(parseStops(selectedBid.stops)).length - 1 ? 'Delivery Location' :
+                               'Stop Location'}
+                            </p>
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>

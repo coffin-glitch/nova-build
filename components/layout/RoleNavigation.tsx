@@ -15,6 +15,7 @@ import {
     FileText,
     Gavel,
     HandCoins,
+    Megaphone,
     Package,
     Search,
     Settings,
@@ -24,10 +25,12 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import AnnouncementsBadge from "@/components/announcements/AnnouncementsBadge";
 
 const adminNavigation = [
   { name: "Dashboard", href: "/admin", icon: BarChart3 },
   { name: "Users", href: "/admin/users", icon: Users },
+  { name: "Announcements", href: "/admin/announcements", icon: Megaphone },
 ];
 
 const adminDropdowns = {
@@ -51,6 +54,7 @@ const adminDropdowns = {
 
 const carrierNavigation = [
   { name: "Dashboard", href: "/carrier", icon: Truck },
+  { name: "Announcements", href: "/announcements", icon: Megaphone },
   { name: "Profile", href: "/carrier/profile", icon: Settings },
 ];
 
@@ -103,6 +107,7 @@ export default function RoleNavigation({ role }: RoleNavigationProps) {
               >
                 <item.icon className="h-4 w-4" />
                 <span>{item.name}</span>
+                {item.name === "Announcements" && <AnnouncementsBadge />}
               </Link>
             );
           })}
@@ -197,6 +202,7 @@ export default function RoleNavigation({ role }: RoleNavigationProps) {
               >
                 <item.icon className="h-4 w-4" />
                 <span>{item.name}</span>
+                {item.name === "Announcements" && <AnnouncementsBadge />}
               </Link>
             );
           })}
@@ -304,6 +310,7 @@ export function MobileRoleNavigation({ role }: RoleNavigationProps) {
           >
             <item.icon className="h-5 w-5" />
             <span>{item.name}</span>
+            {item.name === "Announcements" && <AnnouncementsBadge />}
           </Link>
         );
       })}

@@ -67,7 +67,27 @@ export async function GET(request: NextRequest) {
       
       // For exact_match triggers, get route info
       if (trigger.trigger_type === 'exact_match') {
-        // New format: use distance range
+        // Priority 1: Use specific bid number if available
+        if (config?.favoriteBidNumber) {
+          const favoriteResult = await sql`
+            SELECT cf.bid_number, tb.stops, tb.distance_miles
+            FROM carrier_favorites cf
+            JOIN telegram_bids tb ON cf.bid_number = tb.bid_number
+            WHERE cf.supabase_carrier_user_id = ${userId}
+              AND cf.bid_number = ${config.favoriteBidNumber}
+            LIMIT 1
+          `;
+          
+          return {
+            ...trigger,
+            trigger_config: config,
+            bid_number: favoriteResult[0]?.bid_number || null,
+            route: favoriteResult[0]?.stops || null,
+            distance_range: config.favoriteDistanceRange
+          };
+        }
+        
+        // Priority 2: Use distance range (fallback)
         if (config?.favoriteDistanceRange) {
           // Find a favorite within the distance range for display
           const favoriteResult = await sql`

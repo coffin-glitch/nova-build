@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { MapboxMap } from "@/components/ui/MapboxMap";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAccentColor } from "@/hooks/useAccentColor";
-import { formatDistance, formatStopCount, formatStops, formatStopsDetailed } from "@/lib/format";
+import { formatDistance, formatStopCount, formatStops, formatStopsDetailed, ParsedAddress } from "@/lib/format";
 import {
   Activity,
   AlertCircle,
@@ -771,13 +771,28 @@ export default function ManageBidsConsole({ isOpen, onClose }: ManageBidsConsole
                 
                 <div>
                   <h4 className="font-semibold mb-2 text-sm">Detailed Route</h4>
-                  <div className="space-y-1">
-                    {formatStopsDetailed(viewDetailsBid.stops).map((stop, index) => (
-                      <div key={index} className="flex items-center gap-2 p-2 rounded bg-muted/20 text-sm">
-                        <div className="w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center text-xs font-medium">
+                  <div className="space-y-2">
+                    {formatStopsDetailed(viewDetailsBid.stops).map((address: ParsedAddress, index) => (
+                      <div key={index} className="flex items-start gap-3 p-3 bg-muted/30 rounded-lg">
+                        <div className="flex items-center justify-center w-6 h-6 bg-primary text-primary-foreground rounded-full text-sm font-bold flex-shrink-0">
                           {index + 1}
                         </div>
-                        <span>{stop}</span>
+                        <div className="flex-1">
+                          <p className="font-medium">{address.fullAddress}</p>
+                          <div className="text-sm text-muted-foreground mt-1 space-y-0.5">
+                            {address.streetNumber && address.streetName && (
+                              <p>Street: {address.streetNumber} {address.streetName}</p>
+                            )}
+                            <p>City: {address.city}</p>
+                            <p>State: {address.state}</p>
+                            {address.zipcode && <p>ZIP: {address.zipcode}</p>}
+                            <p className="text-xs mt-1">
+                              {index === 0 ? 'Pickup Location' : 
+                               index === formatStopsDetailed(viewDetailsBid.stops).length - 1 ? 'Delivery Location' : 
+                               'Stop Location'}
+                            </p>
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>

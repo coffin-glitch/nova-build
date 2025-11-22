@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
-import { Loader2, MapPin } from "lucide-react";
-import { useTheme } from "next-themes";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { formatStopCount } from "@/lib/format";
 import { splitCityState } from "@/lib/geo";
+import { Info, Loader2, MapPin } from "lucide-react";
+import { useTheme } from "next-themes";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 interface Bid {
   bid_number: string;
@@ -13,6 +15,11 @@ interface Bid {
   destination_city?: string;
   destination_state?: string;
   is_expired?: boolean;
+  received_at?: string;
+  expires_at_25?: string;
+  time_left_seconds?: number;
+  distance_miles?: number;
+  bids_count?: number;
   [key: string]: any;
 }
 
@@ -26,11 +33,13 @@ export function LiveMapView({ bids, className = "", onMarkerClick }: LiveMapView
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
+  const popupUpdateIntervalsRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
   const { theme } = useTheme();
   const [isLoading, setIsLoading] = useState(false);
   const [hasMapboxToken, setHasMapboxToken] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [attributionOpen, setAttributionOpen] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -87,19 +96,58 @@ export function LiveMapView({ bids, className = "", onMarkerClick }: LiveMapView
     return null;
   }, [parseStops]);
 
-  // Geocode location - use API for accurate positioning (per Mapbox tutorial)
+  // Geocode location - use API for accurate positioning with fallback
   const geocodeLocation = useCallback(async (location: string): Promise<[number, number] | null> => {
     if (!location || !location.trim()) return null;
     
     try {
       const { geocodeLocation: geocode } = await import('@/lib/mapbox-geocode');
-      // Use API geocoding (useApi: true) for accurate marker positioning
-      // This ensures markers appear at actual city locations, not state centers
+      // Try API geocoding first for accurate marker positioning
       const result = await geocode(location.trim(), true); // true = use API
+      
+      // Handle null result (no results found from API)
+      if (!result) {
+        console.warn(`Geocoding API returned null for ${location}, trying approximations`);
+        // Try with approximations as fallback
+        const fallbackResult = await geocode(location.trim(), false); // false = use approximations
+        if (!fallbackResult || (fallbackResult.lng === -96.9 && fallbackResult.lat === 37.6)) {
+          console.warn(`Geocoding fallback also failed for ${location}`);
+          return null;
+        }
+        return [fallbackResult.lng, fallbackResult.lat];
+      }
+      
+      // Validate result - don't use default coordinates
+      if (result.lng === -96.9 && result.lat === 37.6) {
+        console.warn(`Geocoding returned default coordinates for ${location}, trying fallback`);
+        // Try with approximations as fallback
+        const fallbackResult = await geocode(location.trim(), false); // false = use approximations
+        if (!fallbackResult || (fallbackResult.lng === -96.9 && fallbackResult.lat === 37.6)) {
+          console.warn(`Geocoding fallback also failed for ${location}`);
+          return null;
+        }
+        return [fallbackResult.lng, fallbackResult.lat];
+      }
+      
       return [result.lng, result.lat];
     } catch (error) {
-      console.warn(`Geocoding failed for ${location}:`, error);
-      return null;
+      // If API fails, try approximations as fallback
+      try {
+        console.warn(`Geocoding API error for ${location}, trying approximations:`, error);
+        const { geocodeLocation: geocode } = await import('@/lib/mapbox-geocode');
+        const fallbackResult = await geocode(location.trim(), false); // false = use approximations
+        
+        // Handle null or default coordinates
+        if (!fallbackResult || (fallbackResult.lng === -96.9 && fallbackResult.lat === 37.6)) {
+          console.warn(`Geocoding fallback also failed for ${location}`);
+          return null;
+        }
+        
+        return [fallbackResult.lng, fallbackResult.lat];
+      } catch (fallbackError) {
+        console.warn(`Geocoding completely failed for ${location}:`, fallbackError);
+        return null;
+      }
     }
   }, []);
 
@@ -170,8 +218,8 @@ export function LiveMapView({ bids, className = "", onMarkerClick }: LiveMapView
         // Performance options
         trackResize: true,
         renderWorldCopies: true,
-        // Attribution
-        attributionControl: true,
+        // Attribution - disabled, using custom "i" icon instead
+        attributionControl: false,
         logoPosition: 'bottom-right',
         // Add transform request to handle CORS if needed
         transformRequest: (url: string, resourceType: string) => {
@@ -224,6 +272,10 @@ export function LiveMapView({ bids, className = "", onMarkerClick }: LiveMapView
 
   // Update markers when bids change with clustering support
   const updateMarkers = useCallback(async (bidsData: Bid[], map: any) => {
+    // Clear existing popup update intervals
+    popupUpdateIntervalsRef.current.forEach(interval => clearInterval(interval));
+    popupUpdateIntervalsRef.current.clear();
+    
     // Clear existing markers
     markersRef.current.forEach(marker => marker.remove());
     markersRef.current = [];
@@ -276,9 +328,37 @@ export function LiveMapView({ bids, className = "", onMarkerClick }: LiveMapView
       const activeCount = bids.filter(b => !b.is_expired).length;
       const expiredCount = bids.filter(b => b.is_expired).length;
       
-      // Determine color based on bid status (use active if any active)
-      const hasActive = activeCount > 0;
-      const color = hasActive ? '#10b981' : '#ef4444'; // Green for active, red for expired
+      // Calculate color based on countdown time remaining
+      // For clusters, use the most urgent active bid's time
+      // Color scheme: Green (>5min) > Yellow (1-5min) > Red (<1min or expired)
+      const getMarkerColor = (bidList: Bid[]): string => {
+        const activeBids = bidList.filter(b => !b.is_expired);
+        if (activeBids.length === 0) return '#ef4444'; // Red for expired
+        
+        // Find the most urgent active bid
+        let minTimeLeft = Infinity;
+        for (const bid of activeBids) {
+          const timeLeft = bid.time_left_seconds || (() => {
+            // Calculate from expires_at_25 or received_at
+            if (bid.expires_at_25) {
+              return Math.max(0, Math.floor((new Date(bid.expires_at_25).getTime() - Date.now()) / 1000));
+            }
+            if (bid.received_at) {
+              const expiresAt = new Date(bid.received_at).getTime() + (25 * 60 * 1000);
+              return Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
+            }
+            return Infinity;
+          })();
+          minTimeLeft = Math.min(minTimeLeft, timeLeft);
+        }
+        
+        // Color based on time remaining
+        if (minTimeLeft <= 60) return '#ef4444'; // Red: <1 minute
+        if (minTimeLeft <= 300) return '#f59e0b'; // Yellow/Orange: 1-5 minutes
+        return '#10b981'; // Green: >5 minutes
+      };
+      
+      const color = getMarkerColor(bids);
 
       let popupContent = '';
       
@@ -303,41 +383,125 @@ export function LiveMapView({ bids, className = "", onMarkerClick }: LiveMapView
           return 'N/A';
         };
         
+        // Helper to get countdown time
+        const getCountdown = (bid: Bid): string => {
+          if (bid.is_expired) return 'Expired';
+          const timeLeft = bid.time_left_seconds || (() => {
+            if (bid.expires_at_25) {
+              return Math.max(0, Math.floor((new Date(bid.expires_at_25).getTime() - Date.now()) / 1000));
+            }
+            if (bid.received_at) {
+              const expiresAt = new Date(bid.received_at).getTime() + (25 * 60 * 1000);
+              return Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
+            }
+            return 0;
+          })();
+          const minutes = Math.floor(timeLeft / 60);
+          const seconds = timeLeft % 60;
+          if (minutes > 0) {
+            return `${minutes}m ${seconds}s`;
+          }
+          return `${seconds}s`;
+        };
+        
+        // Helper to get countdown color
+        const getCountdownColor = (bid: Bid): string => {
+          if (bid.is_expired) return 'text-red-600';
+          const timeLeft = bid.time_left_seconds || (() => {
+            if (bid.expires_at_25) {
+              return Math.max(0, Math.floor((new Date(bid.expires_at_25).getTime() - Date.now()) / 1000));
+            }
+            if (bid.received_at) {
+              const expiresAt = new Date(bid.received_at).getTime() + (25 * 60 * 1000);
+              return Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
+            }
+            return 0;
+          })();
+          if (timeLeft <= 60) return 'text-red-600';
+          if (timeLeft <= 300) return 'text-yellow-600';
+          return 'text-green-600';
+        };
+        
         popupContent = `
-          <div class="p-4 min-w-[320px] max-w-[400px]">
-            <div class="mb-3">
-              <p class="font-bold text-base mb-1">${bids.length} Bid${bids.length > 1 ? 's' : ''} in ${clusterLocation || 'Location'}</p>
-              <div class="flex items-center gap-2">
-                <span class="text-xs px-2 py-1 rounded bg-green-100 text-green-700 font-medium">
-                  ${activeCount} Active
-                </span>
-                ${expiredCount > 0 ? `<span class="text-xs px-2 py-1 rounded bg-red-100 text-red-700 font-medium">${expiredCount} Expired</span>` : ''}
+          <div class="min-w-[360px] max-w-[420px] bg-white dark:bg-gray-900 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <!-- Header with gradient -->
+            <div class="bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 p-4 text-white">
+              <div class="flex items-center justify-between mb-2">
+                <h3 class="font-bold text-lg">${bids.length} Bid${bids.length > 1 ? 's' : ''}</h3>
+                <div class="flex items-center gap-2">
+                  <span class="text-xs px-2.5 py-1 rounded-full backdrop-blur-sm bg-green-500/90 text-white font-semibold">
+                    ${activeCount} Active
+                  </span>
+                  ${expiredCount > 0 ? `
+                    <span class="text-xs px-2.5 py-1 rounded-full backdrop-blur-sm bg-red-500/90 text-white font-semibold">
+                      ${expiredCount} Expired
+                    </span>
+                  ` : ''}
+                </div>
               </div>
+              <p class="text-sm text-white/90 flex items-center gap-1.5">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                </svg>
+                ${clusterLocation || 'Location'}
+              </p>
             </div>
-            <div class="space-y-2 max-h-64 overflow-y-auto border-t border-gray-200 pt-2">
+            
+            <!-- Bids List -->
+            <div class="max-h-80 overflow-y-auto p-3 space-y-2">
               ${bids.map((bid, idx) => `
-                <div class="bg-gray-50 rounded-lg p-2.5 border border-gray-200 hover:border-blue-400 hover:bg-blue-50 transition-colors" data-bid-number="${bid.bid_number}">
-                  <div class="flex items-start justify-between mb-1.5">
-                    <div class="flex-1">
-                      <div class="flex items-center gap-2 mb-1">
-                        <span class="font-bold text-sm text-gray-900">#${bid.bid_number}</span>
-                        <span class="text-xs px-1.5 py-0.5 rounded ${
+                <div class="group bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 border border-gray-200 dark:border-gray-700 hover:border-blue-400 dark:hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all duration-200" data-bid-number="${bid.bid_number}">
+                  <div class="flex items-start justify-between gap-3">
+                    <div class="flex-1 min-w-0">
+                      <!-- Bid Number & Status -->
+                      <div class="flex items-center gap-2 mb-1.5">
+                        <span class="font-bold text-sm text-gray-900 dark:text-white">#${bid.bid_number}</span>
+                        <span class="text-xs px-2 py-0.5 rounded-full ${
                           bid.is_expired 
-                            ? 'bg-red-100 text-red-700' 
-                            : 'bg-green-100 text-green-700'
-                        } font-medium">
+                            ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' 
+                            : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                        } font-semibold">
                           ${bid.is_expired ? 'Expired' : 'Active'}
                         </span>
                       </div>
-                      <p class="text-xs text-gray-600 mb-1 line-clamp-1">${getRouteSummary(bid)}</p>
-                      <div class="flex items-center gap-3 text-xs text-gray-500">
-                        <span>${getDistance(bid)}</span>
-                        ${bid.bids_count ? `<span>${bid.bids_count} bid${bid.bids_count > 1 ? 's' : ''}</span>` : ''}
+                      
+                      <!-- Route -->
+                      <p class="text-xs text-gray-700 dark:text-gray-300 mb-2 line-clamp-1 font-medium">${getRouteSummary(bid)}</p>
+                      
+                      <!-- Stats Row -->
+                      <div class="flex items-center gap-3 text-xs text-gray-600 dark:text-gray-400">
+                        <span class="flex items-center gap-1">
+                          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"></path>
+                          </svg>
+                          ${getDistance(bid)}
+                        </span>
+                        ${bid.bids_count ? `
+                          <span class="flex items-center gap-1">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                            </svg>
+                            ${bid.bids_count} bid${bid.bids_count > 1 ? 's' : ''}
+                          </span>
+                        ` : ''}
                       </div>
+                      
+                      <!-- Countdown -->
+                      ${!bid.is_expired ? `
+                        <div class="mt-2 flex items-center gap-1.5">
+                          <svg class="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                          </svg>
+                          <span class="text-xs font-semibold countdown-text ${getCountdownColor(bid)}" data-bid-number="${bid.bid_number}" data-expires-at="${bid.expires_at_25 || (bid.received_at ? new Date(new Date(bid.received_at).getTime() + (25 * 60 * 1000)).toISOString() : '')}">${getCountdown(bid)}</span>
+                        </div>
+                      ` : ''}
                     </div>
+                    
+                    <!-- View Button -->
                     ${onMarkerClick ? `
                       <button 
-                        class="ml-2 p-1.5 rounded-md bg-blue-500 text-white hover:bg-blue-600 transition-colors flex items-center justify-center"
+                        class="flex-shrink-0 p-2 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white transition-all duration-200 shadow-sm hover:shadow-md group-hover:scale-105"
                         onclick="window.handleBidClick && window.handleBidClick('${bid.bid_number}'); event.stopPropagation();"
                         title="View Details"
                       >
@@ -363,50 +527,128 @@ export function LiveMapView({ bids, className = "", onMarkerClick }: LiveMapView
           ? `${Math.round(bid.distance_miles)} mi`
           : 'N/A';
         
+        // Get countdown for single bid (live calculation)
+        const getCountdown = (bid: Bid): string => {
+          if (bid.is_expired) return 'Expired';
+          const timeLeft = (() => {
+            if (bid.expires_at_25) {
+              return Math.max(0, Math.floor((new Date(bid.expires_at_25).getTime() - Date.now()) / 1000));
+            }
+            if (bid.received_at) {
+              const expiresAt = new Date(bid.received_at).getTime() + (25 * 60 * 1000);
+              return Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
+            }
+            return 0;
+          })();
+          const minutes = Math.floor(timeLeft / 60);
+          const seconds = timeLeft % 60;
+          if (minutes > 0) {
+            return `${minutes}m ${seconds}s`;
+          }
+          return `${seconds}s`;
+        };
+        
+        // Get countdown color (live calculation)
+        const getCountdownColor = (bid: Bid): string => {
+          if (bid.is_expired) return 'text-red-600';
+          const timeLeft = (() => {
+            if (bid.expires_at_25) {
+              return Math.max(0, Math.floor((new Date(bid.expires_at_25).getTime() - Date.now()) / 1000));
+            }
+            if (bid.received_at) {
+              const expiresAt = new Date(bid.received_at).getTime() + (25 * 60 * 1000);
+              return Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
+            }
+            return 0;
+          })();
+          if (timeLeft <= 60) return 'text-red-600';
+          if (timeLeft <= 300) return 'text-yellow-600';
+          return 'text-green-600';
+        };
+        
+        const countdownTime = getCountdown(bid);
+        const countdownColor = getCountdownColor(bid);
+        const countdownBgColor = countdownColor === 'text-red-600' ? 'bg-red-50' : countdownColor === 'text-yellow-600' ? 'bg-yellow-50' : 'bg-green-50';
+        
         popupContent = `
-          <div class="p-3 min-w-[280px]">
-            <div class="mb-2">
-              <p class="font-bold text-base mb-1">Bid #${bid.bid_number}</p>
-              <div class="flex items-center gap-2 mb-2">
-                <span class="text-xs px-2 py-1 rounded ${
+          <div class="min-w-[320px] max-w-[380px] bg-white dark:bg-gray-900 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <!-- Header with gradient -->
+            <div class="bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 p-4 text-white">
+              <div class="flex items-center justify-between mb-2">
+                <h3 class="font-bold text-lg">Bid #${bid.bid_number}</h3>
+                <span class="text-xs px-2.5 py-1 rounded-full backdrop-blur-sm ${
                   bid.is_expired 
-                    ? 'bg-red-100 text-red-700' 
-                    : 'bg-green-100 text-green-700'
-                } font-medium">
+                    ? 'bg-red-500/90 text-white' 
+                    : 'bg-green-500/90 text-white'
+                } font-semibold">
                   ${bid.is_expired ? 'Expired' : 'Active'}
                 </span>
               </div>
-            </div>
-            <div class="space-y-1.5 mb-3 text-xs">
-              <div class="flex items-center gap-2">
-                <span class="text-gray-500">Route:</span>
-                <span class="font-medium text-gray-900">${routeSummary}</span>
-              </div>
-              <div class="flex items-center gap-2">
-                <span class="text-gray-500">Distance:</span>
-                <span class="font-medium text-gray-900">${distance}</span>
-              </div>
-              ${bid.bids_count ? `
-                <div class="flex items-center gap-2">
-                  <span class="text-gray-500">Bids:</span>
-                  <span class="font-medium text-gray-900">${bid.bids_count}</span>
-                </div>
-              ` : ''}
-              ${stops.length > 0 ? `
-                <div class="flex items-center gap-2">
-                  <span class="text-gray-500">Stops:</span>
-                  <span class="font-medium text-gray-900">${stops.length}</span>
+              ${!bid.is_expired ? `
+                <div class="flex items-center gap-2 mt-2">
+                  <svg class="w-4 h-4 text-white/90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                  </svg>
+                  <span class="text-sm font-semibold countdown-text text-white" data-bid-number="${bid.bid_number}" data-expires-at="${bid.expires_at_25 || (bid.received_at ? new Date(new Date(bid.received_at).getTime() + (25 * 60 * 1000)).toISOString() : '')}">${countdownTime}</span>
                 </div>
               ` : ''}
             </div>
-            ${onMarkerClick ? `
-              <button 
-                class="text-xs px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors w-full font-medium"
-                onclick="window.handleSingleBidClick && window.handleSingleBidClick('${bid.bid_number}'); event.stopPropagation();"
-              >
-                View Full Details →
-              </button>
-            ` : ''}
+            
+            <!-- Content -->
+            <div class="p-4 space-y-3">
+              <!-- Route Info -->
+              <div class="flex items-start gap-3 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
+                <svg class="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                </svg>
+                <div class="flex-1 min-w-0">
+                  <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Route</p>
+                  <p class="font-semibold text-sm text-gray-900 dark:text-white line-clamp-2">${routeSummary}</p>
+                </div>
+              </div>
+              
+              <!-- Stats Grid -->
+              <div class="grid grid-cols-2 gap-2">
+                <div class="p-2.5 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
+                  <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Distance</p>
+                  <p class="font-bold text-sm text-gray-900 dark:text-white">${distance}</p>
+                </div>
+                ${bid.bids_count ? `
+                  <div class="p-2.5 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Bids</p>
+                    <p class="font-bold text-sm text-gray-900 dark:text-white">${bid.bids_count}</p>
+                  </div>
+                ` : `
+                  ${stops.length > 0 ? `
+                    <div class="p-2.5 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
+                      <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Stops</p>
+                      <p class="font-bold text-sm text-gray-900 dark:text-white">${formatStopCount(stops)}</p>
+                    </div>
+                  ` : '<div></div>'}
+                `}
+              </div>
+              
+              ${stops.length > 0 && bid.bids_count ? `
+                <div class="p-2.5 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
+                  <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Stops</p>
+                  <p class="font-bold text-sm text-gray-900 dark:text-white">${formatStopCount(stops)}</p>
+                </div>
+              ` : ''}
+              
+              <!-- Action Button -->
+              ${onMarkerClick ? `
+                <button 
+                  class="w-full mt-3 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold rounded-lg shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-center gap-2"
+                  onclick="window.handleSingleBidClick && window.handleSingleBidClick('${bid.bid_number}'); event.stopPropagation();"
+                >
+                  <span>View Full Details</span>
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                  </svg>
+                </button>
+              ` : ''}
+            </div>
           </div>
         `;
       }
@@ -489,6 +731,78 @@ export function LiveMapView({ bids, className = "", onMarkerClick }: LiveMapView
       // Marker click event - show popup on click
       marker.on('click', () => {
         marker.togglePopup();
+      });
+
+      // Set up live countdown updates for popup
+      const updatePopupCountdown = () => {
+        const popup = marker.getPopup();
+        if (!popup.isOpen()) return;
+        
+        const popupElement = popup.getElement();
+        if (!popupElement) return;
+        
+        // Find all countdown elements in the popup
+        const countdownElements = popupElement.querySelectorAll('.countdown-text');
+        countdownElements.forEach((el: Element) => {
+          const expiresAtStr = el.getAttribute('data-expires-at');
+          if (!expiresAtStr) return;
+          
+          const expiresAt = new Date(expiresAtStr).getTime();
+          const now = Date.now();
+          const timeLeft = Math.max(0, Math.floor((expiresAt - now) / 1000));
+          
+          const minutes = Math.floor(timeLeft / 60);
+          const seconds = timeLeft % 60;
+          const countdownText = timeLeft === 0 ? 'Expired' : (minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`);
+          
+          // Update text content - the countdown-text span contains the text directly
+          // The SVG icon is a sibling, not a child, so we just update the span's text
+          const htmlEl = el as HTMLElement;
+          
+          // Check if this span is inside a container with an SVG (for styling context)
+          const parent = htmlEl.parentElement;
+          const hasSiblingIcon = parent?.querySelector('svg') !== null;
+          
+          // Update the text content directly
+          // For single bid popup (white text on gradient), keep it simple
+          // For cluster popup (colored text), preserve any existing structure
+          if (htmlEl.classList.contains('text-white')) {
+            // Single bid popup - just update text
+            htmlEl.textContent = countdownText;
+          } else {
+            // Cluster popup - might have SVG sibling, but we update the span directly
+            htmlEl.textContent = countdownText;
+          }
+          
+          // Update color class - remove all color classes first
+          htmlEl.className = htmlEl.className.replace(/text-(red|yellow|green)-600/g, '');
+          let newColorClass = 'text-green-600';
+          if (timeLeft === 0) {
+            newColorClass = 'text-red-600';
+          } else if (timeLeft <= 60) {
+            newColorClass = 'text-red-600';
+          } else if (timeLeft <= 300) {
+            newColorClass = 'text-yellow-600';
+          }
+          htmlEl.classList.add(newColorClass);
+        });
+      };
+      
+      // Set up interval to update countdown every second when popup is open
+      const popupId = `popup-${bids.map(b => b.bid_number).join('-')}-${Date.now()}`;
+      marker.getPopup().on('open', () => {
+        const intervalId = setInterval(updatePopupCountdown, 1000);
+        popupUpdateIntervalsRef.current.set(popupId, intervalId);
+        updatePopupCountdown(); // Update immediately
+      });
+      
+      marker.getPopup().on('close', () => {
+        // Clear interval when popup closes
+        const intervalId = popupUpdateIntervalsRef.current.get(popupId);
+        if (intervalId) {
+          clearInterval(intervalId);
+          popupUpdateIntervalsRef.current.delete(popupId);
+        }
       });
 
       // Add click handlers - popup shows on click, details open on button click
@@ -575,6 +889,10 @@ export function LiveMapView({ bids, className = "", onMarkerClick }: LiveMapView
   // Cleanup
   useEffect(() => {
     return () => {
+      // Clear all popup update intervals
+      popupUpdateIntervalsRef.current.forEach(interval => clearInterval(interval));
+      popupUpdateIntervalsRef.current.clear();
+      
       markersRef.current.forEach(marker => marker.remove());
       markersRef.current = [];
       if (mapRef.current) {
@@ -631,6 +949,38 @@ export function LiveMapView({ bids, className = "", onMarkerClick }: LiveMapView
             <span className="text-sm font-medium">Loading map...</span>
           </div>
         </div>
+      )}
+      
+      {/* Custom Attribution Button - Bottom Right */}
+      {mapRef.current && !isLoading && (
+        <Popover open={attributionOpen} onOpenChange={setAttributionOpen}>
+          <PopoverTrigger asChild>
+            <button
+              className="absolute bottom-2 right-2 z-10 bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm rounded-full p-2 border border-border shadow-lg hover:bg-white dark:hover:bg-slate-800 transition-colors"
+              aria-label="Map attribution"
+            >
+              <Info className="w-4 h-4 text-muted-foreground" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent 
+            side="top" 
+            align="end" 
+            className="w-64 p-3 text-xs"
+          >
+            <div className="space-y-2">
+              <p className="font-semibold text-sm mb-2">Map Attribution</p>
+              <p className="text-muted-foreground">
+                © <a href="https://www.mapbox.com/about/maps/" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Mapbox</a>
+              </p>
+              <p className="text-muted-foreground">
+                © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">OpenStreetMap</a>
+              </p>
+              <p className="text-muted-foreground">
+                <a href="https://www.mapbox.com/map-feedback/" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Improve this map</a>
+              </p>
+            </div>
+          </PopoverContent>
+        </Popover>
       )}
     </div>
   );

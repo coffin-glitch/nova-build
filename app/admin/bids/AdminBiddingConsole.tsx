@@ -13,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useAccentColor } from "@/hooks/useAccentColor";
 import { TelegramBid } from "@/lib/auctions";
-import { formatDistance, formatMoney, formatPickupDateTime, formatStopCount, formatStops, formatStopsDetailed } from "@/lib/format";
+import { formatDistance, formatMoney, formatPickupDateTime, formatStopCount, formatStops, formatStopsDetailed, ParsedAddress } from "@/lib/format";
 import { usStatesSVGPaths } from "@/lib/us-states-svg-paths";
 import { usStatesTextPositions } from "@/lib/us-states-text-positions";
 import { getButtonTextColor as getTextColor } from "@/lib/utils";
@@ -1510,6 +1510,9 @@ function AdvancedAnalytics({
   const [customStartDate, setCustomStartDate] = useState<string>("");
   const [customEndDate, setCustomEndDate] = useState<string>("");
   const [useCustomDateRange, setUseCustomDateRange] = useState(false);
+  // Main timeframe custom date range state
+  const [mainCustomStartDate, setMainCustomStartDate] = useState<string>("");
+  const [mainCustomEndDate, setMainCustomEndDate] = useState<string>("");
   const [selectedState, setSelectedState] = useState<string | null>(null);
   const [selectedBackhaul, setSelectedBackhaul] = useState<{
     state: string;
@@ -1547,10 +1550,25 @@ function AdvancedAnalytics({
     ? `/api/admin/bid-analytics/heat-map?timeframe=${heatMapTimeframe}&startDate=${customStartDate}&endDate=${customEndDate}`
     : `/api/admin/bid-analytics/heat-map?timeframe=${heatMapTimeframe}`;
 
+  // Build main analytics API URL with custom date range support
+  const buildAnalyticsUrl = () => {
+    if (analyticsType === "heat_map") {
+      return heatMapUrl;
+    }
+    const params = new URLSearchParams();
+    if (timeframe === 'custom' && mainCustomStartDate && mainCustomEndDate) {
+      params.set('startDate', mainCustomStartDate);
+      params.set('endDate', mainCustomEndDate);
+    } else {
+      params.set('timeframe', timeframe);
+    }
+    params.set('action', analyticsType);
+    params.set('hourlyTimeframe', hourlyTimeframe);
+    return `/api/admin/bid-analytics?${params.toString()}`;
+  };
+
   const { data: analyticsData, mutate: mutateAnalytics, isLoading: analyticsLoading } = useSWR(
-    analyticsType === "heat_map" 
-      ? heatMapUrl
-      : `/api/admin/bid-analytics?timeframe=${timeframe}&action=${analyticsType}&hourlyTimeframe=${hourlyTimeframe}`,
+    buildAnalyticsUrl(),
     fetcher,
     { refreshInterval: analyticsType === "heat_map" ? 0 : 60000 } // Don't auto-refresh heat map
   );
@@ -1988,6 +2006,18 @@ function AdvancedAnalytics({
     const peakBiddingHours = data.peakBiddingHours || [];
     const topRoutesByCompetition = data.topRoutesByCompetition || [];
     const auctionsPerPage = 10;
+
+    // Debug: Log data availability
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[Auction Insights UI] Data Check:', {
+        hasAuctionInsights: !!data.auctionInsights,
+        auctionInsightsKeys: Object.keys(auctionInsights),
+        topCompetitiveAuctionsCount: topCompetitiveAuctions.length,
+        peakBiddingHoursCount: peakBiddingHours.length,
+        topRoutesCount: topRoutesByCompetition.length,
+        totalAuctions: auctionInsights.total_auctions,
+      });
+    }
 
     const healthScore = auctionInsights.auction_health_score || 0;
     const healthColor = healthScore >= 75 ? 'text-emerald-500' : healthScore >= 50 ? 'text-yellow-500' : 'text-red-500';
@@ -2499,9 +2529,19 @@ function AdvancedAnalytics({
                 <div className="p-2 rounded-lg" style={{ backgroundColor: `${accentColor}20` }}>
                   <Truck className="w-5 h-5" style={{ color: accentColor }} />
                 </div>
-                <div>
+                <div className="flex-1">
                   <p className="text-sm text-muted-foreground">Total Bids</p>
                   <p className="text-2xl font-bold">{heatMapData.summary.totalBids.toLocaleString()}</p>
+                  {heatMapData.summary.bidsWithoutValidState !== undefined && heatMapData.summary.bidsWithoutValidState > 0 && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {heatMapData.summary.bidsWithoutValidState} unmapped
+                    </p>
+                  )}
+                  {heatMapData.summary.totalBidsInTimeframe !== undefined && (
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {heatMapData.summary.totalBidsInTimeframe.toLocaleString()} total in timeframe
+                    </p>
+                  )}
                 </div>
               </div>
             </Glass>
@@ -2945,18 +2985,48 @@ function AdvancedAnalytics({
           {analyticsType !== "heat_map" && (
             <div className="space-y-2">
               <label className="text-sm font-medium">Timeframe</label>
-              <Select value={timeframe} onValueChange={setTimeframe}>
+              <Select value={timeframe} onValueChange={(value) => {
+                setTimeframe(value);
+                if (value !== 'custom') {
+                  setMainCustomStartDate("");
+                  setMainCustomEndDate("");
+                }
+              }}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="today">Today</SelectItem>
                   <SelectItem value="7">Last 7 days</SelectItem>
                   <SelectItem value="30">Last 30 days</SelectItem>
                   <SelectItem value="90">Last 90 days</SelectItem>
                   <SelectItem value="365">Last year</SelectItem>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="custom">Custom Range</SelectItem>
                 </SelectContent>
               </Select>
+              {timeframe === 'custom' && (
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Start Date</label>
+                    <Input
+                      type="date"
+                      value={mainCustomStartDate}
+                      onChange={(e) => setMainCustomStartDate(e.target.value)}
+                      className="h-9"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">End Date</label>
+                    <Input
+                      type="date"
+                      value={mainCustomEndDate}
+                      onChange={(e) => setMainCustomEndDate(e.target.value)}
+                      className="h-9"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           )}
           
@@ -3029,10 +3099,29 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
   const [showCarrierConsole, setShowCarrierConsole] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<any | null>(null);
   const [showGroupConsole, setShowGroupConsole] = useState(false);
+  const [customStartDate, setCustomStartDate] = useState<string>("");
+  const [customEndDate, setCustomEndDate] = useState<string>("");
   
+  // Build API URL with custom date range support
+  const buildLeaderboardUrl = (baseUrl: string) => {
+    const params = new URLSearchParams();
+    if (timeframe === 'custom' && customStartDate && customEndDate) {
+      params.set('startDate', customStartDate);
+      params.set('endDate', customEndDate);
+    } else {
+      params.set('timeframe', timeframe);
+    }
+    params.set('sortBy', sortBy);
+    params.set('limit', limit === 'all' ? '1000' : limit);
+    if (baseUrl.includes('grouped')) {
+      params.set('groupBy', groupBy);
+    }
+    return `${baseUrl}?${params.toString()}`;
+  };
+
   // Fetch grouped data when viewMode is 'grouped'
   const { data: groupedData, mutate: mutateGrouped, isLoading: groupedLoading, isValidating: groupedValidating } = useSWR(
-    viewMode === 'grouped' ? `/api/admin/carrier-leaderboard-grouped?timeframe=${timeframe}&sortBy=${sortBy}&limit=${limit === 'all' ? '1000' : limit}&groupBy=${groupBy}` : null,
+    viewMode === 'grouped' ? buildLeaderboardUrl('/api/admin/carrier-leaderboard-grouped') : null,
     fetcher,
     {
       refreshInterval: 31500,
@@ -3044,14 +3133,14 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
         if (retryCount >= 5) return;
         const status = (error as any)?.status || 0;
         if (status === 404) return;
-        const delay = Math.min(16000, 1000 * Math.pow(2, retryCount));
+        const delay = Math.max(0, Math.min(16000, 1000 * Math.pow(2, retryCount)));
         setTimeout(() => revalidate({ retryCount }), delay);
       }
     }
   );
 
   const { data: leaderboardData, mutate: mutateLeaderboard, isLoading: leaderboardLoading, isValidating: leaderboardValidating } = useSWR(
-    `/api/admin/carrier-leaderboard?timeframe=${timeframe}&sortBy=${sortBy}&limit=${limit === 'all' ? '1000' : limit}`,
+    viewMode === 'individual' ? buildLeaderboardUrl('/api/admin/carrier-leaderboard') : null,
     fetcher,
     {
       refreshInterval: 30000,
@@ -3063,7 +3152,7 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
         if (retryCount >= 5) return;
         const status = (error as any)?.status || 0;
         if (status === 404) return;
-        const delay = Math.min(16000, 1000 * Math.pow(2, retryCount));
+        const delay = Math.max(0, Math.min(16000, 1000 * Math.pow(2, retryCount)));
         setTimeout(() => revalidate({ retryCount }), delay);
       }
     }
@@ -3311,18 +3400,48 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="space-y-2">
             <label className="text-sm font-medium">Timeframe</label>
-            <Select value={timeframe} onValueChange={setTimeframe}>
+            <Select value={timeframe} onValueChange={(value) => {
+              setTimeframe(value);
+              if (value !== 'custom') {
+                setCustomStartDate("");
+                setCustomEndDate("");
+              }
+            }}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="today">Today</SelectItem>
                 <SelectItem value="7">Last 7 days</SelectItem>
                 <SelectItem value="30">Last 30 days</SelectItem>
                 <SelectItem value="90">Last 90 days</SelectItem>
                 <SelectItem value="365">Last year</SelectItem>
+                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="custom">Custom Range</SelectItem>
               </SelectContent>
             </Select>
+            {timeframe === 'custom' && (
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">Start Date</label>
+                  <Input
+                    type="date"
+                    value={customStartDate}
+                    onChange={(e) => setCustomStartDate(e.target.value)}
+                    className="h-9"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">End Date</label>
+                  <Input
+                    type="date"
+                    value={customEndDate}
+                    onChange={(e) => setCustomEndDate(e.target.value)}
+                    className="h-9"
+                  />
+                </div>
+              </div>
+            )}
           </div>
           
           <div className="space-y-2">
@@ -5642,18 +5761,26 @@ export function AdminBiddingConsole() {
                 <div className="space-y-3">
                   <h3 className="text-lg font-semibold">Route Details</h3>
                   <div className="space-y-2">
-                    {formatStopsDetailed(parseStops(selectedBid.stops)).map((stop, index) => (
-                      <div key={index} className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg">
-                        <div className="flex items-center justify-center w-6 h-6 bg-primary text-primary-foreground rounded-full text-sm font-bold">
+                    {formatStopsDetailed(parseStops(selectedBid.stops)).map((address: ParsedAddress, index) => (
+                      <div key={index} className="flex items-start gap-3 p-3 bg-muted/30 rounded-lg">
+                        <div className="flex items-center justify-center w-6 h-6 bg-primary text-primary-foreground rounded-full text-sm font-bold flex-shrink-0">
                           {index + 1}
                         </div>
                         <div className="flex-1">
-                          <p className="font-medium">{stop}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {index === 0 ? 'Pickup Location' :
-                             index === formatStopsDetailed(parseStops(selectedBid.stops)).length - 1 ? 'Delivery Location' :
-                             'Stop Location'}
-                          </p>
+                          <p className="font-medium">{address.fullAddress}</p>
+                          <div className="text-sm text-muted-foreground mt-1 space-y-0.5">
+                            {address.streetNumber && address.streetName && (
+                              <p>Street: {address.streetNumber} {address.streetName}</p>
+                            )}
+                            <p>City: {address.city}</p>
+                            <p>State: {address.state}</p>
+                            {address.zipcode && <p>ZIP: {address.zipcode}</p>}
+                            <p className="text-xs mt-1">
+                              {index === 0 ? 'Pickup Location' :
+                               index === formatStopsDetailed(parseStops(selectedBid.stops)).length - 1 ? 'Delivery Location' :
+                               'Stop Location'}
+                            </p>
+                          </div>
                         </div>
                       </div>
                     ))}

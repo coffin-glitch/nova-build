@@ -1,3 +1,4 @@
+import NotificationAnalytics from "@/components/admin/NotificationAnalytics";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { getAdminStats } from "@/lib/actions";
@@ -6,12 +7,9 @@ import {
   FileText,
   TrendingUp,
   Truck,
-  Users,
-  BarChart3,
-  Bell
+  Users
 } from "lucide-react";
 import Link from "next/link";
-import NotificationAnalytics from "@/components/admin/NotificationAnalytics";
 
 export default async function AdminDashboard() {
   await requireAdmin();
@@ -20,7 +18,7 @@ export default async function AdminDashboard() {
   return (
     <div className="space-y-8">
       <div className="space-y-4">
-        <h1 className="text-3xl font-bold color: hsl(var(--foreground))">Admin Dashboard</h1>
+        <h1 className="text-3xl font-bold text-foreground">Admin Dashboard</h1>
         <p className="text-muted-foreground">
           Monitor system performance and manage operations.
         </p>
@@ -32,7 +30,7 @@ export default async function AdminDashboard() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-muted-foreground">Published Loads</p>
-              <p className="text-2xl font-bold color: hsl(var(--foreground))">{stats.publishedLoads}</p>
+              <p className="text-2xl font-bold text-foreground">{stats.publishedLoads}</p>
             </div>
             <div className="w-12 h-12 bg-primary rounded-lg flex items-center justify-center">
               <Truck className="w-6 h-6 text-primary-foreground" />
@@ -49,7 +47,7 @@ export default async function AdminDashboard() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-muted-foreground">Today's Bids</p>
-              <p className="text-2xl font-bold color: hsl(var(--foreground))">{stats.todayBids}</p>
+              <p className="text-2xl font-bold text-foreground">{stats.todayBids}</p>
             </div>
             <div className="w-12 h-12 bg-primary rounded-lg flex items-center justify-center">
               <TrendingUp className="w-6 h-6 text-primary-foreground" />
@@ -66,7 +64,7 @@ export default async function AdminDashboard() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-muted-foreground">Active Carriers</p>
-              <p className="text-2xl font-bold color: hsl(var(--foreground))">{stats.activeCarriers}</p>
+              <p className="text-2xl font-bold text-foreground">{stats.activeCarriers}</p>
             </div>
             <div className="w-12 h-12 bg-primary rounded-lg flex items-center justify-center">
               <Users className="w-6 h-6 text-primary-foreground" />
@@ -83,14 +81,14 @@ export default async function AdminDashboard() {
 
       {/* Quick Actions */}
       <div className="space-y-6">
-        <h2 className="text-2xl font-bold color: hsl(var(--foreground))">Quick Actions</h2>
+        <h2 className="text-2xl font-bold text-foreground">Quick Actions</h2>
         
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           <Card className="card-premium p-6 hover-lift">
             <div className="space-y-4">
               <div className="flex items-center gap-3">
                 <Truck className="w-5 h-5 text-primary" />
-                <h3 className="text-lg font-semibold color: hsl(var(--foreground))">Manage Loads</h3>
+                <h3 className="text-lg font-semibold text-foreground">Manage Loads</h3>
               </div>
               <p className="text-sm text-muted-foreground">
                 Publish, unpublish, and edit load details and rates.
@@ -105,7 +103,7 @@ export default async function AdminDashboard() {
             <div className="space-y-4">
               <div className="flex items-center gap-3">
                 <FileText className="w-5 h-5 text-primary" />
-                <h3 className="text-lg font-semibold color: hsl(var(--foreground))">Manage Bids</h3>
+                <h3 className="text-lg font-semibold text-foreground">Manage Bids</h3>
               </div>
               <p className="text-sm text-muted-foreground">
                 View Telegram bids and carrier offers in real-time.
@@ -120,7 +118,7 @@ export default async function AdminDashboard() {
             <div className="space-y-4">
               <div className="flex items-center gap-3">
                 <Users className="w-5 h-5 text-primary" />
-                <h3 className="text-lg font-semibold color: hsl(var(--foreground))">Manage Carriers</h3>
+                <h3 className="text-lg font-semibold text-foreground">Manage Carriers</h3>
               </div>
               <p className="text-sm text-muted-foreground">
                 Manage carrier profiles, send messages, and lock/unlock accounts.
@@ -137,7 +135,7 @@ export default async function AdminDashboard() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-bold color: hsl(var(--foreground))">Notification Analytics</h2>
+            <h2 className="text-2xl font-bold text-foreground">Notification Analytics</h2>
             <p className="text-muted-foreground">
               Monitor trigger performance and notification metrics
             </p>

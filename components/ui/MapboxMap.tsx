@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { MapPin, Navigation, Truck, ZoomIn, Loader2 } from "lucide-react";
+import { MapPin, Navigation, Truck, ZoomIn, Loader2, Info, Bug, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useTheme } from "next-themes";
 import MapProvider from "@/lib/mapbox/provider";
 import { useMap } from "@/context/map-context";
@@ -20,13 +21,18 @@ interface MapboxMapProps {
    * Minimum height for the map container
    */
   minHeight?: string;
+  /**
+   * If true, allows admin to see and toggle debug box
+   */
+  isAdmin?: boolean;
 }
 
 export function MapboxMap({ 
   stops, 
   className = "",
   lazy = true,
-  minHeight = "300px"
+  minHeight = "300px",
+  isAdmin = false
 }: MapboxMapProps) {
   const [hasMapboxToken, setHasMapboxToken] = useState(false);
   const [isInteractive, setIsInteractive] = useState(!lazy);
@@ -38,6 +44,9 @@ export function MapboxMap({
   const { theme } = useTheme();
   const [isVisible, setIsVisible] = useState(!lazy);
   const [mounted, setMounted] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [attributionOpen, setAttributionOpen] = useState(false);
+  const [showDebugBox, setShowDebugBox] = useState(false);
 
   // Check if component is mounted (client-side only)
   useEffect(() => {
@@ -74,23 +83,129 @@ export function MapboxMap({
   }, [lazy, mounted]);
 
   // Geocode a stop location (with caching to reduce API calls)
+  // Best Practice: For route maps, use API geocoding for accuracy (approximations aren't good enough)
   const geocodeStop = useCallback(async (stop: string): Promise<[number, number]> => {
     try {
-      // Use the geocoding utility with caching
+      // Use the geocoding utility with API enabled for accurate coordinates
+      // Route maps require precise locations, so we use API geocoding (not approximations)
       const { geocodeLocation } = await import('@/lib/mapbox-geocode');
-      const result = await geocodeLocation(stop, false); // false = use approximations first (cheaper)
+      const { extractCityStateForMatching, parseAddress } = await import('@/lib/format');
+      
+      console.log(`MapboxMap: Geocoding "${stop}" with API enabled...`);
+      let result = await geocodeLocation(stop, true); // true = use API for accurate coordinates
+      
+      // If API fails, try alternative formats before giving up
+      if (!result) {
+        console.warn(`MapboxMap: Primary geocoding failed for "${stop}", trying alternative formats...`);
+        
+        // Strategy 1: Use robust address parsing to extract city/state
+        const parsed = parseAddress(stop);
+        if (parsed.city && parsed.state) {
+          const cityStateFormat = `${parsed.city}, ${parsed.state}`;
+          if (cityStateFormat !== stop) {
+            console.log(`MapboxMap: Trying parsed city/state format: "${cityStateFormat}"`);
+            result = await geocodeLocation(cityStateFormat, true);
+          }
+        }
+        
+        // Strategy 2: Try using extractCityStateForMatching (more robust)
+        if (!result) {
+          const cityState = extractCityStateForMatching(stop);
+          if (cityState) {
+            const cityStateFormat = `${cityState.city}, ${cityState.state}`;
+            console.log(`MapboxMap: Trying extracted city/state: "${cityStateFormat}"`);
+            result = await geocodeLocation(cityStateFormat, true);
+          }
+        }
+        
+        // Strategy 3: Try removing ZIP code (e.g., "OPA LOCKA, FL 33054" -> "OPA LOCKA, FL")
+        if (!result) {
+          const withoutZip = stop.replace(/\s+\d{5}(-\d{4})?$/, '').trim();
+          if (withoutZip !== stop) {
+            console.log(`MapboxMap: Trying without ZIP code: "${withoutZip}"`);
+            result = await geocodeLocation(withoutZip, true);
+          }
+        }
+        
+        // Strategy 4: Try normalizing city name (e.g., "OPA LOCKA" -> "Opa-locka")
+        if (!result && stop.includes(',')) {
+          const parts = stop.split(',').map(s => s.trim());
+          if (parts.length >= 2) {
+            const city = parts[0];
+            const state = parts[1].replace(/\s+\d{5}(-\d{4})?$/, '').trim();
+            
+            // Try with hyphenated city name (common for cities like Opa-locka)
+            const normalizedCity = city.replace(/\s+/g, '-');
+            const normalizedLocation = `${normalizedCity}, ${state}`;
+            if (normalizedLocation !== stop) {
+              console.log(`MapboxMap: Trying normalized city name: "${normalizedLocation}"`);
+              result = await geocodeLocation(normalizedLocation, true);
+            }
+            
+            // Also try with proper case (Title Case)
+            if (!result) {
+              const titleCaseCity = city.split(/\s+/).map(word => 
+                word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+              ).join(' ');
+              const titleCaseLocation = `${titleCaseCity}, ${state}`;
+              if (titleCaseLocation !== stop && titleCaseLocation !== normalizedLocation) {
+                console.log(`MapboxMap: Trying title case: "${titleCaseLocation}"`);
+                result = await geocodeLocation(titleCaseLocation, true);
+              }
+            }
+          }
+        }
+        
+        // Strategy 5: If still no result, try with approximation (state center as last resort)
+        if (!result) {
+          console.warn(`MapboxMap: All geocoding attempts failed for "${stop}", using approximation fallback`);
+          result = await geocodeLocation(stop, false); // false = allow approximations
+        }
+      }
+      
+      // Check if result is null (all attempts failed)
+      if (!result) {
+        console.error(`MapboxMap: All geocoding attempts failed for "${stop}"`);
+        throw new Error(`Geocoding failed: No results found for "${stop}"`);
+      }
+      
+      // Validate that we got real coordinates (not default fallback)
+      if (result.lng === -96.9 && result.lat === 37.6) {
+        console.warn(`MapboxMap: Geocoding returned default coordinates for "${stop}", but continuing with fallback`);
+        // Don't throw - use the default coordinates as a last resort
+      }
+      
+      console.log(`MapboxMap: Successfully geocoded "${stop}" -> [${result.lng}, ${result.lat}]`);
       return [result.lng, result.lat];
     } catch (error) {
-      console.warn(`Geocoding failed for ${stop}:`, error);
-      // Default to US center
-      return [-96.9, 37.6];
+      console.error(`MapboxMap: Geocoding failed for "${stop}":`, error);
+      // Re-throw the error so the calling code can handle it
+      throw error;
     }
   }, []);
 
   // Load interactive map - fixed implementation
   const loadInteractiveMap = useCallback(async () => {
-    if (isInteractive || isLoading || !hasMapboxToken || !mapContainerRef.current || !mounted) return;
+    // Only skip if map already exists, currently loading, or prerequisites not met
+    // Note: Don't check mapContainerRef here - let it be checked later to avoid race conditions
+    if (mapRef.current || isLoading || !hasMapboxToken || !mounted) {
+      console.log('MapboxMap: Skipping loadInteractiveMap', {
+        hasMap: !!mapRef.current,
+        isLoading,
+        hasMapboxToken,
+        hasContainer: !!mapContainerRef.current,
+        mounted
+      });
+      return;
+    }
 
+    // Check if container is ready - if not, return early (retry mechanism will handle it)
+    if (!mapContainerRef.current) {
+      console.log('MapboxMap: Container not ready yet, will retry');
+      return;
+    }
+
+    console.log('MapboxMap: Starting loadInteractiveMap');
     setIsLoading(true);
     
     try {
@@ -129,17 +244,23 @@ export function MapboxMap({
         ? "mapbox://styles/mapbox/dark-v11" 
         : "mapbox://styles/mapbox/light-v11";
 
-      // Ensure container is ready and has dimensions
+      // Double-check container is still ready (it might have been unmounted during async operations)
       if (!mapContainerRef.current) {
-        throw new Error('Map container not ready');
+        console.warn('MapboxMap: Container became unavailable during initialization');
+        setIsLoading(false);
+        return;
       }
 
       // Wait for container to have dimensions (important for dialogs/modals)
       const container = mapContainerRef.current;
       if (container.offsetWidth === 0 || container.offsetHeight === 0) {
         // Retry after a short delay if container has no dimensions
+        console.log('MapboxMap: Container has no dimensions yet, will retry');
+        setIsLoading(false);
         setTimeout(() => {
-          if (container.offsetWidth > 0 && container.offsetHeight > 0) {
+          if (mapContainerRef.current && 
+              mapContainerRef.current.offsetWidth > 0 && 
+              mapContainerRef.current.offsetHeight > 0) {
             loadInteractiveMap();
           }
         }, 100);
@@ -172,8 +293,8 @@ export function MapboxMap({
         // Performance options
         trackResize: true, // Auto-resize on window resize
         renderWorldCopies: true, // Render multiple world copies
-        // Attribution
-        attributionControl: true,
+        // Attribution - disabled, using custom "i" icon instead
+        attributionControl: false,
         logoPosition: 'bottom-right',
         // Add transform request to handle CORS if needed
         transformRequest: (url: string, resourceType: string) => {
@@ -220,14 +341,30 @@ export function MapboxMap({
       });
 
       // Wait for map to load before adding markers and route
+      // Following the guide's best practices: wait for 'load' event, then fetch route
       map.on('load', async () => {
         try {
-          // Resize map to ensure it displays correctly (important for dialogs)
+          // CRITICAL: Resize map multiple times to ensure it displays correctly in dialogs
+          // Per web search: maps in hidden containers need resize() after becoming visible
           map.resize();
+          // Additional resize after a short delay to handle dialog animations
+          setTimeout(() => {
+            if (mapRef.current) {
+              mapRef.current.resize();
+            }
+          }, 200);
 
-          // Clear existing markers
+          // Clear existing markers and route
           markersRef.current.forEach(marker => marker.remove());
           markersRef.current = [];
+
+          // Remove existing route if present
+          if (map.getSource('route')) {
+            if (map.getLayer('route')) {
+              map.removeLayer('route');
+            }
+            map.removeSource('route');
+          }
 
           // Validate stops before processing
           if (!stops || stops.length === 0) {
@@ -243,24 +380,50 @@ export function MapboxMap({
             return;
           }
 
-          // Add markers for all stops
-          const markerPromises = validStops.map(async (stop, i) => {
+          // Step 1: Geocode all stops to get coordinates
+          // Best Practice: Process stops sequentially to preserve order and handle errors gracefully
+          console.log(`MapboxMap: Processing ${validStops.length} stops:`, validStops);
+          
+          const coordinateData: Array<{ lng: number; lat: number; stop: string; index: number; label: string }> = [];
+          
+          // Process stops sequentially (best practice for maintaining order)
+          for (let i = 0; i < validStops.length; i++) {
+            const stop = validStops[i];
             try {
+              console.log(`MapboxMap: Geocoding stop ${i + 1}/${validStops.length}: ${stop}`);
               const [lng, lat] = await geocodeStop(stop);
               
-              // Validate coordinates
-              if (isNaN(lng) || isNaN(lat) || lng === 0 && lat === 0) {
-                console.warn(`Invalid coordinates for stop ${i}: ${stop}`);
-                return null;
+              // Validate coordinates - check for default fallback coordinates
+              if (isNaN(lng) || isNaN(lat) || (lng === 0 && lat === 0)) {
+                console.warn(`MapboxMap: Invalid coordinates for stop ${i + 1}: ${stop}`, { lng, lat });
+                // Continue to next stop instead of failing completely
+                continue;
               }
               
-              const color = i === 0 
-                ? '#3b82f6' // Blue for pickup
-                : i === validStops.length - 1 
-                ? '#ef4444' // Red for delivery
-                : '#10b981'; // Green for stops
+              // Check if we got default fallback coordinates (indicates geocoding failed)
+              if (lng === -96.9 && lat === 37.6) {
+                console.warn(`MapboxMap: Geocoding returned default coordinates for stop ${i + 1}: ${stop} - skipping`);
+                continue;
+              }
+              
+              console.log(`MapboxMap: Successfully geocoded stop ${i + 1}: ${stop} -> [${lng}, ${lat}]`);
+              
+              // Determine marker color and label based on position
+              const isFirst = i === 0;
+              const isLast = i === validStops.length - 1;
+              const color = isFirst 
+                ? '#3b82f6' // Blue for pickup/origin
+                : isLast 
+                ? '#ef4444' // Red for delivery/destination
+                : '#10b981'; // Green for intermediate stops
 
-              // Configure marker with proper options per Mapbox GL JS docs
+              const stopLabel = isFirst 
+                ? 'Pickup' 
+                : isLast 
+                ? 'Delivery' 
+                : `Stop ${i}`;
+
+              // Create marker with proper configuration (best practice: use Mapbox GL JS Marker API)
               const marker = new mapboxgl.Marker({
                 color,
                 anchor: 'bottom', // Position marker bottom at coordinate
@@ -287,76 +450,144 @@ export function MapboxMap({
                   })
                     .setHTML(`
                       <div class="p-2">
-                        <p class="font-semibold">${i === 0 ? 'Pickup' : i === validStops.length - 1 ? 'Delivery' : `Stop ${i}`}</p>
+                        <p class="font-semibold">${stopLabel}</p>
                         <p class="text-sm text-gray-600">${stop}</p>
+                        <p class="text-xs text-gray-500 mt-1">${i + 1} of ${validStops.length}</p>
                       </div>
                     `)
                 )
                 .addTo(map);
 
               markersRef.current.push(marker);
-              return { lng, lat };
+              console.log(`MapboxMap: Added marker ${i + 1} (${stopLabel}) at [${lng}, ${lat}]`);
+              
+              // Store coordinate data with original index to preserve order
+              coordinateData.push({ lng, lat, stop, index: i, label: stopLabel });
             } catch (error) {
-              console.warn(`Failed to geocode stop ${i}: ${stop}`, error);
-              return null;
+              console.error(`MapboxMap: Failed to geocode stop ${i + 1}: ${stop}`, error);
+              // Continue processing other stops even if one fails
             }
-          });
-
-          const coordinates = (await Promise.all(markerPromises)).filter(Boolean) as Array<[number, number]>;
+          }
           
-          if (coordinates.length === 0) {
-            console.warn('No valid coordinates after geocoding');
+          console.log(`MapboxMap: Successfully geocoded ${coordinateData.length} of ${validStops.length} stops`);
+          
+          if (coordinateData.length === 0) {
+            console.error('MapboxMap: No valid coordinates after geocoding all stops');
             return;
           }
 
-          // Add route line if we have multiple stops
+          // Coordinates are already in order (processed sequentially)
+          // Best Practice: Mapbox Directions API expects waypoints in order: origin;waypoint1;waypoint2;...;destination
+          const coordinates = coordinateData.map(c => [c.lng, c.lat] as [number, number]);
+          
+          console.log(`MapboxMap: Using ${coordinates.length} coordinates for route (in order):`, 
+            coordinateData.map(c => `${c.label}: [${c.lng}, ${c.lat}]`));
+
+          // Step 2: Fetch route from Mapbox Directions API
+          // Best Practice: Directions API supports up to 25 waypoints per request
+          // Format: origin;waypoint1;waypoint2;...;destination
           if (coordinates.length > 1) {
-            // Remove existing route source/layer if present
-            if (map.getSource('route')) {
-              if (map.getLayer('route')) {
-                map.removeLayer('route');
-              }
-              map.removeSource('route');
-            }
-
-            // Try to get optimal route using Mapbox Directions API
             try {
-              const { getOptimalRoute, routeToGeoJSON } = await import('@/lib/mapbox-directions');
-              const waypoints = coordinates.map((coord, i) => ({
-                coordinates: coord,
-                name: validStops[i] || `Stop ${i + 1}`
-              }));
-
-              const route = await getOptimalRoute(waypoints, {
-                profile: 'driving',
-                geometries: 'geojson',
-                overview: 'full',
+              // Best Practice: Build coordinates string in order: lng,lat;lng,lat;...
+              // Mapbox respects the order: first is origin, last is destination, middle are waypoints
+              let coordinatesString = coordinates.map(coord => `${coord[0]},${coord[1]}`).join(';');
+              
+              // Check waypoint limit (Mapbox Directions API supports max 25 waypoints)
+              if (coordinates.length > 25) {
+                console.warn(`MapboxMap: Route has ${coordinates.length} waypoints, but Directions API supports max 25. Using first 25.`);
+                // Use first 25 waypoints (origin + 23 waypoints + destination)
+                const limitedCoords = [
+                  coordinates[0], // Origin
+                  ...coordinates.slice(1, 24), // Middle waypoints
+                  coordinates[coordinates.length - 1] // Destination
+                ];
+                coordinatesString = limitedCoords.map(coord => `${coord[0]},${coord[1]}`).join(';');
+              }
+              
+              console.log(`MapboxMap: Fetching route for ${coordinates.length} waypoints (${coordinates.length <= 25 ? 'within limit' : 'limited to 25'})`);
+              
+              // Fetch route directly from Directions API
+              // Best Practice: Use 'overview=full' for detailed route geometry, 'steps=false' for performance
+              const directionsUrl = `https://api.mapbox.com/directions/v5/mapbox/driving/${coordinatesString}?geometries=geojson&overview=full&steps=false&access_token=${mapboxgl.accessToken}`;
+              
+              console.log(`MapboxMap: Requesting route from Directions API...`);
+              const response = await fetch(directionsUrl);
+              
+              console.log(`MapboxMap: Directions API response status: ${response.status}`);
+              
+              if (!response.ok) {
+                const errorText = await response.text().catch(() => 'Unknown error');
+                throw new Error(`Directions API error: ${response.status} ${response.statusText} - ${errorText}`);
+              }
+              
+              const data = await response.json();
+              
+              console.log(`MapboxMap: Directions API response:`, {
+                code: data.code,
+                routesCount: data.routes?.length || 0,
+                message: data.message,
+                waypointCount: data.waypoints?.length || 0
               });
-
-              if (route) {
-                // Use optimized route from Directions API
-                const routeGeoJSON = routeToGeoJSON(route);
-                map.addSource('route', {
-                  type: 'geojson',
-                  data: routeGeoJSON
-                });
-              } else {
-                // Fallback to straight line if Directions API fails
+              
+              if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
+                const route = data.routes[0];
+                const routeGeometry = route.geometry; // GeoJSON LineString
+                
+                console.log(`MapboxMap: Route found with ${routeGeometry.coordinates?.length || 0} coordinate points, distance: ${(route.distance / 1609.34).toFixed(1)} miles`);
+                
+                // Step 3: Add route as GeoJSON source (following guide's pattern)
                 map.addSource('route', {
                   type: 'geojson',
                   data: {
                     type: 'Feature',
                     properties: {},
-                    geometry: {
-                      type: 'LineString',
-                      coordinates: coordinates.map(c => [c[0], c[1]])
-                    }
+                    geometry: routeGeometry
                   }
                 });
+
+                // Step 4: Add route line layer (following guide's pattern)
+                map.addLayer({
+                  id: 'route',
+                  type: 'line',
+                  source: 'route',
+                  layout: {
+                    'line-join': 'round',
+                    'line-cap': 'round'
+                  },
+                  paint: {
+                    'line-color': '#0078FF', // Blue color as per guide
+                    'line-width': 5, // Thicker line for visibility as per guide
+                    'line-opacity': 0.9
+                  }
+                });
+
+                // Step 5: Fit map to show all markers and route
+                // Use marker coordinates to ensure all stops are visible
+                const bounds = new mapboxgl.LngLatBounds();
+                coordinates.forEach(([lng, lat]) => {
+                  bounds.extend([lng, lat]);
+                });
+                
+                // Also extend bounds with route coordinates to ensure full route is visible
+                const routeCoords = routeGeometry.coordinates;
+                if (routeCoords && routeCoords.length > 0) {
+                  routeCoords.forEach((coord: [number, number]) => {
+                    bounds.extend(coord);
+                  });
+                }
+                
+                console.log(`MapboxMap: Fitting bounds to show ${coordinates.length} markers and route`);
+                map.fitBounds(bounds, {
+                  padding: 50,
+                  maxZoom: 12,
+                  duration: 1000
+                });
+              } else {
+                throw new Error('No route found in Directions API response');
               }
             } catch (error) {
-              console.warn('Failed to get optimal route, using straight line:', error);
-              // Fallback to straight line
+              console.warn('Failed to fetch route from Directions API, using straight line:', error);
+              // Fallback to straight line if Directions API fails
               map.addSource('route', {
                 type: 'geojson',
                 data: {
@@ -364,44 +595,36 @@ export function MapboxMap({
                   properties: {},
                   geometry: {
                     type: 'LineString',
-                    coordinates: coordinates.map(c => [c[0], c[1]])
+                    coordinates: coordinates
                   }
                 }
               });
-            }
 
-            map.addLayer({
-              id: 'route',
-              type: 'line',
-              source: 'route',
-              layout: {
-                'line-join': 'round',
-                'line-cap': 'round'
-              },
-              paint: {
-                'line-color': '#3b82f6',
-                'line-width': 4,
-                'line-opacity': 0.75
-              }
-            });
+              map.addLayer({
+                id: 'route',
+                type: 'line',
+                source: 'route',
+                layout: {
+                  'line-join': 'round',
+                  'line-cap': 'round'
+                },
+                paint: {
+                  'line-color': '#0078FF',
+                  'line-width': 5,
+                  'line-opacity': 0.9
+                }
+              });
 
-            // Fit bounds to show all markers and route
-            const bounds = new mapboxgl.LngLatBounds();
-            coordinates.forEach(([lng, lat]) => {
-              bounds.extend([lng, lat]);
-            });
-            
-            // Ensure we have valid bounds before fitting
-            if (bounds.getNorth() !== bounds.getSouth() || bounds.getEast() !== bounds.getWest()) {
+              // Fit bounds to markers
+              const bounds = new mapboxgl.LngLatBounds();
+              coordinates.forEach(([lng, lat]) => {
+                bounds.extend([lng, lat]);
+              });
               map.fitBounds(bounds, {
                 padding: 50,
                 maxZoom: 12,
-                duration: 1000, // Smooth animation
+                duration: 1000
               });
-            } else {
-              // Single point - just center on it
-              map.setCenter(coordinates[0]);
-              map.setZoom(10);
             }
           } else if (coordinates.length === 1) {
             // Single marker - center on it
@@ -409,72 +632,192 @@ export function MapboxMap({
             map.setZoom(10);
           }
 
-          // Ensure map is visible
+          // Ensure map is visible and properly sized
           map.resize();
+          
+          // Final summary
+          console.log(`MapboxMap: Map setup complete - ${markersRef.current.length} markers, ${coordinates.length} waypoints`);
         } catch (error) {
-          console.error('Error adding markers:', error);
+          console.error('MapboxMap: Error adding markers and route:', error);
         }
       });
 
+      // Store stops key to detect changes
+      (map as any)._lastStopsKey = stops.join('|');
+      
       mapRef.current = map;
       setMapInstance(map);
       setIsInteractive(true);
+      console.log('MapboxMap: Map initialized successfully', {
+        containerSize: `${container.offsetWidth}x${container.offsetHeight}`,
+        stopsCount: stops.length
+      });
     } catch (error) {
-      console.error('Failed to load Mapbox map:', error);
+      console.error('MapboxMap: Failed to load map:', error);
+      setError(error instanceof Error ? error.message : 'Failed to load map');
     } finally {
       setIsLoading(false);
     }
-  }, [isInteractive, isLoading, hasMapboxToken, stops, theme, geocodeStop, mounted]);
+  }, [isLoading, hasMapboxToken, stops, theme, geocodeStop, mounted]);
 
   // Auto-load map when isInteractive becomes true and component is ready
-  // Add a small delay for dialogs to ensure container has dimensions
+  // Following guide: ensure map initializes only in browser, after mount, with proper dimensions
+  // Critical for dialogs: wait for container to have dimensions AND be visible before initializing
   useEffect(() => {
-    if (isInteractive && !isLoading && hasMapboxToken && mounted && mapContainerRef.current && !mapRef.current) {
-      // For dialogs/modals, we need to wait for them to be fully rendered
-      // Use a more robust check with retry logic
+    // Only run on client side (browser)
+    if (typeof window === 'undefined') return;
+    
+    if (isInteractive && !isLoading && hasMapboxToken && mounted && mapContainerRef.current) {
+      // For dialogs/modals, we need to wait for them to be fully rendered AND visible
+      // Guide emphasizes: container must have defined height/width AND be visible
       const tryLoadMap = (attempts = 0) => {
         const container = mapContainerRef.current;
         if (!container) return;
         
-        // Check if container has valid dimensions
-        if (container.offsetWidth > 0 && container.offsetHeight > 0) {
-          loadInteractiveMap();
-        } else if (attempts < 10) {
-          // Retry up to 10 times (1 second total wait time)
+        // Check if container is visible (not hidden by display:none or visibility:hidden)
+        const computedStyle = window.getComputedStyle(container);
+        const isVisible = computedStyle.display !== 'none' && 
+                         computedStyle.visibility !== 'hidden' &&
+                         computedStyle.opacity !== '0';
+        
+        // Check if container has valid dimensions (critical check)
+        const hasDimensions = (container.offsetWidth > 0 || container.clientWidth > 0) && 
+                             (container.offsetHeight > 0 || container.clientHeight > 0);
+        
+        if (hasDimensions && isVisible) {
+          console.log('MapboxMap: Container ready, initializing map', {
+            width: container.offsetWidth,
+            height: container.offsetHeight,
+            display: computedStyle.display,
+            visibility: computedStyle.visibility,
+            attempts
+          });
+          
+          // If map already exists, check if we need to reload for new stops
+          if (mapRef.current) {
+            // Only reload if stops actually changed (avoid unnecessary reloads)
+            const currentStopsKey = stops.join('|');
+            const lastStopsKey = (mapRef.current as any)._lastStopsKey;
+            
+            if (currentStopsKey !== lastStopsKey && stops.length > 0) {
+              // Stops changed - reload map
+              markersRef.current.forEach(marker => marker.remove());
+              markersRef.current = [];
+              mapRef.current.remove();
+              mapRef.current = null;
+              setIsInteractive(false);
+              
+              // Small delay before reloading
+              setTimeout(() => {
+                setIsInteractive(true);
+              }, 150);
+              return;
+            }
+            // Map exists and stops haven't changed - ensure it's visible and resized
+            // CRITICAL: Call resize() when dialog opens (per web search findings)
+            setTimeout(() => {
+              if (mapRef.current) {
+                mapRef.current.resize();
+              }
+            }, 100);
+            return;
+          }
+          
+          // Load new map if it doesn't exist
+          if (!mapRef.current) {
+            loadInteractiveMap();
+          }
+        } else if (attempts < 50) {
+          // Retry up to 50 times (5 seconds total) for dialogs - more patience
+          // This handles slow dialog animations
           setTimeout(() => tryLoadMap(attempts + 1), 100);
         } else {
-          console.warn('Map container still has no dimensions after retries');
+          console.error('Map container still not ready after 50 retries. Container:', {
+            width: container.offsetWidth,
+            height: container.offsetHeight,
+            clientWidth: container.clientWidth,
+            clientHeight: container.clientHeight,
+            display: computedStyle.display,
+            visibility: computedStyle.visibility,
+            opacity: computedStyle.opacity,
+            computed: computedStyle
+          });
         }
       };
       
-      // Initial delay for dialog animation
+      // Initial delay for dialog animation (longer for route maps in dialogs)
+      // Guide: ensure container is fully rendered AND visible before initializing
       const timer = setTimeout(() => {
         tryLoadMap();
-      }, 200);
+      }, lazy ? 200 : 500); // Even longer delay when not lazy (in dialogs)
       
       return () => clearTimeout(timer);
     }
-  }, [isInteractive, hasMapboxToken, mounted, loadInteractiveMap, isLoading, stops]);
+  }, [isInteractive, hasMapboxToken, mounted, loadInteractiveMap, isLoading, stops, lazy]);
 
   // Resize map when container dimensions change (important for dialogs/modals)
+  // CRITICAL: This handles dialog opening/closing and container size changes
   useEffect(() => {
     if (!mapRef.current || !mapContainerRef.current) return;
 
-    const resizeObserver = new ResizeObserver(() => {
-      if (mapRef.current) {
-        // Small delay to ensure container has finished resizing
-        setTimeout(() => {
-          mapRef.current?.resize();
-        }, 100);
+    const resizeObserver = new ResizeObserver((entries) => {
+      // When container size changes (e.g., dialog opens), resize the map
+      for (const entry of entries) {
+        if (entry.target === mapContainerRef.current && mapRef.current) {
+          // Use requestAnimationFrame to ensure resize happens after layout
+          requestAnimationFrame(() => {
+            if (mapRef.current) {
+              mapRef.current.resize();
+            }
+          });
+        }
       }
     });
 
     resizeObserver.observe(mapContainerRef.current);
 
+    // Also listen for dialog open events (Radix UI dialog)
+    const handleDialogOpen = () => {
+      if (mapRef.current) {
+        // Multiple resize calls to ensure map renders in dialog
+        setTimeout(() => {
+          if (mapRef.current) {
+            mapRef.current.resize();
+          }
+        }, 100);
+        setTimeout(() => {
+          if (mapRef.current) {
+            mapRef.current.resize();
+          }
+        }, 300);
+      }
+    };
+
+    // Listen for dialog state changes
+    const dialogContent = mapContainerRef.current.closest('[role="dialog"]');
+    if (dialogContent) {
+      const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+          if (mutation.type === 'attributes' && mutation.attributeName === 'data-state') {
+            const state = (mutation.target as HTMLElement).getAttribute('data-state');
+            if (state === 'open') {
+              handleDialogOpen();
+            }
+          }
+        });
+      });
+      observer.observe(dialogContent, { attributes: true, attributeFilter: ['data-state'] });
+      
+      return () => {
+        resizeObserver.disconnect();
+        observer.disconnect();
+      };
+    }
+
     return () => {
       resizeObserver.disconnect();
     };
-  }, [mapRef.current]);
+  }, [mapRef.current, mapContainerRef.current]);
 
   // Cleanup map on unmount
   useEffect(() => {
@@ -655,21 +998,104 @@ export function MapboxMap({
 
   // Interactive map container
   return (
-    <div className={`relative ${className}`} style={{ minHeight }}>
+    <div className={`relative ${className}`} style={{ minHeight, width: '100%', height: '100%' }}>
       <div 
         ref={mapContainerRef}
         className="w-full h-full rounded-lg overflow-hidden border border-border/40"
-        style={{ width: '100%', height: '100%', minHeight }}
+        style={{ 
+          width: '100%', 
+          height: '100%', 
+          minHeight,
+          position: 'relative',
+          backgroundColor: '#f3f4f6' // Light gray background to show container exists
+        }}
       />
+      
+      {/* Loading indicator */}
+      {isInteractive && isLoading && (
+        <div className="absolute inset-0 bg-black/10 flex items-center justify-center rounded-lg z-10">
+          <div className="bg-white dark:bg-slate-800 rounded-lg p-4 flex items-center gap-3 shadow-lg">
+            <Loader2 className="w-5 h-5 animate-spin text-primary" />
+            <span className="text-sm font-medium">Loading map...</span>
+          </div>
+        </div>
+      )}
+      
+      {/* Debug info - Admin only, toggleable */}
+      {isAdmin && mapContainerRef.current && (
+        <>
+          {/* Toggle button for debug box */}
+          <button
+            onClick={() => setShowDebugBox(!showDebugBox)}
+            className="absolute top-2 left-2 bg-yellow-500 hover:bg-yellow-600 dark:bg-yellow-600 dark:hover:bg-yellow-700 text-white rounded-full p-2 z-20 shadow-lg transition-colors"
+            aria-label="Toggle debug info"
+            title="Toggle debug info"
+          >
+            {showDebugBox ? (
+              <X className="w-4 h-4" />
+            ) : (
+              <Bug className="w-4 h-4" />
+            )}
+          </button>
+          
+          {/* Debug box - only show if toggled on */}
+          {showDebugBox && (
+            <div className="absolute top-2 left-12 bg-yellow-100 dark:bg-yellow-900/30 text-xs p-3 rounded z-20 shadow-lg border border-yellow-300 dark:border-yellow-700 pointer-events-auto">
+              <div className="font-semibold mb-2 text-yellow-800 dark:text-yellow-200">Debug Info</div>
+              <div className="space-y-1 text-yellow-900 dark:text-yellow-100">
+                <div>Interactive: {isInteractive ? 'Yes' : 'No'}</div>
+                <div>Loading: {isLoading ? 'Yes' : 'No'}</div>
+                <div>Has Map: {mapRef.current ? 'Yes' : 'No'}</div>
+                <div>Has Token: {hasMapboxToken ? 'Yes' : 'No'}</div>
+                <div>Mounted: {mounted ? 'Yes' : 'No'}</div>
+                <div>Stops: {stops.length}</div>
+                <div>Size: {mapContainerRef.current.offsetWidth}x{mapContainerRef.current.offsetHeight}</div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
       
       {/* Map controls overlay */}
       {isInteractive && mapInstance && stops.length > 0 && (
-        <div className="absolute top-4 right-4 bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm rounded-lg p-2 border border-border shadow-lg">
+        <div className="absolute top-4 right-4 bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm rounded-lg p-2 border border-border shadow-lg z-10">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Truck className="w-4 h-4" />
             <span>{stops.length} {stops.length === 1 ? 'location' : 'locations'}</span>
           </div>
         </div>
+      )}
+      
+      {/* Custom Attribution Button - Bottom Right */}
+      {isInteractive && mapInstance && (
+        <Popover open={attributionOpen} onOpenChange={setAttributionOpen}>
+          <PopoverTrigger asChild>
+            <button
+              className="absolute bottom-2 right-2 z-10 bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm rounded-full p-2 border border-border shadow-lg hover:bg-white dark:hover:bg-slate-800 transition-colors"
+              aria-label="Map attribution"
+            >
+              <Info className="w-4 h-4 text-muted-foreground" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent 
+            side="top" 
+            align="end" 
+            className="w-64 p-3 text-xs"
+          >
+            <div className="space-y-2">
+              <p className="font-semibold text-sm mb-2">Map Attribution</p>
+              <p className="text-muted-foreground">
+                © <a href="https://www.mapbox.com/about/maps/" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Mapbox</a>
+              </p>
+              <p className="text-muted-foreground">
+                © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">OpenStreetMap</a>
+              </p>
+              <p className="text-muted-foreground">
+                <a href="https://www.mapbox.com/map-feedback/" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Improve this map</a>
+              </p>
+            </div>
+          </PopoverContent>
+        </Popover>
       )}
     </div>
   );

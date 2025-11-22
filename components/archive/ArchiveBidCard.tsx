@@ -3,7 +3,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Glass } from "@/components/ui/glass";
-import { formatMoney, formatPickupDateTime } from "@/lib/format";
+import { formatMoney, formatPickupDateTime, formatStops, formatAddressForCard } from "@/lib/format";
 import { formatArchiveDate, toLocalTime } from "@/lib/timezone";
 import { getButtonTextColor as getTextColor } from "@/lib/utils";
 import {
@@ -75,8 +75,11 @@ export function ArchiveBidCard({
   };
 
   const stops = parseStops(bid.stops);
-  const origin = stops[0] || 'Unknown';
-  const dest = stops[stops.length - 1] || 'Unknown';
+  // Use formatStops to get properly formatted route display (City, State ZIP → City, State ZIP)
+  const formattedRoute = formatStops(stops);
+  // For individual origin/dest display, use formatAddressForCard
+  const origin = stops[0] ? formatAddressForCard(stops[0]) : 'Unknown';
+  const dest = stops[stops.length - 1] ? formatAddressForCard(stops[stops.length - 1]) : 'Unknown';
 
   return (
     <Glass className="p-6 space-y-4 hover:shadow-xl transition-all duration-300 hover:-translate-y-1 group cursor-pointer border-2 hover:border-primary/30">
@@ -111,8 +114,8 @@ export function ArchiveBidCard({
       <div className="space-y-2">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <MapPin className="h-4 w-4" />
-          <span>{origin} → {dest}</span>
-          <span className="text-xs">({bid.distance_miles} mi)</span>
+          <span className="truncate">{formattedRoute}</span>
+          <span className="text-xs flex-shrink-0">({bid.distance_miles} mi)</span>
         </div>
         
         <div className="flex items-center gap-2 text-sm">
@@ -125,7 +128,7 @@ export function ArchiveBidCard({
       <div className="grid grid-cols-2 gap-4 text-sm">
         <div>
           <span className="text-muted-foreground">Route:</span>
-          <div className="font-medium">{origin} → {dest}</div>
+          <div className="font-medium truncate">{formattedRoute}</div>
         </div>
         <div>
           <span className="text-muted-foreground">Stops:</span>

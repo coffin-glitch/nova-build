@@ -36,11 +36,14 @@ export function AdminSettingsClient() {
   const [desktopNotificationsEnabled, setDesktopNotificationsEnabled] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState<string | null>(null);
   const [isMounted, setIsMounted] = useState(false);
+  const [environment, setEnvironment] = useState<string>('Production');
   
   // Load from localStorage after component mounts (client-side only)
   useEffect(() => {
     setIsMounted(true);
+    // Set environment based on hostname (client-side only)
     if (typeof window !== 'undefined') {
+      setEnvironment(window.location.hostname === 'localhost' ? 'Development' : 'Production');
       const storedSound = localStorage.getItem('notification_sound_enabled');
       if (storedSound !== null) {
         setSoundEnabled(storedSound === 'true');
@@ -420,7 +423,7 @@ export function AdminSettingsClient() {
                 <Label className="text-sm font-semibold">Environment</Label>
               </div>
               <p className="text-sm text-muted-foreground">
-                {typeof window !== 'undefined' && window.location.hostname === 'localhost' ? 'Development' : 'Production'}
+                {environment}
               </p>
             </div>
 

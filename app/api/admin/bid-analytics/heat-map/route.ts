@@ -1,6 +1,7 @@
 import { requireApiAdmin } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
+import { parseAddress, extractCityStateForMatching } from "@/lib/format";
 
 /**
  * API endpoint for heat map analytics
@@ -122,55 +123,36 @@ export async function GET(request: NextRequest) {
         )
     `;
 
-    // Helper function to extract state from stop string
-    // Handles formats like: "City, ST", "City,ST", "City ST", "CityST", etc.
+    // Helper function to extract state from stop string using improved address parsing
     const extractState = (stop: string): string | null => {
       if (!stop) return null;
-      const trimmed = stop.trim().toUpperCase();
-      
-      // List of valid US state abbreviations
-      const validStates = new Set([
-        'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
-        'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
-        'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
-        'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
-        'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY'
-      ]);
-      
-      // Try pattern: ", ST" or ",ST" at the end (most common: "City, ST")
-      let match = trimmed.match(/,\s*([A-Z]{2})$/);
-      if (match && validStates.has(match[1])) return match[1];
-      
-      // Try pattern: " ST" (space before state) at the end (e.g., "City ST")
-      match = trimmed.match(/\s+([A-Z]{2})$/);
-      if (match && validStates.has(match[1])) return match[1];
-      
-      // Try pattern: ", ST," (state in middle with commas)
-      match = trimmed.match(/,\s*([A-Z]{2})\s*,/);
-      if (match && validStates.has(match[1])) return match[1];
-      
-      // Try to find any 2-letter uppercase code at the end (last resort)
-      // This handles cases like "Gastonia NC" without comma
-      match = trimmed.match(/([A-Z]{2})$/);
-      if (match && validStates.has(match[1])) return match[1];
-      
-      // Try to find state anywhere in the string (very last resort)
-      // Look for 2-letter codes that are valid states
-      for (const state of validStates) {
-        const stateRegex = new RegExp(`\\b${state}\\b`);
-        if (stateRegex.test(trimmed)) {
-          return state;
-        }
+      try {
+        // Use the improved parseAddress function which handles full addresses
+        const parsed = parseAddress(stop);
+        return parsed.state || null;
+      } catch (error) {
+        console.warn('[HeatMap] Error parsing address:', stop, error);
+        return null;
       }
-      
-      return null;
     };
 
-    // Helper function to extract city from stop string
+    // Helper function to extract city from stop string using improved address parsing
     const extractCity = (stop: string): string | null => {
       if (!stop) return null;
-      const parts = stop.split(',').map(p => p.trim());
-      return parts[0] || null;
+      try {
+        // Use extractCityStateForMatching which includes city name cleaning
+        const cityState = extractCityStateForMatching(stop);
+        return cityState?.city || null;
+      } catch (error) {
+        console.warn('[HeatMap] Error extracting city:', stop, error);
+        // Fallback to parseAddress
+        try {
+          const parsed = parseAddress(stop);
+          return parsed.city || null;
+        } catch {
+          return null;
+        }
+      }
     };
 
     // Track all state pairs for backhaul matching (origin -> destination)
@@ -203,8 +185,15 @@ export async function GET(request: NextRequest) {
       destinationStates: Set<string>;
     }> = {};
 
+    // Track processing statistics
+    let bidsProcessed = 0;
+    let bidsSkippedNoStops = 0;
+    let bidsSkippedNoState = 0;
+    let bidsWithValidState = 0;
+
     // Process each bid
     for (const bid of bids) {
+      bidsProcessed++;
       let stops: string[] = [];
       
       // Parse stops field
@@ -221,7 +210,10 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      if (stops.length === 0) continue;
+      if (stops.length === 0) {
+        bidsSkippedNoStops++;
+        continue;
+      }
 
       // Extract origin and destination states
       const originStop = stops[0];
@@ -229,7 +221,12 @@ export async function GET(request: NextRequest) {
       const originState = extractState(originStop);
       const destinationState = extractState(destinationStop);
 
-      if (!originState) continue;
+      if (!originState) {
+        bidsSkippedNoState++;
+        continue;
+      }
+
+      bidsWithValidState++;
 
       // Track state pairs for backhaul matching (store all pairs regardless of stateData initialization)
       // IMPORTANT: We need to track pairs even if destination state extraction fails,
@@ -729,20 +726,49 @@ export async function GET(request: NextRequest) {
     }).sort((a, b) => b.bidCount - a.bidCount);
 
     // Calculate overall statistics
-    // Use actual total bids count from database, not just state counts
-    const totalBids = Number(actualTotalBids);
+    // Count bids that were actually processed and had valid state extraction
+    const totalBidsWithValidState = stateStats.reduce((sum, s) => sum + s.bidCount, 0);
     const totalRevenue = stateStats.reduce((sum, s) => sum + s.totalRevenue, 0);
     const statesWithBids = stateStats.length;
+
+    // Verification: Ensure bidsWithValidState matches the sum of state bidCounts
+    if (bidsWithValidState !== totalBidsWithValidState) {
+      console.error('[HeatMap] MISMATCH DETECTED!');
+      console.error(`  bidsWithValidState (from loop): ${bidsWithValidState}`);
+      console.error(`  totalBidsWithValidState (sum of states): ${totalBidsWithValidState}`);
+      console.error(`  Difference: ${Math.abs(bidsWithValidState - totalBidsWithValidState)}`);
+    }
+
+    // Log processing statistics for debugging
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[HeatMap] Processing Statistics:');
+      console.log(`  Total bids in timeframe: ${actualTotalBids}`);
+      console.log(`  Bids processed: ${bidsProcessed}`);
+      console.log(`  Bids skipped (no stops): ${bidsSkippedNoStops}`);
+      console.log(`  Bids skipped (no state): ${bidsSkippedNoState}`);
+      console.log(`  Bids with valid state (from loop): ${bidsWithValidState}`);
+      console.log(`  Sum of state bidCounts: ${totalBidsWithValidState}`);
+      console.log(`  Verification: ${bidsWithValidState === totalBidsWithValidState ? '✓ MATCH' : '✗ MISMATCH'}`);
+      console.log(`  Unmapped bids: ${actualTotalBids - totalBidsWithValidState}`);
+      
+      // Log state breakdown for verification
+      if (stateStats.length > 0) {
+        const topStates = stateStats.slice(0, 10).map(s => `${s.state}: ${s.bidCount}`).join(', ');
+        console.log(`  Top 10 states: ${topStates}`);
+      }
+    }
 
     return NextResponse.json({
       success: true,
       data: {
         stateStats,
         summary: {
-          totalBids,
+          totalBids: totalBidsWithValidState, // Use count of bids with valid state extraction
+          totalBidsInTimeframe: Number(actualTotalBids), // Total bids in timeframe (including those without valid state)
+          bidsWithoutValidState: Number(actualTotalBids) - totalBidsWithValidState, // Bids that couldn't be mapped
           totalRevenue,
           statesWithBids,
-          averageBidsPerState: statesWithBids > 0 ? totalBids / statesWithBids : 0,
+          averageBidsPerState: statesWithBids > 0 ? totalBidsWithValidState / statesWithBids : 0,
           timeframe: startDate && endDate 
             ? `${new Date(startDate).toLocaleDateString()} - ${new Date(endDate).toLocaleDateString()}`
             : days > 0 ? `${days} days` : 'all time',

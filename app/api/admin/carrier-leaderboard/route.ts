@@ -25,6 +25,8 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const timeframe = searchParams.get("timeframe") || "30";
+    const startDateParam = searchParams.get("startDate");
+    const endDateParam = searchParams.get("endDate");
     const limitParam = searchParams.get("limit") || "50";
     const limit = limitParam === "all" ? 1000 : Math.min(parseInt(limitParam), 1000);
     const sortBy = searchParams.get("sortBy") || "total_bids";
@@ -32,14 +34,31 @@ export async function GET(request: NextRequest) {
     const minBids = parseInt(searchParams.get("minBids") || "0");
     const carrierId = searchParams.get("carrierId") || null; // Support filtering by specific carrier
 
-    // Calculate date range - if timeframe is "all", don't filter by date
+    // Calculate date range - support custom date range, "today", "all", or numeric days
     let startDate: Date | null = null;
+    let endDate: Date | null = null;
     let daysAgo: number = 0;
-    if (timeframe !== "all") {
+    
+    if (startDateParam && endDateParam) {
+      // Custom date range
+      startDate = new Date(startDateParam);
+      startDate.setHours(0, 0, 0, 0);
+      endDate = new Date(endDateParam);
+      endDate.setHours(23, 59, 59, 999);
+    } else if (timeframe === "today") {
+      // Today only
+      startDate = new Date();
+      startDate.setHours(0, 0, 0, 0);
+      endDate = new Date();
+      endDate.setHours(23, 59, 59, 999);
+    } else if (timeframe !== "all") {
+      // Numeric days
       daysAgo = parseInt(timeframe);
       startDate = new Date();
       startDate.setDate(startDate.getDate() - daysAgo);
       startDate.setHours(0, 0, 0, 0); // Normalize to start of day
+      endDate = new Date();
+      endDate.setHours(23, 59, 59, 999);
     }
     console.log('[Carrier Leaderboard] Query params:', { timeframe, limit, startDate: startDate?.toISOString() || 'all time' });
     console.log('[Carrier Leaderboard] Starting query execution...');
@@ -91,12 +110,14 @@ export async function GET(request: NextRequest) {
         GROUP BY dp.carrier_user_id
       ),
       
-      -- Bid statistics (ALL bids, with timeframe tracking)
+      -- Bid statistics: total_bids is all-time, bids_in_timeframe is filtered
       bid_stats AS (
         SELECT 
           cb.supabase_user_id,
           COUNT(cb.id) as total_bids,
-          ${startDate ? sql`COUNT(CASE WHEN cb.created_at >= ${startDate} THEN 1 END)` : sql`COUNT(cb.id)`} as bids_in_timeframe,
+          COUNT(CASE 
+            ${startDate && endDate ? sql`WHEN cb.created_at >= ${startDate} AND cb.created_at <= ${endDate} THEN 1` : startDate ? sql`WHEN cb.created_at >= ${startDate} THEN 1` : sql`WHEN 1=1 THEN 1`}
+          END) as bids_in_timeframe,
           COUNT(DISTINCT cb.bid_number) as unique_auctions_participated,
           COALESCE(AVG(cb.amount_cents), 0)::INTEGER as avg_bid_amount_cents,
           COALESCE(MIN(cb.amount_cents), 0) as min_bid_amount_cents,
@@ -104,31 +125,32 @@ export async function GET(request: NextRequest) {
           COALESCE(SUM(cb.amount_cents), 0) as total_bid_value_cents,
           MIN(cb.created_at) as first_bid_at,
           MAX(cb.created_at) as last_bid_at,
-          -- Response time: average time between auction posted and bid placed (only for recent bids)
-          ${startDate ? sql`COALESCE(AVG(CASE WHEN cb.created_at >= ${startDate} THEN EXTRACT(EPOCH FROM (cb.created_at - tb.received_at)) / 60 END), 0)::INTEGER` : sql`COALESCE(AVG(EXTRACT(EPOCH FROM (cb.created_at - tb.received_at)) / 60), 0)::INTEGER`} as avg_response_time_minutes
+          -- Response time: average time between auction posted and bid placed (timeframe-filtered)
+          COALESCE(AVG(CASE 
+            ${startDate && endDate ? sql`WHEN cb.created_at >= ${startDate} AND cb.created_at <= ${endDate} THEN EXTRACT(EPOCH FROM (cb.created_at - tb.received_at)) / 60` : startDate ? sql`WHEN cb.created_at >= ${startDate} THEN EXTRACT(EPOCH FROM (cb.created_at - tb.received_at)) / 60` : sql`WHEN 1=1 THEN EXTRACT(EPOCH FROM (cb.created_at - tb.received_at)) / 60`}
+          END), 0)::INTEGER as avg_response_time_minutes
         FROM carrier_bids cb
         LEFT JOIN telegram_bids tb ON cb.bid_number = tb.bid_number
-        -- Use LEFT JOIN to include carriers even if some bids don't match telegram_bids
-        -- Remove timeframe filter - show ALL carriers with any bids
         GROUP BY cb.supabase_user_id
       ),
       
-      -- Win statistics using AUTHORITATIVE auction_awards table (ALL wins, track timeframe separately)
+      -- Win statistics using AUTHORITATIVE auction_awards table: total_wins is all-time, wins_in_timeframe is filtered
       win_stats AS (
         SELECT 
           aa.supabase_winner_user_id as supabase_user_id,
           COUNT(*) as total_wins,
-          ${startDate ? sql`COUNT(CASE WHEN aa.awarded_at >= ${startDate} THEN 1 END)` : sql`COUNT(*)`} as wins_in_timeframe,
+          COUNT(CASE 
+            ${startDate && endDate ? sql`WHEN aa.awarded_at >= ${startDate} AND aa.awarded_at <= ${endDate} THEN 1` : startDate ? sql`WHEN aa.awarded_at >= ${startDate} THEN 1` : sql`WHEN 1=1 THEN 1`}
+          END) as wins_in_timeframe,
           COALESCE(AVG(aa.winner_amount_cents), 0)::INTEGER as avg_winning_bid_cents,
           COALESCE(SUM(aa.winner_amount_cents), 0) as total_revenue_cents,
           MIN(aa.awarded_at) as first_win_at,
           MAX(aa.awarded_at) as last_win_at
         FROM auction_awards aa
-        -- Remove timeframe filter - show ALL wins for carriers
         GROUP BY aa.supabase_winner_user_id
       ),
       
-      -- Bid competitiveness: how often carrier bid is within top 3 or within 5% of lowest
+      -- Bid competitiveness: how often carrier bid is within top 3 or within 5% of lowest (filtered by timeframe when specified)
       competitiveness_stats AS (
         SELECT 
           cb.supabase_user_id,
@@ -141,7 +163,7 @@ export async function GET(request: NextRequest) {
             ) THEN 1
           END) as bids_within_5_percent
         FROM carrier_bids cb
-        -- Remove timeframe filter - calculate competitiveness on all bids
+        ${startDate && endDate ? sql`WHERE cb.created_at >= ${startDate} AND cb.created_at <= ${endDate}` : startDate ? sql`WHERE cb.created_at >= ${startDate}` : sql``}
         GROUP BY cb.supabase_user_id
       ),
       
@@ -190,22 +212,22 @@ export async function GET(request: NextRequest) {
           COALESCE(ra.bids_last_hour, 0) as bids_last_hour,
           ra.most_recent_bid_at,
           
-          -- Calculated metrics
+          -- Calculated metrics (use bids_in_timeframe for timeframe-specific calculations)
           CASE 
-            WHEN COALESCE(bs.total_bids, 0) > 0 
-            THEN ROUND((COALESCE(ws.total_wins, 0)::DECIMAL / bs.total_bids * 100), 2)
+            WHEN COALESCE(bs.bids_in_timeframe, 0) > 0 
+            THEN ROUND((COALESCE(ws.wins_in_timeframe, 0)::DECIMAL / bs.bids_in_timeframe * 100), 2)
             ELSE 0 
           END as win_rate_percentage,
           
           CASE 
             WHEN bs.unique_auctions_participated > 0 
-            THEN ROUND((bs.total_bids::DECIMAL / bs.unique_auctions_participated), 2)
+            THEN ROUND((bs.bids_in_timeframe::DECIMAL / bs.unique_auctions_participated), 2)
             ELSE 0 
           END as avg_bids_per_auction,
           
           CASE 
-            WHEN COALESCE(bs.total_bids, 0) > 0 
-            THEN ROUND((COALESCE(cs.bids_within_5_percent, 0)::DECIMAL / bs.total_bids * 100), 2)
+            WHEN COALESCE(bs.bids_in_timeframe, 0) > 0 
+            THEN ROUND((COALESCE(cs.bids_within_5_percent, 0)::DECIMAL / bs.bids_in_timeframe * 100), 2)
             ELSE 0 
           END as competitiveness_score,
           
@@ -227,17 +249,17 @@ export async function GET(request: NextRequest) {
         LEFT JOIN win_stats ws ON cpd.supabase_user_id = ws.supabase_user_id
         LEFT JOIN competitiveness_stats cs ON cpd.supabase_user_id = cs.supabase_user_id
         LEFT JOIN recent_activity ra ON cpd.supabase_user_id = ra.supabase_user_id
-        WHERE ${carrierId ? sql`1=1` : sql`COALESCE(bs.total_bids, 0) >= ${minBids}`} -- Skip minBids filter when filtering by carrierId
+        WHERE ${carrierId ? sql`1=1` : sql`COALESCE(bs.bids_in_timeframe, 0) >= ${minBids}`} -- Skip minBids filter when filtering by carrierId, use bids_in_timeframe
       )
       
       SELECT * FROM combined_stats
-      WHERE ${carrierId ? sql`1=1` : sql`total_bids > 0`} -- If filtering by carrierId, show even if no bids (for details view)
+      WHERE ${carrierId ? sql`1=1` : sql`bids_in_timeframe > 0`} -- If filtering by carrierId, show even if no bids (for details view), use bids_in_timeframe
       ORDER BY 
-        CASE WHEN ${sortBy} = 'total_bids' THEN total_bids END DESC,
+        CASE WHEN ${sortBy} = 'total_bids' THEN bids_in_timeframe END DESC,
         CASE WHEN ${sortBy} = 'win_rate' THEN win_rate_percentage END DESC,
         CASE WHEN ${sortBy} = 'avg_bid' THEN avg_bid_amount_cents END ASC,
         CASE WHEN ${sortBy} = 'recent_activity' THEN bids_last_7_days END DESC,
-        CASE WHEN ${sortBy} = 'wins' THEN total_wins END DESC,
+        CASE WHEN ${sortBy} = 'wins' THEN wins_in_timeframe END DESC,
         CASE WHEN ${sortBy} = 'revenue' THEN total_revenue_cents END DESC,
         CASE WHEN ${sortBy} = 'competitiveness' THEN competitiveness_score END DESC
       LIMIT ${limit}
@@ -271,14 +293,14 @@ export async function GET(request: NextRequest) {
           ), 0)::INTEGER as avg_response_time
         FROM carrier_bids cb
         LEFT JOIN telegram_bids tb ON cb.bid_number = tb.bid_number
-        ${startDate ? sql`WHERE cb.created_at >= ${startDate}` : sql``}
+        ${startDate && endDate ? sql`WHERE cb.created_at >= ${startDate} AND cb.created_at <= ${endDate}` : startDate ? sql`WHERE cb.created_at >= ${startDate}` : sql``}
       ),
       awards_stats AS (
         SELECT
           COUNT(DISTINCT aa.supabase_winner_user_id)::INTEGER as unique_winners,
           COALESCE(SUM(winner_amount_cents), 0)::BIGINT as total_revenue
         FROM auction_awards aa
-        ${startDate ? sql`WHERE aa.awarded_at >= ${startDate}` : sql``}
+        ${startDate && endDate ? sql`WHERE aa.awarded_at >= ${startDate} AND aa.awarded_at <= ${endDate}` : startDate ? sql`WHERE aa.awarded_at >= ${startDate}` : sql``}
       )
       SELECT 
         (SELECT COUNT(DISTINCT supabase_user_id)::INTEGER FROM carrier_profiles) as total_carriers,
@@ -316,7 +338,7 @@ export async function GET(request: NextRequest) {
         'bids' as unit
       FROM carrier_profiles cp
       INNER JOIN carrier_bids cb ON cp.supabase_user_id = cb.supabase_user_id
-      ${startDate ? sql`WHERE cb.created_at >= ${startDate}` : sql``}
+      ${startDate && endDate ? sql`WHERE cb.created_at >= ${startDate} AND cb.created_at <= ${endDate}` : startDate ? sql`WHERE cb.created_at >= ${startDate}` : sql``}
       GROUP BY cp.supabase_user_id, cp.company_name, cp.legal_name
       ORDER BY COUNT(cb.id) DESC
       LIMIT 1)
@@ -335,7 +357,7 @@ export async function GET(request: NextRequest) {
       FROM carrier_profiles cp
       INNER JOIN carrier_bids cb ON cp.supabase_user_id = cb.supabase_user_id
       LEFT JOIN auction_awards aa ON aa.bid_number = cb.bid_number
-      ${startDate ? sql`WHERE cb.created_at >= ${startDate}` : sql``}
+      ${startDate && endDate ? sql`WHERE cb.created_at >= ${startDate} AND cb.created_at <= ${endDate}` : startDate ? sql`WHERE cb.created_at >= ${startDate}` : sql``}
       GROUP BY cp.supabase_user_id, cp.company_name, cp.legal_name
       HAVING COUNT(cb.id) >= 5
       ORDER BY value DESC
@@ -351,7 +373,7 @@ export async function GET(request: NextRequest) {
         'cents' as unit
       FROM carrier_profiles cp
       INNER JOIN auction_awards aa ON cp.supabase_user_id = aa.supabase_winner_user_id
-      ${startDate ? sql`WHERE aa.awarded_at >= ${startDate}` : sql``}
+      ${startDate && endDate ? sql`WHERE aa.awarded_at >= ${startDate} AND aa.awarded_at <= ${endDate}` : startDate ? sql`WHERE aa.awarded_at >= ${startDate}` : sql``}
       GROUP BY cp.supabase_user_id, cp.company_name, cp.legal_name
       ORDER BY value DESC
       LIMIT 1)
@@ -366,7 +388,7 @@ export async function GET(request: NextRequest) {
         'cents' as unit
       FROM carrier_profiles cp
       INNER JOIN carrier_bids cb ON cp.supabase_user_id = cb.supabase_user_id
-      ${startDate ? sql`WHERE cb.created_at >= ${startDate}` : sql``}
+      ${startDate && endDate ? sql`WHERE cb.created_at >= ${startDate} AND cb.created_at <= ${endDate}` : startDate ? sql`WHERE cb.created_at >= ${startDate}` : sql``}
       GROUP BY cp.supabase_user_id, cp.company_name, cp.legal_name
       HAVING COUNT(cb.id) >= 3
       ORDER BY value ASC

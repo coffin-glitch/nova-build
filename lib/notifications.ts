@@ -29,6 +29,7 @@ export async function getAllAdminUserIds(): Promise<string[]> {
 
 /**
  * Create a notification for a single user
+ * Includes retry logic for transient connection errors
  */
 export async function createNotification(
   userId: string,
@@ -37,29 +38,56 @@ export async function createNotification(
   message: string,
   data?: NotificationData
 ): Promise<void> {
-  try {
-    await sql`
-      INSERT INTO notifications (
-        user_id,
-        type,
-        title,
-        message,
-        data,
-        read,
-        created_at
-      ) VALUES (
-        ${userId},
-        ${type},
-        ${title},
-        ${message},
-        ${data ? JSON.stringify(data) : null},
-        false,
-        CURRENT_TIMESTAMP
-      )
-    `;
-  } catch (error) {
-    console.error(`Error creating notification for user ${userId}:`, error);
-    // Don't throw - notification creation should not block main operations
+  const maxRetries = 3;
+  let retryCount = 0;
+  
+  while (retryCount < maxRetries) {
+    try {
+      await sql`
+        INSERT INTO notifications (
+          user_id,
+          type,
+          title,
+          message,
+          data,
+          read,
+          created_at
+        ) VALUES (
+          ${userId},
+          ${type},
+          ${title},
+          ${message},
+          ${data ? JSON.stringify(data) : null},
+          false,
+          CURRENT_TIMESTAMP
+        )
+      `;
+      return; // Success, exit retry loop
+    } catch (error: any) {
+      retryCount++;
+      
+      // Check if it's a prepared statement error (transient connection issue)
+      const isPreparedStatementError = error?.code === '26000' || 
+                                       error?.message?.includes('prepared statement') ||
+                                       error?.message?.includes('does not exist');
+      
+      // Check if it's a connection error that might be retryable
+      const isRetryableError = isPreparedStatementError || 
+                              error?.code === '08003' || // connection_does_not_exist
+                              error?.code === '08006' || // connection_failure
+                              error?.code === '57P01';    // admin_shutdown
+      
+      if (isRetryableError && retryCount < maxRetries) {
+        // Exponential backoff: wait 100ms, 200ms, 400ms
+        const delay = Math.pow(2, retryCount - 1) * 100;
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue; // Retry
+      }
+      
+      // If not retryable or max retries reached, log and give up
+      console.error(`Error creating notification for user ${userId} (attempt ${retryCount}/${maxRetries}):`, error);
+      return; // Don't throw - notification creation should not block main operations
+    }
   }
 }
 

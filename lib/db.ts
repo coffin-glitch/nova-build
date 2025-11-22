@@ -35,6 +35,7 @@ if (!g.__pg_sql_client) {
     max_lifetime: Number(process.env.PG_MAX_LIFETIME || 60 * 30),
     onnotice: () => {},
     debug: false,
+    prepare: false, // Disable prepared statements to avoid "prepared statement does not exist" errors with connection pooling
   });
 }
 

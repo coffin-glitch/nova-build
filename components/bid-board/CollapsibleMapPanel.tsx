@@ -1,16 +1,17 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Map as MapIcon, X, Zap, Target, TrendingUp, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { cn, getButtonTextColor as getTextColor } from "@/lib/utils";
+import { Countdown } from "@/components/ui/Countdown";
 import { useAccentColor } from "@/hooks/useAccentColor";
-import { useTheme } from "next-themes";
-import { LiveMapView } from "./LiveMapView";
-import useSWR from "swr";
 import { swrFetcher } from "@/lib/safe-fetcher";
+import { extractStateCode, getStateName } from "@/lib/state-names";
+import { cn, getButtonTextColor as getTextColor } from "@/lib/utils";
+import { Clock, Map as MapIcon, MapPin, Plus, Target, TrendingUp, X, Zap } from "lucide-react";
+import { useTheme } from "next-themes";
 import { useRouter } from "next/navigation";
-import { getStateName, extractStateCode } from "@/lib/state-names";
+import { useEffect, useState } from "react";
+import useSWR from "swr";
+import { LiveMapView } from "./LiveMapView";
 
 interface CollapsibleMapPanelProps {
   className?: string;
@@ -119,13 +120,20 @@ export default function CollapsibleMapPanel({ className }: CollapsibleMapPanelPr
   const allStateStats = Array.from(stateStats.values())
     .sort((a, b) => b.total - a.total);
 
-  // Top states (top 4 by total bids)
-  const topStates = allStateStats.slice(0, 4);
+  // Top states (top 7 by total bids)
+  const topStates = allStateStats.slice(0, 7);
+  const hasMoreTopStates = allStateStats.length > 7;
+  const [showAllTopStates, setShowAllTopStates] = useState(false);
   
-  // Current states (all states with active bids)
+  // Current states (all states with active bids, sorted by active count)
   const currentStates = allStateStats
     .filter(s => s.active > 0)
     .sort((a, b) => b.active - a.active);
+  
+  // Top 10 current states for display
+  const top10CurrentStates = currentStates.slice(0, 10);
+  const hasMoreStates = currentStates.length > 10;
+  const [showAllStates, setShowAllStates] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -267,7 +275,7 @@ export default function CollapsibleMapPanel({ className }: CollapsibleMapPanelPr
               <div className="p-4 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                   {/* Map Area - Takes 2 columns */}
-                  <div className="lg:col-span-2">
+                  <div className="lg:col-span-2 space-y-4">
                     <div className="relative bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-900 rounded-2xl p-4 border border-border" style={{ minHeight: '400px' }}>
                       <LiveMapView 
                         bids={todaysActiveBids} 
@@ -280,6 +288,39 @@ export default function CollapsibleMapPanel({ className }: CollapsibleMapPanelPr
                         }}
                       />
                     </div>
+                    
+                    {/* Current States Section - Moved under map */}
+                    {currentStates.length > 0 && (
+                      <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl p-3 border border-blue-200 dark:border-blue-800 shadow-lg">
+                        <div className="flex items-center gap-2 mb-2">
+                          <MapPin className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                          <span className="text-sm font-bold text-blue-700 dark:text-blue-300">Current States</span>
+                          <span className="text-xs text-muted-foreground bg-blue-100 dark:bg-blue-900/50 px-1.5 py-0.5 rounded-full">
+                            {currentStates.length}
+                          </span>
+                        </div>
+                        <div className="space-y-1.5 max-h-64 overflow-y-auto">
+                          {(showAllStates ? currentStates : top10CurrentStates).map((state) => (
+                            <div key={state.code} className="flex items-center justify-between text-xs bg-white/60 dark:bg-slate-600/60 rounded-lg p-1.5 border border-border/50">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-semibold text-foreground text-xs">{state.name}</span>
+                                <span className="text-muted-foreground text-xs">({state.code})</span>
+                              </div>
+                              <span className="text-green-600 dark:text-green-400 font-bold text-xs">{state.active}</span>
+                            </div>
+                          ))}
+                        </div>
+                        {hasMoreStates && (
+                          <button
+                            onClick={() => setShowAllStates(!showAllStates)}
+                            className="mt-2 w-full flex items-center justify-center gap-1.5 text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium py-1.5 px-2 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+                          >
+                            <Plus className={`h-3 w-3 transition-transform ${showAllStates ? 'rotate-45' : ''}`} />
+                            {showAllStates ? `Show Less (Top 10)` : `View More (+${currentStates.length - 10} states)`}
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* Stats and Info Sidebar - Takes 1 column */}
@@ -306,15 +347,15 @@ export default function CollapsibleMapPanel({ className }: CollapsibleMapPanelPr
                     </div>
 
                     {/* Top States Section - Enhanced */}
-                    {topStates.length > 0 && (
+                    {allStateStats.length > 0 && (
                       <div className="bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-700 dark:to-slate-800 rounded-xl p-3 border border-border shadow-lg">
                         <div className="flex items-center gap-2 mb-2">
                           <TrendingUp className="h-4 w-4" style={{ color: getIconColor() }} />
                           <span className="text-sm font-bold" style={{ color: getIconColor() }}>Top States</span>
                         </div>
                         <div className="space-y-1.5">
-                          {topStates.map((state, index) => {
-                            const colors = ["bg-green-500", "bg-blue-500", "bg-orange-500", "bg-purple-500"];
+                          {(showAllTopStates ? allStateStats : topStates).map((state, index) => {
+                            const colors = ["bg-green-500", "bg-blue-500", "bg-orange-500", "bg-purple-500", "bg-pink-500", "bg-cyan-500", "bg-yellow-500"];
                             return (
                               <div key={state.code} className="bg-white/60 dark:bg-slate-600/60 rounded-lg p-2 border border-border/50">
                                 <div className="flex items-center gap-1.5 mb-1">
@@ -333,30 +374,16 @@ export default function CollapsibleMapPanel({ className }: CollapsibleMapPanelPr
                             );
                           })}
                         </div>
-                      </div>
-                    )}
-
-                    {/* Current States Section */}
-                    {currentStates.length > 0 && (
-                      <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl p-3 border border-blue-200 dark:border-blue-800 shadow-lg">
-                        <div className="flex items-center gap-2 mb-2">
-                          <MapPin className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                          <span className="text-sm font-bold text-blue-700 dark:text-blue-300">Current States</span>
-                          <span className="text-xs text-muted-foreground bg-blue-100 dark:bg-blue-900/50 px-1.5 py-0.5 rounded-full">
-                            {currentStates.length}
-                          </span>
-                        </div>
-                        <div className="space-y-1 max-h-32 overflow-y-auto">
-                          {currentStates.map((state) => (
-                            <div key={state.code} className="flex items-center justify-between text-xs bg-white/60 dark:bg-slate-600/60 rounded-lg p-1.5 border border-border/50">
-                              <div className="flex items-center gap-1.5">
-                                <span className="font-semibold text-foreground text-xs">{state.name}</span>
-                                <span className="text-muted-foreground text-xs">({state.code})</span>
-                              </div>
-                              <span className="text-green-600 dark:text-green-400 font-bold text-xs">{state.active}</span>
-                            </div>
-                          ))}
-                        </div>
+                        {hasMoreTopStates && (
+                          <button
+                            onClick={() => setShowAllTopStates(!showAllTopStates)}
+                            className="mt-2 w-full flex items-center justify-center gap-1.5 text-xs font-medium py-1.5 px-2 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                            style={{ color: getIconColor() }}
+                          >
+                            <Plus className={`h-3 w-3 transition-transform ${showAllTopStates ? 'rotate-45' : ''}`} />
+                            {showAllTopStates ? `Show Less (Top 7)` : `View All (+${allStateStats.length - 7} states)`}
+                          </button>
+                        )}
                       </div>
                     )}
 
@@ -380,6 +407,128 @@ export default function CollapsibleMapPanel({ className }: CollapsibleMapPanelPr
                     </Button>
                   </div>
                 </div>
+                
+                {/* All Bids Summary with Countdowns - Creative Layout */}
+                {todaysActiveBids.length > 0 && (
+                  <div className="mt-4 pt-4 border-t border-border/40">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Clock className="h-4 w-4" style={{ color: getIconColor() }} />
+                      <h4 className="text-sm font-bold" style={{ color: getIconColor() }}>All Active Bids</h4>
+                      <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+                        {todaysActiveBids.length}
+                      </span>
+                    </div>
+                    <div className="space-y-2 max-h-80 overflow-y-auto">
+                      {todaysActiveBids
+                        .sort((a, b) => {
+                          // Sort by time remaining (most urgent first)
+                          const aTime = a.time_left_seconds || (() => {
+                            if (a.expires_at_25) {
+                              return Math.max(0, Math.floor((new Date(a.expires_at_25).getTime() - Date.now()) / 1000));
+                            }
+                            if (a.received_at) {
+                              const expiresAt = new Date(a.received_at).getTime() + (25 * 60 * 1000);
+                              return Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
+                            }
+                            return Infinity;
+                          })();
+                          const bTime = b.time_left_seconds || (() => {
+                            if (b.expires_at_25) {
+                              return Math.max(0, Math.floor((new Date(b.expires_at_25).getTime() - Date.now()) / 1000));
+                            }
+                            if (b.received_at) {
+                              const expiresAt = new Date(b.received_at).getTime() + (25 * 60 * 1000);
+                              return Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
+                            }
+                            return Infinity;
+                          })();
+                          return aTime - bTime;
+                        })
+                        .map((bid) => {
+                          // Calculate expiresAt for Countdown component
+                          const expiresAt = bid.expires_at_25 || (() => {
+                            if (bid.received_at) {
+                              const receivedAt = new Date(bid.received_at);
+                              return new Date(receivedAt.getTime() + (25 * 60 * 1000)).toISOString();
+                            }
+                            return new Date(Date.now() + (25 * 60 * 1000)).toISOString();
+                          })();
+                          
+                          // Calculate timeLeft for styling (used for background color)
+                          const timeLeft = bid.time_left_seconds || (() => {
+                            if (bid.expires_at_25) {
+                              return Math.max(0, Math.floor((new Date(bid.expires_at_25).getTime() - Date.now()) / 1000));
+                            }
+                            if (bid.received_at) {
+                              const expiresAt = new Date(bid.received_at).getTime() + (25 * 60 * 1000);
+                              return Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
+                            }
+                            return 0;
+                          })();
+                          
+                          // Get route summary
+                          const stops = Array.isArray(bid.stops) ? bid.stops : 
+                                       typeof bid.stops === 'string' ? [bid.stops] : [];
+                          const routeSummary = stops.length >= 2 
+                            ? `${stops[0]} → ${stops[stops.length - 1]}`
+                            : stops[0] || 'Route N/A';
+                          
+                          // Background color based on urgency (for card styling)
+                          const bgColor = bid.is_expired
+                            ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+                            : timeLeft <= 60 
+                            ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800' 
+                            : timeLeft <= 300 
+                            ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800' 
+                            : 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800';
+                          
+                          return (
+                            <div
+                              key={bid.bid_number}
+                              className={`rounded-lg p-2.5 border cursor-pointer hover:shadow-md transition-all ${bgColor}`}
+                              onClick={() => {
+                                router.push(`/bid-board?bid=${bid.bid_number}`);
+                                setIsExpanded(false);
+                              }}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <span className="font-bold text-xs text-foreground">#{bid.bid_number}</span>
+                                    {bid.bids_count ? (
+                                      <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                                        {bid.bids_count} bid{bid.bids_count > 1 ? 's' : ''}
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                  <p className="text-xs text-muted-foreground truncate mb-1.5">{routeSummary}</p>
+                                  {bid.distance_miles ? (
+                                    <p className="text-xs text-muted-foreground">{Math.round(bid.distance_miles)} mi</p>
+                                  ) : null}
+                                </div>
+                                <div className="flex flex-col items-end gap-1">
+                                  <Countdown
+                                    expiresAt={expiresAt}
+                                    variant={bid.is_expired ? "expired" : timeLeft <= 300 ? "urgent" : "default"}
+                                    className="text-xs"
+                                  />
+                                  <div className={`w-2 h-2 rounded-full ${
+                                    bid.is_expired
+                                      ? 'bg-red-500'
+                                      : timeLeft <= 60 
+                                      ? 'bg-red-500' 
+                                      : timeLeft <= 300 
+                                      ? 'bg-yellow-500' 
+                                      : 'bg-green-500'
+                                  }`}></div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>

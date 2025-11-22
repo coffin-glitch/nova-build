@@ -210,6 +210,39 @@ export const archivedBids = pgTable('archived_bids', {
   originalId: integer('original_id'),
 });
 
+// Announcements table
+export const announcements = pgTable('announcements', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  title: varchar('title', { length: 255 }).notNull(),
+  message: text('message').notNull(),
+  priority: varchar('priority', { length: 20 }).notNull().default('normal'),
+  createdBy: uuid('created_by').notNull(), // Admin user ID (Supabase auth.users.id)
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  isActive: boolean('is_active').notNull().default(true),
+  targetAudience: varchar('target_audience', { length: 50 }).default('all'),
+  metadata: jsonb('metadata').default('{}'),
+});
+
+// Announcement reads table
+export const announcementReads = pgTable('announcement_reads', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  announcementId: uuid('announcement_id').notNull().references(() => announcements.id, { onDelete: 'cascade' }),
+  carrierUserId: varchar('carrier_user_id', { length: 255 }).notNull(),
+  readAt: timestamp('read_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Saved recipient lists table
+export const savedRecipientLists = pgTable('saved_recipient_lists', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: varchar('name', { length: 255 }).notNull(),
+  createdBy: uuid('created_by').notNull(),
+  recipientUserIds: jsonb('recipient_user_ids').notNull().default([]),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 // Auction awards table (admin adjudication results)
 // Note: Database uses INTEGER/BIGSERIAL, matching actual schema
 export const auctionAwards = pgTable('auction_awards', {
@@ -255,4 +288,18 @@ export const notificationLogs = pgTable('notification_logs', {
   message: text('message').notNull(),
   sentAt: timestamp('sent_at', { withTimezone: true }).notNull().defaultNow(),
   deliveryStatus: varchar('delivery_status', { length: 20 }).notNull().default('sent'),
+});
+
+// Contact messages table
+export const contactMessages = pgTable('contact_messages', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: varchar('name', { length: 255 }).notNull(),
+  email: varchar('email', { length: 255 }).notNull(),
+  subject: varchar('subject', { length: 255 }),
+  message: text('message').notNull(),
+  status: varchar('status', { length: 20 }).notNull().default('new'),
+  adminNotes: text('admin_notes'),
+  repliedAt: timestamp('replied_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

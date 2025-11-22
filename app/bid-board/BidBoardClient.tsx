@@ -5,14 +5,35 @@ import ManageBidsConsole from "@/components/carrier/ManageBidsConsole";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Countdown } from "@/components/ui/Countdown";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Glass } from "@/components/ui/glass";
 import { Input } from "@/components/ui/input";
 import { MapboxMap } from "@/components/ui/MapboxMap";
 import { useAccentColor } from "@/hooks/useAccentColor";
 import { useIsAdmin } from "@/hooks/useUserRole";
 import { TelegramBid } from "@/lib/auctions";
-import { formatDistance, formatPickupDateTime, formatStopCount, formatStops, formatStopsDetailed } from "@/lib/format";
+import { formatDistance, formatPickupDateTime, formatStopCount, formatStops, formatStopsDetailed, ParsedAddress } from "@/lib/format";
+import {
+  AlertCircle,
+  Archive,
+  Calendar,
+  Clock,
+  DollarSign,
+  Gavel,
+  MapPin,
+  Navigation,
+  RefreshCw,
+  Search,
+  Star,
+  Truck,
+  User
+} from "lucide-react";
+import { useTheme } from "next-themes";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
+import useSWR, { mutate as globalMutate } from "swr";
 
 // Parse stops helper (matching admin page exactly)
 const parseStops = (stops: string | string[] | null): string[] => {
@@ -29,27 +50,6 @@ const parseStops = (stops: string | string[] | null): string[] => {
   }
   return [];
 };
-import {
-    AlertCircle,
-    Archive,
-    Calendar,
-    Clock,
-    DollarSign,
-    Gavel,
-    MapPin,
-    Navigation,
-    RefreshCw,
-    Search,
-    Star,
-    Truck,
-    User
-} from "lucide-react";
-import { useTheme } from "next-themes";
-import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { toast } from "sonner";
-import useSWR, { mutate as globalMutate } from "swr";
-import { useSearchParams } from "next/navigation";
 
 import { swrFetcher } from "@/lib/safe-fetcher";
 
@@ -1035,18 +1035,26 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
               <div className="space-y-3">
                 <h3 className="text-lg font-semibold">Route Details</h3>
                 <div className="space-y-2">
-                  {formatStopsDetailed(parseStops(viewDetailsBid.stops)).map((stop, index) => (
-                    <div key={index} className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg">
-                      <div className="flex items-center justify-center w-6 h-6 bg-primary text-primary-foreground rounded-full text-sm font-bold">
+                  {formatStopsDetailed(parseStops(viewDetailsBid.stops)).map((address: ParsedAddress, index) => (
+                    <div key={index} className="flex items-start gap-3 p-3 bg-muted/30 rounded-lg">
+                      <div className="flex items-center justify-center w-6 h-6 bg-primary text-primary-foreground rounded-full text-sm font-bold flex-shrink-0">
                         {index + 1}
                       </div>
                       <div className="flex-1">
-                        <p className="font-medium">{stop}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {index === 0 ? 'Pickup Location' : 
-                           index === formatStopsDetailed(parseStops(viewDetailsBid.stops)).length - 1 ? 'Delivery Location' : 
-                           'Stop Location'}
-                        </p>
+                        <p className="font-medium">{address.fullAddress}</p>
+                        <div className="text-sm text-muted-foreground mt-1 space-y-0.5">
+                          {address.streetNumber && address.streetName && (
+                            <p>Street: {address.streetNumber} {address.streetName}</p>
+                          )}
+                          <p>City: {address.city}</p>
+                          <p>State: {address.state}</p>
+                          {address.zipcode && <p>ZIP: {address.zipcode}</p>}
+                          <p className="text-xs mt-1">
+                            {index === 0 ? 'Pickup Location' : 
+                             index === formatStopsDetailed(parseStops(viewDetailsBid.stops)).length - 1 ? 'Delivery Location' : 
+                             'Stop Location'}
+                          </p>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -1056,13 +1064,23 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
               {/* Interactive Route Map */}
               <div className="space-y-3">
                 <h3 className="text-lg font-semibold">Route Map</h3>
-                <div className="rounded-lg overflow-hidden border border-border/40" style={{ width: '100%', height: '400px', minHeight: '400px' }}>
+                <div 
+                  className="rounded-lg overflow-hidden border border-border/40 bg-muted/20" 
+                  style={{ 
+                    width: '100%', 
+                    height: '400px', 
+                    minHeight: '400px',
+                    position: 'relative'
+                  }}
+                >
                   {viewDetailsBid && (
                     <MapboxMap 
-                      stops={formatStopsDetailed(parseStops(viewDetailsBid.stops))} 
+                      key={`route-map-${viewDetailsBid.bid_number}-${JSON.stringify(viewDetailsBid.stops)}`}
+                      stops={formatStopsDetailed(parseStops(viewDetailsBid.stops)).map((addr: ParsedAddress) => addr.fullAddress)} 
                       className="w-full h-full"
                       lazy={false}
                       minHeight="400px"
+                      isAdmin={isAdmin}
                     />
                   )}
                 </div>

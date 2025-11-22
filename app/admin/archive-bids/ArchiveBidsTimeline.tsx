@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useAccentColor } from "@/hooks/useAccentColor";
 import { useInfiniteScroll } from "@/hooks/useInfiniteScroll";
 import { getButtonTextColor as getTextColor } from "@/lib/utils";
+import { formatStopsDetailed, ParsedAddress, formatStopCount } from "@/lib/format";
 import {
   Archive,
   Calendar,
@@ -439,10 +440,7 @@ export function ArchiveBidsTimeline() {
     });
   };
 
-  const formatStopsDetailed = (stops: string[]) => {
-    if (!stops || stops.length === 0) return [];
-    return stops;
-  };
+  // Use formatStopsDetailed from lib/format (returns ParsedAddress[])
 
   // Create a map of date to total bids count from dailyActivity
   // Format dates exactly the same way as bidsByDate for perfect matching
@@ -753,7 +751,7 @@ export function ArchiveBidsTimeline() {
         <div className="relative">
           <div
             ref={scrollContainerRef}
-            className="h-[calc(100vh-400px)] overflow-y-auto overflow-x-hidden pr-6"
+            className="h-[calc(100vh-300px)] min-h-[400px] md:min-h-[600px] lg:min-h-[800px] overflow-y-auto overflow-x-hidden pr-6"
             style={{
               scrollbarWidth: 'thin',
             }}
@@ -954,7 +952,7 @@ export function ArchiveBidsTimeline() {
           <div className="relative">
             <div
               ref={scrollContainerRef}
-              className="h-[calc(100vh-400px)] overflow-y-auto overflow-x-hidden"
+              className="h-[calc(100vh-300px)] min-h-[400px] md:min-h-[600px] lg:min-h-[800px] overflow-y-auto overflow-x-hidden"
               style={{
                 scrollbarWidth: 'thin',
               }}
@@ -1031,7 +1029,7 @@ export function ArchiveBidsTimeline() {
         <div className="space-y-6">
           <div
             ref={scrollContainerRef}
-            className="h-[calc(100vh-400px)] overflow-y-auto overflow-x-hidden pr-6"
+            className="h-[calc(100vh-300px)] min-h-[400px] md:min-h-[600px] lg:min-h-[800px] overflow-y-auto overflow-x-hidden pr-6"
             style={{
               scrollbarWidth: 'thin',
             }}
@@ -1127,18 +1125,26 @@ export function ArchiveBidsTimeline() {
               <div className="space-y-3">
                 <h3 className="text-lg font-semibold">Route Details</h3>
                 <div className="space-y-2">
-                  {formatStopsDetailed(parseStops(selectedBid.stops)).map((stop, index) => (
-                    <div key={index} className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg">
-                      <div className="flex items-center justify-center w-6 h-6 bg-primary text-primary-foreground rounded-full text-sm font-bold">
+                  {formatStopsDetailed(parseStops(selectedBid.stops)).map((address: ParsedAddress, index) => (
+                    <div key={index} className="flex items-start gap-3 p-3 bg-muted/30 rounded-lg">
+                      <div className="flex items-center justify-center w-6 h-6 bg-primary text-primary-foreground rounded-full text-sm font-bold flex-shrink-0">
                         {index + 1}
                       </div>
                       <div className="flex-1">
-                        <p className="font-medium">{stop}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {index === 0 ? 'Pickup Location' :
-                           index === formatStopsDetailed(parseStops(selectedBid.stops)).length - 1 ? 'Delivery Location' :
-                           'Stop Location'}
-                        </p>
+                        <p className="font-medium">{address.fullAddress}</p>
+                        <div className="text-sm text-muted-foreground mt-1 space-y-0.5">
+                          {address.streetNumber && address.streetName && (
+                            <p>Street: {address.streetNumber} {address.streetName}</p>
+                          )}
+                          <p>City: {address.city}</p>
+                          <p>State: {address.state}</p>
+                          {address.zipcode && <p>ZIP: {address.zipcode}</p>}
+                          <p className="text-xs mt-1">
+                            {index === 0 ? 'Pickup Location' :
+                             index === formatStopsDetailed(parseStops(selectedBid.stops)).length - 1 ? 'Delivery Location' :
+                             'Stop Location'}
+                          </p>
+                        </div>
                       </div>
                     </div>
                   ))}

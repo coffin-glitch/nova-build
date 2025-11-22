@@ -3,6 +3,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Archive, Calendar, MapPin, Navigation } from "lucide-react";
 import { useTheme } from "next-themes";
+import { formatStops, formatAddressForCard } from "@/lib/format";
 
 interface ArchiveBid {
   id: number;
@@ -43,8 +44,8 @@ export function ArchiveBidCompactCard({
   };
 
   const stops = parseStops(bid.stops);
-  const origin = stops[0] || 'Unknown';
-  const dest = stops[stops.length - 1] || 'Unknown';
+  // Use formatStops to get properly formatted route display (City, State ZIP → City, State ZIP)
+  const formattedRoute = formatStops(stops);
   const pickupDate = bid.pickup_timestamp 
     ? new Date(bid.pickup_timestamp).toLocaleDateString('en-US', { 
         month: 'short', 
@@ -88,7 +89,7 @@ export function ArchiveBidCompactCard({
         <div className="flex items-center gap-2 text-sm">
           <MapPin className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
           <span className="truncate text-foreground font-medium">
-            {origin} → {dest}
+            {formattedRoute}
           </span>
         </div>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">

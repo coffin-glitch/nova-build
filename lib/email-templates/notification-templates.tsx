@@ -896,6 +896,144 @@ interface DeadlineApproachingNotificationProps {
   carrierName?: string;
 }
 
+/**
+ * Announcement Notification - System announcement from admin
+ */
+interface AnnouncementNotificationProps {
+  title: string;
+  message: string;
+  priority: 'low' | 'normal' | 'high' | 'urgent';
+  viewUrl: string;
+  carrierName?: string;
+}
+
+export const AnnouncementNotificationTemplate = ({
+  title,
+  message,
+  priority,
+  viewUrl,
+  carrierName,
+}: AnnouncementNotificationProps) => {
+  // Priority-based styling
+  const priorityColors = {
+    urgent: { bg: '#fee2e2', border: '#ef4444', text: '#991b1b', icon: '🚨' },
+    high: { bg: '#fef3c7', border: '#f59e0b', text: '#92400e', icon: '⚠️' },
+    normal: { bg: '#dbeafe', border: '#3b82f6', text: '#1e40af', icon: '📢' },
+    low: { bg: '#f3f4f6', border: '#6b7280', text: '#374151', icon: 'ℹ️' },
+  };
+
+  const colors = priorityColors[priority] || priorityColors.normal;
+
+  return (
+    <Html>
+      <Head />
+      <Preview>{title}</Preview>
+      <Body style={main}>
+        <Container style={gradientContainer}>
+          <Container style={container}>
+            <Section style={logoSection}>
+              <div style={logoIcon}>
+                <div style={logoIconGlow}></div>
+                <svg 
+                  width="32" 
+                  height="32" 
+                  viewBox="0 0 24 24" 
+                  fill="none" 
+                  xmlns="http://www.w3.org/2000/svg"
+                  style={{ position: 'relative', zIndex: 1 }}
+                >
+                  <defs>
+                    <linearGradient id="megaphoneGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#3b82f6" />
+                      <stop offset="50%" stopColor="#9333ea" />
+                      <stop offset="100%" stopColor="#6366f1" />
+                    </linearGradient>
+                  </defs>
+                  {/* Megaphone - main body */}
+                  <path 
+                    d="M3 9v6h2.5l4 4V5l-4 4H3z" 
+                    stroke="url(#megaphoneGradient)" 
+                    strokeWidth="2" 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round"
+                    fill="none"
+                  />
+                  {/* Megaphone - handle/grip */}
+                  <path 
+                    d="M13.5 9c-1.38 0-2.5 1.12-2.5 2.5s1.12 2.5 2.5 2.5 2.5-1.12 2.5-2.5-1.12-2.5-2.5-2.5z" 
+                    stroke="url(#megaphoneGradient)" 
+                    strokeWidth="2" 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round"
+                    fill="none"
+                  />
+                  {/* Megaphone - horn/flare */}
+                  <path 
+                    d="M19 3v18l-3-3H9.5l-2-2H19V3z" 
+                    stroke="url(#megaphoneGradient)" 
+                    strokeWidth="2" 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round"
+                    fill="none"
+                  />
+                </svg>
+              </div>
+              <Heading style={brandHeading}>
+                <span style={brandGradient}>NOVA</span>
+              </Heading>
+            </Section>
+
+            <Section style={contentCard}>
+              <Heading style={h1}>{title}</Heading>
+              
+              <Text style={text}>
+                {carrierName ? `Hi ${carrierName},` : 'Hi there,'}
+              </Text>
+
+              <div style={{
+                ...warningBox,
+                backgroundColor: colors.bg,
+                borderLeftColor: colors.border,
+              }}>
+                <Text style={{
+                  ...warningText,
+                  color: colors.text,
+                }}>
+                  {message}
+                </Text>
+              </div>
+
+              <Section style={buttonContainer}>
+                <Button
+                  href={viewUrl}
+                  style={{
+                    ...button,
+                    backgroundColor: colors.border,
+                    borderColor: colors.border,
+                  }}
+                >
+                  View Full Announcement →
+                </Button>
+              </Section>
+            </Section>
+
+            <Section style={footer}>
+              <Text style={footerText}>
+                © {new Date().getFullYear()} NOVA. All rights reserved.
+              </Text>
+              <Text style={footerText}>
+                <Link href="https://novafreight.io/preferences" style={footerLink}>
+                  Manage notification preferences
+                </Link>
+              </Text>
+            </Section>
+          </Container>
+        </Container>
+      </Body>
+    </Html>
+  );
+};
+
 export const DeadlineApproachingNotificationTemplate = ({
   bidNumber,
   origin,

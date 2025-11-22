@@ -124,9 +124,23 @@ function countStops(stops: any): number | undefined {
 }
 
 // Helper function to extract state from stop string
+// Enhanced to work with full addresses using new parsing
 function extractStateFromStop(stop: string): string | null {
   if (!stop || typeof stop !== 'string') return null;
   
+  // Use the new parseAddress function for better parsing
+  try {
+    const { extractCityStateForMatching } = require('../lib/format');
+    const cityState = extractCityStateForMatching(stop);
+    if (cityState && cityState.state) {
+      return cityState.state;
+    }
+  } catch (error) {
+    // Fallback to regex if import fails
+    console.warn('[NotificationWorker] Could not use new parsing, falling back to regex:', error);
+  }
+  
+  // Fallback to original regex-based extraction (for backward compatibility)
   const trimmed = stop.trim().toUpperCase();
   
   // List of valid US state abbreviations
@@ -152,6 +166,21 @@ function extractStateFromStop(stop: string): string | null {
   if (match && validStates.has(match[1])) return match[1];
   
   return null;
+}
+
+// NEW: Extract city from stop (for exact matching)
+function extractCityFromStop(stop: string): string | null {
+  if (!stop || typeof stop !== 'string') return null;
+  
+  try {
+    const { extractCityStateForMatching } = require('../lib/format');
+    const cityState = extractCityStateForMatching(stop);
+    return cityState ? cityState.city : null;
+  } catch (error) {
+    // Fallback: try to extract city from comma-separated format
+    const parts = stop.split(',').map(p => p.trim());
+    return parts[0] || null;
+  }
 }
 
 // Helper function to get load details from bid_number
@@ -188,6 +217,26 @@ async function getLoadDetails(bidNumber: string): Promise<{
       if (stopsArray.length > 0) {
         origin = stopsArray[0];
         destination = stopsArray[stopsArray.length - 1];
+        
+        // Use new parsing to extract city/state for cleaner display (with city name cleaning)
+        // This ensures addresses like "NW HURON, SD" become "HURON, SD" in notifications
+        try {
+          const { extractCityStateForMatching } = require('../lib/format');
+          const originCityState = extractCityStateForMatching(origin);
+          const destinationCityState = extractCityStateForMatching(destination);
+          
+          // extractCityStateForMatching already uses parseAddress which includes cleanCityName
+          // So the city names are already cleaned (e.g., "NW HURON" → "HURON", "RM 114 AKRON" → "AKRON")
+          if (originCityState) {
+            origin = `${originCityState.city}, ${originCityState.state}`;
+          }
+          if (destinationCityState) {
+            destination = `${destinationCityState.city}, ${destinationCityState.state}`;
+          }
+        } catch (error) {
+          // Fallback to raw strings if parsing fails
+          console.warn(`[LoadDetails] Could not parse addresses for bid ${bidNumber}:`, error);
+        }
       } else if (bid.tag) {
         // Fallback to tag if no stops
         const parts = bid.tag.split('-');
@@ -516,8 +565,23 @@ async function processExactMatchTrigger(
   
   let favoriteRoutes: any[] = [];
   
-  if (favoriteDistanceRange) {
-    // New format: use distance range
+  // Priority 1: Check for specific bid number first
+  if (config.favoriteBidNumber) {
+    console.log(`[ExactMatch] Processing trigger ${trigger.id} with specific bid number: ${config.favoriteBidNumber}`);
+    
+    favoriteRoutes = await sql`
+      SELECT 
+        cf.bid_number as favorite_bid,
+        tb.stops as favorite_stops,
+        tb.tag as favorite_tag,
+        tb.distance_miles as favorite_distance
+      FROM carrier_favorites cf
+      JOIN telegram_bids tb ON cf.bid_number = tb.bid_number
+      WHERE cf.supabase_carrier_user_id = ${userId}
+        AND cf.bid_number = ${config.favoriteBidNumber}
+    `;
+  } else if (favoriteDistanceRange) {
+    // Priority 2: Use distance range (fallback)
     console.log(`[ExactMatch] Processing trigger ${trigger.id} with distance range: ${favoriteDistanceRange.minDistance}-${favoriteDistanceRange.maxDistance} miles`);
     
     // Get favorite routes within the distance range
@@ -574,9 +638,28 @@ async function processExactMatchTrigger(
     const origin = favoriteStops[0];
     const destination = favoriteStops[favoriteStops.length - 1];
 
-    // Extract states from favorite for state matching
-    const favoriteOriginState = extractStateFromStop(origin);
-    const favoriteDestState = extractStateFromStop(destination);
+    // Extract city and state from favorite stops (using new parsing for full addresses)
+    // Note: extractCityStateForMatching uses parseAddress which includes cleanCityName
+    // So city names are automatically cleaned (e.g., "NW HURON" → "HURON", "RM 114 AKRON" → "AKRON")
+    let favoriteOriginCityState: { city: string; state: string } | null = null;
+    let favoriteDestCityState: { city: string; state: string } | null = null;
+    
+    try {
+      const { extractCityStateForMatching } = require('../lib/format');
+      favoriteOriginCityState = extractCityStateForMatching(origin);
+      favoriteDestCityState = extractCityStateForMatching(destination);
+    } catch (error) {
+      console.warn(`[ExactMatch] Could not use new parsing, falling back to regex:`, error);
+    }
+    
+    // Extract states from favorite for state matching (fallback if parsing failed)
+    const favoriteOriginState = favoriteOriginCityState?.state || extractStateFromStop(origin);
+    const favoriteDestState = favoriteDestCityState?.state || extractStateFromStop(destination);
+    
+    if (!favoriteOriginCityState || !favoriteDestCityState) {
+      console.warn(`[ExactMatch] Could not extract city/state from favorite stops: ${origin}, ${destination}`);
+      continue;
+    }
 
     // Find active bids with route match
     // For exact match: NO distance filtering (only route matters)
@@ -681,14 +764,33 @@ async function processExactMatchTrigger(
       const matchOrigin = matchStops[0];
       const matchDest = matchStops[matchStops.length - 1];
 
-      // Extract states from match
-      const matchOriginState = extractStateFromStop(matchOrigin);
-      const matchDestState = extractStateFromStop(matchDest);
+      // Extract city and state from match stops (using new parsing for full addresses)
+      // Note: extractCityStateForMatching uses parseAddress which includes cleanCityName
+      // So city names are automatically cleaned for consistent matching
+      let matchOriginCityState: { city: string; state: string } | null = null;
+      let matchDestCityState: { city: string; state: string } | null = null;
+      
+      try {
+        const { extractCityStateForMatching } = require('../lib/format');
+        matchOriginCityState = extractCityStateForMatching(matchOrigin);
+        matchDestCityState = extractCityStateForMatching(matchDest);
+      } catch (error) {
+        console.warn(`[ExactMatch] Could not use new parsing for match, falling back to regex:`, error);
+      }
+      
+      if (!matchOriginCityState || !matchDestCityState) {
+        // Fallback: try to extract from strings directly
+        continue; // Skip if we can't parse
+      }
 
-      // Check for exact match (city-to-city)
+      // Extract states from match
+      const matchOriginState = matchOriginCityState.state;
+      const matchDestState = matchDestCityState.state;
+
+      // Check for exact match (city-to-city) - NOW USES PARSED CITY/STATE
       const isExactMatch = (
-        matchOrigin.toUpperCase().trim() === origin.toUpperCase().trim() &&
-        matchDest.toUpperCase().trim() === destination.toUpperCase().trim()
+        matchOriginCityState.city.toUpperCase().trim() === favoriteOriginCityState.city.toUpperCase().trim() &&
+        matchDestCityState.city.toUpperCase().trim() === favoriteDestCityState.city.toUpperCase().trim()
       );
 
       // Check for state match (state-to-state)
@@ -705,10 +807,10 @@ async function processExactMatchTrigger(
         matchDestState === destinationState
       );
 
-      // Check for backhaul match (reverse route) if enabled
+      // Check for backhaul match (reverse route) - NOW USES PARSED CITY/STATE
       const isBackhaulMatch = (
-        matchOrigin.toUpperCase().trim() === destination.toUpperCase().trim() &&
-        matchDest.toUpperCase().trim() === origin.toUpperCase().trim()
+        matchOriginCityState.city.toUpperCase().trim() === favoriteDestCityState.city.toUpperCase().trim() &&
+        matchDestCityState.city.toUpperCase().trim() === favoriteOriginCityState.city.toUpperCase().trim()
       );
 
       // Check for backhaul state match if enabled
@@ -725,11 +827,12 @@ async function processExactMatchTrigger(
         matchDestState === originState
       );
 
-      // Check if backhaul is enabled in preferences or trigger config
-      const backhaulEnabled = preferences?.prioritize_backhaul || 
-                             preferences?.prioritizeBackhaul || 
-                             config.backhaulEnabled || 
-                             false;
+      // Check if backhaul is enabled - prioritize trigger-specific setting
+      const backhaulEnabled = config.backhaulEnabled !== undefined 
+        ? config.backhaulEnabled 
+        : (preferences?.prioritize_backhaul || 
+           preferences?.prioritizeBackhaul || 
+           false);
 
       // Determine if this match should trigger notification
       const shouldNotify = 
@@ -767,10 +870,10 @@ async function processExactMatchTrigger(
         const loadDetails = await getLoadDetails(match.bid_number);
         const finalMatchType = isBackhaulMatch || isBackhaulStateMatch ? 'backhaul' : matchType;
         const message = isBackhaulMatch || isBackhaulStateMatch
-          ? `Backhaul ${matchType} match found! ${match.bid_number} - ${matchDest} → ${matchOrigin} (return route)`
+          ? `Backhaul ${matchType} match found! ${match.bid_number} - ${matchDestCityState.city}, ${matchDestCityState.state} → ${matchOriginCityState.city}, ${matchOriginCityState.state} (return route)`
           : matchType === 'state'
           ? `State match found! ${match.bid_number} - ${matchOriginState} → ${matchDestState}`
-          : `Exact match found! ${match.bid_number} - ${origin} → ${destination}`;
+          : `Exact match found! ${match.bid_number} - ${favoriteOriginCityState.city}, ${favoriteOriginCityState.state} → ${favoriteDestCityState.city}, ${favoriteDestCityState.state}`;
 
         console.log(`[${matchType === 'exact' ? 'ExactMatch' : 'StateMatch'}] ${finalMatchType.toUpperCase()} match: ${match.bid_number} (backhaul enabled: ${backhaulEnabled})`);
 

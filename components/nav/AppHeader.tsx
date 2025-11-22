@@ -13,12 +13,14 @@ import {
     Package,
     Sun,
     Truck,
-    X
+    X,
+    Megaphone
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import NotificationsMenu from "../NotificationsMenu";
+import AnnouncementsBadge from "../announcements/AnnouncementsBadge";
 
 interface NavItem {
   href: string;
@@ -31,8 +33,10 @@ const navItems: NavItem[] = [
   { href: "/", label: "Home", icon: Home, roles: ["public"] },
   { href: "/find-loads", label: "Find Loads", icon: Compass, roles: ["public"] },
   { href: "/bid-board", label: "Bid Board", icon: Gavel, roles: ["public"] },
+  { href: "/announcements", label: "Announcements", icon: Megaphone, roles: ["public", "carrier", "admin"] },
   { href: "/admin/manage-loads", label: "Manage Loads", icon: Package, roles: ["admin"] },
   { href: "/admin/auctions", label: "Auctions", icon: Gavel, roles: ["admin"] },
+  { href: "/admin/announcements", label: "Manage Announcements", icon: Megaphone, roles: ["admin"] },
 ];
 
 export default function AppHeader() {
@@ -94,12 +98,13 @@ export default function AppHeader() {
             {visibleItems.map((item) => {
               const Icon = item.icon;
               const isActive = pathname === item.href;
+              const isAnnouncements = item.href === "/announcements";
               
               return (
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`inline-flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                  className={`relative inline-flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
                     isActive
                       ? "text-primary bg-primary/10 border border-primary/20"
                       : "text-muted-foreground hover:text-foreground hover:bg-accent"
@@ -107,6 +112,7 @@ export default function AppHeader() {
                 >
                   <Icon className="mr-2 w-4 h-4" />
                   {item.label}
+                  {isAnnouncements && <AnnouncementsBadge />}
                 </Link>
               );
             })}
@@ -172,12 +178,13 @@ export default function AppHeader() {
               {visibleItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = pathname === item.href;
+                const isAnnouncements = item.href === "/announcements";
                 
                 return (
                   <Link
                     key={item.href}
                     href={item.href}
-                    className={`inline-flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                    className={`relative inline-flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
                       isActive
                         ? "text-primary bg-primary/10 border border-primary/20"
                         : "text-muted-foreground hover:text-foreground hover:bg-accent"
@@ -186,6 +193,7 @@ export default function AppHeader() {
                   >
                     <Icon className="mr-2 w-4 h-4" />
                     {item.label}
+                    {isAnnouncements && <AnnouncementsBadge />}
                   </Link>
                 );
               })}

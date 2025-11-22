@@ -29,11 +29,18 @@ interface CachedGeocode {
 export async function geocodeLocation(
   location: string,
   useApi: boolean = false
-): Promise<GeocodeResult> {
-  // Check cache first
+): Promise<GeocodeResult | null> {
+  // Check cache first (but skip if useApi is true and cached value is default coordinates)
   const cached = getCachedGeocode(location);
   if (cached) {
-    return cached;
+    // If useApi is true, don't trust cached default coordinates (they might be from failed attempts)
+    const isDefaultCoords = cached.lng === -96.9 && cached.lat === 37.6;
+    if (!useApi || !isDefaultCoords) {
+      console.log(`Geocoding: Using cached result for "${location}": [${cached.lng}, ${cached.lat}]`);
+      return cached;
+    } else {
+      console.log(`Geocoding: Skipping cached default coordinates for "${location}", will use API`);
+    }
   }
 
   // Try to extract approximate coordinates from common patterns
@@ -48,26 +55,71 @@ export async function geocodeLocation(
   const token = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN || 
                 process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
   
+  if (!token) {
+    console.warn(`Geocoding: No Mapbox token found for "${location}"`);
+  }
+  
   if (token && useApi) {
+    console.log(`Geocoding: Calling API for "${location}" (useApi: true, token: ${token.substring(0, 10)}...)`);
     try {
       const result = await geocodeWithAPI(location, token);
-      setCachedGeocode(location, result);
+      
+      // Handle null result (no results found)
+      if (!result) {
+        console.warn(`Geocoding: API returned no results for "${location}", trying fallback`);
+        // Fall back to approximation
+        const fallback = getApproximateLocation(location);
+        if (fallback) {
+          console.log(`Geocoding: Using approximation for "${location}"`);
+          setCachedGeocode(location, fallback);
+          return fallback;
+        }
+        // If no approximation, return default (but don't cache it)
+        console.warn(`Geocoding: No results and no approximation for "${location}", returning null`);
+        return null as any; // Return null to indicate failure
+      }
+      
+      // Only cache if we got real coordinates (not default)
+      if (result.lng !== -96.9 || result.lat !== 37.6) {
+        setCachedGeocode(location, result);
+        console.log(`Geocoding: API success for "${location}", cached result`);
+      } else {
+        console.warn(`Geocoding: API returned default coordinates for "${location}", trying fallback`);
+        // Try approximation as fallback
+        const fallback = getApproximateLocation(location);
+        if (fallback && (fallback.lng !== -96.9 || fallback.lat !== 37.6)) {
+          console.log(`Geocoding: Using approximation for "${location}"`);
+          setCachedGeocode(location, fallback);
+          return fallback;
+        }
+      }
       return result;
     } catch (error) {
-      console.warn(`Geocoding API failed for "${location}":`, error);
+      console.warn(`Geocoding API error for "${location}":`, error);
       // Fall back to approximation
       const fallback = getApproximateLocation(location);
       if (fallback) {
+        console.log(`Geocoding: Using approximation for "${location}"`);
         setCachedGeocode(location, fallback);
         return fallback;
       }
+      // If no approximation, return null instead of throwing
+      console.warn(`Geocoding: No fallback available for "${location}"`);
+      return null as any;
     }
   }
 
-  // Final fallback: default US center
-  const defaultLocation: GeocodeResult = { lng: -96.9, lat: 37.6 };
-  setCachedGeocode(location, defaultLocation);
-  return defaultLocation;
+  // Final fallback: default US center (only if useApi is false)
+  if (!useApi) {
+    console.warn(`Geocoding: Using default coordinates for "${location}" (no API, no approximation)`);
+    const defaultLocation: GeocodeResult = { lng: -96.9, lat: 37.6 };
+    setCachedGeocode(location, defaultLocation);
+    return defaultLocation;
+  }
+  
+  // If useApi is true but we got here, return null instead of throwing
+  console.warn(`Geocoding: Failed for "${location}" (API unavailable and no fallback)`);
+  return null;
 }
 
 /**
@@ -76,102 +128,258 @@ export async function geocodeLocation(
  * 
  * Uses v6 API with structured input support for better accuracy
  * See: https://docs.mapbox.com/api/search/geocoding-v6/
+ * 
+ * Returns null if no results found (instead of throwing)
  */
 async function geocodeWithAPI(
   location: string,
   token: string
-): Promise<GeocodeResult> {
+): Promise<GeocodeResult | null> {
   // Try to parse location into structured components for better accuracy
-  // Format: "City, State" or just city/state string
   const structured = parseLocationString(location);
   
-  let url: string;
+  // Try multiple query strategies for better accuracy
+  const queryStrategies: Array<{ url: string; description: string }> = [];
   
+  // Strategy 1: Structured query with city and state (most accurate)
   if (structured.city && structured.state) {
-    // Use structured input for better accuracy (v6 feature)
     const params = new URLSearchParams({
       access_token: token,
       country: 'us',
       place: structured.city,
       region: structured.state,
       types: 'place,locality,address',
-      limit: '1',
-      autocomplete: 'false', // Disable autocomplete for exact matches
+      limit: '3', // Get more results to find best match
+      autocomplete: 'false',
     });
-    url = `https://api.mapbox.com/search/geocode/v6/forward?${params.toString()}`;
-  } else {
-    // Fallback to text search
-    const encodedLocation = encodeURIComponent(location);
+    queryStrategies.push({
+      url: `https://api.mapbox.com/search/geocode/v6/forward?${params.toString()}`,
+      description: `structured (city: "${structured.city}", state: "${structured.state}")`
+    });
+    
+    // Strategy 1b: Also try with ZIP code if available
+    if (structured.zipcode) {
+      const paramsWithZip = new URLSearchParams({
+        access_token: token,
+        country: 'us',
+        place: structured.city,
+        region: structured.state,
+        postcode: structured.zipcode,
+        types: 'address,place,locality',
+        limit: '3',
+        autocomplete: 'false',
+      });
+      queryStrategies.push({
+        url: `https://api.mapbox.com/search/geocode/v6/forward?${paramsWithZip.toString()}`,
+        description: `structured with ZIP (city: "${structured.city}", state: "${structured.state}", zip: "${structured.zipcode}")`
+      });
+    }
+  }
+  
+  // Strategy 2: Text search with cleaned location (remove ZIP if present)
+  const cleanedLocation = location.replace(/\s+\d{5}(-\d{4})?$/, '').trim();
+  if (cleanedLocation !== location) {
     const params = new URLSearchParams({
       access_token: token,
-      q: location,
+      q: cleanedLocation,
       country: 'us',
       types: 'place,locality,address',
-      limit: '1',
+      limit: '3',
     });
-    url = `https://api.mapbox.com/search/geocode/v6/forward?${params.toString()}`;
+    queryStrategies.push({
+      url: `https://api.mapbox.com/search/geocode/v6/forward?${params.toString()}`,
+      description: `text search (cleaned: "${cleanedLocation}")`
+    });
   }
   
-  const response = await fetch(url);
+  // Strategy 3: Original text search (fallback)
+  const params = new URLSearchParams({
+    access_token: token,
+    q: location,
+    country: 'us',
+    types: 'place,locality,address',
+    limit: '3',
+  });
+  queryStrategies.push({
+    url: `https://api.mapbox.com/search/geocode/v6/forward?${params.toString()}`,
+    description: `text search (original: "${location}")`
+  });
   
-  if (!response.ok) {
-    // Handle specific error codes per Mapbox v6 documentation
-    if (response.status === 401) {
-      throw new Error('Not Authorized - Invalid Token');
-    } else if (response.status === 403) {
-      throw new Error('Forbidden - Check your account or token URL restrictions');
-    } else if (response.status === 404) {
-      throw new Error('Not Found - Check the endpoint');
-    } else if (response.status === 422) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(`Invalid Input: ${errorData.message || response.statusText}`);
-    } else if (response.status === 429) {
-      throw new Error('Rate limit exceeded');
+  // Try each strategy until we get a good result
+  for (const strategy of queryStrategies) {
+    try {
+      console.log(`Geocoding API: Trying ${strategy.description} for "${location}"`);
+      const response = await fetch(strategy.url);
+  
+      if (!response.ok) {
+        // Handle specific error codes per Mapbox v6 documentation
+        const errorText = await response.text().catch(() => 'Unknown error');
+        console.error(`Geocoding API error for "${location}" (${strategy.description}):`, {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorText,
+          url: strategy.url.replace(token, 'TOKEN_HIDDEN')
+        });
+        
+        // For non-critical errors, try next strategy
+        if (response.status === 401) {
+          throw new Error('Not Authorized - Invalid Token');
+        } else if (response.status === 403) {
+          throw new Error('Forbidden - Check your account or token URL restrictions');
+        } else if (response.status === 404) {
+          throw new Error('Not Found - Check the endpoint');
+        } else if (response.status === 422) {
+          // Invalid input - try next strategy
+          console.warn(`Geocoding API: Invalid input for strategy "${strategy.description}", trying next...`);
+          continue;
+        } else if (response.status === 429) {
+          throw new Error('Rate limit exceeded');
+        }
+        // For other errors, try next strategy
+        console.warn(`Geocoding API: Error ${response.status} for strategy "${strategy.description}", trying next...`);
+        continue;
+      }
+  
+      const data = await response.json();
+  
+      console.log(`Geocoding API: Response for "${location}" (${strategy.description}):`, {
+        featuresCount: data.features?.length || 0,
+        hasCoordinates: !!data.features?.[0]?.properties?.coordinates,
+        hasGeometry: !!data.features?.[0]?.geometry?.coordinates
+      });
+  
+      if (data.features && data.features.length > 0) {
+        // Try to find the best match from multiple results
+        let bestFeature = data.features[0];
+        
+        // If we have structured input, prefer features that match the city/state
+        if (structured.city && structured.state) {
+          const cityLower = structured.city.toLowerCase();
+          const stateUpper = structured.state.toUpperCase();
+          
+          // Look for a feature that matches both city and state
+          const matchingFeature = data.features.find((f: any) => {
+            const featureCity = f.properties?.name?.toLowerCase() || f.properties?.place_name?.toLowerCase() || '';
+            const featureState = f.properties?.region_code?.toUpperCase() || f.properties?.region?.toUpperCase() || '';
+            return featureCity.includes(cityLower) && featureState === stateUpper;
+          });
+          
+          if (matchingFeature) {
+            bestFeature = matchingFeature;
+            console.log(`Geocoding API: Found matching feature for "${structured.city}, ${structured.state}"`);
+          }
+        }
+        
+        const coords = bestFeature.properties?.coordinates;
+        
+        if (coords && coords.longitude && coords.latitude) {
+          const result = {
+            lng: coords.longitude,
+            lat: coords.latitude,
+            placeName: bestFeature.properties?.full_address || bestFeature.properties?.name || location,
+          };
+          console.log(`Geocoding API: Successfully geocoded "${location}" -> [${result.lng}, ${result.lat}] using ${strategy.description}`);
+          return result;
+        }
+        
+        // Fallback to geometry coordinates if properties.coordinates not available
+        if (bestFeature.geometry?.coordinates && bestFeature.geometry.coordinates.length >= 2) {
+          const result = {
+            lng: bestFeature.geometry.coordinates[0],
+            lat: bestFeature.geometry.coordinates[1],
+            placeName: bestFeature.properties?.full_address || bestFeature.properties?.name || location,
+          };
+          console.log(`Geocoding API: Successfully geocoded "${location}" (from geometry) -> [${result.lng}, ${result.lat}] using ${strategy.description}`);
+          return result;
+        }
+      }
+      
+      // No results from this strategy, try next one
+      console.warn(`Geocoding API: No results from ${strategy.description}, trying next strategy...`);
+    } catch (error: any) {
+      // If it's a critical error, throw it
+      if (error.message?.includes('Not Authorized') || 
+          error.message?.includes('Forbidden') || 
+          error.message?.includes('Rate limit')) {
+        throw error;
+      }
+      // Otherwise, log and try next strategy
+      console.warn(`Geocoding API: Error with ${strategy.description}:`, error.message);
+      continue;
     }
-    throw new Error(`Geocoding API error: ${response.status} ${response.statusText}`);
   }
   
-  const data = await response.json();
-  
-  if (data.features && data.features.length > 0) {
-    const feature = data.features[0];
-    const coords = feature.properties?.coordinates;
-    
-    if (coords && coords.longitude && coords.latitude) {
-      return {
-        lng: coords.longitude,
-        lat: coords.latitude,
-        placeName: feature.properties?.full_address || feature.properties?.name || location,
-      };
-    }
-    
-    // Fallback to geometry coordinates if properties.coordinates not available
-    if (feature.geometry?.coordinates && feature.geometry.coordinates.length >= 2) {
-      return {
-        lng: feature.geometry.coordinates[0],
-        lat: feature.geometry.coordinates[1],
-        placeName: feature.properties?.full_address || feature.properties?.name || location,
-      };
-    }
-  }
-  
-  throw new Error('No results found');
+  console.warn(`Geocoding API: All strategies failed for "${location}"`);
+  // Return null instead of throwing - let the caller handle the failure gracefully
+  return null as any; // Type assertion needed because function signature expects GeocodeResult
 }
 
 /**
  * Parse location string into structured components
- * Attempts to extract city and state from "City, State" format
+ * Uses the robust parseAddress utility for better accuracy
  */
-function parseLocationString(location: string): { city?: string; state?: string } {
+function parseLocationString(location: string): { city?: string; state?: string; zipcode?: string } {
   const trimmed = location.trim();
   
-  // Try "City, State" pattern (e.g., "Los Angeles, CA" or "Atlanta, Georgia")
-  const cityStateMatch = trimmed.match(/^(.+?),\s*([A-Z]{2}|[A-Za-z\s]+)$/);
-  if (cityStateMatch) {
-    return {
-      city: cityStateMatch[1].trim(),
-      state: cityStateMatch[2].trim(),
-    };
+  // Import parseAddress dynamically to avoid circular dependencies
+  // Use a more robust parsing approach
+  try {
+    // Try to extract city, state, and zipcode using regex patterns
+    // Pattern 1: "City, State ZIP" (e.g., "OPA LOCKA, FL 33054")
+    const cityStateZipMatch = trimmed.match(/^(.+?),\s*([A-Z]{2})\s+(\d{5}(?:-\d{4})?)$/i);
+    if (cityStateZipMatch) {
+      return {
+        city: cityStateZipMatch[1].trim(),
+        state: cityStateZipMatch[2].trim().toUpperCase(),
+        zipcode: cityStateZipMatch[3].trim(),
+      };
+    }
+    
+    // Pattern 2: "City, State" (e.g., "Los Angeles, CA" or "Atlanta, Georgia")
+    const cityStateMatch = trimmed.match(/^(.+?),\s*([A-Z]{2}|[A-Za-z\s]+)$/);
+    if (cityStateMatch) {
+      return {
+        city: cityStateMatch[1].trim(),
+        state: cityStateMatch[2].trim().toUpperCase(),
+      };
+    }
+    
+    // Pattern 3: "City State ZIP" (e.g., "OPA LOCKA FL 33054")
+    const cityStateZipNoCommaMatch = trimmed.match(/^(.+?)\s+([A-Z]{2})\s+(\d{5}(?:-\d{4})?)$/i);
+    if (cityStateZipNoCommaMatch) {
+      return {
+        city: cityStateZipNoCommaMatch[1].trim(),
+        state: cityStateZipNoCommaMatch[2].trim().toUpperCase(),
+        zipcode: cityStateZipNoCommaMatch[3].trim(),
+      };
+    }
+    
+    // Pattern 4: Extract state code from anywhere in the string
+    const stateCodeMatch = trimmed.match(/\b([A-Z]{2})\b/);
+    if (stateCodeMatch) {
+      const stateCode = stateCodeMatch[1];
+      const validStates = new Set([
+        'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
+        'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
+        'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
+        'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
+        'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY', 'DC'
+      ]);
+      
+      if (validStates.has(stateCode)) {
+        // Extract city (everything before the state code)
+        const beforeState = trimmed.substring(0, trimmed.indexOf(stateCode)).trim();
+        // Remove common suffixes and clean up
+        const city = beforeState.replace(/[,\s]+$/, '').trim();
+        
+        return {
+          city: city || undefined,
+          state: stateCode,
+        };
+      }
+    }
+  } catch (error) {
+    console.warn('Error parsing location string:', error);
   }
   
   return {};
@@ -183,6 +391,22 @@ function parseLocationString(location: string): { city?: string; state?: string 
  */
 function getApproximateLocation(location: string): GeocodeResult | null {
   const normalized = location.toLowerCase().trim();
+  const upperNormalized = location.toUpperCase().trim();
+  
+  // State code to state name mapping
+  const stateCodeMap: Record<string, string> = {
+    'AL': 'alabama', 'AK': 'alaska', 'AZ': 'arizona', 'AR': 'arkansas', 'CA': 'california',
+    'CO': 'colorado', 'CT': 'connecticut', 'DE': 'delaware', 'FL': 'florida', 'GA': 'georgia',
+    'HI': 'hawaii', 'ID': 'idaho', 'IL': 'illinois', 'IN': 'indiana', 'IA': 'iowa',
+    'KS': 'kansas', 'KY': 'kentucky', 'LA': 'louisiana', 'ME': 'maine', 'MD': 'maryland',
+    'MA': 'massachusetts', 'MI': 'michigan', 'MN': 'minnesota', 'MS': 'mississippi', 'MO': 'missouri',
+    'MT': 'montana', 'NE': 'nebraska', 'NV': 'nevada', 'NH': 'new hampshire', 'NJ': 'new jersey',
+    'NM': 'new mexico', 'NY': 'new york', 'NC': 'north carolina', 'ND': 'north dakota', 'OH': 'ohio',
+    'OK': 'oklahoma', 'OR': 'oregon', 'PA': 'pennsylvania', 'RI': 'rhode island', 'SC': 'south carolina',
+    'SD': 'south dakota', 'TN': 'tennessee', 'TX': 'texas', 'UT': 'utah', 'VT': 'vermont',
+    'VA': 'virginia', 'WA': 'washington', 'WV': 'west virginia', 'WI': 'wisconsin', 'WY': 'wyoming',
+    'DC': 'district of columbia'
+  };
   
   // Common US state centers (approximate)
   const stateCenters: Record<string, [number, number]> = {
@@ -236,7 +460,20 @@ function getApproximateLocation(location: string): GeocodeResult | null {
     'west virginia': [-80.969604, 38.491226],
     'wisconsin': [-89.616508, 44.268543],
     'wyoming': [-107.30249, 42.755966],
+    'district of columbia': [-77.0369, 38.9072],
   };
+
+  // First, try to extract state code (e.g., "FL" from "OPA LOCKA, FL 33054")
+  // Pattern: ", ST " or ", ST" or " ST " or " ST"
+  const stateCodeMatch = upperNormalized.match(/[,\s]+([A-Z]{2})(?:\s|$)/);
+  if (stateCodeMatch && stateCodeMatch[1] && stateCodeMap[stateCodeMatch[1]]) {
+    const stateName = stateCodeMap[stateCodeMatch[1]];
+    if (stateCenters[stateName]) {
+      const [lng, lat] = stateCenters[stateName];
+      console.log(`Geocoding: Using state center for "${location}" (extracted state code: ${stateCodeMatch[1]})`);
+      return { lng, lat, placeName: stateName };
+    }
+  }
 
   // Check for state names
   for (const [state, [lng, lat]] of Object.entries(stateCenters)) {

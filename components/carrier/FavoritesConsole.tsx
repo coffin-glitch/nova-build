@@ -11,7 +11,7 @@ import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAccentColor } from "@/hooks/useAccentColor";
-import { formatDistance, formatStopCount, formatStops, formatStopsDetailed } from "@/lib/format";
+import { extractCityStateForMatching, formatAddressForCard, formatDistance, formatStopCount, formatStops, formatStopsDetailed, ParsedAddress } from "@/lib/format";
 import {
   Activity,
   ArrowLeftRight,
@@ -195,17 +195,23 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
       if (hasLoadedTriggersRef.current) {
         // Use functional update to avoid dependency on stableTriggers
         setStableTriggers(prev => {
-          // Merge strategy: update existing, add new, never remove
+          // Merge strategy: update existing, add new, and remove triggers that are no longer in API response
+          // This ensures deleted triggers are properly removed
+          const apiTriggerIds = new Set(triggersData.data.map((t: NotificationTrigger) => t.id));
           const existingMap = new Map(prev.map(t => [t.id, t]));
           
-          // Update existing and add new triggers
+          // Remove triggers that are no longer in the API response (they were deleted)
+          const triggersToKeep = prev.filter(t => apiTriggerIds.has(t.id));
+          const updatedMap = new Map(triggersToKeep.map(t => [t.id, t]));
+          
+          // Update existing and add new triggers from API
           triggersData.data.forEach((newTrigger: NotificationTrigger) => {
-            const existing = existingMap.get(newTrigger.id);
-            existingMap.set(newTrigger.id, existing ? { ...existing, ...newTrigger } : newTrigger);
+            const existing = updatedMap.get(newTrigger.id);
+            updatedMap.set(newTrigger.id, existing ? { ...existing, ...newTrigger } : newTrigger);
           });
           
-          // Convert back to array - this preserves all existing triggers
-          return Array.from(existingMap.values());
+          // Convert back to array
+          return Array.from(updatedMap.values());
         });
       } else {
         // First load - set initial data
@@ -561,9 +567,19 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
   };
 
 
-  // Helper to extract state from stop string (same logic as heat map)
+  // Helper to extract state from stop string (uses new parsing for full addresses)
+  // Note: extractCityStateForMatching already uses parseAddress which includes cleanCityName
+  // So city names are automatically cleaned (e.g., "NW HURON" → "HURON")
   const extractStateFromStop = (stop: string): string | null => {
     if (!stop) return null;
+    
+    // Use new parsing function first (city names are already cleaned)
+    const cityState = extractCityStateForMatching(stop);
+    if (cityState && cityState.state) {
+      return cityState.state;
+    }
+    
+    // Fallback to regex-based extraction (for backward compatibility)
     const trimmed = stop.trim().toUpperCase();
     const validStates = new Set([
       'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
@@ -598,6 +614,12 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
       const minDistance = preferences.minDistance || Math.max(0, favorite.distance - 50);
       const maxDistance = preferences.maxDistance || favorite.distance + 50;
 
+      // Extract city/state from favorite stops for reference
+      const originStop = favorite.stops[0];
+      const destinationStop = favorite.stops[favorite.stops.length - 1];
+      const favoriteOriginCityState = extractCityStateForMatching(originStop);
+      const favoriteDestCityState = extractCityStateForMatching(destinationStop);
+
       const response = await fetch('/api/carrier/notification-triggers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -608,7 +630,11 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
               minDistance,
               maxDistance
             },
-            matchType: 'exact' // Exact city-to-city match
+            matchType: 'exact', // Exact city-to-city match
+            favoriteBidNumber: bidNumber, // Store specific bid number
+            favoriteStops: favorite.stops, // Store stops for reference
+            favoriteOriginCityState: favoriteOriginCityState, // Store parsed origin
+            favoriteDestCityState: favoriteDestCityState, // Store parsed destination
           },
           isActive: true
         })
@@ -667,6 +693,10 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
         return;
       }
 
+      // Extract city/state from favorite stops for reference
+      const favoriteOriginCityState = extractCityStateForMatching(originStop);
+      const favoriteDestCityState = extractCityStateForMatching(destinationStop);
+
       // Use distance range from preferences, or default to favorite distance ± 50 miles
       const minDistance = preferences.minDistance || Math.max(0, favorite.distance - 50);
       const maxDistance = preferences.maxDistance || favorite.distance + 50;
@@ -683,7 +713,11 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
             },
             matchType: 'state', // State-to-state match
             originState,
-            destinationState
+            destinationState,
+            favoriteBidNumber: bidNumber, // Store specific bid number
+            favoriteStops: favorite.stops, // Store stops for reference
+            favoriteOriginCityState: favoriteOriginCityState, // Store parsed origin
+            favoriteDestCityState: favoriteDestCityState, // Store parsed destination
           },
           isActive: true
         })
@@ -757,7 +791,11 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
   const handleDeleteTrigger = async (triggerId: string) => {
     // Optimistic update - remove from local state immediately
     const deletedTrigger = stableTriggers.find(t => t.id === triggerId);
+    
+    // Remove from stableTriggers immediately
     setStableTriggers(prev => prev.filter(t => t.id !== triggerId));
+    // Also update the ref to prevent restoration
+    lastKnownGoodTriggersRef.current = lastKnownGoodTriggersRef.current.filter(t => t.id !== triggerId);
     
     try {
       const response = await fetch(`/api/carrier/notification-triggers?id=${triggerId}`, {
@@ -767,25 +805,37 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
       const result = await response.json();
       if (result.ok) {
         toast.success("Notification trigger deleted");
-        // Revalidate in background without causing flicker
-        mutateTriggers({ revalidate: false }).then(() => {
-          setTimeout(() => mutateTriggers(), 100);
-        });
+        // Force immediate revalidation to sync with server
+        await mutateTriggers();
+        // Ensure deleted trigger is removed from stableTriggers (in case merge didn't catch it)
+        setStableTriggers(prev => prev.filter(t => t.id !== triggerId));
       } else {
-        // Revert optimistic update on error
-        if (deletedTrigger) {
-          setStableTriggers(prev => [...prev, deletedTrigger].sort((a, b) => 
-            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-          ));
+        // Handle "trigger not found" - it might already be deleted, so just refresh
+        if (result.error === "Trigger not found" || response.status === 404) {
+          // Trigger was already deleted, just refresh the list
+          toast.success("Alert already removed");
+          await mutateTriggers();
+          setStableTriggers(prev => prev.filter(t => t.id !== triggerId));
+        } else {
+          // Revert optimistic update on other errors
+          if (deletedTrigger) {
+            const restored = [...stableTriggers.filter(t => t.id !== triggerId), deletedTrigger].sort((a, b) => 
+              new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+            );
+            setStableTriggers(restored);
+            lastKnownGoodTriggersRef.current = restored;
+          }
+          toast.error(result.error || "Failed to delete notification trigger");
         }
-        toast.error(result.error || "Failed to delete notification trigger");
       }
     } catch (error) {
       // Revert optimistic update on error
       if (deletedTrigger) {
-        setStableTriggers(prev => [...prev, deletedTrigger].sort((a, b) => 
+        const restored = [...stableTriggers.filter(t => t.id !== triggerId), deletedTrigger].sort((a, b) => 
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        ));
+        );
+        setStableTriggers(restored);
+        lastKnownGoodTriggersRef.current = restored;
       }
       toast.error("Failed to delete notification trigger");
     }
@@ -1970,7 +2020,7 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                                   <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm leading-snug">
                                     {favorite.stops.slice(0, 3).map((stop, idx) => (
                                       <span key={idx} className="inline-flex items-center">
-                                        <span className="text-foreground font-semibold truncate max-w-[140px]">{stop}</span>
+                                        <span className="text-foreground font-semibold truncate max-w-[140px]">{formatAddressForCard(stop)}</span>
                                         {idx < Math.min(favorite.stops.length - 1, 2) && (
                                           <span className="mx-1.5 text-muted-foreground text-xs">→</span>
                                         )}
@@ -2323,20 +2373,35 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
               <div className="space-y-4">
                 <div className="h-48 rounded-lg overflow-hidden">
                   <MapboxMap
-                    stops={viewDetailsBid.stops}
+                    stops={Array.isArray(viewDetailsBid.stops) ? viewDetailsBid.stops : []}
                     className="w-full h-full"
                   />
                 </div>
                 
                 <div>
                   <h4 className="font-semibold mb-2 text-sm">Detailed Route</h4>
-                  <div className="space-y-1">
-                    {formatStopsDetailed(viewDetailsBid.stops).map((stop, index) => (
-                      <div key={index} className="flex items-center gap-2 p-2 rounded bg-muted/20 text-sm">
-                        <div className="w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center text-xs font-medium">
+                  <div className="space-y-2">
+                    {formatStopsDetailed(viewDetailsBid.stops).map((address: ParsedAddress, index) => (
+                      <div key={index} className="flex items-start gap-3 p-3 bg-muted/30 rounded-lg">
+                        <div className="flex items-center justify-center w-6 h-6 bg-primary text-primary-foreground rounded-full text-sm font-bold flex-shrink-0">
                           {index + 1}
                         </div>
-                        <span>{stop}</span>
+                        <div className="flex-1">
+                          <p className="font-medium">{address.fullAddress}</p>
+                          <div className="text-sm text-muted-foreground mt-1 space-y-0.5">
+                            {address.streetNumber && address.streetName && (
+                              <p>Street: {address.streetNumber} {address.streetName}</p>
+                            )}
+                            <p>City: {address.city}</p>
+                            <p>State: {address.state}</p>
+                            {address.zipcode && <p>ZIP: {address.zipcode}</p>}
+                            <p className="text-xs mt-1">
+                              {index === 0 ? 'Pickup Location' : 
+                               index === formatStopsDetailed(viewDetailsBid.stops).length - 1 ? 'Delivery Location' : 
+                               'Stop Location'}
+                            </p>
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>
