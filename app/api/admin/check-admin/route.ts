@@ -1,4 +1,5 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -7,15 +8,39 @@ export async function GET(request: NextRequest) {
     // SECURITY FIX: Require admin authentication (Supabase-only)
     await requireApiAdmin(request);
     
+    const auth = await requireApiAdmin(request);
+    const adminUserId = auth.userId;
+    
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get("userId");
+    
+    // Input validation
+    const validation = validateInput(
+      { userId },
+      {
+        userId: { required: true, type: 'string', maxLength: 200 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_check_admin_input', adminUserId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { isAdmin: false, error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
     
     console.log("🔍 Check Admin API: Received request");
     console.log("👤 User ID:", userId);
     
     if (!userId) {
       console.log("❌ No userId provided");
-      return NextResponse.json({ isAdmin: false }, { status: 400 });
+      const response = NextResponse.json(
+        { isAdmin: false, error: "userId is required" },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
     
     console.log("📡 Checking admin status directly...");
@@ -30,12 +55,32 @@ export async function GET(request: NextRequest) {
     const isAdmin = result.length > 0 && result[0].role === "admin";
     console.log("🎯 Admin status result:", isAdmin);
     
-    return NextResponse.json({ isAdmin });
+    logSecurityEvent('admin_status_checked', adminUserId, { checkedUserId: userId, isAdmin });
+    
+    const response = NextResponse.json({ isAdmin });
+    return addSecurityHeaders(response);
+    
   } catch (error: any) {
     console.error("❌ Check admin API error:", error);
-    return NextResponse.json(
-      { isAdmin: false, error: error.message },
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('check_admin_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        isAdmin: false,
+        error: process.env.NODE_ENV === 'development' 
+          ? error.message
+          : "Failed to check admin status"
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }

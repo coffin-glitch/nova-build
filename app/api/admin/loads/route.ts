@@ -1,11 +1,13 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
     // Ensure user is admin (Supabase-only)
-    await requireApiAdmin(request);
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
 
     const { searchParams } = new URL(request.url);
     const search = searchParams.get("search");
@@ -13,8 +15,34 @@ export async function GET(request: NextRequest) {
     const equipment = searchParams.get("equipment");
     const origin = searchParams.get("origin");
     const destination = searchParams.get("destination");
-    const limit = Math.min(parseInt(searchParams.get("limit") || "25"), 100);
-    const offset = parseInt(searchParams.get("offset") || "0");
+    const limitParam = searchParams.get("limit") || "25";
+    const offsetParam = searchParams.get("offset") || "0";
+
+    // Input validation
+    const validation = validateInput(
+      { search, status, equipment, origin, destination, limit: limitParam, offset: offsetParam },
+      {
+        search: { type: 'string', maxLength: 200, required: false },
+        status: { type: 'string', maxLength: 50, required: false },
+        equipment: { type: 'string', maxLength: 50, required: false },
+        origin: { type: 'string', maxLength: 200, required: false },
+        destination: { type: 'string', maxLength: 200, required: false },
+        limit: { type: 'string', pattern: /^\d+$/, required: false },
+        offset: { type: 'string', pattern: /^\d+$/, required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_admin_loads_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
+    const limit = Math.min(parseInt(limitParam), 100);
+    const offset = Math.max(0, parseInt(offsetParam));
 
     // Build query with admin-specific fields and no published filter
     let query = sql`
@@ -54,15 +82,16 @@ export async function GET(request: NextRequest) {
       WHERE 1=1
     `;
 
-    // Add filters
+    // Add filters with parameterized queries to prevent SQL injection
     if (search) {
+      const searchPattern = `%${search}%`;
       query = sql`
         ${query}
         AND (
-          rr_number ILIKE ${`%${search}%`} OR
-          origin_city ILIKE ${`%${search}%`} OR
-          destination_city ILIKE ${`%${search}%`} OR
-          customer_name ILIKE ${`%${search}%`}
+          rr_number ILIKE ${searchPattern} OR
+          origin_city ILIKE ${searchPattern} OR
+          destination_city ILIKE ${searchPattern} OR
+          customer_name ILIKE ${searchPattern}
         )
       `;
     }
@@ -82,16 +111,18 @@ export async function GET(request: NextRequest) {
     }
 
     if (origin) {
+      const originPattern = `%${origin}%`;
       query = sql`
         ${query}
-        AND (origin_city ILIKE ${`%${origin}%`} OR origin_state ILIKE ${`%${origin}%`})
+        AND (origin_city ILIKE ${originPattern} OR origin_state ILIKE ${originPattern})
       `;
     }
 
     if (destination) {
+      const destPattern = `%${destination}%`;
       query = sql`
         ${query}
-        AND (destination_city ILIKE ${`%${destination}%`} OR destination_state ILIKE ${`%${destination}%`})
+        AND (destination_city ILIKE ${destPattern} OR destination_state ILIKE ${destPattern})
       `;
     }
 
@@ -110,13 +141,14 @@ export async function GET(request: NextRequest) {
     `;
 
     if (search) {
+      const searchPattern = `%${search}%`;
       countQuery = sql`
         ${countQuery}
         AND (
-          rr_number ILIKE ${`%${search}%`} OR
-          origin_city ILIKE ${`%${search}%`} OR
-          destination_city ILIKE ${`%${search}%`} OR
-          customer_name ILIKE ${`%${search}%`}
+          rr_number ILIKE ${searchPattern} OR
+          origin_city ILIKE ${searchPattern} OR
+          destination_city ILIKE ${searchPattern} OR
+          customer_name ILIKE ${searchPattern}
         )
       `;
     }
@@ -136,16 +168,18 @@ export async function GET(request: NextRequest) {
     }
 
     if (origin) {
+      const originPattern = `%${origin}%`;
       countQuery = sql`
         ${countQuery}
-        AND (origin_city ILIKE ${`%${origin}%`} OR origin_state ILIKE ${`%${origin}%`})
+        AND (origin_city ILIKE ${originPattern} OR origin_state ILIKE ${originPattern})
       `;
     }
 
     if (destination) {
+      const destPattern = `%${destination}%`;
       countQuery = sql`
         ${countQuery}
-        AND (destination_city ILIKE ${`%${destination}%`} OR destination_state ILIKE ${`%${destination}%`})
+        AND (destination_city ILIKE ${destPattern} OR destination_state ILIKE ${destPattern})
       `;
     }
 
@@ -162,46 +196,105 @@ export async function GET(request: NextRequest) {
       }
     };
 
-    return NextResponse.json(result);
+    logSecurityEvent('admin_loads_accessed', userId, { 
+      search: search || null,
+      status: status || null,
+      limit,
+      offset
+    });
+    
+    const response = NextResponse.json(result);
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching admin loads:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch loads", details: error instanceof Error ? error.message : 'Unknown error' },
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('admin_loads_fetch_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to fetch loads",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
     // Ensure user is admin (Supabase-only)
-    await requireApiAdmin(request);
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
 
     const body = await request.json();
     const { action, rrNumbers } = body;
 
+    // Input validation
+    const validation = validateInput(
+      { action, rrNumbers },
+      {
+        action: { required: true, type: 'string', enum: ['archive', 'delete', 'publish', 'unpublish', 'unpublish_all'] },
+        rrNumbers: { type: 'array', maxLength: 1000, required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_admin_loads_post_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     if (!action) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: "Action is required" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     // For unpublish_all, we don't need rrNumbers
     if (action !== 'unpublish_all') {
       if (!rrNumbers || !Array.isArray(rrNumbers)) {
-        return NextResponse.json(
+        const response = NextResponse.json(
           { error: "rrNumbers array is required for this action" },
           { status: 400 }
         );
+        return addSecurityHeaders(response);
       }
 
       if (rrNumbers.length === 0) {
-        return NextResponse.json(
+        const response = NextResponse.json(
           { error: "At least one load must be selected" },
           { status: 400 }
         );
+        return addSecurityHeaders(response);
+      }
+
+      // Validate and sanitize rrNumbers
+      const validRrNumbers = rrNumbers.filter((rr: any) => 
+        typeof rr === 'string' && /^[A-Z0-9\-_]+$/.test(rr) && rr.length <= 100
+      );
+
+      if (validRrNumbers.length === 0) {
+        const response = NextResponse.json(
+          { error: "No valid RR numbers provided" },
+          { status: 400 }
+        );
+        return addSecurityHeaders(response);
       }
     }
 
@@ -210,44 +303,48 @@ export async function POST(request: NextRequest) {
 
     switch (action) {
       case "archive":
+        // Use parameterized query with ANY() to prevent SQL injection
         result = await sql`
           UPDATE loads 
           SET 
             status_code = 'archived',
             archived = true,
             updated_at = CURRENT_TIMESTAMP
-          WHERE rr_number IN (${rrNumbers.join("','")})
+          WHERE rr_number = ANY(${validRrNumbers})
         `;
         message = `Archived ${(result as any).count || 0} load(s)`;
         break;
 
       case "delete":
+        // Use parameterized query with ANY() to prevent SQL injection
         result = await sql`
           DELETE FROM loads 
-          WHERE rr_number IN (${rrNumbers.join("','")})
+          WHERE rr_number = ANY(${validRrNumbers})
         `;
         message = `Deleted ${(result as any).count || 0} load(s)`;
         break;
 
       case "publish":
+        // Use parameterized query with ANY() to prevent SQL injection
         result = await sql`
           UPDATE loads 
           SET 
             status_code = 'published',
             published = true,
             updated_at = CURRENT_TIMESTAMP
-          WHERE rr_number IN (${rrNumbers.join("','")})
+          WHERE rr_number = ANY(${validRrNumbers})
         `;
         message = `Published ${(result as any).count || 0} load(s)`;
         break;
 
       case "unpublish":
+        // Use parameterized query with ANY() to prevent SQL injection
         result = await sql`
           UPDATE loads 
           SET 
             published = false,
             updated_at = CURRENT_TIMESTAMP
-          WHERE rr_number IN (${rrNumbers.join("','")})
+          WHERE rr_number = ANY(${validRrNumbers})
         `;
         message = `Unpublished ${(result as any).count || 0} load(s)`;
         break;
@@ -263,24 +360,49 @@ export async function POST(request: NextRequest) {
         break;
 
       default:
-        return NextResponse.json(
+        const defaultResponse = NextResponse.json(
           { error: "Invalid action. Must be one of: archive, delete, publish, unpublish, unpublish_all" },
           { status: 400 }
         );
+        return addSecurityHeaders(defaultResponse);
     }
 
-    return NextResponse.json({
+    logSecurityEvent('admin_loads_bulk_action', userId, { 
+      action,
+      affectedCount: (result as any).count || 0,
+      isUnpublishAll: action === 'unpublish_all'
+    });
+    
+    const response = NextResponse.json({
       success: true,
       message,
       affectedCount: (result as any).count || 0,
-      affectedLoads: action === 'unpublish_all' ? 'all' : rrNumbers
+      affectedLoads: action === 'unpublish_all' ? 'all' : validRrNumbers
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error performing admin bulk operation:", error);
-    return NextResponse.json(
-      { error: "Failed to perform bulk operation", details: error instanceof Error ? error.message : 'Unknown error' },
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('admin_loads_bulk_action_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to perform bulk operation",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
