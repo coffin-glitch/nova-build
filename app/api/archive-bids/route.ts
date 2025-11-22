@@ -1,64 +1,55 @@
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin } from "@/lib/auth-api-helper";
 import sql from '@/lib/db';
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
+    // Require admin authentication for viewing archived bids
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
+
     const { searchParams } = new URL(request.url);
     const date = searchParams.get("date");
     const city = searchParams.get("city");
     const state = searchParams.get("state");
-    const milesMin = searchParams.get("milesMin");
-    const milesMax = searchParams.get("milesMax");
+    const milesMinParam = searchParams.get("milesMin");
+    const milesMaxParam = searchParams.get("milesMax");
     const sortBy = searchParams.get("sortBy") || "archived_at";
-    const limit = Math.min(parseInt(searchParams.get("limit") || "100"), 100);
-    const offset = parseInt(searchParams.get("offset") || "0");
+    const limitParam = searchParams.get("limit") || "100";
+    const offsetParam = searchParams.get("offset") || "0";
 
-    // Build WHERE conditions
-    let whereConditions = [];
-    
-    if (date) {
-      // Convert archived_at from UTC to CDT for date comparison
-      whereConditions.push(`DATE(tb.archived_at AT TIME ZONE 'America/Chicago') = '${date}'`);
-    }
-    
-    if (city) {
-      whereConditions.push(`tb.stops::text ILIKE '%${city.replace(/'/g, "''")}%'`);
-    }
-    
-    if (state) {
-      whereConditions.push(`tb.tag = '${state.toUpperCase().replace(/'/g, "''")}'`);
-    }
-    
-    if (milesMin) {
-      whereConditions.push(`tb.distance_miles >= ${parseInt(milesMin)}`);
-    }
-    
-    if (milesMax) {
-      whereConditions.push(`tb.distance_miles <= ${parseInt(milesMax)}`);
-    }
-    
-    const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
-    
-    // Build ORDER BY clause
-    let orderBy = "ORDER BY tb.archived_at DESC";
-    switch (sortBy) {
-      case "distance":
-        orderBy = "ORDER BY tb.distance_miles ASC";
-        break;
-      case "pickup":
-        orderBy = "ORDER BY tb.pickup_timestamp ASC";
-        break;
-      case "state":
-        orderBy = "ORDER BY tb.tag ASC";
-        break;
-      case "archived_at":
-      default:
-        orderBy = "ORDER BY tb.archived_at DESC";
-        break;
+    // Input validation
+    const validation = validateInput(
+      { date, city, state, milesMin: milesMinParam, milesMax: milesMaxParam, sortBy, limit: limitParam, offset: offsetParam },
+      {
+        date: { type: 'string', pattern: /^\d{4}-\d{2}-\d{2}$/, required: false },
+        city: { type: 'string', maxLength: 100, required: false },
+        state: { type: 'string', maxLength: 2, required: false },
+        milesMin: { type: 'string', pattern: /^\d+$/, required: false },
+        milesMax: { type: 'string', pattern: /^\d+$/, required: false },
+        sortBy: { type: 'string', enum: ['archived_at', 'distance', 'pickup', 'state'], required: false },
+        limit: { type: 'string', pattern: /^\d+$/, required: false },
+        offset: { type: 'string', pattern: /^\d+$/, required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_archive_bids_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
 
-    // Query archived bids from telegram_bids (only those with archived_at set)
-    const rows = await sql`
+    const limit = Math.min(parseInt(limitParam), 100); // Max 100
+    const offset = Math.max(0, parseInt(offsetParam)); // Ensure non-negative
+    const milesMin = milesMinParam ? parseInt(milesMinParam) : null;
+    const milesMax = milesMaxParam ? parseInt(milesMaxParam) : null;
+
+    // Build query with parameterized conditions to prevent SQL injection
+    let baseQuery = sql`
       SELECT 
         tb.*,
         COALESCE(bid_counts.bids_count, 0) as bids_count,
@@ -85,18 +76,73 @@ export async function GET(request: NextRequest) {
         )
       ) lowest_bid ON tb.bid_number = lowest_bid.bid_number
       WHERE tb.archived_at IS NOT NULL
-      ${sql.unsafe(whereClause)}
-      ${sql.unsafe(orderBy)}
-      LIMIT ${limit} OFFSET ${offset}
     `;
 
-    // Get total count for pagination
-    const countResult = await sql`
+    // Add parameterized WHERE conditions
+    if (date) {
+      baseQuery = sql`${baseQuery} AND DATE(tb.archived_at AT TIME ZONE 'America/Chicago') = ${date}`;
+    }
+    
+    if (city) {
+      baseQuery = sql`${baseQuery} AND tb.stops::text ILIKE ${'%' + city + '%'}`;
+    }
+    
+    if (state) {
+      baseQuery = sql`${baseQuery} AND tb.tag = ${state.toUpperCase()}`;
+    }
+    
+    if (milesMin !== null) {
+      baseQuery = sql`${baseQuery} AND tb.distance_miles >= ${milesMin}`;
+    }
+    
+    if (milesMax !== null) {
+      baseQuery = sql`${baseQuery} AND tb.distance_miles <= ${milesMax}`;
+    }
+
+    // Add ORDER BY
+    switch (sortBy) {
+      case "distance":
+        baseQuery = sql`${baseQuery} ORDER BY tb.distance_miles ASC`;
+        break;
+      case "pickup":
+        baseQuery = sql`${baseQuery} ORDER BY tb.pickup_timestamp ASC`;
+        break;
+      case "state":
+        baseQuery = sql`${baseQuery} ORDER BY tb.tag ASC`;
+        break;
+      case "archived_at":
+      default:
+        baseQuery = sql`${baseQuery} ORDER BY tb.archived_at DESC`;
+        break;
+    }
+
+    baseQuery = sql`${baseQuery} LIMIT ${limit} OFFSET ${offset}`;
+    const rows = await baseQuery;
+
+    // Get total count for pagination (with same filters)
+    let countQuery = sql`
       SELECT COUNT(*) as total
       FROM telegram_bids tb
       WHERE tb.archived_at IS NOT NULL
-      ${sql.unsafe(whereClause)}
     `;
+
+    if (date) {
+      countQuery = sql`${countQuery} AND DATE(tb.archived_at AT TIME ZONE 'America/Chicago') = ${date}`;
+    }
+    if (city) {
+      countQuery = sql`${countQuery} AND tb.stops::text ILIKE ${'%' + city + '%'}`;
+    }
+    if (state) {
+      countQuery = sql`${countQuery} AND tb.tag = ${state.toUpperCase()}`;
+    }
+    if (milesMin !== null) {
+      countQuery = sql`${countQuery} AND tb.distance_miles >= ${milesMin}`;
+    }
+    if (milesMax !== null) {
+      countQuery = sql`${countQuery} AND tb.distance_miles <= ${milesMax}`;
+    }
+
+    const countResult = await countQuery;
 
     const total = countResult[0]?.total || 0;
 
@@ -110,7 +156,9 @@ export async function GET(request: NextRequest) {
       WHERE archived_at IS NOT NULL
     `;
 
-    return NextResponse.json({
+    logSecurityEvent('archive_bids_accessed', userId);
+    
+    const response = NextResponse.json({
       ok: true,
       data: rows,
       pagination: {
@@ -121,37 +169,108 @@ export async function GET(request: NextRequest) {
       },
       dateRange: dateRange[0] || { earliest_date: null, latest_date: null }
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching archived bids:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch archived bids" },
+    
+    // Handle auth errors
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      const response = NextResponse.json(
+        { error: "Admin access required" },
+        { status: 403 }
+      );
+      return addSecurityHeaders(response);
+    }
+    
+    logSecurityEvent('archive_bids_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to fetch archived bids",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 
 export async function DELETE(request: NextRequest) {
   try {
+    // Require admin authentication for cleanup operations
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
+
     const { searchParams } = new URL(request.url);
-    const olderThanDays = parseInt(searchParams.get("olderThanDays") || "90");
+    const olderThanDaysParam = searchParams.get("olderThanDays") || "90";
+
+    // Input validation
+    const validation = validateInput(
+      { olderThanDays: olderThanDaysParam },
+      {
+        olderThanDays: { type: 'string', pattern: /^\d+$/, required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_archive_cleanup_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
+    const olderThanDays = Math.min(Math.max(parseInt(olderThanDaysParam), 1), 365); // Between 1 and 365 days
     
     // Clean up old archived bids
     const deletedCount = await sql`
       SELECT cleanup_old_archived_bids()
     `;
 
-    return NextResponse.json({
+    logSecurityEvent('archive_bids_cleaned', userId, { olderThanDays });
+    
+    const response = NextResponse.json({
       ok: true,
       message: `Cleaned up archived bids older than ${olderThanDays} days`,
       deletedCount: deletedCount[0]?.cleanup_old_archived_bids || 0
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error cleaning up archived bids:", error);
-    return NextResponse.json(
-      { error: "Failed to clean up archived bids" },
+    
+    // Handle auth errors
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      const response = NextResponse.json(
+        { error: "Admin access required" },
+        { status: 403 }
+      );
+      return addSecurityHeaders(response);
+    }
+    
+    logSecurityEvent('archive_cleanup_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to clean up archived bids",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }

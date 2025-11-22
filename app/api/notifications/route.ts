@@ -1,5 +1,6 @@
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAuth, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
-import { requireApiAuth } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
@@ -38,19 +39,40 @@ export async function GET(request: NextRequest) {
 
     console.log('[Notifications API] Unread count:', parseInt(unreadCount[0].count));
 
-    return NextResponse.json({
+    logSecurityEvent('notifications_accessed', userId);
+    
+    const response = NextResponse.json({
       success: true,
       data: {
         notifications: notifications,
         unreadCount: parseInt(unreadCount[0].count)
       }
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching notifications:", error);
-    return NextResponse.json({
-      error: "Failed to fetch notifications"
-    }, { status: 500 });
+    
+    if (error.message === "Unauthorized") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('notifications_fetch_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to fetch notifications",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
+      { status: 500 }
+    );
+    
+    return addSecurityHeaders(response);
   }
 }
 
@@ -70,8 +92,24 @@ export async function POST(request: NextRequest) {
     // Handle individual notification creation
     const { type, title, message, data } = body;
 
-    if (!type || !title || !message) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    // Input validation
+    const validation = validateInput(
+      { type, title, message, data },
+      {
+        type: { required: true, type: 'string', maxLength: 50 },
+        title: { required: true, type: 'string', minLength: 1, maxLength: 200 },
+        message: { required: true, type: 'string', minLength: 1, maxLength: 1000 },
+        data: { type: 'object', required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_notification_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
 
     // Create notification (Supabase-only)
@@ -81,16 +119,37 @@ export async function POST(request: NextRequest) {
       RETURNING *
     `;
 
-    return NextResponse.json({
+    logSecurityEvent('notification_created', userId, { type, notification_id: notification[0].id });
+    
+    const response = NextResponse.json({
       success: true,
       data: notification[0]
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error creating notification:", error);
-    return NextResponse.json({
-      error: "Failed to create notification"
-    }, { status: 500 });
+    
+    if (error.message === "Unauthorized") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('notification_creation_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to create notification",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
+      { status: 500 }
+    );
+    
+    return addSecurityHeaders(response);
   }
 }
 
@@ -160,26 +219,71 @@ export async function PUT(request: NextRequest) {
     const body = await request.json();
     const { notificationId, read } = body;
 
-    if (!notificationId || typeof read !== 'boolean') {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    // Input validation
+    const validation = validateInput(
+      { notificationId, read },
+      {
+        notificationId: { required: true, type: 'string', minLength: 1, maxLength: 100 },
+        read: { required: true, type: 'boolean' }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_notification_update_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
 
     // Update notification read status (Supabase-only)
-    await sql`
+    const result = await sql`
       UPDATE notifications 
       SET read = ${read}
       WHERE id = ${notificationId} AND user_id = ${userId}
+      RETURNING id
     `;
 
-    return NextResponse.json({
+    if (result.length === 0) {
+      logSecurityEvent('notification_update_not_found', userId, { notificationId });
+      const response = NextResponse.json(
+        { error: "Notification not found" },
+        { status: 404 }
+      );
+      return addSecurityHeaders(response);
+    }
+
+    logSecurityEvent('notification_updated', userId, { notificationId, read });
+    
+    const response = NextResponse.json({
       success: true,
       message: "Notification updated"
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error updating notification:", error);
-    return NextResponse.json({
-      error: "Failed to update notification"
-    }, { status: 500 });
+    
+    if (error.message === "Unauthorized") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('notification_update_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to update notification",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
+      { status: 500 }
+    );
+    
+    return addSecurityHeaders(response);
   }
 }
