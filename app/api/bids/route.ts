@@ -1,5 +1,6 @@
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
 import sql from "@/lib/db";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
@@ -57,27 +58,52 @@ const mockBids = [
   }
 ];
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
   try {
     const url = new URL(req.url);
     const q = url.searchParams.get("q") || "";
     const tag = url.searchParams.get("tag") || "";
-    const limit = parseInt(url.searchParams.get("limit") || "50");
+    const limitParam = url.searchParams.get("limit") || "50";
+
+    // Input validation
+    const validation = validateInput(
+      { q, tag, limit: limitParam },
+      {
+        q: { type: 'string', maxLength: 100, required: false },
+        tag: { type: 'string', maxLength: 50, required: false },
+        limit: { type: 'string', pattern: /^\d+$/, required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_input_bids', undefined, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
+    const limit = Math.min(parseInt(limitParam), 100); // Max 100
 
     // Try to query the database first
-    let base = sql/*sql*/`
+    let base = sql`
       select bid_number, distance_miles, pickup_timestamp, delivery_timestamp, stops, tag, received_at, expires_at
       from telegram_bids
       where published = true
     `;
-    if (q) base = sql/*sql*/`${base} and bid_number ilike ${"%"+q+"%"}`;
-    if (tag) base = sql/*sql*/`${base} and tag = ${tag.toUpperCase()}`;
-    base = sql/*sql*/`${base} order by received_at desc limit ${limit}`;
+    if (q) base = sql`${base} and bid_number ilike ${'%' + q + '%'}`;
+    if (tag) base = sql`${base} and tag = ${tag.toUpperCase()}`;
+    base = sql`${base} order by received_at desc limit ${limit}`;
     const rows = await base;
 
-    return NextResponse.json({ ok: true, rows });
+    const response = NextResponse.json({ ok: true, rows });
+    return addSecurityHeaders(response);
   } catch (error: any) {
     console.error("Bids API error:", error);
+    logSecurityEvent('bids_api_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
     
     // Fallback to mock data when database is unavailable
     console.log("Falling back to mock data due to database connection failure");
@@ -85,7 +111,8 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const q = url.searchParams.get("q") || "";
     const tag = url.searchParams.get("tag") || "";
-    const limit = parseInt(url.searchParams.get("limit") || "50");
+    const limitParam = url.searchParams.get("limit") || "50";
+    const limit = Math.min(parseInt(limitParam), 100);
 
     // Filter mock data based on query parameters
     let filteredBids = mockBids;
@@ -105,11 +132,13 @@ export async function GET(req: Request) {
     // Apply limit
     filteredBids = filteredBids.slice(0, limit);
 
-    return NextResponse.json({ 
+    const response = NextResponse.json({ 
       ok: true, 
       rows: filteredBids,
       fallback: true,
       error: "Using mock data - database unavailable"
     });
+    
+    return addSecurityHeaders(response);
   }
 }

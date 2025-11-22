@@ -1,3 +1,5 @@
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { getApiAuth } from "@/lib/auth-api-helper";
 import sql from '@/lib/db';
 import { NextRequest, NextResponse } from "next/server";
 import { notifyAdminsAboutExpiredBidsNeedingAward } from '@/lib/notifications';
@@ -8,13 +10,37 @@ const CACHE_TTL = 30 * 1000; // 30 seconds
 
 export async function GET(request: NextRequest) {
   try {
+    // Input validation for query parameters
     const { searchParams } = new URL(request.url);
     const q = searchParams.get("q") || undefined;
     const tag = searchParams.get("tag") || undefined;
-    const limit = Math.min(parseInt(searchParams.get("limit") || "1000"), 1000); // Increased limit, max 1000
-    const offset = parseInt(searchParams.get("offset") || "0");
+    const limitParam = searchParams.get("limit") || "1000";
+    const offsetParam = searchParams.get("offset") || "0";
     const showExpired = searchParams.get("showExpired") === "true";
     const isAdmin = searchParams.get("isAdmin") === "true";
+
+    // Validate and sanitize input
+    const validation = validateInput(
+      { q, tag, limit: limitParam, offset: offsetParam },
+      {
+        q: { type: 'string', maxLength: 100, required: false },
+        tag: { type: 'string', maxLength: 50, required: false },
+        limit: { type: 'string', pattern: /^\d+$/, required: false },
+        offset: { type: 'string', pattern: /^\d+$/, required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_input_telegram_bids', undefined, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
+    const limit = Math.min(parseInt(limitParam), 1000); // Max 1000
+    const offset = Math.max(0, parseInt(offsetParam)); // Ensure non-negative
 
     // Create cache key
     // Note: isAdmin doesn't affect query results, so we exclude it from cache key to share cache between admin and carriers
@@ -60,35 +86,9 @@ export async function GET(request: NextRequest) {
     // Build query with PostgreSQL template literals and daily filtering
     const today = new Date().toISOString().split('T')[0];
     
-    // Build WHERE conditions with proper escaping
-    let whereConditions = [];
-    
-    if (q) {
-      whereConditions.push(`tb.bid_number LIKE '%${q.replace(/'/g, "''")}%'`);
-    }
-    
-    if (tag) {
-      whereConditions.push(`tb.tag = '${tag.toUpperCase().replace(/'/g, "''")}'`);
-    }
-    
-    // For showExpired=false: Show active bids (is_archived = false, countdown still running)
-    if (!showExpired) {
-      whereConditions.push(`tb.received_at::date = CURRENT_DATE`);
-      whereConditions.push(`tb.is_archived = false`);
-      whereConditions.push(`NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes')`); // Only get bids where countdown hasn't expired
-    }
-    
-    // For showExpired=true: Show expired bids (including those marked as archived)
-    // These are bids that expired but haven't been end-of-day archived yet
-    if (showExpired) {
-      whereConditions.push(`tb.archived_at IS NULL`); // Not yet end-of-day archived
-      whereConditions.push(`NOW() > (tb.received_at::timestamp + INTERVAL '25 minutes')`); // Only get actually expired bids
-    }
-    
-    const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
-    
-    // Single query with all conditions
-    const rows = await sql`
+    // Build query with parameterized conditions to prevent SQL injection
+    // Start with base query
+    let baseQuery = sql`
       SELECT 
         tb.*,
         (tb.received_at::timestamp + INTERVAL '25 minutes')::text as expires_at_25,
@@ -119,13 +119,42 @@ export async function GET(request: NextRequest) {
         FROM carrier_bids
         GROUP BY bid_number
       ) bid_counts ON tb.bid_number = bid_counts.bid_number
-      ${sql.unsafe(whereClause)}
-      ORDER BY ${showExpired 
-        ? `(tb.received_at::timestamp + INTERVAL '25 minutes') DESC` // Sort expired bids by when they expired (most recent expired first)
-        : `tb.received_at DESC` // Sort active bids by when they were received (most recent first)
-      }
-      LIMIT ${limit} OFFSET ${offset}
+      WHERE 1=1
     `;
+    
+    // Add parameterized WHERE conditions
+    if (q) {
+      baseQuery = sql`${baseQuery} AND tb.bid_number ILIKE ${'%' + q + '%'}`;
+    }
+    
+    if (tag) {
+      baseQuery = sql`${baseQuery} AND tb.tag = ${tag.toUpperCase()}`;
+    }
+    
+    // For showExpired=false: Show active bids (is_archived = false, countdown still running)
+    if (!showExpired) {
+      baseQuery = sql`${baseQuery} AND tb.received_at::date = CURRENT_DATE`;
+      baseQuery = sql`${baseQuery} AND tb.is_archived = false`;
+      baseQuery = sql`${baseQuery} AND NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes')`;
+    }
+    
+    // For showExpired=true: Show expired bids (including those marked as archived)
+    // These are bids that expired but haven't been end-of-day archived yet
+    if (showExpired) {
+      baseQuery = sql`${baseQuery} AND tb.archived_at IS NULL`;
+      baseQuery = sql`${baseQuery} AND NOW() > (tb.received_at::timestamp + INTERVAL '25 minutes')`;
+    }
+    
+    // Add ORDER BY and LIMIT/OFFSET
+    if (showExpired) {
+      baseQuery = sql`${baseQuery} ORDER BY (tb.received_at::timestamp + INTERVAL '25 minutes') DESC`;
+    } else {
+      baseQuery = sql`${baseQuery} ORDER BY tb.received_at DESC`;
+    }
+    
+    baseQuery = sql`${baseQuery} LIMIT ${limit} OFFSET ${offset}`;
+    
+    const rows = await baseQuery;
 
     // If admin is viewing expired bids, check for expired bids needing awards and notify
     // Run this asynchronously so it doesn't block the API response
@@ -188,7 +217,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ 
+    const response = NextResponse.json({ 
       ok: true, 
       data: bids,
       cached: false,
@@ -198,16 +227,25 @@ export async function GET(request: NextRequest) {
         hasMore: bids.length === limit,
       },
     });
+    
+    return addSecurityHeaders(response);
 
   } catch (error) {
     console.error("Telegram bids API error:", error);
-    return NextResponse.json(
+    logSecurityEvent('telegram_bids_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
       { 
         error: "Failed to fetch bids",
-        details: error instanceof Error ? error.message : 'Unknown error',
-        stack: error instanceof Error ? error.stack : undefined
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
       },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }

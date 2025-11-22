@@ -1,3 +1,4 @@
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
 import { cacheManager } from "@/lib/cache-manager";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
@@ -17,12 +18,37 @@ function clearCache() {
 
 export async function GET(request: NextRequest) {
   try {
+    // Input validation for query parameters
     const { searchParams } = new URL(request.url);
     const origin = searchParams.get("origin");
     const destination = searchParams.get("destination");
     const equipment = searchParams.get("equipment");
-    const limit = Math.min(parseInt(searchParams.get("limit") || "50"), 100);
-    const offset = parseInt(searchParams.get("offset") || "0");
+    const limitParam = searchParams.get("limit") || "50";
+    const offsetParam = searchParams.get("offset") || "0";
+
+    // Validate input
+    const validation = validateInput(
+      { origin, destination, equipment, limit: limitParam, offset: offsetParam },
+      {
+        origin: { type: 'string', maxLength: 100, required: false },
+        destination: { type: 'string', maxLength: 100, required: false },
+        equipment: { type: 'string', maxLength: 50, required: false },
+        limit: { type: 'string', pattern: /^\d+$/, required: false },
+        offset: { type: 'string', pattern: /^\d+$/, required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_input_loads', undefined, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
+    const limit = Math.min(parseInt(limitParam), 100); // Max 100
+    const offset = Math.max(0, parseInt(offsetParam)); // Ensure non-negative
 
     // Create cache key
     const cacheKey = `loads-${origin}-${destination}-${equipment}-${limit}-${offset}`;
@@ -96,38 +122,88 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json(result);
+    const response = NextResponse.json(result);
+    return addSecurityHeaders(response);
 
   } catch (error) {
     console.error("Error fetching loads:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch loads", details: error instanceof Error ? error.message : 'Unknown error' },
+    logSecurityEvent('loads_fetch_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to fetch loads",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
+    // Require admin authentication for bulk operations
+    const { requireApiAdmin } = await import('@/lib/auth-api-helper');
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
+
     const body = await request.json();
     const { action, rrNumbers } = body;
 
-    if (!action || !rrNumbers || !Array.isArray(rrNumbers)) {
-      return NextResponse.json(
-        { error: "Action and rrNumbers array are required" },
+    // Input validation
+    const validation = validateInput(
+      { action, rrNumbers },
+      {
+        action: { 
+          required: true, 
+          type: 'string', 
+          enum: ['archive', 'delete', 'publish', 'unpublish'] 
+        },
+        rrNumbers: { 
+          required: true, 
+          type: 'array',
+          minLength: 1,
+          maxLength: 100 // Limit bulk operations
+        }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_bulk_operation', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
-    if (rrNumbers.length === 0) {
-      return NextResponse.json(
+    if (!Array.isArray(rrNumbers) || rrNumbers.length === 0) {
+      const response = NextResponse.json(
         { error: "At least one load must be selected" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     let result;
     let message;
+
+    // Validate and sanitize rrNumbers to prevent SQL injection
+    const validRrNumbers = rrNumbers.filter((rr: any) => 
+      typeof rr === 'string' && /^[A-Z0-9\-]+$/.test(rr) && rr.length <= 50
+    );
+    
+    if (validRrNumbers.length === 0) {
+      return NextResponse.json(
+        { error: "Invalid RR numbers provided" },
+        { status: 400 }
+      );
+    }
 
     switch (action) {
               case "archive":
@@ -136,17 +212,17 @@ export async function POST(request: NextRequest) {
                   SET 
                     status_code = 'archived',
                     updated_at = CURRENT_TIMESTAMP
-                  WHERE rr_number IN (${rrNumbers.join("','")})
+                  WHERE rr_number = ANY(${validRrNumbers})
                 `;
-                message = `Archived ${(result as any).count || 0} load(s)`;
+                message = `Archived ${validRrNumbers.length} load(s)`;
                 break;
 
               case "delete":
                 result = await sql`
                   DELETE FROM loads 
-                  WHERE rr_number IN (${rrNumbers.join("','")})
+                  WHERE rr_number = ANY(${validRrNumbers})
                 `;
-                message = `Deleted ${(result as any).count || 0} load(s)`;
+                message = `Deleted ${validRrNumbers.length} load(s)`;
                 break;
 
               case "publish":
@@ -156,9 +232,9 @@ export async function POST(request: NextRequest) {
                     status_code = 'published',
                     published = true,
                     updated_at = CURRENT_TIMESTAMP
-                  WHERE rr_number IN (${rrNumbers.join("','")})
+                  WHERE rr_number = ANY(${validRrNumbers})
                 `;
-                message = `Published ${(result as any).count || 0} load(s)`;
+                message = `Published ${validRrNumbers.length} load(s)`;
                 break;
 
               case "unpublish":
@@ -167,9 +243,9 @@ export async function POST(request: NextRequest) {
                   SET 
                     published = false,
                     updated_at = CURRENT_TIMESTAMP
-                  WHERE rr_number IN (${rrNumbers.join("','")})
+                  WHERE rr_number = ANY(${validRrNumbers})
                 `;
-                message = `Unpublished ${(result as any).count || 0} load(s)`;
+                message = `Unpublished ${validRrNumbers.length} load(s)`;
                 break;
 
       default:
@@ -182,18 +258,46 @@ export async function POST(request: NextRequest) {
     // Clear cache after bulk operations
     clearCache();
 
-            return NextResponse.json({
-              success: true,
-              message,
-              affectedCount: (result as any).count || 0,
-              affectedLoads: rrNumbers
-            });
+    logSecurityEvent('bulk_load_operation', userId, { 
+      action, 
+      count: validRrNumbers.length 
+    });
 
-  } catch (error) {
+    const response = NextResponse.json({
+      success: true,
+      message,
+      affectedCount: validRrNumbers.length,
+      affectedLoads: validRrNumbers
+    });
+    
+    return addSecurityHeaders(response);
+
+  } catch (error: any) {
     console.error("Error performing bulk operation:", error);
-    return NextResponse.json(
-      { error: "Failed to perform bulk operation", details: error instanceof Error ? error.message : 'Unknown error' },
+    
+    // Handle auth errors
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      const response = NextResponse.json(
+        { error: "Admin access required" },
+        { status: 403 }
+      );
+      return addSecurityHeaders(response);
+    }
+    
+    logSecurityEvent('bulk_load_operation_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to perform bulk operation",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
