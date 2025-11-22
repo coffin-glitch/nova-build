@@ -96,9 +96,10 @@ async function geocodeWithAPI(
   const parsed = extractLocationComponents(location);
   
   // Strategy 1: If we have ZIP code, use it directly (most accurate)
+  // CRITICAL: Pass expected state to validate result is in correct state
   if (parsed.zipcode) {
-    console.log(`Geocoding API: Using ZIP code strategy for "${parsed.zipcode}"`);
-    const zipResult = await geocodeByZipCode(parsed.zipcode, token);
+    console.log(`Geocoding API: Using ZIP code strategy for "${parsed.zipcode}"${parsed.state ? ` (expected state: ${parsed.state})` : ''}`);
+    const zipResult = await geocodeByZipCode(parsed.zipcode, token, parsed.state);
     if (zipResult) {
       return zipResult;
     }
@@ -122,10 +123,12 @@ async function geocodeWithAPI(
 
 /**
  * Geocode by ZIP code only (most accurate method)
+ * CRITICAL: If state is provided, validates result is in correct state
  */
 async function geocodeByZipCode(
   zipcode: string,
-  token: string
+  token: string,
+  expectedState?: string
 ): Promise<GeocodeResult | null> {
   // Extract 5-digit ZIP (ignore +4 extension)
   const zip5 = zipcode.substring(0, 5).trim();
@@ -144,6 +147,11 @@ async function geocodeByZipCode(
       limit: '1',
     });
     
+    // If we have expected state, add it to the query for better accuracy
+    if (expectedState) {
+      params.set('region', expectedState.toUpperCase());
+    }
+    
     const url = `https://api.mapbox.com/search/geocode/v6/forward?${params.toString()}`;
     const response = await fetch(url);
     
@@ -156,6 +164,18 @@ async function geocodeByZipCode(
     
     if (data.features && data.features.length > 0) {
       const feature = data.features[0];
+      const featureState = (feature.properties?.region_code || feature.properties?.region || '').toUpperCase().trim();
+      
+      // CRITICAL: If we have expected state, validate the result matches
+      // This ensures "85323" (AZ) doesn't return coordinates in another state
+      if (expectedState) {
+        const expectedStateUpper = expectedState.toUpperCase().trim();
+        if (featureState !== expectedStateUpper) {
+          console.warn(`Geocoding API: ZIP code "${zip5}" returned state "${featureState}" but expected "${expectedStateUpper}" - rejecting`);
+          return null;
+        }
+      }
+      
       const coords = feature.properties?.coordinates;
       
       if (coords && coords.longitude && coords.latitude) {
@@ -185,6 +205,7 @@ async function geocodeByZipCode(
 
 /**
  * Geocode by city and state
+ * CRITICAL: Validates that result is in the correct state
  */
 async function geocodeByCityState(
   city: string,
@@ -192,13 +213,15 @@ async function geocodeByCityState(
   token: string
 ): Promise<GeocodeResult | null> {
   try {
+    const stateUpper = state.trim().toUpperCase();
+    
     const params = new URLSearchParams({
       access_token: token,
       country: 'us',
       place: city.trim(),
-      region: state.trim().toUpperCase(),
+      region: stateUpper,
       types: 'place,locality',
-      limit: '1',
+      limit: '3', // Get multiple results to find one in correct state
     });
     
     const url = `https://api.mapbox.com/search/geocode/v6/forward?${params.toString()}`;
@@ -212,7 +235,23 @@ async function geocodeByCityState(
     const data = await response.json();
     
     if (data.features && data.features.length > 0) {
-      const feature = data.features[0];
+      // CRITICAL: Find a feature that matches the expected state
+      // This ensures "AVONDALE, AZ" doesn't return "Avondale, OH"
+      const matchingFeature = data.features.find((f: any) => {
+        const featureState = (f.properties?.region_code || f.properties?.region || '').toUpperCase().trim();
+        return featureState === stateUpper;
+      });
+      
+      // Use matching feature if found, otherwise use first result
+      const feature = matchingFeature || data.features[0];
+      const featureState = (feature.properties?.region_code || feature.properties?.region || '').toUpperCase().trim();
+      
+      // Validate state matches - if it doesn't, reject the result
+      if (featureState !== stateUpper) {
+        console.warn(`Geocoding API: Result state "${featureState}" doesn't match expected "${stateUpper}" for "${city}, ${state}" - rejecting`);
+        return null;
+      }
+      
       const coords = feature.properties?.coordinates;
       
       if (coords && coords.longitude && coords.latitude) {
@@ -298,6 +337,7 @@ async function geocodeByText(
 /**
  * Extract location components (ZIP, city, state) from address string
  * Simple extraction - no complex parsing
+ * CRITICAL: Ensures state is always extracted and validated
  */
 function extractLocationComponents(location: string): {
   zipcode?: string;
@@ -311,22 +351,58 @@ function extractLocationComponents(location: string): {
   const zipcode = zipMatch ? zipMatch[1] : undefined;
   
   // Extract state (2 uppercase letters, usually after comma or space)
-  const stateMatch = trimmed.match(/,\s*([A-Z]{2})\b/i) || trimmed.match(/\s+([A-Z]{2})\b/);
-  const state = stateMatch ? stateMatch[1].toUpperCase() : undefined;
+  // Try multiple patterns to ensure we capture the state
+  let state: string | undefined;
+  let stateMatch: RegExpMatchArray | null = null;
+  
+  // Pattern 1: ", ST " or ", ST" (most common: "City, ST ZIPCODE")
+  stateMatch = trimmed.match(/,\s*([A-Z]{2})(?:\s|$)/i);
+  if (stateMatch) {
+    state = stateMatch[1].toUpperCase();
+  }
+  
+  // Pattern 2: " ST " (space before and after state)
+  if (!state) {
+    stateMatch = trimmed.match(/\s+([A-Z]{2})\s+/i);
+    if (stateMatch) {
+      state = stateMatch[1].toUpperCase();
+    }
+  }
+  
+  // Pattern 3: " ST" at end (before ZIP if present)
+  if (!state && zipcode) {
+    const beforeZip = trimmed.substring(0, trimmed.indexOf(zipMatch![0])).trim();
+    stateMatch = beforeZip.match(/\s+([A-Z]{2})\s*$/i);
+    if (stateMatch) {
+      state = stateMatch[1].toUpperCase();
+    }
+  }
+  
+  // Validate state code (must be valid US state)
+  const validStates = new Set([
+    'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
+    'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
+    'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
+    'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
+    'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY', 'DC'
+  ]);
+  
+  if (state && !validStates.has(state)) {
+    console.warn(`Geocoding: Invalid state code "${state}" extracted from "${location}", ignoring`);
+    state = undefined;
+  }
   
   // Extract city (everything before state, or before ZIP if no state)
   let city: string | undefined;
-  if (state) {
-    const beforeState = trimmed.substring(0, trimmed.indexOf(stateMatch![0])).trim();
+  if (state && stateMatch) {
+    const beforeState = trimmed.substring(0, trimmed.indexOf(stateMatch[0])).trim();
     // Remove trailing comma
     city = beforeState.replace(/,\s*$/, '').trim();
   } else if (zipcode) {
     const beforeZip = trimmed.substring(0, trimmed.indexOf(zipMatch![0])).trim();
-    // Try to find state before ZIP
-    const stateBeforeZip = beforeZip.match(/,\s*([A-Z]{2})\s*$/i);
-    if (stateBeforeZip) {
-      const stateCode = stateBeforeZip[1].toUpperCase();
-      const beforeState = beforeZip.substring(0, beforeZip.indexOf(stateBeforeZip[0])).trim();
+    // If we found state before ZIP in pattern 3, extract city
+    if (state && stateMatch) {
+      const beforeState = beforeZip.substring(0, beforeZip.indexOf(stateMatch[0])).trim();
       city = beforeState.replace(/,\s*$/, '').trim();
     } else {
       // No state found, use everything before ZIP as city
