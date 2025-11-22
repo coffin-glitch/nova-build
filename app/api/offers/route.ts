@@ -1,4 +1,5 @@
-import { requireApiCarrier, requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiCarrier, requireApiAdmin, unauthorizedResponse, forbiddenResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -11,8 +12,37 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { loadRrNumber, offerAmount, notes } = body;
 
-    if (!loadRrNumber || !offerAmount) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    // Input validation
+    const validation = validateInput(
+      { loadRrNumber, offerAmount, notes },
+      {
+        loadRrNumber: { 
+          required: true, 
+          type: 'string', 
+          pattern: /^[A-Z0-9\-]+$/,
+          maxLength: 50
+        },
+        offerAmount: { 
+          required: true, 
+          type: 'number', 
+          min: 0,
+          max: 1000000 // Max $1M
+        },
+        notes: { 
+          type: 'string', 
+          maxLength: 1000,
+          required: false
+        }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_offer_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
 
     // Check if load exists and is published
@@ -22,7 +52,12 @@ export async function POST(request: NextRequest) {
     `;
 
     if (!load || load.length === 0) {
-      return NextResponse.json({ error: "Load not found or not published" }, { status: 404 });
+      logSecurityEvent('offer_load_not_found', userId, { loadRrNumber });
+      const response = NextResponse.json(
+        { error: "Load not found or not published" },
+        { status: 404 }
+      );
+      return addSecurityHeaders(response);
     }
 
     // Check if carrier already has an offer for this load (Supabase-only)
@@ -32,7 +67,12 @@ export async function POST(request: NextRequest) {
     `;
 
     if (existingOffer && existingOffer.length > 0) {
-      return NextResponse.json({ error: "You already have an offer for this load" }, { status: 409 });
+      logSecurityEvent('duplicate_offer_attempt', userId, { loadRrNumber });
+      const response = NextResponse.json(
+        { error: "You already have an offer for this load" },
+        { status: 409 }
+      );
+      return addSecurityHeaders(response);
     }
 
     // Create the offer with 24-hour expiration (Supabase-only)
@@ -45,15 +85,43 @@ export async function POST(request: NextRequest) {
       RETURNING id
     `;
 
-    return NextResponse.json({ 
+    logSecurityEvent('offer_created', userId, { 
+      loadRrNumber, 
+      offerAmount,
+      offerId: result[0].id
+    });
+
+    const response = NextResponse.json({ 
       success: true, 
       offerId: result[0].id,
       message: "Offer submitted successfully" 
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error creating offer:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    
+    // Handle auth errors
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('offer_creation_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Internal server error",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
+      { status: 500 }
+    );
+    
+    return addSecurityHeaders(response);
   }
 }
 
@@ -95,7 +163,9 @@ export async function GET(request: NextRequest) {
         LEFT JOIN user_roles_cache urc ON lo.supabase_user_id = urc.supabase_user_id
         ORDER BY lo.created_at DESC
       `;
-      return NextResponse.json({ offers });
+      logSecurityEvent('offers_accessed_admin', userId);
+      const response = NextResponse.json({ offers });
+      return addSecurityHeaders(response);
     } else if (userRole === 'carrier') {
       // Carrier can only see their own non-expired offers - Supabase-only
       const offers = await sql`
@@ -117,13 +187,39 @@ export async function GET(request: NextRequest) {
         AND (lo.expires_at IS NULL OR lo.expires_at > NOW() OR lo.status != 'pending')
         ORDER BY lo.created_at DESC
       `;
-      return NextResponse.json({ offers });
+      logSecurityEvent('offers_accessed_carrier', userId);
+      const response = NextResponse.json({ offers });
+      return addSecurityHeaders(response);
     } else {
-      return NextResponse.json({ error: "Access denied" }, { status: 403 });
+      const response = NextResponse.json({ error: "Access denied" }, { status: 403 });
+      return addSecurityHeaders(response);
     }
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching offers:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    
+    // Handle auth errors
+    if (error.message === "Unauthorized" || error.message === "Admin access required" || error.message === "Carrier access required") {
+      if (error.message === "Unauthorized") {
+        return unauthorizedResponse();
+      }
+      return forbiddenResponse(error.message);
+    }
+    
+    logSecurityEvent('offers_fetch_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Internal server error",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
+      { status: 500 }
+    );
+    
+    return addSecurityHeaders(response);
   }
 }
