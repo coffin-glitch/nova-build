@@ -1,4 +1,5 @@
-import { getApiAuth } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent } from "@/lib/api-security";
+import { getApiAuth, unauthorizedResponse } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 /**
@@ -10,43 +11,41 @@ export async function GET(request: NextRequest) {
     const auth = await getApiAuth(request);
     
     if (!auth || !auth.userId) {
-      return NextResponse.json(
-        { error: "Authentication required" },
-        { 
-          status: 401,
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+      return unauthorizedResponse();
     }
 
-    return NextResponse.json(
+    const response = NextResponse.json(
       {
         role: auth.userRole || "carrier",
         userId: auth.userId,
         provider: auth.authProvider,
-      },
-      {
-        headers: {
-          'Content-Type': 'application/json',
-        },
       }
     );
+    
+    return addSecurityHeaders(response);
+    
   } catch (error: any) {
     console.error('[API /user/role] Error:', error);
-    return NextResponse.json(
+    
+    if (error.message === "Unauthorized" || error.message === "Authentication required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('user_role_fetch_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
       { 
-        error: error.message || "Internal server error",
+        error: process.env.NODE_ENV === 'development' 
+          ? (error.message || "Internal server error")
+          : "Internal server error",
         role: "carrier", // Default fallback
       },
-      { 
-        status: 500,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      }
+      { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 

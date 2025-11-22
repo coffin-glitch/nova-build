@@ -1,11 +1,13 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
     // Ensure user is admin (Supabase-only)
-    await requireApiAdmin(request);
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
 
     // Fetch all admin users (excluding current user)
     const admins = await sql`
@@ -19,13 +21,33 @@ export async function GET(request: NextRequest) {
       ORDER BY ur.created_at DESC
     `;
 
-    return NextResponse.json(admins || []);
-  } catch (error) {
+    logSecurityEvent('admin_list_accessed', userId, { adminCount: admins.length });
+    
+    const response = NextResponse.json(admins || []);
+    return addSecurityHeaders(response);
+    
+  } catch (error: any) {
     console.error("Error fetching admins:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch admins" },
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('admin_list_fetch_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to fetch admins",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 

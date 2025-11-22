@@ -1,3 +1,4 @@
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
 import sql from "@/lib/db";
 import { requireApiAdmin, unauthorizedResponse, forbiddenResponse } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
@@ -18,8 +19,44 @@ export async function POST(
     const adminUserId = auth.userId;
     console.log("Admin user ID:", adminUserId, "Provider:", auth.provider);
 
+    // Input validation for userId
+    const userIdValidation = validateInput(
+      { userId },
+      {
+        userId: { required: true, type: 'string', maxLength: 200 }
+      }
+    );
+
+    if (!userIdValidation.valid) {
+      logSecurityEvent('invalid_toggle_status_userid', adminUserId, { errors: userIdValidation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${userIdValidation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     const body = await request.json();
     const { new_status, reason, review_notes } = body;
+
+    // Input validation for body
+    const bodyValidation = validateInput(
+      { new_status, reason, review_notes },
+      {
+        new_status: { required: true, type: 'string', enum: ['approved', 'declined'] },
+        reason: { type: 'string', maxLength: 500, required: false },
+        review_notes: { type: 'string', maxLength: 2000, required: false }
+      }
+    );
+
+    if (!bodyValidation.valid) {
+      logSecurityEvent('invalid_toggle_status_body', adminUserId, { errors: bodyValidation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${bodyValidation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
 
     console.log("Processing toggle status for userId:", userId);
     console.log("New status:", new_status);
@@ -55,14 +92,23 @@ export async function POST(
 
     if (currentProfile.length === 0) {
       console.log("Carrier profile not found for userId:", userId);
-      return NextResponse.json({ error: "Carrier profile not found" }, { status: 404 });
+      logSecurityEvent('toggle_status_profile_not_found', adminUserId, { targetUserId: userId });
+      const response = NextResponse.json(
+        { error: "Carrier profile not found" },
+        { status: 404 }
+      );
+      return addSecurityHeaders(response);
     }
 
     const profileUserId = currentProfile[0].supabase_user_id || userId;
 
-    // Validate new_status
+    // Validate new_status (already validated above, but double-check)
     if (!['approved', 'declined'].includes(new_status)) {
-      return NextResponse.json({ error: "Invalid status. Must be 'approved' or 'declined'" }, { status: 400 });
+      const response = NextResponse.json(
+        { error: "Invalid status. Must be 'approved' or 'declined'" },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
 
     // Update profile status (Supabase-only)
@@ -127,20 +173,46 @@ export async function POST(
     console.log("History record created successfully");
 
     console.log("Returning success response");
-    return NextResponse.json({ 
+    
+    logSecurityEvent('carrier_status_toggled', adminUserId, { 
+      targetUserId: profileUserId,
+      newStatus: new_status,
+      previousStatus: currentProfile[0].profile_status
+    });
+    
+    const response = NextResponse.json({ 
       success: true, 
       message: `Profile status changed to ${new_status}` 
     });
-  } catch (error) {
+    
+    return addSecurityHeaders(response);
+    
+  } catch (error: any) {
     console.error("Error toggling carrier profile status:", error);
     console.error("Error details:", {
       message: error instanceof Error ? error.message : 'Unknown error',
       stack: error instanceof Error ? error.stack : undefined
     });
-    return NextResponse.json(
-      { error: "Failed to toggle carrier profile status" },
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('toggle_status_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to toggle carrier profile status",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 
