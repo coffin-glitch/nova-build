@@ -89,21 +89,26 @@ export function MapboxMap({
       // Use the geocoding utility with API enabled for accurate coordinates
       // Route maps require precise locations, so we use API geocoding (not approximations)
       const { geocodeLocation } = await import('@/lib/mapbox-geocode');
-      const { extractCityStateForMatching, parseAddress } = await import('@/lib/format');
+      const { formatAddressForCard, extractCityStateForMatching, parseAddress } = await import('@/lib/format');
       
-      console.log(`MapboxMap: Geocoding "${stop}" with API enabled...`);
-      let result = await geocodeLocation(stop, true); // true = use API for accurate coordinates
+      // STANDARD FORMAT: Normalize to "City, ST ZIPCODE" format first
+      // This is the standard format for bid routes, so prioritize it
+      const standardizedFormat = formatAddressForCard(stop);
+      console.log(`MapboxMap: Standardizing "${stop}" -> "${standardizedFormat}" for geocoding`);
+      
+      // Primary geocoding attempt with standardized "City, ST ZIPCODE" format
+      let result = await geocodeLocation(standardizedFormat, true); // true = use API for accurate coordinates
       
       // If API fails, try alternative formats before giving up
       if (!result) {
-        console.warn(`MapboxMap: Primary geocoding failed for "${stop}", trying alternative formats...`);
+        console.warn(`MapboxMap: Geocoding failed for standardized format "${standardizedFormat}", trying alternative formats...`);
         
-        // Strategy 1: Use robust address parsing to extract city/state
+        // Strategy 1: Try with just city and state (remove ZIP if present)
         const parsed = parseAddress(stop);
         if (parsed.city && parsed.state) {
           const cityStateFormat = `${parsed.city}, ${parsed.state}`;
-          if (cityStateFormat !== stop) {
-            console.log(`MapboxMap: Trying parsed city/state format: "${cityStateFormat}"`);
+          if (cityStateFormat !== standardizedFormat) {
+            console.log(`MapboxMap: Trying city/state only: "${cityStateFormat}"`);
             result = await geocodeLocation(cityStateFormat, true);
           }
         }
@@ -118,16 +123,31 @@ export function MapboxMap({
           }
         }
         
-        // Strategy 3: Try removing ZIP code (e.g., "OPA LOCKA, FL 33054" -> "OPA LOCKA, FL")
-        if (!result) {
-          const withoutZip = stop.replace(/\s+\d{5}(-\d{4})?$/, '').trim();
-          if (withoutZip !== stop) {
-            console.log(`MapboxMap: Trying without ZIP code: "${withoutZip}"`);
-            result = await geocodeLocation(withoutZip, true);
-          }
+        // Strategy 3: Try original format as fallback (in case it's already in correct format)
+        if (!result && stop !== standardizedFormat) {
+          console.log(`MapboxMap: Trying original format: "${stop}"`);
+          result = await geocodeLocation(stop, true);
         }
         
-        // Strategy 4: Try normalizing city name (e.g., "OPA LOCKA" -> "Opa-locka")
+        // If all strategies failed, throw error
+        if (!result) {
+          console.error(`MapboxMap: All geocoding strategies failed for "${stop}"`);
+          throw new Error(`Geocoding failed: No results found for "${stop}"`);
+        }
+      }
+      
+      // Validate that we got real coordinates (not default fallback)
+      if (result.lng === -96.9 && result.lat === 37.6) {
+        console.error(`MapboxMap: Geocoding returned default coordinates for "${stop}" - this should not happen with API enabled`);
+        throw new Error(`Geocoding failed: API returned default coordinates for "${stop}"`);
+      }
+      
+      return [result.lng, result.lat];
+    } catch (error) {
+      console.error(`MapboxMap: Geocoding error for "${stop}":`, error);
+      
+      // Re-throw the error - we've already tried all fallback strategies above
+      throw error;
         if (!result && stop.includes(',')) {
           const parts = stop.split(',').map(s => s.trim());
           if (parts.length >= 2) {
