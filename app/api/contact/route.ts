@@ -1,3 +1,4 @@
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
 import sql from "@/lib/db";
 import { sendEmail } from "@/lib/email/notify";
 import { NextRequest, NextResponse } from "next/server";
@@ -11,21 +12,43 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { name, email, subject, message } = body;
 
+    // Input validation
+    const validation = validateInput(
+      { name, email, subject, message },
+      {
+        name: { required: true, type: 'string', minLength: 1, maxLength: 100 },
+        email: { required: true, type: 'string', pattern: /^[^\s@]+@[^\s@]+\.[^\s@]+$/, maxLength: 255 },
+        subject: { type: 'string', maxLength: 200, required: false },
+        message: { required: true, type: 'string', minLength: 10, maxLength: 5000 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_contact_form_input', undefined, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     // Validate required fields
     if (!name || !email || !message) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: "Name, email, and message are required" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: "Invalid email address" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Save to database first
@@ -144,18 +167,37 @@ This message was sent from the NOVA Build contact form.
       console.error("[Contact Form] Failed to send confirmation email:", confirmationError);
     }
 
-    return NextResponse.json({
+    logSecurityEvent('contact_form_submitted', undefined, { 
+      messageId: savedMessage.id,
+      email: email.substring(0, 3) + '***' // Partial email for privacy
+    });
+
+    const response = NextResponse.json({
       success: true,
       message: "Message sent successfully",
       messageId: savedMessage.id,
     });
+    
+    return addSecurityHeaders(response);
 
   } catch (error: any) {
     console.error("[Contact Form] Error processing contact form:", error);
-    return NextResponse.json(
-      { error: "An unexpected error occurred. Please try again later." },
+    
+    logSecurityEvent('contact_form_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "An unexpected error occurred. Please try again later.",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 

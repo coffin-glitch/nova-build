@@ -1,11 +1,13 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
     // Ensure user is admin (Supabase-only)
-    await requireApiAdmin(request);
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
 
     const { searchParams } = new URL(request.url);
     const timeframe = searchParams.get("timeframe") || "30"; // days
@@ -13,6 +15,27 @@ export async function GET(request: NextRequest) {
     const endDateParam = searchParams.get("endDate");
     const action = searchParams.get("action") || "overview";
     const hourlyTimeframe = searchParams.get("hourlyTimeframe") || "today"; // for hourly trends
+
+    // Input validation
+    const validation = validateInput(
+      { timeframe, startDateParam, endDateParam, action, hourlyTimeframe },
+      {
+        timeframe: { type: 'string', maxLength: 50, required: false },
+        startDateParam: { type: 'string', pattern: /^\d{4}-\d{2}-\d{2}$/, required: false },
+        endDateParam: { type: 'string', pattern: /^\d{4}-\d{2}-\d{2}$/, required: false },
+        action: { type: 'string', enum: ['overview', 'trends', 'performance', 'carrier_activity', 'auction_insights'], required: false },
+        hourlyTimeframe: { type: 'string', maxLength: 50, required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_bid_analytics_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { success: false, error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
 
     // Calculate date range - support custom date range, "today", "all", or numeric days
     let startDate: Date;
@@ -57,16 +80,29 @@ export async function GET(request: NextRequest) {
         return await getBidOverview(startDate, endDate);
     }
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Bid analytics API error:", error);
-    return NextResponse.json(
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('bid_analytics_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
       { 
         success: false,
         error: "Failed to fetch bid analytics",
-        details: error instanceof Error ? error.message : 'Unknown error'
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
       },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 
@@ -169,7 +205,7 @@ async function getBidOverview(startDate: Date, endDate: Date | null = null) {
     CROSS JOIN competition_stats cs
   `;
 
-  return NextResponse.json({
+  const response = NextResponse.json({
     success: true,
     data: {
       overview: overview[0] || {},
@@ -182,6 +218,8 @@ async function getBidOverview(startDate: Date, endDate: Date | null = null) {
       }
     }
   });
+  
+  return addSecurityHeaders(response);
 }
 
 // Helper function to calculate date range for hourly trends
@@ -297,7 +335,7 @@ async function getBidTrends(startDate: Date, hourlyTimeframe: string = "today", 
     ORDER BY hour
   `;
 
-  return NextResponse.json({
+  const response = NextResponse.json({
     success: true,
     data: {
       dailyTrends,
@@ -311,6 +349,8 @@ async function getBidTrends(startDate: Date, hourlyTimeframe: string = "today", 
       }
     }
   });
+  
+  return addSecurityHeaders(response);
 }
 
 async function getPerformanceMetrics(startDate: Date, endDate: Date | null = null) {
@@ -373,7 +413,7 @@ async function getPerformanceMetrics(startDate: Date, endDate: Date | null = nul
     ORDER BY auction_count DESC
   `;
 
-  return NextResponse.json({
+  const response = NextResponse.json({
     success: true,
     data: {
       distancePerformance,
@@ -388,6 +428,8 @@ async function getPerformanceMetrics(startDate: Date, endDate: Date | null = nul
       }
     }
   });
+  
+  return addSecurityHeaders(response);
 }
 
 async function getCarrierActivity(startDate: Date, endDate: Date | null = null) {
@@ -428,7 +470,7 @@ async function getCarrierActivity(startDate: Date, endDate: Date | null = null) 
     LIMIT 50
   `;
 
-  return NextResponse.json({
+  const response = NextResponse.json({
     success: true,
     data: {
       activityPatterns,
@@ -441,6 +483,8 @@ async function getCarrierActivity(startDate: Date, endDate: Date | null = null) 
       }
     }
   });
+  
+  return addSecurityHeaders(response);
 }
 
 async function getAuctionInsights(startDate: Date, endDate: Date | null = null) {
@@ -706,7 +750,7 @@ async function getAuctionInsights(startDate: Date, endDate: Date | null = null) 
     (engagementScore * 0.2)
   );
 
-  return NextResponse.json({
+  const response = NextResponse.json({
     success: true,
     data: {
       auctionInsights: {
@@ -732,4 +776,6 @@ async function getAuctionInsights(startDate: Date, endDate: Date | null = null) 
       }
     }
   });
+  
+  return addSecurityHeaders(response);
 }

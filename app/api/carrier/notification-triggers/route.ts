@@ -1,4 +1,5 @@
-import { requireApiCarrier } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiCarrier, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from '@/lib/db';
 import { NextRequest, NextResponse } from "next/server";
 
@@ -33,6 +34,28 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const triggerType = searchParams.get("triggerType") as NotificationTriggerType;
     const isActive = searchParams.get("isActive") !== "false";
+
+    // Input validation
+    const validation = validateInput(
+      { triggerType, isActive },
+      {
+        triggerType: { 
+          type: 'string', 
+          enum: ['similar_load', 'exact_match', 'new_route', 'favorite_available', 'deadline_approaching'],
+          required: false
+        },
+        isActive: { type: 'string', enum: ['true', 'false'], required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_notification_triggers_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
 
     // Get notification triggers with bid and route info for exact_match triggers
     // First get all triggers
@@ -184,17 +207,37 @@ export async function GET(request: NextRequest) {
       };
     }));
 
-    return NextResponse.json({
+    logSecurityEvent('notification_triggers_accessed', userId, { triggerType: triggerType || null });
+    
+    const response = NextResponse.json({
       ok: true,
       data: triggers
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching notification triggers:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch notification triggers" },
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('notification_triggers_fetch_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to fetch notification triggers",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 
@@ -206,20 +249,46 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { triggerType, triggerConfig, isActive = true } = body;
 
+    // Input validation
+    const validation = validateInput(
+      { triggerType, triggerConfig, isActive },
+      {
+        triggerType: { 
+          required: true, 
+          type: 'string', 
+          enum: ['similar_load', 'exact_match', 'new_route', 'favorite_available', 'deadline_approaching']
+        },
+        triggerConfig: { required: true, type: 'object' },
+        isActive: { type: 'boolean', required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_notification_trigger_create_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     if (!triggerType || !triggerConfig) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: "Trigger type and config are required" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Validate trigger config based on type
     const validationError = validateTriggerConfig(triggerType, triggerConfig);
     if (validationError) {
-      return NextResponse.json(
+      logSecurityEvent('invalid_notification_trigger_config', userId, { triggerType, error: validationError });
+      const response = NextResponse.json(
         { error: validationError },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Check for duplicate state matches
@@ -277,7 +346,9 @@ export async function POST(request: NextRequest) {
       RETURNING id, created_at
     `;
 
-    return NextResponse.json({
+    logSecurityEvent('notification_trigger_created', userId, { triggerType, triggerId: result[0].id });
+    
+    const response = NextResponse.json({
       ok: true,
       data: {
         id: result[0].id,
@@ -288,13 +359,31 @@ export async function POST(request: NextRequest) {
       },
       message: "Notification trigger created successfully"
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error creating notification trigger:", error);
-    return NextResponse.json(
-      { error: "Failed to create notification trigger" },
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('notification_trigger_create_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to create notification trigger",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 
@@ -306,11 +395,31 @@ export async function PUT(request: NextRequest) {
     const body = await request.json();
     const { id, triggerConfig, isActive } = body;
 
+    // Input validation
+    const validation = validateInput(
+      { id, triggerConfig, isActive },
+      {
+        id: { required: true, type: 'string', maxLength: 50 },
+        triggerConfig: { type: 'object', required: false },
+        isActive: { type: 'boolean', required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_notification_trigger_update_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     if (!id) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: "Trigger ID is required" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Update notification trigger
@@ -384,23 +493,44 @@ export async function PUT(request: NextRequest) {
     }
 
     if (result.length === 0) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: "Trigger not found" },
         { status: 404 }
       );
+      return addSecurityHeaders(response);
     }
 
-    return NextResponse.json({
+    logSecurityEvent('notification_trigger_updated', userId, { triggerId: id });
+    
+    const response = NextResponse.json({
       ok: true,
       message: "Notification trigger updated successfully"
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error updating notification trigger:", error);
-    return NextResponse.json(
-      { error: "Failed to update notification trigger" },
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('notification_trigger_update_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to update notification trigger",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 
@@ -412,11 +542,29 @@ export async function DELETE(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
 
+    // Input validation
+    const validation = validateInput(
+      { id },
+      {
+        id: { required: true, type: 'string', maxLength: 50 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_notification_trigger_delete_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     if (!id) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: "Trigger ID is required" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Delete notification trigger
@@ -428,23 +576,44 @@ export async function DELETE(request: NextRequest) {
     `;
 
     if (result.length === 0) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: "Trigger not found" },
         { status: 404 }
       );
+      return addSecurityHeaders(response);
     }
 
-    return NextResponse.json({
+    logSecurityEvent('notification_trigger_deleted', userId, { triggerId: id });
+    
+    const response = NextResponse.json({
       ok: true,
       message: "Notification trigger deleted successfully"
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error deleting notification trigger:", error);
-    return NextResponse.json(
-      { error: "Failed to delete notification trigger" },
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('notification_trigger_delete_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to delete notification trigger",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 

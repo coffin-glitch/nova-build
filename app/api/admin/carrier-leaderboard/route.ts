@@ -1,4 +1,5 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -21,7 +22,8 @@ import { NextRequest, NextResponse } from "next/server";
 export async function GET(request: NextRequest) {
   try {
     // Ensure user is admin (Supabase-only)
-    await requireApiAdmin(request);
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
 
     const { searchParams } = new URL(request.url);
     const timeframe = searchParams.get("timeframe") || "30";
@@ -33,6 +35,29 @@ export async function GET(request: NextRequest) {
     const equipmentType = searchParams.get("equipmentType") || null;
     const minBids = parseInt(searchParams.get("minBids") || "0");
     const carrierId = searchParams.get("carrierId") || null; // Support filtering by specific carrier
+
+    // Input validation
+    const validation = validateInput(
+      { timeframe, startDateParam, endDateParam, limitParam, sortBy, minBids, carrierId },
+      {
+        timeframe: { type: 'string', maxLength: 50, required: false },
+        startDateParam: { type: 'string', pattern: /^\d{4}-\d{2}-\d{2}$/, required: false },
+        endDateParam: { type: 'string', pattern: /^\d{4}-\d{2}-\d{2}$/, required: false },
+        limitParam: { type: 'string', pattern: /^(all|\d+)$/, required: false },
+        sortBy: { type: 'string', enum: ['total_bids', 'win_rate', 'avg_bid', 'total_value', 'recent_activity', 'wins', 'revenue'], required: false },
+        minBids: { type: 'string', pattern: /^\d+$/, required: false },
+        carrierId: { type: 'string', maxLength: 200, required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_carrier_leaderboard_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
 
     // Calculate date range - support custom date range, "today", "all", or numeric days
     let startDate: Date | null = null;
@@ -73,7 +98,8 @@ export async function GET(request: NextRequest) {
     const hit = g.__leader_cache.get(cacheKey);
     // Don't use cache for carrierId-specific queries to ensure fresh data
     if (!carrierId && hit && now - hit.t < 30_000) {
-      return NextResponse.json(hit.v);
+      const cachedResponse = NextResponse.json(hit.v);
+      return addSecurityHeaders(cachedResponse);
     }
 
     // Enhanced carrier statistics query using auction_awards for authoritative win data
@@ -458,9 +484,18 @@ export async function GET(request: NextRequest) {
     };
 
     g.__leader_cache.set(cacheKey, { t: now, v: payload });
-    return NextResponse.json(payload);
+    
+    logSecurityEvent('carrier_leaderboard_accessed', userId, { 
+      timeframe, 
+      sortBy, 
+      limit,
+      carrierId: carrierId || null
+    });
+    
+    const response = NextResponse.json(payload);
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Carrier leaderboard API error:", error);
     console.error("Error type:", typeof error);
     console.error("Error constructor:", error?.constructor?.name);
@@ -479,38 +514,36 @@ export async function GET(request: NextRequest) {
       }
       
       if (error.message === "Unauthorized" || error.message.includes("Unauthorized")) {
-        return NextResponse.json(
-          { 
-            success: false,
-            error: "Authentication required",
-            details: error.message
-          },
-          { status: 401 }
-        );
+        return unauthorizedResponse();
       }
       
       if (error.message === "Admin access required" || error.message.includes("Admin access")) {
-        return NextResponse.json(
+        const response = NextResponse.json(
           { 
             success: false,
-            error: "Admin access required",
-            details: error.message
+            error: "Admin access required"
           },
           { status: 403 }
         );
+        return addSecurityHeaders(response);
       }
     }
     
-    return NextResponse.json(
+    logSecurityEvent('carrier_leaderboard_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
       { 
         success: false,
         error: "Failed to fetch carrier leaderboard",
-        details: error instanceof Error ? error.message : 'Unknown error',
-        errorCode: (error as any)?.code || undefined,
-        errorDetail: (error as any)?.detail || undefined,
-        stack: process.env.NODE_ENV === 'development' && error instanceof Error ? error.stack : undefined
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
       },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }

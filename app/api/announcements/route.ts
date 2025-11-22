@@ -1,4 +1,5 @@
-import { requireApiAuth } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAuth, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { AnnouncementNotificationTemplate } from "@/lib/email-templates/notification-templates";
 import { sendEmail } from "@/lib/email/notify";
@@ -17,8 +18,30 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const includeRead = searchParams.get('include_read') === 'true';
     const priority = searchParams.get('priority'); // Filter by priority
-    const limit = parseInt(searchParams.get('limit') || '50');
-    const offset = parseInt(searchParams.get('offset') || '0');
+    const limitParam = searchParams.get('limit') || '50';
+    const offsetParam = searchParams.get('offset') || '0';
+
+    // Input validation
+    const validation = validateInput(
+      { priority, limit: limitParam, offset: offsetParam },
+      {
+        priority: { type: 'string', enum: ['low', 'medium', 'high', 'urgent'], required: false },
+        limit: { type: 'string', pattern: /^\d+$/, required: false },
+        offset: { type: 'string', pattern: /^\d+$/, required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_announcements_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { success: false, error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
+    const limit = Math.min(parseInt(limitParam), 100); // Max 100
+    const offset = Math.max(0, parseInt(offsetParam)); // Ensure non-negative
 
     // Admin can see all announcements
     if (userRole === 'admin') {
@@ -72,7 +95,9 @@ export async function GET(request: NextRequest) {
 
       const total = await sql`SELECT COUNT(*) as count FROM announcements ${priority ? sql`WHERE priority = ${priority}` : sql``}`;
 
-      return NextResponse.json({
+      logSecurityEvent('announcements_accessed', userId, { role: 'admin', priority: priority || null });
+      
+      const adminResponse = NextResponse.json({
         success: true,
         data: announcements,
         pagination: {
@@ -81,6 +106,8 @@ export async function GET(request: NextRequest) {
           offset,
         },
       });
+      
+      return addSecurityHeaders(adminResponse);
     }
 
     // Carrier sees only active announcements with read status
@@ -122,7 +149,9 @@ export async function GET(request: NextRequest) {
         AND ar.id IS NULL
     `;
 
-    return NextResponse.json({
+    logSecurityEvent('announcements_accessed', userId, { role: 'carrier', priority: priority || null });
+    
+    const response = NextResponse.json({
       success: true,
       data: announcements,
       unreadCount: parseInt(unreadCount[0].count),
@@ -131,12 +160,31 @@ export async function GET(request: NextRequest) {
         offset,
       },
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching announcements:", error);
-    return NextResponse.json({
-      error: "Failed to fetch announcements"
-    }, { status: 500 });
+    
+    if (error.message === "Unauthorized" || error.message === "Authentication required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('announcements_fetch_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to fetch announcements",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
+      { status: 500 }
+    );
+    
+    return addSecurityHeaders(response);
   }
 }
 
@@ -150,24 +198,58 @@ export async function POST(request: NextRequest) {
     
     // Only admins can create announcements
     if (auth.userRole !== 'admin') {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+      const response = NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+      return addSecurityHeaders(response);
     }
 
     const body = await request.json();
     const { title, message, priority = 'normal', expiresAt, targetAudience = 'all', metadata = {}, recipientUserIds } = body;
 
+    // Input validation
+    const validation = validateInput(
+      { title, message, priority, targetAudience, recipientUserIds },
+      {
+        title: { required: true, type: 'string', minLength: 1, maxLength: 200 },
+        message: { required: true, type: 'string', minLength: 1, maxLength: 5000 },
+        priority: { type: 'string', enum: ['low', 'normal', 'high', 'urgent'], required: false },
+        targetAudience: { type: 'string', enum: ['all', 'carriers', 'specific'], required: false },
+        recipientUserIds: { type: 'array', maxLength: 1000, required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_announcement_create_input', auth.userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     if (!title || !message) {
-      return NextResponse.json({ error: "Title and message are required" }, { status: 400 });
+      const response = NextResponse.json(
+        { error: "Title and message are required" },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
 
     // Validate priority
     if (!['low', 'normal', 'high', 'urgent'].includes(priority)) {
-      return NextResponse.json({ error: "Invalid priority level" }, { status: 400 });
+      const response = NextResponse.json(
+        { error: "Invalid priority level" },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
 
     // Validate recipientUserIds if provided
     if (recipientUserIds && (!Array.isArray(recipientUserIds) || recipientUserIds.length === 0)) {
-      return NextResponse.json({ error: "recipientUserIds must be a non-empty array" }, { status: 400 });
+      const response = NextResponse.json(
+        { error: "recipientUserIds must be a non-empty array" },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
 
     // Create announcement
@@ -341,18 +423,44 @@ export async function POST(request: NextRequest) {
       }
     })();
 
-    return NextResponse.json({
+    logSecurityEvent('announcement_created', auth.userId, { 
+      announcementId: announcement.id,
+      priority,
+      targetAudience,
+      recipientCount: carriers.length
+    });
+
+    const response = NextResponse.json({
       success: true,
       data: announcement,
       notificationsCreated: carriers.length,
       emailsQueued: true, // Emails are sent asynchronously
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error creating announcement:", error);
-    return NextResponse.json({
-      error: "Failed to create announcement"
-    }, { status: 500 });
+    
+    if (error.message === "Unauthorized" || error.message === "Authentication required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('announcement_create_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to create announcement",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
+      { status: 500 }
+    );
+    
+    return addSecurityHeaders(response);
   }
 }
 
