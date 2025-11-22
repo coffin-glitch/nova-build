@@ -1,5 +1,6 @@
+import { addSecurityHeaders, logSecurityEvent } from "@/lib/api-security";
+import { requireApiCarrier, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
-import { requireApiCarrier } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
@@ -45,16 +46,37 @@ export async function GET(request: NextRequest) {
     console.log(`[Carrier Awarded Bids] Found ${awardedBids.length} bids for user ${userId}`);
     console.log(`[Carrier Awarded Bids] Bid numbers: ${awardedBids.map(b => b.bid_number).join(', ')}`);
 
-    return NextResponse.json({
+    logSecurityEvent('carrier_awarded_bids_accessed', userId);
+    
+    const response = NextResponse.json({
       ok: true,
       data: awardedBids
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching awarded bids:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch awarded bids", details: error instanceof Error ? error.message : 'Unknown error' },
+    
+    // Handle auth errors
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('carrier_awarded_bids_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to fetch awarded bids",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
