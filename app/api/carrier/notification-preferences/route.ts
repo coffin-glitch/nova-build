@@ -1,5 +1,6 @@
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
 import { getNotificationPreferences, updateNotificationPreferences } from "@/lib/load-matching";
-import { requireApiCarrier } from "@/lib/auth-api-helper";
+import { requireApiCarrier, unauthorizedResponse } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 // GET /api/carrier/notification-preferences - Get notification preferences
@@ -17,17 +18,37 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ 
+    logSecurityEvent('notification_preferences_accessed', userId);
+    
+    const response = NextResponse.json({ 
       ok: true, 
       data: preferences 
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching notification preferences:', error);
-    return NextResponse.json(
-      { error: "Failed to fetch preferences" },
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('notification_preferences_fetch_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to fetch preferences",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 
@@ -39,25 +60,67 @@ export async function PUT(request: NextRequest) {
 
     const preferences = await request.json();
 
+    // Input validation - validate preferences object structure
+    const validation = validateInput(
+      { preferences },
+      {
+        preferences: { 
+          required: true, 
+          type: 'object'
+        }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_notification_preferences_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     const result = await updateNotificationPreferences(userId, preferences);
 
     if (!result.success) {
-      return NextResponse.json(
+      logSecurityEvent('notification_preferences_update_failed', userId, { error: result.error });
+      const response = NextResponse.json(
         { error: result.error || "Failed to update preferences" },
         { status: 500 }
       );
+      return addSecurityHeaders(response);
     }
 
-    return NextResponse.json({ 
+    logSecurityEvent('notification_preferences_updated', userId);
+    
+    const response = NextResponse.json({ 
       ok: true, 
       message: "Preferences updated successfully" 
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error updating notification preferences:', error);
-    return NextResponse.json(
-      { error: "Failed to update preferences" },
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('notification_preferences_update_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to update preferences",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }

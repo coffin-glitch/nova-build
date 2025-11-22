@@ -1,5 +1,6 @@
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiCarrier, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from '@/lib/db';
-import { requireApiCarrier } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
@@ -9,8 +10,30 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status"); // 'won', 'lost', 'pending', 'cancelled'
-    const limit = Math.min(parseInt(searchParams.get("limit") || "50"), 100);
-    const offset = parseInt(searchParams.get("offset") || "0");
+    const limitParam = searchParams.get("limit") || "50";
+    const offsetParam = searchParams.get("offset") || "0";
+
+    // Input validation
+    const validation = validateInput(
+      { status, limit: limitParam, offset: offsetParam },
+      {
+        status: { type: 'string', enum: ['won', 'lost', 'pending', 'cancelled'], required: false },
+        limit: { type: 'string', pattern: /^\d+$/, required: false },
+        offset: { type: 'string', pattern: /^\d+$/, required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_bid_history_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
+    const limit = Math.min(parseInt(limitParam), 100); // Max 100
+    const offset = Math.max(0, parseInt(offsetParam)); // Ensure non-negative
 
     // Get carrier bid history with detailed information
     // Note: Using telegram_bids for both active and archived bids (archived_at IS NOT NULL means archived)
@@ -69,7 +92,9 @@ export async function GET(request: NextRequest) {
       WHERE cb.supabase_user_id = ${userId}
     `;
 
-    return NextResponse.json({
+    logSecurityEvent('carrier_bid_history_accessed', userId);
+    
+    const response = NextResponse.json({
       ok: true,
       data: rows,
       pagination: {
@@ -88,13 +113,31 @@ export async function GET(request: NextRequest) {
         total_bid_value: 0
       }
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching carrier bid history:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch bid history" },
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('carrier_bid_history_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to fetch bid history",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 
@@ -106,11 +149,36 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { bidNumber, bidStatus, bidNotes } = body;
 
-    if (!bidNumber || !bidStatus) {
-      return NextResponse.json(
-        { error: "Bid number and status are required" },
+    // Input validation
+    const validation = validateInput(
+      { bidNumber, bidStatus, bidNotes },
+      {
+        bidNumber: { 
+          required: true, 
+          type: 'string', 
+          pattern: /^[A-Z0-9\-_]+$/,
+          maxLength: 100
+        },
+        bidStatus: { 
+          required: true, 
+          type: 'string', 
+          enum: ['won', 'lost', 'pending', 'cancelled']
+        },
+        bidNotes: { 
+          type: 'string', 
+          maxLength: 1000,
+          required: false
+        }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_bid_status_update_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
            // Update carrier bid outcome
@@ -153,16 +221,36 @@ export async function POST(request: NextRequest) {
              ON CONFLICT (carrier_user_id, bid_number, created_at) DO NOTHING
            `;
 
-    return NextResponse.json({
+    logSecurityEvent('bid_status_updated', userId, { bidNumber, bidStatus });
+    
+    const response = NextResponse.json({
       ok: true,
       message: "Bid status updated successfully"
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error updating bid status:", error);
-    return NextResponse.json(
-      { error: "Failed to update bid status" },
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('bid_status_update_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to update bid status",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
