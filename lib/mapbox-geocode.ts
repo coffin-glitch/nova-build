@@ -296,8 +296,34 @@ async function geocodeWithAPI(
                                (featureCityOnly.startsWith(cityLower + ' ') && featureCityOnly.split(' ').length <= 2); // Allow "Avondale Park" but not "Avondale Ave"
             const stateMatches = featureState === stateUpper;
             
-            if (cityMatches && stateMatches) {
-              console.log(`Geocoding API: Found exact match - city: "${featureCityOnly}", state: "${featureState}" for "${structured.city}, ${structured.state}"`);
+            // CRITICAL: Validate ZIP code matches the expected state
+            // If we have a ZIP code in the input, verify the result's ZIP code is in the correct state
+            let zipMatches = true; // Default to true if no ZIP code to validate
+            if (structured.zipcode) {
+              const featureZip = (f.properties?.postcode || f.properties?.postal_code || '').trim();
+              
+              // If feature has a ZIP code, it must match the input ZIP code
+              // This ensures "85323" (AZ) doesn't match a result with a different ZIP in a different state
+              if (featureZip) {
+                // Extract just the 5-digit ZIP (ignore +4 extension)
+                const featureZip5 = featureZip.substring(0, 5);
+                const inputZip5 = structured.zipcode.substring(0, 5);
+                
+                if (featureZip5 !== inputZip5) {
+                  console.log(`Geocoding API: ZIP code mismatch - input: "${inputZip5}", feature: "${featureZip5}" for "${structured.city}, ${structured.state}"`);
+                  zipMatches = false;
+                } else {
+                  console.log(`Geocoding API: ZIP code matches - "${featureZip5}" for "${structured.city}, ${structured.state}"`);
+                }
+              } else {
+                // Feature doesn't have ZIP code - this is acceptable for place/locality results
+                // But we should still validate state matches
+                console.log(`Geocoding API: Feature has no ZIP code, but state matches for "${structured.city}, ${structured.state}"`);
+              }
+            }
+            
+            if (cityMatches && stateMatches && zipMatches) {
+              console.log(`Geocoding API: Found exact match - city: "${featureCityOnly}", state: "${featureState}", zip: ${structured.zipcode ? 'validated' : 'N/A'} for "${structured.city}, ${structured.state}${structured.zipcode ? ' ' + structured.zipcode : ''}"`);
               return true;
             }
             
