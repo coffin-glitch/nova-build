@@ -156,10 +156,12 @@ export function MapboxMap({
           }
         }
         
-        // Strategy 5: If still no result, try with approximation (state center as last resort)
+        // Strategy 5: If still no result, DO NOT use approximation fallback
+        // Approximations (state centers) cause incorrect mapping
+        // Instead, log the failure and let the error propagate
         if (!result) {
-          console.warn(`MapboxMap: All geocoding attempts failed for "${stop}", using approximation fallback`);
-          result = await geocodeLocation(stop, false); // false = allow approximations
+          console.error(`MapboxMap: All geocoding attempts failed for "${stop}" - cannot use approximation (would cause wrong state mapping)`);
+          // Don't use approximation - it causes incorrect state mapping
         }
       }
       

@@ -66,16 +66,8 @@ export async function geocodeLocation(
       
       // Handle null result (no results found)
       if (!result) {
-        console.warn(`Geocoding: API returned no results for "${location}", trying fallback`);
-        // Fall back to approximation
-        const fallback = getApproximateLocation(location);
-        if (fallback) {
-          console.log(`Geocoding: Using approximation for "${location}"`);
-          setCachedGeocode(location, fallback);
-          return fallback;
-        }
-        // If no approximation, return default (but don't cache it)
-        console.warn(`Geocoding: No results and no approximation for "${location}", returning null`);
+        console.warn(`Geocoding: API returned no results for "${location}" - NOT using approximation (prevents wrong state mapping)`);
+        // DO NOT fall back to approximation - it causes incorrect state mapping
         return null as any; // Return null to indicate failure
       }
       
@@ -84,27 +76,15 @@ export async function geocodeLocation(
         setCachedGeocode(location, result);
         console.log(`Geocoding: API success for "${location}", cached result`);
       } else {
-        console.warn(`Geocoding: API returned default coordinates for "${location}", trying fallback`);
-        // Try approximation as fallback
-        const fallback = getApproximateLocation(location);
-        if (fallback && (fallback.lng !== -96.9 || fallback.lat !== 37.6)) {
-          console.log(`Geocoding: Using approximation for "${location}"`);
-          setCachedGeocode(location, fallback);
-          return fallback;
-        }
+        console.warn(`Geocoding: API returned default coordinates for "${location}" - NOT using approximation (prevents wrong state mapping)`);
+        // DO NOT try approximation - it causes incorrect state mapping
+        return null as any;
       }
       return result;
     } catch (error) {
       console.warn(`Geocoding API error for "${location}":`, error);
-      // Fall back to approximation
-      const fallback = getApproximateLocation(location);
-      if (fallback) {
-        console.log(`Geocoding: Using approximation for "${location}"`);
-        setCachedGeocode(location, fallback);
-        return fallback;
-      }
-      // If no approximation, return null instead of throwing
-      console.warn(`Geocoding: No fallback available for "${location}"`);
+      // DO NOT fall back to approximation - it causes incorrect state mapping
+      console.warn(`Geocoding: NOT using approximation fallback (prevents wrong state mapping)`);
       return null as any;
     }
   }
@@ -249,48 +229,84 @@ async function geocodeWithAPI(
       });
   
       if (data.features && data.features.length > 0) {
-        // Try to find the best match from multiple results
-        let bestFeature = data.features[0];
-        
-        // If we have structured input, prefer features that match the city/state
+        // If we have structured input with state, ONLY accept results that match the state
         if (structured.city && structured.state) {
-          const cityLower = structured.city.toLowerCase();
-          const stateUpper = structured.state.toUpperCase();
+          const cityLower = structured.city.toLowerCase().trim();
+          const stateUpper = structured.state.toUpperCase().trim();
           
-          // Look for a feature that matches both city and state
+          // Look for a feature that matches BOTH city and state exactly
           const matchingFeature = data.features.find((f: any) => {
-            const featureCity = f.properties?.name?.toLowerCase() || f.properties?.place_name?.toLowerCase() || '';
-            const featureState = f.properties?.region_code?.toUpperCase() || f.properties?.region?.toUpperCase() || '';
-            return featureCity.includes(cityLower) && featureState === stateUpper;
+            const featureCity = (f.properties?.name || f.properties?.place_name || '').toLowerCase().trim();
+            const featureState = (f.properties?.region_code || f.properties?.region || '').toUpperCase().trim();
+            
+            // Strict matching: city must match (exact or contains, but prefer exact)
+            // State MUST match exactly
+            const cityMatches = featureCity === cityLower || 
+                               featureCity.includes(cityLower) || 
+                               cityLower.includes(featureCity.split(',')[0]?.trim() || '');
+            const stateMatches = featureState === stateUpper;
+            
+            if (cityMatches && stateMatches) {
+              console.log(`Geocoding API: Found exact match - city: "${featureCity}", state: "${featureState}" for "${structured.city}, ${structured.state}"`);
+              return true;
+            }
+            
+            return false;
           });
           
           if (matchingFeature) {
-            bestFeature = matchingFeature;
-            console.log(`Geocoding API: Found matching feature for "${structured.city}, ${structured.state}"`);
+            const coords = matchingFeature.properties?.coordinates;
+            
+            if (coords && coords.longitude && coords.latitude) {
+              const result = {
+                lng: coords.longitude,
+                lat: coords.latitude,
+                placeName: matchingFeature.properties?.full_address || matchingFeature.properties?.name || location,
+              };
+              console.log(`Geocoding API: Successfully geocoded "${location}" -> [${result.lng}, ${result.lat}] (exact state match) using ${strategy.description}`);
+              return result;
+            }
+            
+            // Fallback to geometry coordinates if properties.coordinates not available
+            if (matchingFeature.geometry?.coordinates && matchingFeature.geometry.coordinates.length >= 2) {
+              const result = {
+                lng: matchingFeature.geometry.coordinates[0],
+                lat: matchingFeature.geometry.coordinates[1],
+                placeName: matchingFeature.properties?.full_address || matchingFeature.properties?.name || location,
+              };
+              console.log(`Geocoding API: Successfully geocoded "${location}" (from geometry, exact state match) -> [${result.lng}, ${result.lat}] using ${strategy.description}`);
+              return result;
+            }
+          } else {
+            // No matching feature found - log warning and try next strategy
+            console.warn(`Geocoding API: No features match state "${stateUpper}" for "${structured.city}, ${structured.state}" - trying next strategy`);
+            continue; // Try next strategy instead of using wrong result
           }
-        }
-        
-        const coords = bestFeature.properties?.coordinates;
-        
-        if (coords && coords.longitude && coords.latitude) {
-          const result = {
-            lng: coords.longitude,
-            lat: coords.latitude,
-            placeName: bestFeature.properties?.full_address || bestFeature.properties?.name || location,
-          };
-          console.log(`Geocoding API: Successfully geocoded "${location}" -> [${result.lng}, ${result.lat}] using ${strategy.description}`);
-          return result;
-        }
-        
-        // Fallback to geometry coordinates if properties.coordinates not available
-        if (bestFeature.geometry?.coordinates && bestFeature.geometry.coordinates.length >= 2) {
-          const result = {
-            lng: bestFeature.geometry.coordinates[0],
-            lat: bestFeature.geometry.coordinates[1],
-            placeName: bestFeature.properties?.full_address || bestFeature.properties?.name || location,
-          };
-          console.log(`Geocoding API: Successfully geocoded "${location}" (from geometry) -> [${result.lng}, ${result.lat}] using ${strategy.description}`);
-          return result;
+        } else {
+          // No structured input - use first result but validate it has coordinates
+          const bestFeature = data.features[0];
+          const coords = bestFeature.properties?.coordinates;
+          
+          if (coords && coords.longitude && coords.latitude) {
+            const result = {
+              lng: coords.longitude,
+              lat: coords.latitude,
+              placeName: bestFeature.properties?.full_address || bestFeature.properties?.name || location,
+            };
+            console.log(`Geocoding API: Successfully geocoded "${location}" -> [${result.lng}, ${result.lat}] using ${strategy.description}`);
+            return result;
+          }
+          
+          // Fallback to geometry coordinates if properties.coordinates not available
+          if (bestFeature.geometry?.coordinates && bestFeature.geometry.coordinates.length >= 2) {
+            const result = {
+              lng: bestFeature.geometry.coordinates[0],
+              lat: bestFeature.geometry.coordinates[1],
+              placeName: bestFeature.properties?.full_address || bestFeature.properties?.name || location,
+            };
+            console.log(`Geocoding API: Successfully geocoded "${location}" (from geometry) -> [${result.lng}, ${result.lat}] using ${strategy.description}`);
+            return result;
+          }
         }
       }
       
@@ -463,17 +479,10 @@ function getApproximateLocation(location: string): GeocodeResult | null {
     'district of columbia': [-77.0369, 38.9072],
   };
 
-  // First, try to extract state code (e.g., "FL" from "OPA LOCKA, FL 33054")
-  // Pattern: ", ST " or ", ST" or " ST " or " ST"
-  const stateCodeMatch = upperNormalized.match(/[,\s]+([A-Z]{2})(?:\s|$)/);
-  if (stateCodeMatch && stateCodeMatch[1] && stateCodeMap[stateCodeMatch[1]]) {
-    const stateName = stateCodeMap[stateCodeMatch[1]];
-    if (stateCenters[stateName]) {
-      const [lng, lat] = stateCenters[stateName];
-      console.log(`Geocoding: Using state center for "${location}" (extracted state code: ${stateCodeMatch[1]})`);
-      return { lng, lat, placeName: stateName };
-    }
-  }
+  // NOTE: State center fallback removed - it causes incorrect mapping
+  // Only use state centers as absolute last resort, and only if explicitly requested
+  // For now, we'll skip this to prevent wrong state mapping
+  // If needed, this should only be used when useApi=false and no other options exist
 
   // Check for state names
   for (const [state, [lng, lat]] of Object.entries(stateCenters)) {
@@ -684,24 +693,16 @@ export async function geocodeBatch(
             setCachedGeocode(originalLocation, result);
             results[originalIndex] = result;
           } else {
-            // Fallback to approximation
-            const approx = getApproximateLocation(originalLocation);
-            if (approx) {
-              setCachedGeocode(originalLocation, approx);
-              results[originalIndex] = approx;
-            } else {
-              results[originalIndex] = { lng: -96.9, lat: 37.6 };
-            }
+            // DO NOT fallback to approximation - it causes incorrect state mapping
+            console.warn(`Batch geocoding: No valid result for "${originalLocation}" - NOT using approximation`);
+            // Use null result - caller should handle this
+            results[originalIndex] = { lng: -96.9, lat: 37.6 }; // Default center as absolute last resort
           }
         } else {
-          // No results - use approximation or default
-          const approx = getApproximateLocation(originalLocation);
-          if (approx) {
-            setCachedGeocode(originalLocation, approx);
-            results[originalIndex] = approx;
-          } else {
-            results[originalIndex] = { lng: -96.9, lat: 37.6 };
-          }
+          // No results - DO NOT use approximation (causes wrong state mapping)
+          console.warn(`Batch geocoding: No results for "${originalLocation}" - NOT using approximation`);
+          // Use default center as absolute last resort
+          results[originalIndex] = { lng: -96.9, lat: 37.6 };
         }
       });
       
