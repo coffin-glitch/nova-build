@@ -124,22 +124,24 @@ async function geocodeWithAPI(
   const queryStrategies: Array<{ url: string; description: string }> = [];
   
   // Strategy 1: Structured query with city and state (most accurate)
+  // CRITICAL: Use 'place,locality' types first to avoid street addresses
+  // Street addresses (like "Avondale Ave") can match city names and cause wrong state mapping
   if (structured.city && structured.state) {
     const params = new URLSearchParams({
       access_token: token,
       country: 'us',
       place: structured.city,
       region: structured.state,
-      types: 'place,locality,address',
+      types: 'place,locality', // Prioritize places/locality, NOT addresses (prevents street matches)
       limit: '3', // Get more results to find best match
       autocomplete: 'false',
     });
     queryStrategies.push({
       url: `https://api.mapbox.com/search/geocode/v6/forward?${params.toString()}`,
-      description: `structured (city: "${structured.city}", state: "${structured.state}")`
+      description: `structured (city: "${structured.city}", state: "${structured.state}") - place/locality only`
     });
     
-    // Strategy 1b: Also try with ZIP code if available
+    // Strategy 1b: Also try with ZIP code if available (still prefer place/locality)
     if (structured.zipcode) {
       const paramsWithZip = new URLSearchParams({
         access_token: token,
@@ -147,13 +149,13 @@ async function geocodeWithAPI(
         place: structured.city,
         region: structured.state,
         postcode: structured.zipcode,
-        types: 'address,place,locality',
+        types: 'place,locality', // Prefer place/locality, not addresses
         limit: '3',
         autocomplete: 'false',
       });
       queryStrategies.push({
         url: `https://api.mapbox.com/search/geocode/v6/forward?${paramsWithZip.toString()}`,
-        description: `structured with ZIP (city: "${structured.city}", state: "${structured.state}", zip: "${structured.zipcode}")`
+        description: `structured with ZIP (city: "${structured.city}", state: "${structured.state}", zip: "${structured.zipcode}") - place/locality only`
       });
     }
   }
@@ -259,19 +261,43 @@ async function geocodeWithAPI(
           const stateUpper = structured.state.toUpperCase().trim();
           
           // Look for a feature that matches BOTH city and state exactly
+          // CRITICAL: Reject street addresses when searching for cities
           const matchingFeature = data.features.find((f: any) => {
+            const featureType = f.properties?.feature_type || f.properties?.type || '';
             const featureCity = (f.properties?.name || f.properties?.place_name || '').toLowerCase().trim();
             const featureState = (f.properties?.region_code || f.properties?.region || '').toUpperCase().trim();
             
-            // Strict matching: city must match (exact or contains, but prefer exact)
-            // State MUST match exactly
-            const cityMatches = featureCity === cityLower || 
-                               featureCity.includes(cityLower) || 
-                               cityLower.includes(featureCity.split(',')[0]?.trim() || '');
+            // CRITICAL: Reject street addresses (address, street, etc.) when searching for a city
+            // We only want place/locality results, not street addresses
+            const isAddress = featureType === 'address' || 
+                            featureType === 'street' ||
+                            featureCity.includes(' ave') ||
+                            featureCity.includes(' avenue') ||
+                            featureCity.includes(' st') ||
+                            featureCity.includes(' street') ||
+                            featureCity.includes(' rd') ||
+                            featureCity.includes(' road') ||
+                            featureCity.includes(' blvd') ||
+                            featureCity.includes(' drive') ||
+                            featureCity.includes(' dr') ||
+                            featureCity.match(/\d+\s+(north|south|east|west|n|s|e|w)\s+/i); // Street numbers with directions
+            
+            if (isAddress) {
+              console.log(`Geocoding API: Rejecting street address "${featureCity}" (type: ${featureType}) - looking for city, not street`);
+              return false;
+            }
+            
+            // Extract just the city name from feature (remove state, zip, etc.)
+            const featureCityOnly = featureCity.split(',')[0]?.trim() || featureCity;
+            
+            // Strict matching: city must match exactly (not just contains)
+            // This prevents "avondale ave" from matching "avondale"
+            const cityMatches = featureCityOnly === cityLower || 
+                               (featureCityOnly.startsWith(cityLower + ' ') && featureCityOnly.split(' ').length <= 2); // Allow "Avondale Park" but not "Avondale Ave"
             const stateMatches = featureState === stateUpper;
             
             if (cityMatches && stateMatches) {
-              console.log(`Geocoding API: Found exact match - city: "${featureCity}", state: "${featureState}" for "${structured.city}, ${structured.state}"`);
+              console.log(`Geocoding API: Found exact match - city: "${featureCityOnly}", state: "${featureState}" for "${structured.city}, ${structured.state}"`);
               return true;
             }
             
