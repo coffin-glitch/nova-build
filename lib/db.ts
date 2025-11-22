@@ -29,10 +29,12 @@ const pooledUrl = dbUrl.includes('?') ? `${dbUrl}&options=-csearch_path%3Dpublic
 if (!g.__pg_sql_client) {
   g.__pg_sql_client = postgres(pooledUrl, {
     ssl: dbUrl.includes('localhost') ? false : 'require',
-    max: Number(process.env.PG_POOL_MAX || 50), // Increased for notification system scalability
-    idle_timeout: Number(process.env.PG_IDLE_TIMEOUT || 20),
-    connect_timeout: Number(process.env.PG_CONNECT_TIMEOUT || 30),
-    max_lifetime: Number(process.env.PG_MAX_LIFETIME || 60 * 30),
+    // Connection pool configuration for 10k users
+    // Recommended: PG_POOL_MAX=250 (see DATABASE_POOL_AND_RATE_LIMITING_ANALYSIS.md)
+    max: Number(process.env.PG_POOL_MAX || 50), // Default: 50, Recommended: 250 for 10k users
+    idle_timeout: Number(process.env.PG_IDLE_TIMEOUT || 30), // Keep idle connections 30s
+    connect_timeout: Number(process.env.PG_CONNECT_TIMEOUT || 10), // Faster connection timeout
+    max_lifetime: Number(process.env.PG_MAX_LIFETIME || 3600), // 1 hour max connection lifetime
     onnotice: () => {},
     debug: false,
     prepare: false, // Disable prepared statements to avoid "prepared statement does not exist" errors with connection pooling
