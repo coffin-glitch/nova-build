@@ -1,5 +1,6 @@
+import { addSecurityHeaders, logSecurityEvent } from "@/lib/api-security";
+import { requireApiCarrier, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
-import { requireApiCarrier } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
@@ -56,7 +57,9 @@ export async function GET(request: NextRequest) {
       average_offer_amount: 0
     };
 
-    return NextResponse.json({
+    logSecurityEvent('carrier_load_stats_accessed', userId);
+    
+    const response = NextResponse.json({
       ok: true,
       data: {
         totalOffers: parseInt(result.total_offers) || 0,
@@ -70,12 +73,30 @@ export async function GET(request: NextRequest) {
         averageOfferAmount: parseFloat(result.average_offer_amount) || 0
       }
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching carrier load stats:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch load statistics" },
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('carrier_load_stats_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to fetch load statistics",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }

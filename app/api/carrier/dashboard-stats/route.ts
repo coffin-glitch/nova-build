@@ -1,5 +1,6 @@
+import { addSecurityHeaders, logSecurityEvent } from "@/lib/api-security";
+import { requireApiCarrier, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
-import { requireApiCarrier } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
@@ -76,7 +77,9 @@ export async function GET(request: NextRequest) {
       active_favorites: 0
     };
 
-    return NextResponse.json({
+    logSecurityEvent('carrier_dashboard_stats_accessed', userId);
+    
+    const response = NextResponse.json({
       ok: true,
       data: {
         totalBids: parseInt(result.total_bids) || 0,
@@ -94,13 +97,31 @@ export async function GET(request: NextRequest) {
         activeFavorites: parseInt(result.active_favorites) || 0
       }
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching dashboard stats:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch dashboard statistics" },
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('carrier_dashboard_stats_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to fetch dashboard statistics",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 
