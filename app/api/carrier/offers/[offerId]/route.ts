@@ -1,5 +1,6 @@
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiCarrier, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
-import { requireApiCarrier } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function PUT(
@@ -14,8 +15,36 @@ export async function PUT(
     const body = await request.json();
     const { action, offerAmount, notes } = body;
 
+    // Input validation
+    const validation = validateInput(
+      { offerId, action, offerAmount, notes },
+      {
+        offerId: { required: true, type: 'string', maxLength: 200 },
+        action: { 
+          required: true, 
+          type: 'string', 
+          enum: ['modify', 'withdraw', 'accept_counter', 'reject_counter']
+        },
+        offerAmount: { type: 'number', min: 0, required: false },
+        notes: { type: 'string', maxLength: 1000, required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_offer_update_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     if (!action || (action === 'modify' && !offerAmount)) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+      const response = NextResponse.json(
+        { error: "Missing required fields" },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
 
     // First, verify the offer belongs to this carrier and is in a modifiable state
@@ -77,11 +106,20 @@ export async function PUT(
         VALUES (${offerId}, ${historyAction}, ${offer.offer_amount}, ${amountInCents}, ${notes || ''}, ${userId})
       `;
 
-      return NextResponse.json({
+      logSecurityEvent('offer_modified', userId, { 
+        offerId, 
+        action: 'modify', 
+        oldAmount: offer.offer_amount, 
+        newAmount: amountInCents 
+      });
+      
+      const response = NextResponse.json({
         ok: true,
         message: offer.status === 'countered' ? "Counter-offer sent successfully" : "Offer updated successfully",
         offer: result[0]
       });
+      
+      return addSecurityHeaders(response);
 
     } else if (action === 'withdraw') {
       // Update the offer status to withdrawn
@@ -104,11 +142,15 @@ export async function PUT(
         VALUES (${offerId}, 'withdrawn', 'pending', 'withdrawn', ${userId})
       `;
 
-      return NextResponse.json({
+      logSecurityEvent('offer_withdrawn', userId, { offerId });
+      
+      const response = NextResponse.json({
         ok: true,
         message: "Offer withdrawn successfully",
         offer: result[0]
       });
+      
+      return addSecurityHeaders(response);
 
     } else if (action === 'accept_counter') {
       // Only allow accepting counter-offers for countered offers
@@ -139,11 +181,15 @@ export async function PUT(
         VALUES (${offerId}, 'accepted_counter', 'countered', 'accepted', ${userId})
       `;
 
-      return NextResponse.json({
+      logSecurityEvent('counter_offer_accepted', userId, { offerId });
+      
+      const response = NextResponse.json({
         ok: true,
         message: "Counter-offer accepted successfully",
         offer: result[0]
       });
+      
+      return addSecurityHeaders(response);
 
     } else if (action === 'reject_counter') {
       // Only allow rejecting counter-offers for countered offers
@@ -173,22 +219,46 @@ export async function PUT(
         VALUES (${offerId}, 'rejected_counter', 'countered', 'rejected', ${userId})
       `;
 
-      return NextResponse.json({
+      logSecurityEvent('counter_offer_rejected', userId, { offerId });
+      
+      const response = NextResponse.json({
         ok: true,
         message: "Counter-offer rejected successfully",
         offer: result[0]
       });
+      
+      return addSecurityHeaders(response);
 
     } else {
-      return NextResponse.json({ error: "Invalid action" }, { status: 400 });
+      const response = NextResponse.json(
+        { error: "Invalid action" },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error updating carrier offer:", error);
-    return NextResponse.json(
-      { error: "Failed to update offer", details: error instanceof Error ? error.message : String(error) },
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('offer_update_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to update offer",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : String(error))
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 
@@ -201,7 +271,23 @@ export async function DELETE(
     const userId = auth.userId;
 
     const { offerId } = await params;
-    const id = offerId;
+
+    // Input validation
+    const validation = validateInput(
+      { offerId },
+      {
+        offerId: { required: true, type: 'string', maxLength: 200 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_offer_delete_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
 
     // First, verify the offer belongs to this carrier and is in a deletable state
     const existingOffer = await sql`
@@ -240,16 +326,36 @@ export async function DELETE(
       VALUES (${offerId}, 'deleted', 'pending', ${userId})
     `;
 
-    return NextResponse.json({
+    logSecurityEvent('offer_deleted', userId, { offerId, loadRrNumber: offer.load_rr_number });
+    
+    const response = NextResponse.json({
       ok: true,
       message: "Offer deleted successfully"
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error deleting carrier offer:", error);
-    return NextResponse.json(
-      { error: "Failed to delete offer", details: error instanceof Error ? error.message : String(error) },
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('offer_delete_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to delete offer",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : String(error))
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }

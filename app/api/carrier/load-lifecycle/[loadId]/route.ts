@@ -1,5 +1,6 @@
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiCarrier, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
-import { requireApiCarrier } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(
@@ -11,6 +12,23 @@ export async function GET(
     const userId = auth.userId;
 
     const { loadId } = await params;
+
+    // Input validation
+    const validation = validateInput(
+      { loadId },
+      {
+        loadId: { required: true, type: 'string', maxLength: 200 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_load_lifecycle_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
 
     // First, determine if loadId is a UUID or integer
     // If it's an integer, we need to find the corresponding load offer ID
@@ -75,7 +93,9 @@ export async function GET(
 
     const currentStatus = events.length > 0 ? events[events.length - 1].status : 'pending';
 
-    return NextResponse.json({
+    logSecurityEvent('load_lifecycle_accessed', userId, { loadId });
+    
+    const response = NextResponse.json({
       ok: true,
       data: {
         events: events.map(event => ({
@@ -111,13 +131,31 @@ export async function GET(
         currentStatus
       }
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching load lifecycle:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch load lifecycle" },
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('load_lifecycle_fetch_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to fetch load lifecycle",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 
@@ -130,6 +168,7 @@ export async function POST(
     const userId = auth.userId;
 
     const { loadId } = await params;
+    const body = await request.json();
     const { 
       status: newStatus, 
       notes, 
@@ -140,7 +179,32 @@ export async function POST(
       pickup_time,
       departure_time,
       check_in_delivery_time
-    } = await request.json();
+    } = body;
+
+    // Input validation
+    const validation = validateInput(
+      { loadId, newStatus, notes, location, event_type },
+      {
+        loadId: { required: true, type: 'string', maxLength: 200 },
+        newStatus: { 
+          required: true, 
+          type: 'string', 
+          enum: ['assigned', 'checked_in', 'picked_up', 'departed', 'in_transit', 'checked_in_delivery', 'delivered', 'completed']
+        },
+        notes: { type: 'string', maxLength: 2000, required: false },
+        location: { type: 'string', maxLength: 500, required: false },
+        event_type: { type: 'string', maxLength: 50, required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_load_lifecycle_update_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
 
     console.log('Load lifecycle update request:', {
       loadId,
@@ -315,7 +379,15 @@ export async function POST(
       submissionTime: submissionTime.toISOString()
     });
 
-    return NextResponse.json({
+    logSecurityEvent('load_lifecycle_updated', userId, { 
+      loadId, 
+      loadOfferId, 
+      oldStatus: currentStatus, 
+      newStatus,
+      event_type
+    });
+    
+    const response = NextResponse.json({
       ok: true,
       data: {
         eventId: eventResult[0].id,
@@ -323,12 +395,30 @@ export async function POST(
         status: newStatus
       }
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error updating load lifecycle:", error);
-    return NextResponse.json(
-      { error: "Failed to update load lifecycle" },
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('load_lifecycle_update_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to update load lifecycle",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
