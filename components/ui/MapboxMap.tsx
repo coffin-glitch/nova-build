@@ -142,66 +142,12 @@ export function MapboxMap({
         throw new Error(`Geocoding failed: API returned default coordinates for "${stop}"`);
       }
       
+      console.log(`MapboxMap: Successfully geocoded "${stop}" -> [${result.lng}, ${result.lat}]`);
       return [result.lng, result.lat];
     } catch (error) {
       console.error(`MapboxMap: Geocoding error for "${stop}":`, error);
       
       // Re-throw the error - we've already tried all fallback strategies above
-      throw error;
-        if (!result && stop.includes(',')) {
-          const parts = stop.split(',').map(s => s.trim());
-          if (parts.length >= 2) {
-            const city = parts[0];
-            const state = parts[1].replace(/\s+\d{5}(-\d{4})?$/, '').trim();
-            
-            // Try with hyphenated city name (common for cities like Opa-locka)
-            const normalizedCity = city.replace(/\s+/g, '-');
-            const normalizedLocation = `${normalizedCity}, ${state}`;
-            if (normalizedLocation !== stop) {
-              console.log(`MapboxMap: Trying normalized city name: "${normalizedLocation}"`);
-              result = await geocodeLocation(normalizedLocation, true);
-            }
-            
-            // Also try with proper case (Title Case)
-            if (!result) {
-              const titleCaseCity = city.split(/\s+/).map(word => 
-                word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
-              ).join(' ');
-              const titleCaseLocation = `${titleCaseCity}, ${state}`;
-              if (titleCaseLocation !== stop && titleCaseLocation !== normalizedLocation) {
-                console.log(`MapboxMap: Trying title case: "${titleCaseLocation}"`);
-                result = await geocodeLocation(titleCaseLocation, true);
-              }
-            }
-          }
-        }
-        
-        // Strategy 5: If still no result, DO NOT use approximation fallback
-        // Approximations (state centers) cause incorrect mapping
-        // Instead, log the failure and let the error propagate
-        if (!result) {
-          console.error(`MapboxMap: All geocoding attempts failed for "${stop}" - cannot use approximation (would cause wrong state mapping)`);
-          // Don't use approximation - it causes incorrect state mapping
-        }
-      }
-      
-      // Check if result is null (all attempts failed)
-      if (!result) {
-        console.error(`MapboxMap: All geocoding attempts failed for "${stop}"`);
-        throw new Error(`Geocoding failed: No results found for "${stop}"`);
-      }
-      
-      // Validate that we got real coordinates (not default fallback)
-      if (result.lng === -96.9 && result.lat === 37.6) {
-        console.warn(`MapboxMap: Geocoding returned default coordinates for "${stop}", but continuing with fallback`);
-        // Don't throw - use the default coordinates as a last resort
-      }
-      
-      console.log(`MapboxMap: Successfully geocoded "${stop}" -> [${result.lng}, ${result.lat}]`);
-      return [result.lng, result.lat];
-    } catch (error) {
-      console.error(`MapboxMap: Geocoding failed for "${stop}":`, error);
-      // Re-throw the error so the calling code can handle it
       throw error;
     }
   }, []);
