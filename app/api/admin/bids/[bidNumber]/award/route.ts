@@ -1,3 +1,4 @@
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
 import { awardAuction } from '@/lib/auctions';
 import { requireApiAdmin, unauthorizedResponse, forbiddenResponse } from '@/lib/auth-api-helper';
 import sql from '@/lib/db';
@@ -16,18 +17,43 @@ export async function POST(
     const body = await request.json();
     const { winnerUserId, adminNotes, marginCents } = body;
 
-    if (!bidNumber) {
-      return NextResponse.json(
-        { error: "Bid number is required" },
-        { status: 400 }
-      );
-    }
+    // Input validation
+    const validation = validateInput(
+      { bidNumber, winnerUserId, adminNotes, marginCents },
+      {
+        bidNumber: { 
+          required: true, 
+          type: 'string', 
+          pattern: /^[A-Z0-9\-_]+$/,
+          maxLength: 100
+        },
+        winnerUserId: { 
+          required: true, 
+          type: 'string',
+          minLength: 1,
+          maxLength: 200
+        },
+        adminNotes: { 
+          type: 'string', 
+          maxLength: 2000,
+          required: false
+        },
+        marginCents: { 
+          type: 'number', 
+          min: 0,
+          max: 100000000, // Max $1M margin
+          required: false
+        }
+      }
+    );
 
-    if (!winnerUserId) {
-      return NextResponse.json(
-        { error: "Winner user ID is required" },
+    if (!validation.valid) {
+      logSecurityEvent('invalid_award_input', userId, { errors: validation.errors, bidNumber });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Award the auction using the existing function
@@ -98,24 +124,50 @@ export async function POST(
     const winnerAmountDollars = (awardDetails[0]?.winner_amount_cents / 100).toFixed(2);
     const winnerName = awardDetails[0]?.winner_legal_name || 'Unknown Carrier';
 
-    return NextResponse.json({
+    logSecurityEvent('bid_awarded', userId, { 
+      bidNumber, 
+      winnerUserId,
+      winnerAmount: winnerAmountDollars
+    });
+
+    const response = NextResponse.json({
       success: true,
       data: responseData,
       winnerName: winnerName,
       winnerAmount: winnerAmountDollars,
       message: `Auction ${bidNumber} awarded successfully to ${winnerName}`
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Award bid error:", error);
-    return NextResponse.json(
+    
+    // Handle auth errors
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      if (error.message === "Unauthorized") {
+        return unauthorizedResponse();
+      }
+      return forbiddenResponse(error.message);
+    }
+    
+    logSecurityEvent('bid_award_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error),
+      bidNumber: await params.then(p => p.bidNumber).catch(() => 'unknown')
+    });
+    
+    const response = NextResponse.json(
       {
         success: false,
         error: "Failed to award bid",
-        details: error instanceof Error ? error.message : 'Unknown error'
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
       },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 
@@ -125,15 +177,31 @@ export async function GET(
 ) {
   try {
     // Ensure user is admin (Supabase-only)
-    await requireApiAdmin(request);
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
     
     const { bidNumber } = await params;
 
-    if (!bidNumber) {
-      return NextResponse.json(
-        { error: "Bid number is required" },
+    // Input validation
+    const validation = validateInput(
+      { bidNumber },
+      {
+        bidNumber: { 
+          required: true, 
+          type: 'string', 
+          pattern: /^[A-Z0-9\-_]+$/,
+          maxLength: 100
+        }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_award_get_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Get all bids for this auction with carrier details
@@ -221,7 +289,9 @@ export async function GET(
       });
     }
 
-    return NextResponse.json({
+    logSecurityEvent('admin_bid_details_accessed', userId, { bidNumber });
+    
+    const response = NextResponse.json({
       success: true,
       data: {
         auction: auctionDetails[0] || null,
@@ -233,16 +303,35 @@ export async function GET(
         highestBid: bids.length > 0 ? bids[bids.length - 1] : null
       }
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Get bid details error:", error);
-    return NextResponse.json(
+    
+    // Handle auth errors
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      if (error.message === "Unauthorized") {
+        return unauthorizedResponse();
+      }
+      return forbiddenResponse(error.message);
+    }
+    
+    logSecurityEvent('admin_bid_details_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
       {
         success: false,
         error: "Failed to get bid details",
-        details: error instanceof Error ? error.message : 'Unknown error'
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
       },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
