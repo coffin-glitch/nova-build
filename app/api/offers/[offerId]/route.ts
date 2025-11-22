@@ -1,4 +1,5 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -8,18 +9,47 @@ export async function PUT(
 ) {
   try {
     // This will throw if user is not admin
-    await requireApiAdmin(req);
+    const auth = await requireApiAdmin(req);
+    const userId = auth.userId;
 
     const { offerId } = await params;
     const body = await req.json();
     const { action, counterAmount, adminNotes } = body;
 
+    // Input validation
+    const validation = validateInput(
+      { offerId, action, counterAmount, adminNotes },
+      {
+        offerId: { required: true, type: 'string', maxLength: 50 },
+        action: { required: true, type: 'string', enum: ['accept', 'reject', 'counter'] },
+        counterAmount: { type: 'number', min: 0, required: false },
+        adminNotes: { type: 'string', maxLength: 2000, required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_offer_action_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     if (!action || !['accept', 'reject', 'counter'].includes(action)) {
-      return NextResponse.json({ error: "Invalid action" }, { status: 400 });
+      const response = NextResponse.json(
+        { error: "Invalid action" },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
 
     if (action === 'counter' && !counterAmount) {
-      return NextResponse.json({ error: "Counter amount required" }, { status: 400 });
+      const response = NextResponse.json(
+        { error: "Counter amount required" },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
 
     // Get the current offer
@@ -28,13 +58,21 @@ export async function PUT(
     `;
 
     if (offerResult.length === 0) {
-      return NextResponse.json({ error: "Offer not found" }, { status: 404 });
+      const response = NextResponse.json(
+        { error: "Offer not found" },
+        { status: 404 }
+      );
+      return addSecurityHeaders(response);
     }
 
     const offer = offerResult[0];
 
     if (offer.status !== 'pending') {
-      return NextResponse.json({ error: "Offer is not pending" }, { status: 400 });
+      const response = NextResponse.json(
+        { error: "Offer is not pending" },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
 
     let status;
@@ -168,17 +206,48 @@ export async function PUT(
       }
       
       default:
-        return NextResponse.json({ error: "Invalid action" }, { status: 400 });
+        const defaultResponse = NextResponse.json(
+          { error: "Invalid action" },
+          { status: 400 }
+        );
+        return addSecurityHeaders(defaultResponse);
     }
 
-    return NextResponse.json({ 
+    logSecurityEvent('offer_action_performed', userId, { 
+      offerId,
+      action,
+      offerStatus: updateResult[0].status
+    });
+    
+    const response = NextResponse.json({ 
       ok: true,
       message: `Offer ${action}ed successfully`,
       offer: updateResult[0]
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error managing offer:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('offer_action_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Internal server error",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
+      { status: 500 }
+    );
+    
+    return addSecurityHeaders(response);
   }
 }

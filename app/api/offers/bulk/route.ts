@@ -1,4 +1,5 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import { NextRequest } from "next/server";
 import sql from "@/lib/db";
 import { NextResponse } from "next/server";
@@ -6,17 +7,45 @@ import { NextResponse } from "next/server";
 export async function PUT(req: NextRequest) {
   try {
     // Ensure user is admin
-    await requireApiAdmin(req);
+    const auth = await requireApiAdmin(req);
+    const userId = auth.userId;
 
     const body = await req.json();
     const { offerIds, action, adminNotes } = body;
 
+    // Input validation
+    const validation = validateInput(
+      { offerIds, action, adminNotes },
+      {
+        offerIds: { required: true, type: 'array', minLength: 1, maxLength: 100 },
+        action: { required: true, type: 'string', enum: ['accept', 'reject'] },
+        adminNotes: { type: 'string', maxLength: 2000, required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_bulk_offer_action_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     if (!offerIds || !Array.isArray(offerIds) || offerIds.length === 0) {
-      return NextResponse.json({ error: "No offers selected" }, { status: 400 });
+      const response = NextResponse.json(
+        { error: "No offers selected" },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
 
     if (!action || !['accept', 'reject'].includes(action)) {
-      return NextResponse.json({ error: "Invalid action" }, { status: 400 });
+      const response = NextResponse.json(
+        { error: "Invalid action" },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
 
     // Validate that all offers exist and are pending (Supabase-only)
@@ -27,9 +56,15 @@ export async function PUT(req: NextRequest) {
     `;
 
     if (offers.length !== offerIds.length) {
-      return NextResponse.json({ 
-        error: "Some offers not found or not pending" 
-      }, { status: 400 });
+      logSecurityEvent('bulk_offer_validation_failed', userId, { 
+        requestedCount: offerIds.length,
+        foundCount: offers.length
+      });
+      const response = NextResponse.json(
+        { error: "Some offers not found or not pending" },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
 
     // Update all offers
@@ -91,17 +126,41 @@ export async function PUT(req: NextRequest) {
       `;
     }
 
-    return NextResponse.json({ 
+    logSecurityEvent('bulk_offer_action_performed', userId, { 
+      action,
+      processedCount: updateResult.length,
+      offerIds: offerIds.slice(0, 10) // Log first 10 IDs for audit
+    });
+    
+    const response = NextResponse.json({ 
       success: true, 
       processedCount: updateResult.length,
       message: `${updateResult.length} offers ${action}ed successfully` 
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error processing bulk offer action:", error);
-    return NextResponse.json(
-      { error: "Internal server error", details: error instanceof Error ? error.message : String(error) },
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('bulk_offer_action_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Internal server error",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }

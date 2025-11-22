@@ -1,8 +1,13 @@
+import { addSecurityHeaders, logSecurityEvent } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   try {
+    // Require admin authentication for expiration operations
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
     // Mark expired offers as expired
     // Only update if expires_at and is_expired columns exist
     // Check if columns exist first
@@ -15,11 +20,12 @@ export async function POST() {
     
     if (hasExpiresAt.length === 0) {
       // expires_at column doesn't exist, skip expiration logic
-      return NextResponse.json({ 
+      const response = NextResponse.json({ 
         success: true, 
         expiredCount: 0,
         message: 'Expiration not configured (expires_at column not found)' 
       });
+      return addSecurityHeaders(response);
     }
     
     const result = await sql`
@@ -58,20 +64,46 @@ export async function POST() {
       }
     }
 
-    return NextResponse.json({ 
+    logSecurityEvent('offers_expired', userId, { expiredCount: result.length });
+    
+    const response = NextResponse.json({ 
       success: true, 
       expiredCount: result.length,
       message: `Expired ${result.length} offers` 
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error expiring offers:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('offers_expire_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Internal server error",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
+      { status: 500 }
+    );
+    
+    return addSecurityHeaders(response);
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    // Require admin authentication for expiration stats
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
     // Check if expires_at column exists
     const hasExpiresAt = await sql`
       SELECT column_name 
@@ -82,10 +114,11 @@ export async function GET() {
     
     if (hasExpiresAt.length === 0) {
       // expires_at column doesn't exist
-      return NextResponse.json({ 
+      const response = NextResponse.json({ 
         expiringSoon: 0,
         expired: 0
       });
+      return addSecurityHeaders(response);
     }
     
     // Get count of offers that will expire soon (within 1 hour)
@@ -106,13 +139,34 @@ export async function GET() {
       AND is_expired = false
     `;
 
-    return NextResponse.json({ 
+    const response = NextResponse.json({ 
       expiringSoon: parseInt(expiringSoon[0].count),
       expired: parseInt(expired[0].count)
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error getting expiration stats:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('offers_expire_stats_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Internal server error",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
+      { status: 500 }
+    );
+    
+    return addSecurityHeaders(response);
   }
 }
