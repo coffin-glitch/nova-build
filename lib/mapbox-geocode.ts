@@ -159,33 +159,55 @@ async function geocodeWithAPI(
   }
   
   // Strategy 2: Text search with cleaned location (remove ZIP if present)
-  const cleanedLocation = location.replace(/\s+\d{5}(-\d{4})?$/, '').trim();
-  if (cleanedLocation !== location) {
+  // ONLY use text search if we don't have structured input with state
+  // If we have state, we MUST use structured queries to avoid wrong state matches
+  if (!structured.state) {
+    const cleanedLocation = location.replace(/\s+\d{5}(-\d{4})?$/, '').trim();
+    if (cleanedLocation !== location) {
+      const params = new URLSearchParams({
+        access_token: token,
+        q: cleanedLocation,
+        country: 'us',
+        types: 'place,locality,address',
+        limit: '3',
+      });
+      queryStrategies.push({
+        url: `https://api.mapbox.com/search/geocode/v6/forward?${params.toString()}`,
+        description: `text search (cleaned: "${cleanedLocation}")`
+      });
+    }
+    
+    // Strategy 3: Original text search (fallback) - only if no state
     const params = new URLSearchParams({
       access_token: token,
-      q: cleanedLocation,
+      q: location,
       country: 'us',
       types: 'place,locality,address',
       limit: '3',
     });
     queryStrategies.push({
       url: `https://api.mapbox.com/search/geocode/v6/forward?${params.toString()}`,
-      description: `text search (cleaned: "${cleanedLocation}")`
+      description: `text search (original: "${location}")`
     });
+  } else {
+    // If we have state but structured query failed, try text search WITH state filter
+    // This ensures we don't get results from wrong state
+    const cleanedLocation = location.replace(/\s+\d{5}(-\d{4})?$/, '').trim();
+    if (cleanedLocation !== location) {
+      // Try text search but include state in query string
+      const params = new URLSearchParams({
+        access_token: token,
+        q: `${cleanedLocation} ${structured.state}`, // Include state in query
+        country: 'us',
+        types: 'place,locality,address',
+        limit: '3',
+      });
+      queryStrategies.push({
+        url: `https://api.mapbox.com/search/geocode/v6/forward?${params.toString()}`,
+        description: `text search with state filter (cleaned: "${cleanedLocation} ${structured.state}")`
+      });
+    }
   }
-  
-  // Strategy 3: Original text search (fallback)
-  const params = new URLSearchParams({
-    access_token: token,
-    q: location,
-    country: 'us',
-    types: 'place,locality,address',
-    limit: '3',
-  });
-  queryStrategies.push({
-    url: `https://api.mapbox.com/search/geocode/v6/forward?${params.toString()}`,
-    description: `text search (original: "${location}")`
-  });
   
   // Try each strategy until we get a good result
   for (const strategy of queryStrategies) {
@@ -286,7 +308,20 @@ async function geocodeWithAPI(
           }
         } else {
           // No structured input - use first result but validate it has coordinates
+          // However, if we have state from parseLocationString, still validate it matches
           const bestFeature = data.features[0];
+          
+          // If we have state info from structured parsing, validate the result matches
+          if (structured.state) {
+            const featureState = (bestFeature.properties?.region_code || bestFeature.properties?.region || '').toUpperCase().trim();
+            const expectedState = structured.state.toUpperCase().trim();
+            
+            if (featureState !== expectedState) {
+              console.warn(`Geocoding API: Result state "${featureState}" doesn't match expected "${expectedState}" for "${location}" - trying next strategy`);
+              continue; // Try next strategy instead of using wrong state result
+            }
+          }
+          
           const coords = bestFeature.properties?.coordinates;
           
           if (coords && coords.longitude && coords.latitude) {
