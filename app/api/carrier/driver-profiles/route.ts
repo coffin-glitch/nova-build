@@ -1,5 +1,6 @@
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiCarrier, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
-import { requireApiCarrier } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 // Format phone number to 10 digits only
@@ -21,10 +22,23 @@ async function handleGetSuggestions(request: NextRequest, searchParams: URLSearc
     const driverPhone = searchParams.get('driverPhone');
     const driverLicenseNumber = searchParams.get('driverLicenseNumber');
 
-    if (!driverName) {
-      return NextResponse.json({ 
-        error: "Driver name is required for suggestions" 
-      }, { status: 400 });
+    // Input validation
+    const validation = validateInput(
+      { driverName, driverPhone, driverLicenseNumber },
+      {
+        driverName: { required: true, type: 'string', minLength: 1, maxLength: 100 },
+        driverPhone: { type: 'string', maxLength: 20, required: false },
+        driverLicenseNumber: { type: 'string', maxLength: 50, required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_driver_suggestions_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
 
     // Format phone number if provided
@@ -40,20 +54,40 @@ async function handleGetSuggestions(request: NextRequest, searchParams: URLSearc
       )
     `;
 
-    return NextResponse.json({
+    logSecurityEvent('driver_suggestions_accessed', userId);
+    
+    const response = NextResponse.json({
       ok: true,
       suggestions: suggestions.map(s => ({
         name: s.suggested_name,
         reason: s.reason
       }))
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error getting profile suggestions:", error);
-    return NextResponse.json(
-      { error: "Failed to get profile suggestions" },
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('driver_suggestions_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to get profile suggestions",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 
@@ -99,7 +133,9 @@ export async function GET(request: NextRequest) {
       ORDER BY display_order ASC, last_used_at DESC NULLS LAST, profile_name ASC
     `;
 
-    return NextResponse.json({
+    logSecurityEvent('driver_profiles_accessed', userId);
+    
+    const response = NextResponse.json({
       ok: true,
       profiles: profiles.map(profile => ({
         id: profile.id,
@@ -124,13 +160,31 @@ export async function GET(request: NextRequest) {
         updated_at: profile.updated_at
       }))
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching driver profiles:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch driver profiles" },
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('driver_profiles_fetch_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to fetch driver profiles",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 
@@ -140,14 +194,40 @@ export async function PATCH(request: NextRequest) {
     const auth = await requireApiCarrier(request);
     const userId = auth.userId;
 
-    const { action, profileId, newName, profileOrders } = await request.json();
+    const body = await request.json();
+    const { action, profileId, newName, profileOrders } = body;
+
+    // Input validation
+    const validation = validateInput(
+      { action, profileId, newName, profileOrders },
+      {
+        action: { 
+          required: true, 
+          type: 'string', 
+          enum: ['updateOrder', 'updateName', 'markUsed']
+        },
+        profileId: { type: 'string', maxLength: 50, required: false },
+        newName: { type: 'string', maxLength: 100, required: false },
+        profileOrders: { type: 'array', required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_driver_profile_patch_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
 
     switch (action) {
       case 'updateOrder':
         if (!profileOrders || !Array.isArray(profileOrders)) {
-          return NextResponse.json({ 
+          const response = NextResponse.json({ 
             error: "Profile orders array is required" 
           }, { status: 400 });
+          return addSecurityHeaders(response);
         }
 
         // Update each profile's display order individually
@@ -159,16 +239,19 @@ export async function PATCH(request: NextRequest) {
           `;
         }
 
-        return NextResponse.json({
+        logSecurityEvent('driver_profile_order_updated', userId);
+        const orderResponse = NextResponse.json({
           ok: true,
           message: "Profile order updated successfully"
         });
+        return addSecurityHeaders(orderResponse);
 
       case 'updateName':
         if (!profileId || !newName?.trim()) {
-          return NextResponse.json({ 
+          const response = NextResponse.json({ 
             error: "Profile ID and new name are required" 
           }, { status: 400 });
+          return addSecurityHeaders(response);
         }
 
         const nameResult = await sql`
@@ -176,44 +259,67 @@ export async function PATCH(request: NextRequest) {
         `;
 
         if (!nameResult[0].update_profile_name) {
-          return NextResponse.json({ 
+          const response = NextResponse.json({ 
             error: "A profile with this name already exists" 
           }, { status: 400 });
+          return addSecurityHeaders(response);
         }
 
-        return NextResponse.json({
+        logSecurityEvent('driver_profile_name_updated', userId, { profileId, newName });
+        const nameResponse = NextResponse.json({
           ok: true,
           message: "Profile name updated successfully"
         });
+        return addSecurityHeaders(nameResponse);
 
       case 'markUsed':
         if (!profileId) {
-          return NextResponse.json({ 
+          const response = NextResponse.json({ 
             error: "Profile ID is required" 
           }, { status: 400 });
+          return addSecurityHeaders(response);
         }
 
         await sql`
           SELECT mark_profile_used(${profileId}, ${userId})
         `;
 
-        return NextResponse.json({
+        logSecurityEvent('driver_profile_marked_used', userId, { profileId });
+        const usedResponse = NextResponse.json({
           ok: true,
           message: "Profile usage tracked successfully"
         });
+        return addSecurityHeaders(usedResponse);
 
       default:
-        return NextResponse.json({ 
+        const defaultResponse = NextResponse.json({ 
           error: "Invalid action" 
         }, { status: 400 });
+        return addSecurityHeaders(defaultResponse);
     }
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error updating driver profile:", error);
-    return NextResponse.json(
-      { error: "Failed to update driver profile" },
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('driver_profile_update_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to update driver profile",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 
@@ -241,17 +347,26 @@ export async function POST(request: NextRequest) {
       second_trailer_number
     } = await request.json();
 
-    // Validate required fields
-    if (!profile_name?.trim()) {
-      return NextResponse.json({ 
-        error: "Profile name is required" 
-      }, { status: 400 });
-    }
+    // Input validation
+    const validation = validateInput(
+      { profile_name, driver_name, driver_phone, driver_email, driver_license_number, driver_license_state },
+      {
+        profile_name: { required: true, type: 'string', minLength: 1, maxLength: 100 },
+        driver_name: { required: true, type: 'string', minLength: 1, maxLength: 100 },
+        driver_phone: { required: true, type: 'string', pattern: /^[\d\s\-\(\)]+$/, maxLength: 20 },
+        driver_email: { type: 'string', maxLength: 255, required: false },
+        driver_license_number: { type: 'string', maxLength: 50, required: false },
+        driver_license_state: { type: 'string', maxLength: 2, required: false }
+      }
+    );
 
-    if (!driver_name?.trim()) {
-      return NextResponse.json({ 
-        error: "Driver name is required" 
-      }, { status: 400 });
+    if (!validation.valid) {
+      logSecurityEvent('invalid_driver_profile_create_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
 
     // Format and validate phone number
@@ -365,7 +480,12 @@ export async function POST(request: NextRequest) {
       ) RETURNING id, profile_name, created_at
     `;
 
-    return NextResponse.json({
+    logSecurityEvent('driver_profile_created', userId, { 
+      profile_id: result[0].id,
+      profile_name: finalProfileName
+    });
+    
+    const response = NextResponse.json({
       ok: true,
       profile: result[0],
       message: finalProfileName !== profile_name.trim() 
@@ -386,13 +506,31 @@ export async function POST(request: NextRequest) {
           : null
       } : null
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error creating driver profile:", error);
-    return NextResponse.json(
-      { error: "Failed to create driver profile" },
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('driver_profile_create_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to create driver profile",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 
@@ -421,23 +559,24 @@ export async function PUT(request: NextRequest) {
       second_trailer_number
     } = await request.json();
 
-    // Validate required fields
-    if (!id) {
-      return NextResponse.json({ 
-        error: "Profile ID is required" 
-      }, { status: 400 });
-    }
+    // Input validation
+    const validation = validateInput(
+      { id, profile_name, driver_name, driver_phone },
+      {
+        id: { required: true, type: 'string', maxLength: 50 },
+        profile_name: { required: true, type: 'string', minLength: 1, maxLength: 100 },
+        driver_name: { required: true, type: 'string', minLength: 1, maxLength: 100 },
+        driver_phone: { required: true, type: 'string', pattern: /^[\d\s\-\(\)]+$/, maxLength: 20 }
+      }
+    );
 
-    if (!profile_name?.trim()) {
-      return NextResponse.json({ 
-        error: "Profile name is required" 
-      }, { status: 400 });
-    }
-
-    if (!driver_name?.trim()) {
-      return NextResponse.json({ 
-        error: "Driver name is required" 
-      }, { status: 400 });
+    if (!validation.valid) {
+      logSecurityEvent('invalid_driver_profile_update_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
 
     // Format and validate phone number
@@ -512,18 +651,38 @@ export async function PUT(request: NextRequest) {
       RETURNING id, profile_name, updated_at
     `;
 
-    return NextResponse.json({
+    logSecurityEvent('driver_profile_updated', userId, { profile_id: id });
+    
+    const response = NextResponse.json({
       ok: true,
       profile: result[0],
       message: "Driver profile updated successfully"
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error updating driver profile:", error);
-    return NextResponse.json(
-      { error: "Failed to update driver profile" },
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('driver_profile_update_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to update driver profile",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 
@@ -536,10 +695,21 @@ export async function DELETE(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
-    if (!id) {
-      return NextResponse.json({ 
-        error: "Profile ID is required" 
-      }, { status: 400 });
+    // Input validation
+    const validation = validateInput(
+      { id },
+      {
+        id: { required: true, type: 'string', maxLength: 50 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_driver_profile_delete_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
 
     // Check if profile exists and belongs to user
@@ -565,16 +735,36 @@ export async function DELETE(request: NextRequest) {
         AND carrier_user_id = ${userId}
     `;
 
-    return NextResponse.json({
+    logSecurityEvent('driver_profile_deleted', userId, { profile_id: id });
+    
+    const response = NextResponse.json({
       ok: true,
       message: "Driver profile deleted successfully"
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error deleting driver profile:", error);
-    return NextResponse.json(
-      { error: "Failed to delete driver profile" },
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('driver_profile_delete_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to delete driver profile",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }

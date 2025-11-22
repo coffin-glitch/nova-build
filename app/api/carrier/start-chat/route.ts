@@ -1,5 +1,6 @@
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiCarrier, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
-import { requireApiCarrier } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
@@ -10,8 +11,32 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { admin_user_id, message } = body;
 
-    if (!admin_user_id || !message) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    // Input validation
+    const validation = validateInput(
+      { admin_user_id, message },
+      {
+        admin_user_id: { 
+          required: true, 
+          type: 'string', 
+          minLength: 1,
+          maxLength: 200
+        },
+        message: { 
+          required: true, 
+          type: 'string', 
+          minLength: 1,
+          maxLength: 1000
+        }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_start_chat_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
 
     // Verify the admin user exists (Supabase-only)
@@ -43,17 +68,37 @@ export async function POST(request: NextRequest) {
       RETURNING id, carrier_user_id, message, created_at
     `;
 
-    return NextResponse.json({ 
+    logSecurityEvent('chat_started', userId, { admin_user_id, message_id: newMessage[0].id });
+    
+    const response = NextResponse.json({ 
       success: true, 
       message: "New chat started successfully",
       data: newMessage[0]
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error starting new chat:", error);
-    return NextResponse.json(
-      { error: "Failed to start new chat" },
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('chat_start_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to start new chat",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }

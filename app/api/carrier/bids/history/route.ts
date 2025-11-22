@@ -1,5 +1,6 @@
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiCarrier, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
-import { requireApiCarrier } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
@@ -10,11 +11,26 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const bidNumber = searchParams.get("bidNumber");
 
-    if (!bidNumber) {
-      return NextResponse.json(
-        { error: "bidNumber parameter is required" },
+    // Input validation
+    const validation = validateInput(
+      { bidNumber },
+      {
+        bidNumber: { 
+          required: true, 
+          type: 'string', 
+          pattern: /^[A-Z0-9\-_]+$/,
+          maxLength: 100
+        }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_bid_history_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Verify the user owns this bid (Supabase-only)
@@ -80,21 +96,38 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    return NextResponse.json({
+    logSecurityEvent('bid_history_accessed', userId, { bidNumber });
+    
+    const response = NextResponse.json({
       ok: true,
       history: history || []
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching bid history:", error);
-    return NextResponse.json(
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('bid_history_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
       { 
         ok: false,
-        error: "Failed to fetch bid history", 
-        details: error instanceof Error ? error.message : 'Unknown error'
+        error: "Failed to fetch bid history",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
       },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 

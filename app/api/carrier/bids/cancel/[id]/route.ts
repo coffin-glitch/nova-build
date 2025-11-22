@@ -1,5 +1,6 @@
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiCarrier, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
-import { requireApiCarrier } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 // DELETE /api/carrier/bids/cancel/[id] - Cancel/delete a bid
@@ -12,6 +13,23 @@ export async function DELETE(
     const userId = auth.userId;
 
     const { id } = await params;
+
+    // Input validation
+    const validation = validateInput(
+      { id },
+      {
+        id: { required: true, type: 'string', pattern: /^\d+$/, maxLength: 50 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_bid_cancel_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
 
     // First check if the bid exists and belongs to the user
     const bidCheck = await sql`
@@ -52,23 +70,45 @@ export async function DELETE(
       `;
 
     if (result.length === 0) {
-      return NextResponse.json(
+      logSecurityEvent('bid_cancel_failed', userId, { bid_id: id });
+      const response = NextResponse.json(
         { error: "Failed to cancel bid" },
         { status: 500 }
       );
+      return addSecurityHeaders(response);
     }
 
-    return NextResponse.json({ 
+    logSecurityEvent('bid_cancelled', userId, { bid_id: id, bid_number: bid.bid_number });
+    
+    const response = NextResponse.json({ 
       ok: true, 
       message: "Bid cancelled successfully" 
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error cancelling bid:', error);
-    return NextResponse.json(
-      { error: "Failed to cancel bid" },
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('bid_cancel_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to cancel bid",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 
