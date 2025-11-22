@@ -1,5 +1,6 @@
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiCarrier, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
-import { requireApiCarrier } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 // GET /api/carrier/favorites - Get all favorited bids for the carrier
@@ -113,22 +114,38 @@ export async function GET(request: NextRequest) {
       return fav;
     });
     
-    return NextResponse.json({ 
+    logSecurityEvent('carrier_favorites_accessed', userId);
+    
+    const response = NextResponse.json({ 
       ok: true, 
       data: favoritesWithCountdown 
     });
+    
+    return addSecurityHeaders(response);
 
   } catch (error: any) {
     console.error('[favorites GET] Error fetching favorites:', error);
-    console.error('[favorites GET] Error details:', {
-      message: error?.message,
-      code: error?.code,
-      stack: error?.stack
+    
+    // Handle auth errors
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('carrier_favorites_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
     });
-    return NextResponse.json(
-      { error: "Failed to fetch favorites", details: error?.message },
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to fetch favorites",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 
@@ -156,13 +173,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { bid_number } = await request.json();
+    const body = await request.json();
+    const { bid_number } = body;
 
-    if (!bid_number) {
-      return NextResponse.json(
-        { error: "Bid number is required" },
+    // Input validation
+    const validation = validateInput(
+      { bid_number },
+      {
+        bid_number: { 
+          required: true, 
+          type: 'string', 
+          pattern: /^[A-Z0-9\-_]+$/,
+          maxLength: 100
+        }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_favorite_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     console.log('[favorites POST] Adding favorite - userId:', userId, 'bid_number:', bid_number);
@@ -207,18 +240,21 @@ export async function POST(request: NextRequest) {
       
       if (result.length > 0) {
         console.log('[favorites POST] Successfully added favorite, id:', result[0].id);
-        return NextResponse.json({ 
+        logSecurityEvent('favorite_added', userId, { bid_number });
+        const response = NextResponse.json({ 
           ok: true, 
           message: "Bid added to favorites" 
         });
+        return addSecurityHeaders(response);
       } else {
         // This shouldn't happen since we checked above, but handle it
         console.log('[favorites POST] Favorite already exists (ON CONFLICT DO NOTHING)');
-        return NextResponse.json({ 
+        const response = NextResponse.json({ 
           ok: true, 
           message: "Bid already in favorites",
           alreadyExists: true
         });
+        return addSecurityHeaders(response);
       }
     } catch (error: any) {
       // If the constraint doesn't exist, try without specifying it
@@ -234,39 +270,44 @@ export async function POST(request: NextRequest) {
           
           if (result.length > 0) {
             console.log('[favorites POST] Successfully added favorite (fallback), id:', result[0].id);
-            return NextResponse.json({ 
+            logSecurityEvent('favorite_added', userId, { bid_number });
+            const response = NextResponse.json({ 
               ok: true, 
               message: "Bid added to favorites" 
             });
+            return addSecurityHeaders(response);
           } else {
             console.log('[favorites POST] Favorite already exists (fallback)');
-            return NextResponse.json({ 
+            const response = NextResponse.json({ 
               ok: true, 
               message: "Bid already in favorites",
               alreadyExists: true
             });
+            return addSecurityHeaders(response);
           }
         } catch (retryError: any) {
           console.error('[favorites POST] Fallback insert error:', retryError);
           // Unique constraint violation - already exists
           if (retryError?.code === '23505') {
             console.log('[favorites POST] Unique constraint violation - already exists');
-            return NextResponse.json({ 
+            const response = NextResponse.json({ 
               ok: true, 
               message: "Bid already in favorites",
               alreadyExists: true
             });
+            return addSecurityHeaders(response);
           }
           throw retryError;
         }
       } else if (error?.code === '23505') {
         // Unique constraint violation - already exists
         console.log('[favorites POST] Unique constraint violation - already exists');
-        return NextResponse.json({ 
+        const response = NextResponse.json({ 
           ok: true, 
           message: "Bid already in favorites",
           alreadyExists: true
         });
+        return addSecurityHeaders(response);
       } else {
         console.error('[favorites POST] Insert error:', error);
         throw error;
@@ -275,15 +316,27 @@ export async function POST(request: NextRequest) {
 
   } catch (error: any) {
     console.error('Error adding to favorites:', error);
-    console.error('Error details:', {
-      message: error?.message,
-      code: error?.code,
-      stack: error?.stack
+    
+    // Handle auth errors
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('favorite_add_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
     });
-    return NextResponse.json(
-      { error: "Failed to add to favorites", details: error?.message },
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to add to favorites",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 
@@ -296,11 +349,26 @@ export async function DELETE(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const bid_number = searchParams.get('bid_number');
 
-    if (!bid_number) {
-      return NextResponse.json(
-        { error: "Bid number is required" },
+    // Input validation
+    const validation = validateInput(
+      { bid_number },
+      {
+        bid_number: { 
+          required: true, 
+          type: 'string', 
+          pattern: /^[A-Z0-9\-_]+$/,
+          maxLength: 100
+        }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_favorite_delete_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Remove from favorites
@@ -311,23 +379,39 @@ export async function DELETE(request: NextRequest) {
       AND bid_number = ${bid_number}
     `;
 
+    logSecurityEvent('favorite_removed', userId, { bid_number });
+    
     // Always return success - it doesn't matter if the favorite wasn't found
     // The DELETE operation just does nothing in that case
-    return NextResponse.json({ 
+    const response = NextResponse.json({ 
       ok: true, 
       message: "Bid removed from favorites" 
     });
+    
+    return addSecurityHeaders(response);
 
   } catch (error: any) {
     console.error('Error removing from favorites:', error);
-    console.error('Error details:', {
-      message: error?.message,
-      code: error?.code,
-      stack: error?.stack
+    
+    // Handle auth errors
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('favorite_remove_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
     });
-    return NextResponse.json(
-      { error: "Failed to remove from favorites", details: error?.message },
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to remove from favorites",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
