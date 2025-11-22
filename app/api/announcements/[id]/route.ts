@@ -1,4 +1,5 @@
-import { requireApiAuth } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAuth, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -16,6 +17,23 @@ export async function GET(
     const userRole = auth.userRole;
     const { id: announcementId } = await Promise.resolve(params);
 
+    // Input validation
+    const validation = validateInput(
+      { announcementId },
+      {
+        announcementId: { required: true, type: 'string', pattern: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, maxLength: 50 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_announcement_access', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     if (userRole === 'admin') {
       // Admin gets full details with read statistics
       const [announcement] = await sql`
@@ -30,13 +48,21 @@ export async function GET(
       `;
 
       if (!announcement) {
-        return NextResponse.json({ error: "Announcement not found" }, { status: 404 });
+        const response = NextResponse.json(
+          { error: "Announcement not found" },
+          { status: 404 }
+        );
+        return addSecurityHeaders(response);
       }
 
-      return NextResponse.json({
+      logSecurityEvent('announcement_accessed', userId, { announcementId, role: 'admin' });
+      
+      const adminResponse = NextResponse.json({
         success: true,
         data: announcement,
       });
+      
+      return addSecurityHeaders(adminResponse);
     }
 
     // Carrier gets announcement with their read status
@@ -52,19 +78,44 @@ export async function GET(
     `;
 
     if (!announcement) {
-      return NextResponse.json({ error: "Announcement not found" }, { status: 404 });
+      const response = NextResponse.json(
+        { error: "Announcement not found" },
+        { status: 404 }
+      );
+      return addSecurityHeaders(response);
     }
 
-    return NextResponse.json({
+    logSecurityEvent('announcement_accessed', userId, { announcementId, role: 'carrier' });
+    
+    const response = NextResponse.json({
       success: true,
       data: announcement,
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching announcement:", error);
-    return NextResponse.json({
-      error: "Failed to fetch announcement"
-    }, { status: 500 });
+    
+    if (error.message === "Unauthorized" || error.message === "Authentication required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('announcement_fetch_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to fetch announcement",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
+      { status: 500 }
+    );
+    
+    return addSecurityHeaders(response);
   }
 }
 
@@ -80,53 +131,128 @@ export async function PUT(
     const auth = await requireApiAuth(request);
     
     if (auth.userRole !== 'admin') {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+      const response = NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 403 }
+      );
+      return addSecurityHeaders(response);
     }
 
     const body = await request.json();
     const { title, message, priority, expiresAt, isActive, targetAudience, metadata } = body;
     const { id: announcementId } = await Promise.resolve(params);
 
-    // Build update query - only update provided fields
-    const updates: any = {};
-    
-    if (title !== undefined) updates.title = title;
-    if (message !== undefined) updates.message = message;
-    if (priority !== undefined) updates.priority = priority;
-    if (expiresAt !== undefined) updates.expires_at = expiresAt || null;
-    if (isActive !== undefined) updates.is_active = isActive;
-    if (targetAudience !== undefined) updates.target_audience = targetAudience;
-    if (metadata !== undefined) updates.metadata = JSON.stringify(metadata);
-
-    if (Object.keys(updates).length === 0) {
-      return NextResponse.json({ error: "No fields to update" }, { status: 400 });
-    }
-
-    updates.updated_at = new Date().toISOString();
-
-    // Build SQL update query
-    const setClauses = Object.keys(updates).map((key, index) => {
-      return `${key} = $${index + 1}`;
-    }).join(', ');
-
-    const values = Object.values(updates);
-    values.push(announcementId);
-
-    const [announcement] = await sql.unsafe(
-      `UPDATE announcements SET ${setClauses}, updated_at = NOW() WHERE id = $${values.length}::uuid RETURNING *`,
-      values
+    // Input validation
+    const validation = validateInput(
+      { announcementId, title, message, priority, isActive, targetAudience },
+      {
+        announcementId: { required: true, type: 'string', pattern: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, maxLength: 50 },
+        title: { type: 'string', minLength: 1, maxLength: 200, required: false },
+        message: { type: 'string', minLength: 1, maxLength: 5000, required: false },
+        priority: { type: 'string', enum: ['low', 'normal', 'high', 'urgent'], required: false },
+        isActive: { type: 'boolean', required: false },
+        targetAudience: { type: 'string', enum: ['all', 'carriers', 'specific'], required: false }
+      }
     );
 
-    return NextResponse.json({
+    if (!validation.valid) {
+      logSecurityEvent('invalid_announcement_update_input', auth.userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
+    // Build update query - only update provided fields using parameterized queries
+    const updateFields: string[] = [];
+    const updateValues: any[] = [];
+    let paramIndex = 1;
+
+    if (title !== undefined) {
+      updateFields.push(`title = $${paramIndex}`);
+      updateValues.push(title);
+      paramIndex++;
+    }
+    if (message !== undefined) {
+      updateFields.push(`message = $${paramIndex}`);
+      updateValues.push(message);
+      paramIndex++;
+    }
+    if (priority !== undefined) {
+      updateFields.push(`priority = $${paramIndex}`);
+      updateValues.push(priority);
+      paramIndex++;
+    }
+    if (expiresAt !== undefined) {
+      updateFields.push(`expires_at = $${paramIndex}`);
+      updateValues.push(expiresAt || null);
+      paramIndex++;
+    }
+    if (isActive !== undefined) {
+      updateFields.push(`is_active = $${paramIndex}`);
+      updateValues.push(isActive);
+      paramIndex++;
+    }
+    if (targetAudience !== undefined) {
+      updateFields.push(`target_audience = $${paramIndex}`);
+      updateValues.push(targetAudience);
+      paramIndex++;
+    }
+    if (metadata !== undefined) {
+      updateFields.push(`metadata = $${paramIndex}`);
+      updateValues.push(JSON.stringify(metadata));
+      paramIndex++;
+    }
+
+    if (updateFields.length === 0) {
+      const response = NextResponse.json(
+        { error: "No fields to update" },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
+    // Use parameterized query instead of sql.unsafe to prevent SQL injection
+    updateFields.push(`updated_at = NOW()`);
+    updateValues.push(announcementId);
+
+    const [announcement] = await sql.unsafe(
+      `UPDATE announcements SET ${updateFields.join(', ')} WHERE id = $${paramIndex}::uuid RETURNING *`,
+      updateValues
+    );
+
+    logSecurityEvent('announcement_updated', auth.userId, { announcementId });
+    
+    const response = NextResponse.json({
       success: true,
       data: announcement,
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error updating announcement:", error);
-    return NextResponse.json({
-      error: "Failed to update announcement"
-    }, { status: 500 });
+    
+    if (error.message === "Unauthorized" || error.message === "Authentication required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('announcement_update_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to update announcement",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
+      { status: 500 }
+    );
+    
+    return addSecurityHeaders(response);
   }
 }
 
@@ -142,26 +268,68 @@ export async function DELETE(
     const auth = await requireApiAuth(request);
     
     if (auth.userRole !== 'admin') {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+      const response = NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 403 }
+      );
+      return addSecurityHeaders(response);
     }
 
     const { id: announcementId } = await Promise.resolve(params);
+
+    // Input validation
+    const validation = validateInput(
+      { announcementId },
+      {
+        announcementId: { required: true, type: 'string', pattern: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, maxLength: 50 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_announcement_delete_input', auth.userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
 
     await sql`
       DELETE FROM announcements
       WHERE id = ${announcementId}::uuid
     `;
 
-    return NextResponse.json({
+    logSecurityEvent('announcement_deleted', auth.userId, { announcementId });
+    
+    const response = NextResponse.json({
       success: true,
       message: "Announcement deleted",
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error deleting announcement:", error);
-    return NextResponse.json({
-      error: "Failed to delete announcement"
-    }, { status: 500 });
+    
+    if (error.message === "Unauthorized" || error.message === "Authentication required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('announcement_delete_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to delete announcement",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
+      { status: 500 }
+    );
+    
+    return addSecurityHeaders(response);
   }
 }
 

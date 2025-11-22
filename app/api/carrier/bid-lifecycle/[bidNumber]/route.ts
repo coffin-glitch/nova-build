@@ -1,5 +1,6 @@
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiCarrier, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
-import { requireApiCarrier } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(
@@ -85,7 +86,9 @@ export async function GET(
       LIMIT 1
     `;
 
-    return NextResponse.json({
+    logSecurityEvent('bid_lifecycle_accessed', userId, { bidNumber });
+    
+    const response = NextResponse.json({
       ok: true,
       data: {
         events,
@@ -93,11 +96,27 @@ export async function GET(
         bidDetails: bidDetails[0] || null
       }
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching bid lifecycle events:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch lifecycle events", details: error instanceof Error ? error.message : 'Unknown error' },
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('bid_lifecycle_fetch_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to fetch lifecycle events",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
   }
@@ -112,6 +131,28 @@ export async function POST(
     
     const auth = await requireApiCarrier(request);
     const userId = auth.userId;
+
+    // Input validation
+    const validation = validateInput(
+      { bidNumber },
+      {
+        bidNumber: { 
+          required: true, 
+          type: 'string', 
+          pattern: /^[A-Z0-9\-_]+$/,
+          maxLength: 100
+        }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_bid_lifecycle_post_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
 
     const { 
       status, 
@@ -138,11 +179,34 @@ export async function POST(
       delivery_time
     } = await request.json();
 
+    // Input validation for POST body
+    const bodyValidation = validateInput(
+      { status, driver_name, driver_phone, driver_email, driver_license_number, driver_license_state },
+      {
+        status: { required: true, type: 'string', enum: ['bid_awarded', 'load_assigned', 'driver_info_update', 'checked_in_origin', 'picked_up', 'departed_origin', 'in_transit', 'checked_in_destination', 'delivered', 'completed'] },
+        driver_name: { type: 'string', maxLength: 100, required: false },
+        driver_phone: { type: 'string', maxLength: 20, required: false },
+        driver_email: { type: 'string', pattern: /^[^\s@]+@[^\s@]+\.[^\s@]+$/, maxLength: 255, required: false },
+        driver_license_number: { type: 'string', maxLength: 50, required: false },
+        driver_license_state: { type: 'string', maxLength: 2, required: false }
+      }
+    );
+
+    if (!bodyValidation.valid) {
+      logSecurityEvent('invalid_bid_lifecycle_post_body', userId, { errors: bodyValidation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${bodyValidation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     if (!status) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: "Status is required" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Validate status transition
@@ -152,10 +216,11 @@ export async function POST(
     ];
 
     if (!validStatuses.includes(status)) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Verify the user owns this bid
@@ -167,10 +232,12 @@ export async function POST(
     `;
 
     if (bidOwnership.length === 0) {
-      return NextResponse.json(
+      logSecurityEvent('bid_lifecycle_unauthorized_access', userId, { bidNumber });
+      const response = NextResponse.json(
         { error: "Bid not found or not authorized" },
         { status: 404 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Get current status to validate transition
@@ -445,7 +512,13 @@ export async function POST(
       }
     }
 
-    return NextResponse.json({
+    logSecurityEvent('bid_lifecycle_event_created', userId, { 
+      bidNumber, 
+      status, 
+      eventId: result[0].id 
+    });
+    
+    const response = NextResponse.json({
       ok: true,
       data: {
         eventId: result[0].id,
@@ -454,12 +527,30 @@ export async function POST(
         previousStatus: currentStatus
       }
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error creating lifecycle event:", error);
-    return NextResponse.json(
-      { error: "Failed to create lifecycle event", details: error instanceof Error ? error.message : 'Unknown error' },
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('bid_lifecycle_event_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to create lifecycle event",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }

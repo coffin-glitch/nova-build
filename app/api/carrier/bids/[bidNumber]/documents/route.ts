@@ -1,4 +1,5 @@
-import { requireApiCarrier } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiCarrier, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseService } from "@/lib/supabase";
@@ -12,11 +13,34 @@ export async function POST(
     const userId = auth.userId;
     const { bidNumber } = await params;
 
+    // Input validation
+    const validation = validateInput(
+      { bidNumber },
+      {
+        bidNumber: { 
+          required: true, 
+          type: 'string', 
+          pattern: /^[A-Z0-9\-_]+$/,
+          maxLength: 100
+        }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_bid_document_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     if (!bidNumber) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: "Bid number is required" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Verify the carrier has this bid awarded to them
@@ -42,35 +66,49 @@ export async function POST(
     const notes = formData.get("notes") as string | null;
 
     if (!file) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: "No file provided" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     if (!documentType) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: "Document type is required" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Validate file size (max 10MB)
     const maxSize = 10 * 1024 * 1024; // 10MB
     if (file.size > maxSize) {
-      return NextResponse.json(
+      logSecurityEvent('bid_document_size_exceeded', userId, { 
+        bidNumber, 
+        fileSize: file.size,
+        fileName: file.name
+      });
+      const response = NextResponse.json(
         { error: "File size exceeds 10MB limit" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Validate file type
     const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf'];
     if (!allowedTypes.includes(file.type)) {
-      return NextResponse.json(
+      logSecurityEvent('bid_document_invalid_type', userId, { 
+        bidNumber, 
+        fileType: file.type,
+        fileName: file.name
+      });
+      const response = NextResponse.json(
         { error: "Invalid file type. Only JPEG, PNG, and PDF are allowed" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Upload file to Supabase Storage
@@ -110,10 +148,18 @@ export async function POST(
 
     if (uploadError) {
       console.error('Storage upload error:', uploadError);
-      return NextResponse.json(
-        { error: "Failed to upload file to storage", details: uploadError.message },
+      logSecurityEvent('bid_document_upload_error', userId, { 
+        bidNumber, 
+        error: uploadError.message 
+      });
+      const response = NextResponse.json(
+        { 
+          error: "Failed to upload file to storage",
+          details: process.env.NODE_ENV === 'development' ? uploadError.message : undefined
+        },
         { status: 500 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Get public URL
@@ -146,21 +192,43 @@ export async function POST(
       RETURNING *
     `;
 
-    return NextResponse.json({
+    logSecurityEvent('bid_document_uploaded', userId, { 
+      bidNumber, 
+      documentType,
+      fileSize: file.size,
+      documentId: result[0].id
+    });
+    
+    const response = NextResponse.json({
       success: true,
       data: result[0]
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error uploading document:", error);
-    return NextResponse.json(
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('bid_document_upload_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
       {
         success: false,
         error: "Failed to upload document",
-        details: error instanceof Error ? error.message : 'Unknown error'
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
       },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 
@@ -173,6 +241,28 @@ export async function GET(
     const userId = auth.userId;
     const { bidNumber } = await params;
 
+    // Input validation
+    const validation = validateInput(
+      { bidNumber },
+      {
+        bidNumber: { 
+          required: true, 
+          type: 'string', 
+          pattern: /^[A-Z0-9\-_]+$/,
+          maxLength: 100
+        }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_bid_document_fetch_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     // Get documents for this bid that belong to this carrier
     const documents = await sql`
       SELECT *
@@ -182,21 +272,36 @@ export async function GET(
       ORDER BY uploaded_at DESC
     `;
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       data: documents
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching documents:", error);
-    return NextResponse.json(
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('bid_document_fetch_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
       {
         success: false,
         error: "Failed to fetch documents",
-        details: error instanceof Error ? error.message : 'Unknown error'
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
       },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 

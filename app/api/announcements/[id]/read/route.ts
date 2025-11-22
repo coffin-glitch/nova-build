@@ -1,4 +1,5 @@
-import { requireApiAuth } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAuth, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -15,6 +16,23 @@ export async function POST(
     const userId = auth.userId;
     const announcementId = params.id;
 
+    // Input validation
+    const validation = validateInput(
+      { announcementId },
+      {
+        announcementId: { required: true, type: 'string', pattern: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, maxLength: 50 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_announcement_read_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     // Check if announcement exists and is active
     const [announcement] = await sql`
       SELECT id, is_active, expires_at
@@ -23,11 +41,19 @@ export async function POST(
     `;
 
     if (!announcement) {
-      return NextResponse.json({ error: "Announcement not found" }, { status: 404 });
+      const response = NextResponse.json(
+        { error: "Announcement not found" },
+        { status: 404 }
+      );
+      return addSecurityHeaders(response);
     }
 
     if (!announcement.is_active) {
-      return NextResponse.json({ error: "Announcement is not active" }, { status: 400 });
+      const response = NextResponse.json(
+        { error: "Announcement is not active" },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
 
     // Mark as read (upsert to handle duplicates)
@@ -47,16 +73,37 @@ export async function POST(
         AND data->>'announcementId' = ${announcementId}
     `;
 
-    return NextResponse.json({
+    logSecurityEvent('announcement_marked_read', userId, { announcementId });
+    
+    const response = NextResponse.json({
       success: true,
       message: "Announcement marked as read",
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error marking announcement as read:", error);
-    return NextResponse.json({
-      error: "Failed to mark announcement as read"
-    }, { status: 500 });
+    
+    if (error.message === "Unauthorized" || error.message === "Authentication required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('announcement_read_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to mark announcement as read",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
+      { status: 500 }
+    );
+    
+    return addSecurityHeaders(response);
   }
 }
 

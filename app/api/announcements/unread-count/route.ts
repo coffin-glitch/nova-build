@@ -1,5 +1,6 @@
+import { addSecurityHeaders, logSecurityEvent } from "@/lib/api-security";
+import { requireApiAuth, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
-import { requireApiAuth } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 /**
@@ -20,16 +21,35 @@ export async function GET(request: NextRequest) {
         AND ar.id IS NULL
     `;
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       unreadCount: parseInt(unreadCount[0].count),
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching unread count:", error);
-    return NextResponse.json({
-      error: "Failed to fetch unread count"
-    }, { status: 500 });
+    
+    if (error.message === "Unauthorized" || error.message === "Authentication required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('announcement_unread_count_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to fetch unread count",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
+      { status: 500 }
+    );
+    
+    return addSecurityHeaders(response);
   }
 }
 
