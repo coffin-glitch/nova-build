@@ -157,7 +157,7 @@ export async function PUT(req: NextRequest) {
       message: `${updateResult.length} offers ${action}ed successfully` 
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
 
   } catch (error: any) {
     console.error("Error processing bulk offer action:", error);
