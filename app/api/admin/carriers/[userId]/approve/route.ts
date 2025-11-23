@@ -205,7 +205,7 @@ export async function POST(
       profile: updatedProfile[0] || null
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
     
   } catch (error: any) {
     console.error("Error approving carrier profile:", error);

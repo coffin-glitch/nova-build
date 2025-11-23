@@ -183,7 +183,7 @@ export async function POST(
       message: "Carrier profile declined successfully" 
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
     
   } catch (error: any) {
     console.error("Error declining carrier profile:", error);
