@@ -1,3 +1,5 @@
+import { logSecurityEvent } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import { NextRequest } from "next/server";
 
 // Import WebSocket client library
@@ -22,12 +24,42 @@ try {
  * - Stream JSON messages in SSE format
  */
 export async function GET(request: NextRequest) {
+  try {
+    // Require admin authentication for telegram forwarder stream access
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
+    
+    logSecurityEvent('telegram_forwarder_stream_accessed', userId);
+  } catch (error: any) {
+    // If authentication fails, return error response
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { 
+          status: 401,
+          headers: { 
+            'Content-Type': 'application/json',
+            'X-Content-Type-Options': 'nosniff',
+            'X-Frame-Options': 'DENY',
+            'X-XSS-Protection': '1; mode=block'
+          }
+        }
+      );
+    }
+    throw error;
+  }
+  
   if (!WebSocket) {
     return new Response(
       JSON.stringify({ error: 'WebSocket library not available' }),
       { 
         status: 500,
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-Content-Type-Options': 'nosniff',
+          'X-Frame-Options': 'DENY',
+          'X-XSS-Protection': '1; mode=block'
+        }
       }
     );
   }
@@ -295,8 +327,17 @@ export async function GET(request: NextRequest) {
       'Cache-Control': 'no-cache, no-transform',
       'Connection': 'keep-alive',
       'X-Accel-Buffering': 'no',
-      'Access-Control-Allow-Origin': '*',
+      'X-Content-Type-Options': 'nosniff',
+      'X-Frame-Options': 'DENY',
+      'X-XSS-Protection': '1; mode=block',
+      'Referrer-Policy': 'strict-origin-when-cross-origin',
+      'Permissions-Policy': 'geolocation=(), microphone=(), camera=()',
+      // Note: CORS headers for SSE should be more restrictive in production
+      'Access-Control-Allow-Origin': process.env.NODE_ENV === 'production' 
+        ? (process.env.ALLOWED_ORIGIN || '*')
+        : '*',
       'Access-Control-Allow-Methods': 'GET',
+      'Access-Control-Allow-Credentials': 'true',
     },
   });
 }

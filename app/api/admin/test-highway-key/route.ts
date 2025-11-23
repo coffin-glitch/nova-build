@@ -1,21 +1,41 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
-import { NextRequest, NextResponse } from "next/server";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import axios from "axios";
+import { NextRequest, NextResponse } from "next/server";
 
 const API_BASE = "https://staging.highway.com/core/connect/external_api/v1";
 
 export async function POST(request: NextRequest) {
   try {
-    await requireApiAdmin(request);
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
 
     const body = await request.json();
     const { apiKey } = body;
 
+    // Input validation
+    const validation = validateInput(
+      { apiKey },
+      {
+        apiKey: { required: true, type: 'string', minLength: 10, maxLength: 500 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_highway_key_test_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { success: false, error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     if (!apiKey) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { success: false, error: "API key is required" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Clean the API key
@@ -36,38 +56,75 @@ export async function POST(request: NextRequest) {
       });
 
       if (response.status === 200) {
-        return NextResponse.json({
+        logSecurityEvent('highway_key_test_success', userId);
+        
+        const responseObj = NextResponse.json({
           success: true,
           message: "API key is valid and working!",
           testMc: "203507",
           carrierId: response.data?.id,
         });
+        
+        return addSecurityHeaders(responseObj);
       } else if (response.status === 401) {
-        return NextResponse.json({
+        logSecurityEvent('highway_key_test_invalid', userId);
+        
+        const responseObj = NextResponse.json({
           success: false,
           error: "401 Unauthorized - API key is invalid or rejected",
-          details: response.data,
+          details: process.env.NODE_ENV === 'development' ? response.data : undefined,
           suggestion: "Check if the API key is correct, or if there are IP/device restrictions",
         });
+        
+        return addSecurityHeaders(responseObj);
       } else {
-        return NextResponse.json({
+        logSecurityEvent('highway_key_test_error', userId, { status: response.status });
+        
+        const responseObj = NextResponse.json({
           success: false,
           error: `API returned status ${response.status}`,
-          details: response.data,
+          details: process.env.NODE_ENV === 'development' ? response.data : undefined,
         });
+        
+        return addSecurityHeaders(responseObj);
       }
     } catch (error: any) {
-      return NextResponse.json({
-        success: false,
-        error: error.message || "Failed to test API key",
-        details: error.response?.data || error.message,
+      logSecurityEvent('highway_key_test_connection_error', userId, { 
+        error: error.message || "Connection error" 
       });
+      
+      const responseObj = NextResponse.json({
+        success: false,
+        error: process.env.NODE_ENV === 'development' 
+          ? (error.message || "Failed to test API key")
+          : "Failed to test API key",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error.response?.data || error.message)
+          : undefined,
+      });
+      
+      return addSecurityHeaders(responseObj);
     }
   } catch (error: any) {
-    return NextResponse.json(
-      { success: false, error: error.message || "Failed to test API key" },
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('highway_key_test_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        success: false, 
+        error: process.env.NODE_ENV === 'development' 
+          ? (error.message || "Failed to test API key")
+          : "Failed to test API key"
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 
