@@ -196,7 +196,7 @@ This message was sent from the NOVA Build contact form.
       messageId: savedMessage.id,
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
 
   } catch (error: any) {
     console.error("[Contact Form] Error processing contact form:", error);
