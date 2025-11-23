@@ -121,7 +121,7 @@ export async function GET(request: NextRequest) {
       cached: false 
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
 
   } catch (error: any) {
     console.error("Telegram bids API error:", error);
