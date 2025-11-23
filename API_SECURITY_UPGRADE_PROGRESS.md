@@ -93,13 +93,14 @@
 - **2025-01-16:** Phase 1.23 - Secure carrier offer history and driver info routes
 - **2025-01-16:** Phase 1.24 - Secure remaining driver info and appeal conversation routes
 - **2025-01-16:** Phase 1.25 - Secure appeal conversations, security dashboard, and announcement saved lists routes (Fixed SQL injection)
+- **2025-01-16:** Phase 1.26 - Secure archive-bids/list route (Fixed SQL injection)
 - **2025-01-16:** Database pool and rate limiting analysis completed
 
 ## Routes Secured So Far
 
-**Total: 86 routes (128 endpoints)**
+**Total: 87 routes (129 endpoints)**
 
-**Progress:** 43.7% of total routes (86/197 routes secured)
+**Progress:** 44.2% of total routes (87/197 routes secured)
 1. `/api/bids/route.ts` (GET)
 2. `/api/loads/route.ts` (GET, POST)
 3. `/api/telegram-bids/route.ts` (GET)
@@ -192,6 +193,7 @@
 90. `/api/announcements/saved-lists/route.ts` (GET, POST) - **CRITICAL SQL injection fix**
 91. `/api/announcements/saved-lists/[id]/route.ts` (GET, PUT, DELETE)
 92. `/api/announcements/carriers/route.ts` (GET)
+93. `/api/archive-bids/list/route.ts` (GET) - **CRITICAL SQL injection fix**
 
 ## Security Improvements Summary
 
