@@ -1,4 +1,5 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { chromium } from "playwright";
@@ -37,13 +38,32 @@ export async function POST(request: NextRequest) {
     const auth = await requireApiAdmin(request);
     const userId = auth.userId || '';
 
-    const { mcNumber } = await request.json();
+    const body = await request.json();
+    const { mcNumber } = body;
+
+    // Input validation
+    const validation = validateInput(
+      { mcNumber },
+      {
+        mcNumber: { required: true, type: 'string', pattern: /^\d+$/, maxLength: 20 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_highway_scrape_search_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { ok: false, error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
 
     if (!mcNumber) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { ok: false, error: "MC number is required" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Launch browser
@@ -320,7 +340,8 @@ export async function POST(request: NextRequest) {
       await browser.close();
 
       if (results.length === 0) {
-        return NextResponse.json(
+        logSecurityEvent('highway_carrier_search_no_results', userId, { mcNumber });
+        const response = NextResponse.json(
           { 
             ok: false, 
             error: "No carriers found for this MC number",
@@ -328,25 +349,44 @@ export async function POST(request: NextRequest) {
           },
           { status: 404 }
         );
+        return addSecurityHeaders(response);
       }
 
-      return NextResponse.json({
+      logSecurityEvent('highway_carrier_search_success', userId, { mcNumber, resultCount: results.length });
+      
+      const response = NextResponse.json({
         ok: true,
         results,
       });
+      
+      return addSecurityHeaders(response);
+      
     } catch (error: any) {
       await browser.close();
       throw error;
     }
   } catch (error: any) {
     console.error("Error searching Highway carriers:", error);
-    return NextResponse.json(
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('highway_carrier_search_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
       {
         ok: false,
-        error: error.message || "Failed to search for carriers",
+        error: process.env.NODE_ENV === 'development' 
+          ? (error.message || "Failed to search for carriers")
+          : "Failed to search for carriers",
       },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 

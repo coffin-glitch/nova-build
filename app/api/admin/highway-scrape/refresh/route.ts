@@ -1,4 +1,5 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { chromium } from "playwright";
@@ -35,13 +36,34 @@ export async function POST(request: NextRequest) {
     const auth = await requireApiAdmin(request);
     const userId = auth.userId || '';
 
-    const { mcNumber, carrierId, carrierUrl } = await request.json();
+    const body = await request.json();
+    const { mcNumber, carrierId, carrierUrl } = body;
+
+    // Input validation
+    const validation = validateInput(
+      { mcNumber, carrierId, carrierUrl },
+      {
+        mcNumber: { required: true, type: 'string', pattern: /^\d+$/, maxLength: 20 },
+        carrierId: { required: true, type: 'string', pattern: /^\d+$/, maxLength: 20 },
+        carrierUrl: { required: true, type: 'string', pattern: /^https?:\/\/.+/, maxLength: 500 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_highway_scrape_refresh_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { ok: false, error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
 
     if (!mcNumber || !carrierId || !carrierUrl) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { ok: false, error: "MC number, carrier ID, and carrier URL are required" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Launch browser
@@ -189,15 +211,19 @@ export async function POST(request: NextRequest) {
       `;
 
       if (updated.length === 0) {
-        return NextResponse.json(
+        logSecurityEvent('highway_carrier_refresh_failed', userId, { mcNumber, carrierId });
+        const response = NextResponse.json(
           { ok: false, error: "Failed to update carrier data" },
           { status: 500 }
         );
+        return addSecurityHeaders(response);
       }
 
       const record = updated[0];
 
-      return NextResponse.json({
+      logSecurityEvent('highway_carrier_refreshed', userId, { mcNumber, carrierId });
+      
+      const response = NextResponse.json({
         ok: true,
         data: {
           mc_number: record.mc_number,
@@ -208,19 +234,35 @@ export async function POST(request: NextRequest) {
           data: record.data,
         },
       });
+      
+      return addSecurityHeaders(response);
+      
     } catch (error: any) {
       await browser.close();
       throw error;
     }
   } catch (error: any) {
     console.error("Error refreshing Highway carrier data:", error);
-    return NextResponse.json(
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('highway_carrier_refresh_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
       {
         ok: false,
-        error: error.message || "Failed to refresh carrier data",
+        error: process.env.NODE_ENV === 'development' 
+          ? (error.message || "Failed to refresh carrier data")
+          : "Failed to refresh carrier data",
       },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 

@@ -1,4 +1,5 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -107,12 +108,29 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // Input validation - validate cookie data structure
     if (!cookies || !Array.isArray(cookies) || cookies.length === 0) {
       console.error('Invalid or empty cookie data:', data);
-      return NextResponse.json(
+      logSecurityEvent('invalid_highway_cookies_store_input', userId, { 
+        hasStorageState: !!data.storageState,
+        hasSimplified: !!data.simplified,
+        hasCookies: !!data.cookies
+      });
+      const response = NextResponse.json(
         { ok: false, error: "No cookies provided" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
+    }
+
+    // Validate cookie count (reasonable limit)
+    if (cookies.length > 1000) {
+      logSecurityEvent('highway_cookies_store_too_many', userId, { cookieCount: cookies.length });
+      const response = NextResponse.json(
+        { ok: false, error: "Too many cookies provided (max 1000)" },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
 
     // Store storageState in database (Playwright format)
@@ -166,6 +184,8 @@ export async function POST(request: NextRequest) {
       dataSize: verify[0]?.data_size
     });
 
+    logSecurityEvent('highway_cookies_stored', userId, { cookieCount: cookies.length });
+    
     const response = NextResponse.json({
       ok: true,
       message: "Authentication state stored successfully",
@@ -180,14 +200,25 @@ export async function POST(request: NextRequest) {
     response.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
     response.headers.set("Access-Control-Allow-Credentials", "true");
     
-    return response;
+    return addSecurityHeaders(response);
+    
   } catch (error: any) {
     console.error("Error storing Highway cookies:", error);
-    console.error("Error stack:", error.stack);
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('highway_cookies_store_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
     const response = NextResponse.json(
       {
         ok: false,
-        error: error.message || "Failed to store cookies",
+        error: process.env.NODE_ENV === 'development' 
+          ? (error.message || "Failed to store cookies")
+          : "Failed to store cookies",
       },
       { status: 500 }
     );
@@ -198,7 +229,7 @@ export async function POST(request: NextRequest) {
     response.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
     response.headers.set("Access-Control-Allow-Credentials", "true");
     
-    return response;
+    return addSecurityHeaders(response);
   }
 }
 

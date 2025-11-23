@@ -1,4 +1,5 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -77,7 +78,9 @@ export async function GET(request: NextRequest) {
         extractedAt: cookieData.extracted_at
       });
       
-      return NextResponse.json({
+      logSecurityEvent('highway_cookies_retrieved', userId);
+      
+      const response = NextResponse.json({
         ok: true,
         storageState: storageState,
         cookies: storageState.cookies, // Backward compatibility
@@ -85,15 +88,19 @@ export async function GET(request: NextRequest) {
         sourceUrl: cookieData.source_url,
         cookieCount: storageState.cookies.length
       });
+      
+      return addSecurityHeaders(response);
+      
     } else if (Array.isArray(storageState)) {
       // Old format: just cookies array
       if (storageState.length === 0) {
         console.warn('Cookies array is empty');
-        return NextResponse.json({
+        const response = NextResponse.json({
           ok: false,
           error: "Cookies data is empty",
           cookies: null,
         });
+        return addSecurityHeaders(response);
       }
       
       console.log('✅ Returning cookies (legacy format):', {
@@ -101,31 +108,49 @@ export async function GET(request: NextRequest) {
         extractedAt: cookieData.extracted_at
       });
       
-      return NextResponse.json({
+      logSecurityEvent('highway_cookies_retrieved', userId);
+      
+      const response = NextResponse.json({
         ok: true,
         cookies: storageState,
         extractedAt: cookieData.extracted_at,
         sourceUrl: cookieData.source_url,
         cookieCount: storageState.length
       });
+      
+      return addSecurityHeaders(response);
+      
     } else {
       console.warn('Cookies data is invalid format');
-      return NextResponse.json({
+      const response = NextResponse.json({
         ok: false,
         error: "Cookies data is invalid format",
         cookies: null,
       });
+      return addSecurityHeaders(response);
     }
   } catch (error: any) {
     console.error("Error retrieving Highway cookies:", error);
-    console.error("Error stack:", error.stack);
-    return NextResponse.json(
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('highway_cookies_retrieve_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
       {
         ok: false,
-        error: error.message || "Failed to retrieve cookies",
+        error: process.env.NODE_ENV === 'development' 
+          ? (error.message || "Failed to retrieve cookies")
+          : "Failed to retrieve cookies",
       },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 

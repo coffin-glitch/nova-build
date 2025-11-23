@@ -1,4 +1,5 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import axios from "axios";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -477,14 +478,16 @@ function buildHealthData(detail: any): any {
 
 export async function GET(request: NextRequest) {
   try {
-    await requireApiAdmin(request);
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
 
     // Check if API key is configured
     let apiKey: string;
     try {
       apiKey = getApiKey();
     } catch (error: any) {
-      return NextResponse.json(
+      logSecurityEvent('highway_api_key_not_configured', userId);
+      const response = NextResponse.json(
         { 
           ok: false, 
           error: error.message || "HIGHWAY_API_KEY is not configured",
@@ -492,16 +495,35 @@ export async function GET(request: NextRequest) {
         },
         { status: 500 }
       );
+      return addSecurityHeaders(response);
     }
 
     const { searchParams } = new URL(request.url);
     const mcNumber = searchParams.get("mc");
 
+    // Input validation
+    const validation = validateInput(
+      { mcNumber },
+      {
+        mcNumber: { required: true, type: 'string', pattern: /^\d+$/, maxLength: 20 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_carrier_health_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { ok: false, error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     if (!mcNumber) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { ok: false, error: "MC number is required" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Find carrier ID
@@ -517,35 +539,61 @@ export async function GET(request: NextRequest) {
     const detail = await carrierDetail(carrierId);
     const healthData = buildHealthData(detail);
 
-    return NextResponse.json({
+    logSecurityEvent('carrier_health_accessed', userId, { mcNumber, carrierId });
+    
+    const response = NextResponse.json({
       ok: true,
       data: healthData,
     });
-    } catch (error: any) {
-      console.error("Carrier health API error:", error);
+    
+    return addSecurityHeaders(response);
+    
+  } catch (error: any) {
+    console.error("Carrier health API error:", error);
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    // Provide more specific error messages
+    if (error instanceof HighwayAPIError) {
+      logSecurityEvent('carrier_health_api_error', undefined, { 
+        statusCode: error.statusCode,
+        error: error.message 
+      });
       
-      // Provide more specific error messages
-      if (error instanceof HighwayAPIError) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error: error.message,
-            details: error.statusCode === 401 
-              ? "The Highway API key is invalid or expired. Please update HIGHWAY_API_KEY in your .env.local file and restart the server."
-              : "Highway API request failed. Check your API key configuration."
-          },
-          { status: error.statusCode || 500 }
-        );
-      }
-      
-      return NextResponse.json(
+      const response = NextResponse.json(
         {
           ok: false,
-          error: error.message || "Failed to fetch carrier health data",
-          details: "Please check your HIGHWAY_API_KEY configuration and ensure the server has been restarted after adding it."
+          error: process.env.NODE_ENV === 'development' 
+            ? error.message
+            : "Highway API request failed",
+          details: error.statusCode === 401 
+            ? "The Highway API key is invalid or expired. Please update HIGHWAY_API_KEY in your .env.local file and restart the server."
+            : "Highway API request failed. Check your API key configuration."
         },
         { status: error.statusCode || 500 }
       );
+      
+      return addSecurityHeaders(response);
     }
+    
+    logSecurityEvent('carrier_health_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      {
+        ok: false,
+        error: process.env.NODE_ENV === 'development' 
+          ? (error.message || "Failed to fetch carrier health data")
+          : "Failed to fetch carrier health data",
+        details: "Please check your HIGHWAY_API_KEY configuration and ensure the server has been restarted after adding it."
+      },
+      { status: error.statusCode || 500 }
+    );
+    
+    return addSecurityHeaders(response);
+  }
 }
 
