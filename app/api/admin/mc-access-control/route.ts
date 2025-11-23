@@ -1,4 +1,5 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -11,9 +12,29 @@ import { NextRequest, NextResponse } from "next/server";
 export async function GET(request: NextRequest) {
   try {
     const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
     
     const { searchParams } = new URL(request.url);
     const mcNumber = searchParams.get('mc');
+
+    // Input validation
+    if (mcNumber) {
+      const validation = validateInput(
+        { mcNumber },
+        {
+          mcNumber: { type: 'string', pattern: /^\d+$/, maxLength: 20, required: false }
+        }
+      );
+
+      if (!validation.valid) {
+        logSecurityEvent('invalid_mc_access_control_input', userId, { errors: validation.errors });
+        const response = NextResponse.json(
+          { ok: false, error: `Invalid input: ${validation.errors.join(', ')}` },
+          { status: 400 }
+        );
+        return addSecurityHeaders(response);
+      }
+    }
     
     if (mcNumber) {
       // Get specific MC
@@ -135,17 +156,37 @@ export async function GET(request: NextRequest) {
         return a.mc_number.localeCompare(b.mc_number);
       });
       
-      return NextResponse.json({
+      logSecurityEvent('mc_access_control_list_accessed', userId);
+      
+      const response = NextResponse.json({
         ok: true,
         data: result
       });
+      
+      return addSecurityHeaders(response);
     }
   } catch (error: any) {
     console.error("Error getting MC access control:", error);
-    return NextResponse.json(
-      { ok: false, error: error.message || "Failed to get MC access control" },
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('mc_access_control_fetch_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        ok: false, 
+        error: process.env.NODE_ENV === 'development' 
+          ? (error.message || "Failed to get MC access control")
+          : "Failed to get MC access control"
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 
@@ -156,11 +197,31 @@ export async function POST(request: NextRequest) {
     
     const { mc_number, is_active, disabled_reason } = await request.json();
     
+    // Input validation
+    const validation = validateInput(
+      { mc_number, is_active, disabled_reason },
+      {
+        mc_number: { required: true, type: 'string', pattern: /^\d+$/, maxLength: 20 },
+        is_active: { required: true, type: 'boolean' },
+        disabled_reason: { type: 'string', maxLength: 500, required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_mc_access_control_update_input', adminUserId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { ok: false, error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+    
     if (!mc_number) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { ok: false, error: "MC number is required" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
     
     // Check if MC access control already exists
@@ -190,7 +251,13 @@ export async function POST(request: NextRequest) {
       
       // The trigger will automatically update carrier profiles
       
-      return NextResponse.json({
+      logSecurityEvent('mc_access_control_updated', adminUserId, { 
+        mcNumber: mc_number,
+        isActive: is_active,
+        wasActive
+      });
+      
+      const response = NextResponse.json({
         ok: true,
         message: `MC ${mc_number} ${is_active ? 'enabled' : 'disabled'} successfully`,
         data: {
@@ -199,6 +266,8 @@ export async function POST(request: NextRequest) {
           was_active: wasActive
         }
       });
+      
+      return addSecurityHeaders(response);
     } else {
       // Create new (only if disabling - active MCs don't need entries)
       if (!is_active) {
@@ -220,7 +289,12 @@ export async function POST(request: NextRequest) {
         
         // The trigger will automatically update carrier profiles
         
-        return NextResponse.json({
+        logSecurityEvent('mc_access_control_created', adminUserId, { 
+          mcNumber: mc_number,
+          isActive: false
+        });
+        
+        const response = NextResponse.json({
           ok: true,
           message: `MC ${mc_number} disabled successfully`,
           data: {
@@ -228,9 +302,13 @@ export async function POST(request: NextRequest) {
             is_active: false
           }
         });
+        
+        return addSecurityHeaders(response);
       } else {
         // MC is active but not in table - that's fine, it's active by default
-        return NextResponse.json({
+        logSecurityEvent('mc_access_control_active_default', adminUserId, { mcNumber: mc_number });
+        
+        const response = NextResponse.json({
           ok: true,
           message: `MC ${mc_number} is active`,
           data: {
@@ -238,14 +316,32 @@ export async function POST(request: NextRequest) {
             is_active: true
           }
         });
+        
+        return addSecurityHeaders(response);
       }
     }
   } catch (error: any) {
     console.error("Error updating MC access control:", error);
-    return NextResponse.json(
-      { ok: false, error: error.message || "Failed to update MC access control" },
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('mc_access_control_update_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        ok: false, 
+        error: process.env.NODE_ENV === 'development' 
+          ? (error.message || "Failed to update MC access control")
+          : "Failed to update MC access control"
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 

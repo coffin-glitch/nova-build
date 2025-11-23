@@ -1,17 +1,48 @@
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAuth, unauthorizedResponse } from "@/lib/auth-api-helper";
 import { getSupabaseUserInfo } from "@/lib/auth-unified";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
+    // Require authentication for batch user info access
+    const auth = await requireApiAuth(request);
+    const requesterUserId = auth.userId;
+    
     const { searchParams } = new URL(request.url);
     const ids = searchParams.get('ids');
     
+    // Input validation
+    const validation = validateInput(
+      { ids },
+      {
+        ids: { required: true, type: 'string', maxLength: 2000 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_batch_user_input', requesterUserId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+    
     if (!ids) {
-      return NextResponse.json({ error: "User IDs are required" }, { status: 400 });
+      const response = NextResponse.json(
+        { error: "User IDs are required" },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
 
-    const userIds = ids.split(',');
+    // Parse and validate user IDs (limit to 100 IDs max)
+    const userIds = ids.split(',')
+      .map(id => id.trim())
+      .filter(id => id.length > 0 && id.length <= 200)
+      .slice(0, 100); // Limit to 100 user IDs
     const userInfos: Record<string, any> = {};
     
     // Fetch user info for each ID
@@ -130,12 +161,35 @@ export async function GET(request: NextRequest) {
       }
     }
     
-    return NextResponse.json(userInfos);
-  } catch (error) {
+    logSecurityEvent('batch_user_info_accessed', requesterUserId, { 
+      requestedCount: userIds.length,
+      returnedCount: Object.keys(userInfos).length
+    });
+    
+    const response = NextResponse.json(userInfos);
+    return addSecurityHeaders(response);
+    
+  } catch (error: any) {
     console.error("Error fetching batch user info:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch user information" },
+    
+    if (error.message === "Unauthorized" || error.message === "Authentication required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('batch_user_info_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to fetch user information",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }

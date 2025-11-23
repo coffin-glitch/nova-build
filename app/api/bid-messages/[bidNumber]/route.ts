@@ -1,4 +1,5 @@
-import { requireApiAdmin, requireApiCarrier } from '@/lib/auth-api-helper';
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, requireApiCarrier, unauthorizedResponse } from '@/lib/auth-api-helper';
 import sql from '@/lib/db';
 import { NextRequest, NextResponse } from "next/server";
 
@@ -8,6 +9,23 @@ export async function GET(
 ) {
   try {
     const { bidNumber } = await params;
+    
+    // Input validation
+    const validation = validateInput(
+      { bidNumber },
+      {
+        bidNumber: { required: true, type: 'string', pattern: /^[A-Z0-9\-_]+$/, maxLength: 100 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_bid_messages_input', undefined, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
     
     // Check if user is admin or carrier
     let userId: string;
@@ -88,7 +106,9 @@ export async function GET(
         AND read_at IS NULL
     `;
 
-    return NextResponse.json({
+    logSecurityEvent('bid_messages_accessed', userId, { bidNumber, userRole });
+    
+    const response = NextResponse.json({
       ok: true,
       data: {
         messages: messages || [],
@@ -96,13 +116,31 @@ export async function GET(
         totalCount: messages.length
       }
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching bid messages:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch messages", details: error instanceof Error ? error.message : 'Unknown error' },
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('bid_messages_fetch_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to fetch messages",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 
@@ -135,19 +173,41 @@ export async function POST(
     const { message, is_internal: isInternal = false } = await request.json();
     is_internal = isInternal;
 
+    // Input validation
+    const validation = validateInput(
+      { bidNumber, message, is_internal },
+      {
+        bidNumber: { required: true, type: 'string', pattern: /^[A-Z0-9\-_]+$/, maxLength: 100 },
+        message: { required: true, type: 'string', minLength: 1, maxLength: 5000 },
+        is_internal: { type: 'boolean', required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_bid_message_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     if (!message || !message.trim()) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: "Message is required" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Only admins can send internal messages
     if (is_internal && userRole !== "admin") {
-      return NextResponse.json(
+      logSecurityEvent('bid_message_internal_unauthorized', userId, { bidNumber });
+      const response = NextResponse.json(
         { error: "Only admins can send internal messages" },
         { status: 403 }
       );
+      return addSecurityHeaders(response);
     }
 
     // For carriers: verify they own this bid (Supabase-only)
@@ -253,15 +313,24 @@ export async function POST(
       }
     }
 
-    return NextResponse.json({
+    logSecurityEvent('bid_message_sent', userId, { 
+      bidNumber,
+      userRole,
+      isInternal: is_internal,
+      messageId: result[0]?.id
+    });
+    
+    const response = NextResponse.json({
       ok: true,
       data: {
         messageData: result[0],
         message: "Message sent successfully"
       }
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error sending bid message:", error);
     console.error("Error stack:", error instanceof Error ? error.stack : 'No stack trace');
     console.error("Error details:", {
@@ -271,15 +340,26 @@ export async function POST(
       is_internal
     });
     
-    return NextResponse.json(
+    if (error.message === "Unauthorized" || error.message === "Admin access required" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('bid_message_send_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
       { 
         ok: false,
-        error: "Failed to send message", 
-        details: error instanceof Error ? error.message : 'Unknown error',
-        stack: error instanceof Error ? error.stack : undefined
+        error: "Failed to send message",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
       },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 

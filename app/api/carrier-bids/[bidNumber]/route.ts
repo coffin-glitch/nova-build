@@ -1,4 +1,5 @@
-import { requireApiCarrier } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiCarrier, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -13,11 +14,29 @@ export async function DELETE(
 
     const { bidNumber } = await params;
 
+    // Input validation
+    const validation = validateInput(
+      { bidNumber },
+      {
+        bidNumber: { required: true, type: 'string', pattern: /^[A-Z0-9\-_]+$/, maxLength: 100 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_carrier_bid_cancel_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     if (!bidNumber) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: "Bid number is required" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Check if the carrier has a bid for this auction (Supabase-only)
@@ -28,10 +47,12 @@ export async function DELETE(
     `;
 
     if (existingBid.length === 0) {
-      return NextResponse.json(
+      logSecurityEvent('carrier_bid_cancel_not_found', userId, { bidNumber });
+      const response = NextResponse.json(
         { error: "Bid not found or already cancelled" },
         { status: 404 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Delete the carrier's bid (Supabase-only)
@@ -41,25 +62,44 @@ export async function DELETE(
     `;
 
     if (result.length === 0) {
-      return NextResponse.json(
+      logSecurityEvent('carrier_bid_cancel_failed', userId, { bidNumber });
+      const response = NextResponse.json(
         { error: "Bid not found or already cancelled" },
         { status: 404 }
       );
+      return addSecurityHeaders(response);
     }
 
-    return NextResponse.json({
+    logSecurityEvent('carrier_bid_cancelled', userId, { bidNumber });
+    
+    const response = NextResponse.json({
       success: true,
       message: `Bid ${bidNumber} cancelled successfully`
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Cancel bid error:", error);
-    return NextResponse.json(
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('carrier_bid_cancel_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
       {
         error: "Failed to cancel bid",
-        details: error instanceof Error ? error.message : 'Unknown error'
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
       },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }

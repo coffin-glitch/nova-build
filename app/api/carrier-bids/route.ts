@@ -1,6 +1,7 @@
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
 import { getCarrierProfile, upsertCarrierBid, validateCarrierProfileComplete } from "@/lib/auctions";
 import { validateMoneyInput } from "@/lib/format";
-import { requireApiCarrier } from "@/lib/auth-api-helper";
+import { requireApiCarrier, unauthorizedResponse } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
@@ -12,11 +13,31 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { bid_number, amount, notes } = body;
 
+    // Input validation
+    const validation = validateInput(
+      { bid_number, amount, notes },
+      {
+        bid_number: { required: true, type: 'string', pattern: /^[A-Z0-9\-_]+$/, maxLength: 100 },
+        amount: { required: true, type: 'number', min: 0.01, max: 1000000 },
+        notes: { type: 'string', maxLength: 1000, required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_carrier_bid_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { ok: false, error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     if (!bid_number || !amount) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { ok: false, error: "Missing required fields: bid_number, amount" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Validate money input
@@ -50,24 +71,48 @@ export async function POST(request: NextRequest) {
       notes,
     });
 
-    return NextResponse.json({
+    logSecurityEvent('carrier_bid_created', userId, { 
+      bidNumber: bid_number,
+      amountCents: amount_cents
+    });
+    
+    const response = NextResponse.json({
       ok: true,
       data: bid,
     });
+    
+    return addSecurityHeaders(response);
+    
   } catch (error: any) {
     console.error("Carrier bid API error:", error);
     
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
     if (error.message.includes("Auction closed")) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { ok: false, error: "Auction closed - bidding period has expired" },
         { status: 409 }
       );
+      return addSecurityHeaders(response);
     }
 
-    return NextResponse.json(
-      { ok: false, error: error.message },
+    logSecurityEvent('carrier_bid_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        ok: false, 
+        error: process.env.NODE_ENV === 'development' 
+          ? error.message
+          : "Failed to create bid"
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 
@@ -93,18 +138,39 @@ export async function GET(request: NextRequest) {
     // TODO: Implement getting user's bids summary
     // This would require a new function in auctions.ts
 
-    return NextResponse.json({
+    logSecurityEvent('carrier_bids_accessed', userId);
+    
+    const response = NextResponse.json({
       ok: true,
       data: {
         profile,
         bids: [],
       },
     });
+    
+    return addSecurityHeaders(response);
+    
   } catch (error: any) {
     console.error("Carrier bids GET API error:", error);
-    return NextResponse.json(
-      { ok: false, error: error.message },
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('carrier_bids_fetch_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        ok: false, 
+        error: process.env.NODE_ENV === 'development' 
+          ? error.message
+          : "Failed to fetch bids"
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
