@@ -235,7 +235,7 @@ export async function GET(request: NextRequest) {
       }
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
     
   } catch (error: any) {
     console.error("Error fetching awarded bids:", error);
