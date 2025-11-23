@@ -103,13 +103,14 @@
 - **2025-01-16:** Phase 1.33 - Secure health check, get-user-id, test, and set-admin routes (CRITICAL: set-admin now requires admin auth)
 - **2025-01-16:** Phase 1.34 - Secure telegram-bids-optimized, railway-logs, dev-admin, and telegram-forwarder routes (CRITICAL: Fixed SQL injection in telegram-bids-optimized)
 - **2025-01-16:** Phase 1.35 - Secure debug-archive, test-auth, test-highway-key, and telegram-forwarder stream routes
+- **2025-01-16:** Phase 1.36 - Secure Highway-related admin routes and margin analytics
 - **2025-01-16:** Database pool and rate limiting analysis completed
 
 ## Routes Secured So Far
 
-**Total: 118 routes (165 endpoints)**
+**Total: 124 routes (171 endpoints)**
 
-**Progress:** 59.9% of total routes (118/197 routes secured)
+**Progress:** 62.9% of total routes (124/197 routes secured)
 1. `/api/bids/route.ts` (GET)
 2. `/api/loads/route.ts` (GET, POST)
 3. `/api/telegram-bids/route.ts` (GET)
@@ -234,6 +235,12 @@
 122. `/api/debug-archive/route.ts` (GET)
 123. `/api/admin/test-auth/route.ts` (GET)
 124. `/api/admin/test-highway-key/route.ts` (POST)
+125. `/api/admin/test-highway-direct/route.ts` (GET)
+126. `/api/admin/debug-highway-key/route.ts` (GET)
+127. `/api/admin/save-highway-key/route.ts` (POST)
+128. `/api/admin/highway-oauth/route.ts` (POST)
+129. `/api/admin/highway-carrier/route.ts` (GET)
+130. `/api/admin/margin-analytics/route.ts` (GET)
 
 ## Security Improvements Summary
 
