@@ -1,4 +1,5 @@
 import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { checkApiRateLimit, addRateLimitHeaders } from "@/lib/api-rate-limiting";
 import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { getSupabaseService } from "@/lib/supabase";
@@ -98,6 +99,28 @@ export async function POST(
     const userId = auth.userId;
 
     const { conversationId } = await params;
+
+    // Check content type to determine if this is a file upload
+    const contentType = request.headers.get('content-type') || '';
+    const isFileUpload = contentType.includes('multipart/form-data');
+
+    // Check rate limit (file uploads have stricter limits, admin routes are generous)
+    const rateLimit = await checkApiRateLimit(request, {
+      userId,
+      routeType: isFileUpload ? 'fileUpload' : 'admin'
+    });
+
+    if (!rateLimit.allowed) {
+      const response = NextResponse.json(
+        {
+          error: 'Rate limit exceeded',
+          message: `Too many ${isFileUpload ? 'file uploads' : 'requests'}. Please try again after ${rateLimit.retryAfter} seconds.`,
+          retryAfter: rateLimit.retryAfter
+        },
+        { status: 429 }
+      );
+      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    }
 
     // Input validation
     const validation = validateInput(
@@ -342,7 +365,7 @@ export async function POST(
       data: result[0]
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
 
   } catch (error: any) {
     console.error("Error sending admin message:", error);
