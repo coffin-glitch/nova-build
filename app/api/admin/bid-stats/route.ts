@@ -1,11 +1,13 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
     // Ensure user is admin (Supabase-only)
-    await requireApiAdmin(request);
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
 
     // Get bid statistics
     // Use LEFT JOIN to include awarded bids even if carrier hasn't accepted yet
@@ -22,17 +24,38 @@ export async function GET(request: NextRequest) {
 
     const result = stats[0] || { total: 0, active: 0, completed: 0, revenue: 0 };
 
-    return NextResponse.json({
+    logSecurityEvent('admin_bid_stats_accessed', userId);
+    
+    const response = NextResponse.json({
       total: parseInt(result.total) || 0,
       active: parseInt(result.active) || 0,
       completed: parseInt(result.completed) || 0,
       revenue: parseInt(result.revenue) || 0
     });
-  } catch (error) {
+    
+    return addSecurityHeaders(response);
+    
+  } catch (error: any) {
     console.error("Error fetching bid stats:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch bid statistics" },
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('admin_bid_stats_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to fetch bid statistics",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }

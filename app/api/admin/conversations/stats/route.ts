@@ -1,4 +1,5 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -48,17 +49,35 @@ export async function GET(request: NextRequest) {
 
     const avgResponseMinutes = responseTimeStats[0]?.avg_response_minutes || 0;
 
-    return NextResponse.json({ 
+    logSecurityEvent('admin_conversation_stats_accessed', userId);
+    
+    const response = NextResponse.json({ 
       ok: true, 
       avg_response_minutes: avgResponseMinutes
     });
+    
+    return addSecurityHeaders(response);
 
   } catch (error: any) {
     console.error("Error calculating response time stats:", error);
-    return NextResponse.json({ 
-      ok: true,
-      avg_response_minutes: 0
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('admin_conversation_stats_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
     });
+    
+    const response = NextResponse.json({ 
+      ok: true,
+      avg_response_minutes: 0,
+      error: process.env.NODE_ENV === 'development' 
+        ? (error instanceof Error ? error.message : 'Unknown error')
+        : undefined
+    });
+    
+    return addSecurityHeaders(response);
   }
 }
 
