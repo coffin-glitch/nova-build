@@ -111,13 +111,14 @@
 - **2025-01-16:** Phase 1.41 - Secure admin bids route
 - **2025-01-16:** Phase 1.42 - Secure admin bid management routes
 - **2025-01-16:** Phase 1.43 - Secure booked loads and conversations routes
+- **2025-01-16:** Phase 1.44 - Secure conversation read, messages, offers, and chat messages routes
 - **2025-01-16:** Database pool and rate limiting analysis completed
 
 ## Routes Secured So Far
 
-**Total: 160 routes (214 endpoints)**
+**Total: 168 routes (222 endpoints)**
 
-**Progress:** 81.2% of total routes (160/197 routes secured)
+**Progress:** 85.3% of total routes (168/197 routes secured)
 1. `/api/bids/route.ts` (GET)
 2. `/api/loads/route.ts` (GET, POST)
 3. `/api/telegram-bids/route.ts` (GET)
@@ -284,6 +285,14 @@
 164. `/api/admin/bids-with-carrier-bids/route.ts` (GET)
 165. `/api/admin/booked-loads/route.ts` (GET)
 166. `/api/admin/conversations/route.ts` (GET, POST, DELETE)
+167. `/api/admin/conversations/[conversationId]/read/route.ts` (POST)
+168. `/api/admin/messages/route.ts` (POST)
+169. `/api/admin/messages/[carrierUserId]/route.ts` (GET)
+170. `/api/admin/offers/route.ts` (GET)
+171. `/api/admin/offers/[offerId]/accept/route.ts` (POST)
+172. `/api/admin/offers/[offerId]/counter/route.ts` (POST)
+173. `/api/admin/chat-messages/[carrierUserId]/route.ts` (GET)
+174. `/api/admin/chat-messages/[carrierUserId]/read/route.ts` (POST)
 
 ## Security Improvements Summary
 
