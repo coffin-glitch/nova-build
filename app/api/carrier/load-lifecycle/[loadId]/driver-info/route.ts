@@ -1,5 +1,6 @@
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiCarrier, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
-import { requireApiCarrier } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 // Format phone number to 10 digits only
@@ -26,19 +27,42 @@ export async function POST(
       location
     } = await request.json();
 
+    // Input validation
+    const validation = validateInput(
+      { loadId, notes, location },
+      {
+        loadId: { required: true, type: 'string', maxLength: 100 },
+        notes: { type: 'string', maxLength: 1000, required: false },
+        location: { type: 'string', maxLength: 200, required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_load_lifecycle_driver_info_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     // Validate required driver information
     if (!driver_info?.driver_name || !driver_info?.driver_phone) {
-      return NextResponse.json({ 
-        error: "Driver name and phone number are required" 
-      }, { status: 400 });
+      const response = NextResponse.json(
+        { error: "Driver name and phone number are required" },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
 
     // Format and validate phone numbers
     const formattedPhone = formatPhoneNumber(driver_info.driver_phone);
     if (!formattedPhone) {
-      return NextResponse.json({ 
-        error: "Driver phone number must be exactly 10 digits" 
-      }, { status: 400 });
+      const response = NextResponse.json(
+        { error: "Driver phone number must be exactly 10 digits" },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
 
     let formattedSecondPhone = null;
@@ -66,7 +90,12 @@ export async function POST(
       `;
       
       if (loadOfferResult.length === 0) {
-        return NextResponse.json({ error: "Load not found or not accessible" }, { status: 404 });
+        logSecurityEvent('load_lifecycle_driver_info_unauthorized', userId, { loadId });
+        const response = NextResponse.json(
+          { error: "Load not found or not accessible" },
+          { status: 404 }
+        );
+        return addSecurityHeaders(response);
       }
       
       loadOfferId = loadOfferResult[0].load_offer_id;
@@ -78,7 +107,12 @@ export async function POST(
       `;
 
       if (loadOffer.length === 0) {
-        return NextResponse.json({ error: "Load not found" }, { status: 404 });
+        logSecurityEvent('load_offer_not_found_lifecycle', userId, { loadId });
+        const response = NextResponse.json(
+          { error: "Load not found" },
+          { status: 404 }
+        );
+        return addSecurityHeaders(response);
       }
 
       loadOfferId = loadId;
@@ -91,7 +125,12 @@ export async function POST(
     `;
 
     if (loadOffer.length === 0) {
-      return NextResponse.json({ error: "Load offer not found" }, { status: 404 });
+      logSecurityEvent('load_offer_not_found_lifecycle_driver', userId, { loadId });
+      const response = NextResponse.json(
+        { error: "Load offer not found" },
+        { status: 404 }
+      );
+      return addSecurityHeaders(response);
     }
 
     const currentStatus = loadOffer[0].status;
@@ -160,7 +199,12 @@ export async function POST(
       WHERE id = ${loadOfferId} AND supabase_user_id = ${userId}
     `;
 
-    return NextResponse.json({
+    logSecurityEvent('load_lifecycle_driver_info_updated', userId, { 
+      loadId, 
+      eventId: eventResult[0].id 
+    });
+    
+    const response = NextResponse.json({
       ok: true,
       data: {
         eventId: eventResult[0].id,
@@ -168,13 +212,31 @@ export async function POST(
         message: "Driver information updated successfully"
       }
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error updating driver information:", error);
-    return NextResponse.json(
-      { error: "Failed to update driver information" },
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('load_lifecycle_driver_info_update_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to update driver information",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 

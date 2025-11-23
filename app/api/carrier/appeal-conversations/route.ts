@@ -1,4 +1,5 @@
-import { requireApiCarrier } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiCarrier, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -39,16 +40,37 @@ export async function GET(request: NextRequest) {
       ORDER BY c.last_message_at DESC
     `;
 
-    return NextResponse.json({ 
+    logSecurityEvent('appeal_conversations_accessed', userId);
+    
+    const response = NextResponse.json({ 
       ok: true, 
       data: conversations 
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching appeal conversations:", error);
-    return NextResponse.json({ 
-      error: "Failed to fetch appeal conversations" 
-    }, { status: 500 });
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('appeal_conversations_fetch_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to fetch appeal conversations",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
+      { status: 500 }
+    );
+    
+    return addSecurityHeaders(response);
   }
 }
 
@@ -60,10 +82,30 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { message, admin_user_id } = body;
 
+    // Input validation
+    const validation = validateInput(
+      { message, admin_user_id },
+      {
+        message: { required: true, type: 'string', minLength: 1, maxLength: 5000 },
+        admin_user_id: { type: 'string', maxLength: 200, required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_appeal_conversation_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     if (!message) {
-      return NextResponse.json({ 
-        error: "Missing required field: message" 
-      }, { status: 400 });
+      const response = NextResponse.json(
+        { error: "Missing required field: message" },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
 
     // If no specific admin is provided, use a default admin ID for appeals
@@ -157,7 +199,12 @@ export async function POST(request: NextRequest) {
       // Don't throw - message sending should still succeed even if notifications fail
     }
 
-    return NextResponse.json({ 
+    logSecurityEvent('appeal_conversation_created', userId, { 
+      conversationId,
+      messageId: messageResult[0].id
+    });
+    
+    const response = NextResponse.json({ 
       ok: true,
       message: "Appeal message sent successfully",
       data: { 
@@ -166,11 +213,30 @@ export async function POST(request: NextRequest) {
         created_at: messageResult[0].created_at
       }
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error creating appeal conversation:", error);
-    return NextResponse.json({ 
-      error: "Failed to create appeal conversation" 
-    }, { status: 500 });
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('appeal_conversation_creation_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to create appeal conversation",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
+      { status: 500 }
+    );
+    
+    return addSecurityHeaders(response);
   }
 }

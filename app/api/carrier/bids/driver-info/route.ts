@@ -1,5 +1,6 @@
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiCarrier, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
-import { requireApiCarrier } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 // Format phone number to 10 digits only
@@ -73,17 +74,37 @@ export async function GET(
       });
     }
 
-    return NextResponse.json({
+    logSecurityEvent('bid_driver_info_accessed', userId, { bidNumber });
+    
+    const response = NextResponse.json({
       ok: true,
       data: driverInfo[0]
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching driver information:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch driver information", details: error instanceof Error ? error.message : 'Unknown error' },
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('bid_driver_info_fetch_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to fetch driver information",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 
@@ -122,25 +143,63 @@ export async function POST(
       notes
     } = await request.json();
 
+    // Additional input validation for driver info
+    const driverValidation = validateInput(
+      { driver_name, driver_phone, driver_email, driver_license_number, driver_license_state, truck_number, trailer_number, second_driver_name, second_driver_phone, second_driver_email, second_driver_license_number, second_driver_license_state, second_truck_number, second_trailer_number, location, notes },
+      {
+        driver_name: { required: true, type: 'string', minLength: 1, maxLength: 100 },
+        driver_phone: { required: true, type: 'string', pattern: /^[\d\s\-\(\)]+$/, maxLength: 20 },
+        driver_email: { type: 'string', pattern: /^[^\s@]+@[^\s@]+\.[^\s@]+$/, maxLength: 255, required: false },
+        driver_license_number: { type: 'string', maxLength: 50, required: false },
+        driver_license_state: { type: 'string', pattern: /^[A-Z]{2}$/, maxLength: 2, required: false },
+        truck_number: { type: 'string', maxLength: 50, required: false },
+        trailer_number: { type: 'string', maxLength: 50, required: false },
+        second_driver_name: { type: 'string', maxLength: 100, required: false },
+        second_driver_phone: { type: 'string', pattern: /^[\d\s\-\(\)]+$/, maxLength: 20, required: false },
+        second_driver_email: { type: 'string', pattern: /^[^\s@]+@[^\s@]+\.[^\s@]+$/, maxLength: 255, required: false },
+        second_driver_license_number: { type: 'string', maxLength: 50, required: false },
+        second_driver_license_state: { type: 'string', pattern: /^[A-Z]{2}$/, maxLength: 2, required: false },
+        second_truck_number: { type: 'string', maxLength: 50, required: false },
+        second_trailer_number: { type: 'string', maxLength: 50, required: false },
+        location: { type: 'string', maxLength: 200, required: false },
+        notes: { type: 'string', maxLength: 1000, required: false }
+      }
+    );
+
+    if (!driverValidation.valid) {
+      logSecurityEvent('invalid_bid_driver_info_fields', userId, { errors: driverValidation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid driver info: ${driverValidation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     // Validate required fields
     if (!driver_name?.trim()) {
-      return NextResponse.json({ 
-        error: "Driver name is required" 
-      }, { status: 400 });
+      const response = NextResponse.json(
+        { error: "Driver name is required" },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
 
     if (!driver_phone?.trim()) {
-      return NextResponse.json({ 
-        error: "Driver phone number is required" 
-      }, { status: 400 });
+      const response = NextResponse.json(
+        { error: "Driver phone number is required" },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
 
     // Format and validate phone number
     const formattedPhone = formatPhoneNumber(driver_phone);
     if (!formattedPhone) {
-      return NextResponse.json({ 
-        error: "Driver phone number must be exactly 10 digits" 
-      }, { status: 400 });
+      const response = NextResponse.json(
+        { error: "Driver phone number must be exactly 10 digits" },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
 
     // Format secondary phone if provided
@@ -148,9 +207,11 @@ export async function POST(
     if (second_driver_phone) {
       formattedSecondPhone = formatPhoneNumber(second_driver_phone);
       if (!formattedSecondPhone) {
-        return NextResponse.json({ 
-          error: "Secondary driver phone number must be exactly 10 digits" 
-        }, { status: 400 });
+        const response = NextResponse.json(
+          { error: "Secondary driver phone number must be exactly 10 digits" },
+          { status: 400 }
+        );
+        return addSecurityHeaders(response);
       }
     }
 
@@ -259,17 +320,37 @@ export async function POST(
       `;
     }
 
-    return NextResponse.json({
+    logSecurityEvent('bid_driver_info_updated', userId, { bidNumber });
+    
+    const response = NextResponse.json({
       ok: true,
       message: "Driver information updated successfully"
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error updating driver information:", error);
-    return NextResponse.json(
-      { error: "Failed to update driver information", details: error instanceof Error ? error.message : 'Unknown error' },
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('bid_driver_info_update_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to update driver information",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 
