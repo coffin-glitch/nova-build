@@ -69,7 +69,7 @@ export async function GET(
     `;
     
     const response = NextResponse.json({ offers });
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
     
   } catch (error: any) {
     console.error("Error fetching load offers:", error);
