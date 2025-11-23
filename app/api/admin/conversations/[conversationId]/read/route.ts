@@ -107,7 +107,7 @@ export async function POST(
       message: "Messages marked as read" 
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
 
   } catch (error: any) {
     console.error("Error marking admin messages as read:", error);

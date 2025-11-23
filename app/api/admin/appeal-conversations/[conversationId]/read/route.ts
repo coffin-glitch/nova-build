@@ -102,7 +102,7 @@ export async function POST(
       message: "Appeal messages marked as read" 
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
 
   } catch (error: any) {
     console.error("Error marking appeal messages as read:", error);
