@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
       message: `Expired ${result.length} offers` 
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
 
   } catch (error: any) {
     console.error("Error expiring offers:", error);
