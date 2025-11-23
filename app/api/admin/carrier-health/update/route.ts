@@ -1,7 +1,7 @@
 import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
 import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
-import sql from "@/lib/db";
 import { calculateHealthScore } from "@/lib/carrier-health-scorer";
+import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
 /**

@@ -1,10 +1,12 @@
+import { addSecurityHeaders, logSecurityEvent } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
-import { requireApiAdmin } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
-    await requireApiAdmin(request);
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
 
     // Get all unique bid numbers that have carrier bids
     const bidsWithCarrierBids = await sql`
@@ -83,21 +85,38 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    return NextResponse.json({
+    logSecurityEvent('bids_with_carrier_bids_accessed', userId, { count: result.length });
+    
+    const response = NextResponse.json({
       success: true,
       data: result
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching bids with carrier bids:", error);
-    return NextResponse.json(
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('bids_with_carrier_bids_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
       {
         success: false,
         error: "Failed to fetch bids with carrier bids",
-        details: error instanceof Error ? error.message : 'Unknown error'
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
       },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 

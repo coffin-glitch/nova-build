@@ -1,8 +1,8 @@
 import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
 import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
-import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseService } from "@/lib/supabase";
+import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(
   request: NextRequest,

@@ -1,7 +1,7 @@
 import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
 import { getCarrierProfile, upsertCarrierBid, validateCarrierProfileComplete } from "@/lib/auctions";
-import { validateMoneyInput } from "@/lib/format";
 import { requireApiCarrier, unauthorizedResponse } from "@/lib/auth-api-helper";
+import { validateMoneyInput } from "@/lib/format";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {

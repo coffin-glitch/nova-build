@@ -1,10 +1,10 @@
+import { generateEmbedding } from "@/lib/ai-embeddings";
 import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
 import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
+import { findRelatedFiles, getCodebaseStructure, listDirectory, readFile, searchCode } from "@/lib/codebase-reader";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
-import { generateEmbedding } from "@/lib/ai-embeddings";
-import { readFile, listDirectory, searchCode, getCodebaseStructure, findRelatedFiles } from "@/lib/codebase-reader";
 
 // Initialize OpenAI client
 const openai = new OpenAI({

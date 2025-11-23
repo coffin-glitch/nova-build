@@ -1,10 +1,10 @@
 import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
 import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
-import { extractCarrierUrl, parseDirectoryData, parseOverviewData } from "@/lib/carrier-health-parser";
+import { parseDirectoryData, parseOverviewData } from "@/lib/carrier-health-parser";
 import { calculateHealthScore } from "@/lib/carrier-health-scorer";
 import sql from "@/lib/db";
-import { chromium } from "playwright";
 import { NextRequest, NextResponse } from "next/server";
+import { chromium } from "playwright";
 
 /**
  * Get stored storageState for Playwright authentication
