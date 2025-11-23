@@ -1,8 +1,14 @@
+import { addSecurityHeaders, logSecurityEvent } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
+    // Require admin authentication for dev admin users access
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
+    
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     
@@ -73,12 +79,32 @@ export async function GET(request: NextRequest) {
     });
 
     console.log("✅ Returning", users.length, "users to frontend");
-    return NextResponse.json({ users });
+    
+    logSecurityEvent('dev_admin_users_accessed', userId, { userCount: users.length });
+    
+    const response = NextResponse.json({ users });
+    return addSecurityHeaders(response);
+    
   } catch (error: any) {
     console.error("Get users error:", error);
-    return NextResponse.json(
-      { error: error.message },
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('dev_admin_users_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: process.env.NODE_ENV === 'development' 
+          ? error.message
+          : "Failed to fetch users"
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }

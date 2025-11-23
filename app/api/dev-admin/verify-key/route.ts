@@ -1,4 +1,5 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 // SECURITY FIX: Remove key logging and add authentication
@@ -7,29 +8,68 @@ const DEV_KEY = process.env.DEV_ADMIN_KEY || "nova-dev-2024-admin-key";
 export async function POST(request: NextRequest) {
   try {
     // SECURITY FIX: Require admin authentication
-    await requireApiAdmin(request);
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
     
     const { key } = await request.json();
     
+    // Input validation
+    const validation = validateInput(
+      { key },
+      {
+        key: { required: true, type: 'string', maxLength: 200 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_dev_key_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { success: false, valid: false, error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+    
     // SECURITY FIX: Remove sensitive logging
     if (key === DEV_KEY) {
-      return NextResponse.json({ 
+      logSecurityEvent('dev_key_verified', userId);
+      const response = NextResponse.json({ 
         success: true,
         valid: true, 
         message: "Dev key accepted" 
       });
+      return addSecurityHeaders(response);
     } else {
-      return NextResponse.json({ 
+      logSecurityEvent('dev_key_invalid', userId);
+      const response = NextResponse.json({ 
         success: false,
         valid: false, 
         error: "Invalid dev key" 
       });
+      return addSecurityHeaders(response);
     }
   } catch (error: any) {
     console.error("❌ Dev key verification error:", error);
-    return NextResponse.json(
-      { success: false, valid: false, error: error.message },
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('dev_key_verification_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        success: false, 
+        valid: false, 
+        error: process.env.NODE_ENV === 'development' 
+          ? error.message
+          : "Failed to verify dev key"
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }

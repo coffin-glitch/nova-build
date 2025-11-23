@@ -1,3 +1,5 @@
+import { addSecurityHeaders, logSecurityEvent } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 /**
@@ -6,6 +8,10 @@ import { NextRequest, NextResponse } from "next/server";
  */
 export async function GET(request: NextRequest) {
   try {
+    // Require admin authentication for Railway logs access
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
+    
     const railwayUrl = process.env.RAILWAY_URL || process.env.NEXT_PUBLIC_RAILWAY_URL;
     
     if (!railwayUrl) {
@@ -35,15 +41,21 @@ export async function GET(request: NextRequest) {
       
       if (response.ok) {
         const data = await response.json();
-        return NextResponse.json({
+        logSecurityEvent('railway_logs_accessed', userId, { status: 'online' });
+        
+        const responseObj = NextResponse.json({
           status: 'online',
           service: data,
           message: 'Railway service is running. Check Railway dashboard logs for detailed output.',
           railwayUrl: baseUrl,
           logsUrl: `https://railway.app/project/[your-project]/service/[your-service]/logs`
         });
+        
+        return addSecurityHeaders(responseObj);
       } else {
-        return NextResponse.json({
+        logSecurityEvent('railway_logs_offline', userId, { httpStatus: response.status });
+        
+        const responseObj = NextResponse.json({
           status: 'offline',
           httpStatus: response.status,
           message: 'Railway service is not responding. Check Railway dashboard for deployment status and logs.',
@@ -60,14 +72,20 @@ export async function GET(request: NextRequest) {
             ]
           }
         }, { status: 503 });
+        
+        return addSecurityHeaders(responseObj);
       }
     } catch (fetchError: any) {
-      return NextResponse.json({
+      logSecurityEvent('railway_logs_connection_error', userId, { 
+        error: fetchError.message || 'Connection refused' 
+      });
+      
+      const responseObj = NextResponse.json({
         status: 'offline',
         error: 'Connection refused',
         message: 'Railway service is not running or not accessible. The service needs to be started in Railway dashboard.',
         railwayUrl: baseUrl,
-        errorDetails: fetchError.message,
+        errorDetails: process.env.NODE_ENV === 'development' ? fetchError.message : undefined,
         troubleshooting: {
           immediateActions: [
             '1. Go to Railway dashboard: https://railway.app',
@@ -84,14 +102,32 @@ export async function GET(request: NextRequest) {
           ]
         }
       }, { status: 503 });
+      
+      return addSecurityHeaders(responseObj);
     }
 
   } catch (error: any) {
     console.error('Error checking Railway service:', error);
-    return NextResponse.json(
-      { error: 'Failed to check Railway service', message: error.message },
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('railway_logs_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const responseObj = NextResponse.json(
+      { 
+        error: 'Failed to check Railway service',
+        message: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : 'Failed to check Railway service'
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(responseObj);
   }
 }
 

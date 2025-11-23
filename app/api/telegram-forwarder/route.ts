@@ -1,3 +1,5 @@
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 import { WebSocketServer } from 'ws';
 
@@ -8,6 +10,10 @@ let telegramProcess: any = null;
 
 export async function GET(request: NextRequest) {
   try {
+    // Require admin authentication for telegram forwarder access
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
+    
     // Always proxy to Railway service (works in both dev and prod)
     const railwayUrl = process.env.RAILWAY_URL || process.env.NEXT_PUBLIC_RAILWAY_URL;
     
@@ -56,55 +62,108 @@ export async function GET(request: NextRequest) {
       }
       
       const data = await response.json();
-      return NextResponse.json(data);
+      
+      logSecurityEvent('telegram_forwarder_status_accessed', userId);
+      
+      const responseObj = NextResponse.json(data);
+      return addSecurityHeaders(responseObj);
+      
     } catch (fetchError: any) {
       console.error('Error fetching from Railway:', fetchError);
       
+      logSecurityEvent('telegram_forwarder_connection_error', userId, { 
+        error: fetchError.message || 'Connection error' 
+      });
+      
       // Handle timeout or connection errors
       if (fetchError.name === 'AbortError' || fetchError.message?.includes('timeout')) {
-        return NextResponse.json({
+        const responseObj = NextResponse.json({
           error: 'Connection timeout',
           message: 'The Railway service did not respond in time. The service may be down or unreachable.',
           status: 'timeout',
           railwayUrl: baseUrl
         }, { status: 503 });
+        return addSecurityHeaders(responseObj);
       }
       
       if (fetchError.code === 'ENOTFOUND' || fetchError.message?.includes('getaddrinfo')) {
-        return NextResponse.json({
+        const responseObj = NextResponse.json({
           error: 'Service not found',
           message: `Could not resolve the Railway service URL: ${baseUrl}. Please verify the URL is correct.`,
           status: 'not_found',
           railwayUrl: baseUrl
         }, { status: 503 });
+        return addSecurityHeaders(responseObj);
       }
       
-      return NextResponse.json({
+      const responseObj = NextResponse.json({
         error: 'Failed to connect to Railway service',
-        message: fetchError.message || 'Service unavailable',
+        message: process.env.NODE_ENV === 'development' 
+          ? (fetchError.message || 'Service unavailable')
+          : 'Service unavailable',
         status: 'error',
         railwayUrl: baseUrl
       }, { status: 503 });
+      
+      return addSecurityHeaders(responseObj);
     }
 
   } catch (error: any) {
     console.error('Error getting telegram forwarder status:', error);
-    return NextResponse.json(
-      { error: 'Failed to get status', message: error.message },
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('telegram_forwarder_status_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const responseObj = NextResponse.json(
+      { 
+        error: 'Failed to get status',
+        message: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : 'Failed to get status'
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(responseObj);
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
+    // Require admin authentication for telegram forwarder control
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
+    
     const { action } = await request.json();
     
+    // Input validation
+    const validation = validateInput(
+      { action },
+      {
+        action: { required: true, type: 'string', enum: ['start', 'stop'] }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_telegram_forwarder_action', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+    
     if (!action || !['start', 'stop'].includes(action)) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: 'Invalid action. Must be "start" or "stop"' },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Always proxy to Railway service
@@ -140,21 +199,52 @@ export async function POST(request: NextRequest) {
       }
       
       const data = await response.json();
-      return NextResponse.json(data);
+      
+      logSecurityEvent('telegram_forwarder_action', userId, { action });
+      
+      const responseObj = NextResponse.json(data);
+      return addSecurityHeaders(responseObj);
+      
     } catch (fetchError: any) {
       console.error('Error sending command to Railway:', fetchError);
-      return NextResponse.json({
+      
+      logSecurityEvent('telegram_forwarder_command_error', userId, { 
+        action,
+        error: fetchError.message || 'Service unavailable' 
+      });
+      
+      const responseObj = NextResponse.json({
         error: 'Failed to send command to Railway service',
-        message: fetchError.message || 'Service unavailable',
+        message: process.env.NODE_ENV === 'development' 
+          ? (fetchError.message || 'Service unavailable')
+          : 'Service unavailable',
         railwayUrl: baseUrl
       }, { status: 503 });
+      
+      return addSecurityHeaders(responseObj);
     }
 
   } catch (error: any) {
     console.error('Error handling telegram forwarder action:', error);
-    return NextResponse.json(
-      { error: 'Failed to handle action', message: error.message },
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('telegram_forwarder_action_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const responseObj = NextResponse.json(
+      { 
+        error: 'Failed to handle action',
+        message: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : 'Failed to handle action'
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(responseObj);
   }
 }

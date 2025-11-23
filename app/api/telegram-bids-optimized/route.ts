@@ -1,6 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAuth, unauthorizedResponse } from "@/lib/auth-api-helper";
 import { optimizedQueries } from "@/lib/db-optimized";
 import sql from "@/lib/db";
+import { NextRequest, NextResponse } from "next/server";
 
 // Cache for frequently accessed data
 const cache = new Map();
@@ -8,11 +10,38 @@ const CACHE_TTL = 30 * 1000; // 30 seconds
 
 export async function GET(request: NextRequest) {
   try {
+    // Require authentication for telegram bids access
+    const auth = await requireApiAuth(request);
+    const userId = auth.userId;
+    
     const { searchParams } = new URL(request.url);
     const q = searchParams.get("q") || undefined;
     const tag = searchParams.get("tag") || undefined;
-    const limit = Math.min(parseInt(searchParams.get("limit") || "50"), 100);
-    const offset = parseInt(searchParams.get("offset") || "0");
+    const limitParam = searchParams.get("limit") || "50";
+    const offsetParam = searchParams.get("offset") || "0";
+
+    // Input validation
+    const validation = validateInput(
+      { q, tag, limit: limitParam, offset: offsetParam },
+      {
+        q: { type: 'string', maxLength: 100, required: false },
+        tag: { type: 'string', pattern: /^[A-Z0-9\-_]+$/, maxLength: 10, required: false },
+        limit: { type: 'string', pattern: /^\d+$/, required: false },
+        offset: { type: 'string', pattern: /^\d+$/, required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_telegram_bids_optimized_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
+    const limit = Math.min(parseInt(limitParam), 100);
+    const offset = Math.max(0, parseInt(offsetParam));
 
     // Create cache key
     const cacheKey = `telegram-bids-${q}-${tag}-${limit}-${offset}`;
@@ -27,15 +56,18 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Build optimized query
+    // Build optimized query with parameterized queries (FIX SQL INJECTION)
     let query = optimizedQueries.getActiveTelegramBids(limit, offset);
     
+    // FIX: Use parameterized queries instead of sql.unsafe() with string concatenation
     if (q) {
-      query = sql.unsafe(`${query} AND tb.bid_number ILIKE ${'%' + q.replace(/'/g, "''") + '%'}`);
+      const searchPattern = `%${q}%`;
+      query = sql`${query} AND tb.bid_number ILIKE ${searchPattern}`;
     }
 
     if (tag) {
-      query = sql.unsafe(`${query} AND tb.tag = '${tag.toUpperCase().replace(/'/g, "''")}'`);
+      const tagUpper = tag.toUpperCase();
+      query = sql`${query} AND tb.tag = ${tagUpper}`;
     }
 
     const rows = await query;
@@ -56,18 +88,43 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ 
+    logSecurityEvent('telegram_bids_optimized_accessed', userId, { 
+      hasQuery: !!q,
+      tag: tag || null,
+      limit,
+      offset
+    });
+    
+    const response = NextResponse.json({ 
       ok: true, 
       data: rows,
       cached: false 
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Telegram bids API error:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch bids" },
+    
+    if (error.message === "Unauthorized" || error.message === "Authentication required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('telegram_bids_optimized_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to fetch bids",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 
