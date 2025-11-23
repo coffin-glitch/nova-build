@@ -1,5 +1,6 @@
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiCarrier, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
-import { requireApiCarrier } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(
@@ -11,6 +12,23 @@ export async function GET(
     const userId = auth.userId;
 
     const { conversationId } = await params;
+
+    // Input validation
+    const validation = validateInput(
+      { conversationId },
+      {
+        conversationId: { required: true, type: 'string', maxLength: 50 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_appeal_conversation_id_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
 
     // Verify the user has access to this appeal conversation
     const conversation = await sql`
@@ -38,16 +56,37 @@ export async function GET(
       ORDER BY cm.created_at ASC
     `;
 
-    return NextResponse.json({ 
+    logSecurityEvent('appeal_conversation_messages_accessed', userId, { conversationId });
+    
+    const response = NextResponse.json({ 
       ok: true, 
       data: messages 
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching appeal conversation messages:", error);
-    return NextResponse.json({ 
-      error: "Failed to fetch appeal conversation messages" 
-    }, { status: 500 });
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('appeal_conversation_messages_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to fetch appeal conversation messages",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
+      { status: 500 }
+    );
+    
+    return addSecurityHeaders(response);
   }
 }
 
@@ -63,10 +102,30 @@ export async function POST(
     const body = await request.json();
     const { message } = body;
 
+    // Input validation
+    const validation = validateInput(
+      { conversationId, message },
+      {
+        conversationId: { required: true, type: 'string', maxLength: 50 },
+        message: { required: true, type: 'string', minLength: 1, maxLength: 5000 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_appeal_message_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     if (!message) {
-      return NextResponse.json({ 
-        error: "Missing required field: message" 
-      }, { status: 400 });
+      const response = NextResponse.json(
+        { error: "Missing required field: message" },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
 
     // Verify the user has access to this appeal conversation
@@ -99,16 +158,40 @@ export async function POST(
       RETURNING id, created_at
     `;
 
-    return NextResponse.json({ 
+    logSecurityEvent('appeal_message_sent', userId, { 
+      conversationId,
+      messageId: result[0].id
+    });
+    
+    const response = NextResponse.json({ 
       ok: true, 
       message: "Appeal message sent successfully",
       data: result[0]
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error sending appeal message:", error);
-    return NextResponse.json({ 
-      error: "Failed to send appeal message" 
-    }, { status: 500 });
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('appeal_message_send_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to send appeal message",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
+      { status: 500 }
+    );
+    
+    return addSecurityHeaders(response);
   }
 }

@@ -1,5 +1,6 @@
+import { addSecurityHeaders, logSecurityEvent } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
-import { requireApiAdmin } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 /**
@@ -9,6 +10,7 @@ import { NextRequest, NextResponse } from "next/server";
 export async function GET(request: NextRequest) {
   try {
     const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
 
     // Get all approved carriers with their emails
     const carriers = await sql`
@@ -59,16 +61,37 @@ export async function GET(request: NextRequest) {
       })
     );
 
-    return NextResponse.json({
+    logSecurityEvent('announcement_carriers_list_accessed', userId);
+    
+    const response = NextResponse.json({
       success: true,
       data: carriersWithEmails,
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching carriers for announcements:", error);
-    return NextResponse.json({
-      error: "Failed to fetch carriers"
-    }, { status: 500 });
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('announcement_carriers_fetch_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to fetch carriers",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
+      { status: 500 }
+    );
+    
+    return addSecurityHeaders(response);
   }
 }
 

@@ -1,5 +1,6 @@
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
-import { requireApiAuth } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 /**
@@ -8,11 +9,8 @@ import { NextRequest, NextResponse } from "next/server";
  */
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireApiAuth(request);
-    
-    if (auth.userRole !== 'admin') {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-    }
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
 
     const lists = await sql`
       SELECT 
@@ -22,20 +20,41 @@ export async function GET(request: NextRequest) {
         created_at,
         updated_at
       FROM saved_recipient_lists
-      WHERE created_by = ${auth.userId}::uuid
+      WHERE created_by = ${userId}::uuid
       ORDER BY updated_at DESC
     `;
 
-    return NextResponse.json({
+    logSecurityEvent('saved_recipient_lists_accessed', userId);
+    
+    const response = NextResponse.json({
       success: true,
       data: lists,
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching saved recipient lists:", error);
-    return NextResponse.json({
-      error: "Failed to fetch saved lists"
-    }, { status: 500 });
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('saved_recipient_lists_fetch_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to fetch saved lists",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
+      { status: 500 }
+    );
+    
+    return addSecurityHeaders(response);
   }
 }
 
@@ -45,35 +64,61 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const auth = await requireApiAuth(request);
-    
-    if (auth.userRole !== 'admin') {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-    }
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
 
     const body = await request.json();
     const { name, recipientUserIds } = body;
 
+    // Input validation
+    const validation = validateInput(
+      { name, recipientUserIds },
+      {
+        name: { required: true, type: 'string', minLength: 1, maxLength: 100 },
+        recipientUserIds: { required: true, type: 'array', minLength: 1, maxLength: 1000 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_saved_list_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     if (!name || !name.trim()) {
-      return NextResponse.json({ error: "Name is required" }, { status: 400 });
+      const response = NextResponse.json(
+        { error: "Name is required" },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
 
     if (!Array.isArray(recipientUserIds) || recipientUserIds.length === 0) {
-      return NextResponse.json({ error: "At least one recipient is required" }, { status: 400 });
+      const response = NextResponse.json(
+        { error: "At least one recipient is required" },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
 
     // Check if name already exists for this admin
     const existing = await sql`
       SELECT id FROM saved_recipient_lists
-      WHERE created_by = ${auth.userId}::uuid
+      WHERE created_by = ${userId}::uuid
         AND name = ${name.trim()}
       LIMIT 1
     `;
 
     if (existing.length > 0) {
-      return NextResponse.json({ 
-        error: "A list with this name already exists" 
-      }, { status: 409 });
+      logSecurityEvent('saved_list_duplicate_name', userId, { name: name.trim() });
+      const response = NextResponse.json(
+        { error: "A list with this name already exists" },
+        { status: 409 }
+      );
+      return addSecurityHeaders(response);
     }
 
     // Ensure all IDs are valid UUIDs
@@ -84,40 +129,54 @@ export async function POST(request: NextRequest) {
     });
 
     if (validUserIds.length === 0) {
-      return NextResponse.json({ error: "No valid user IDs provided" }, { status: 400 });
+      const response = NextResponse.json(
+        { error: "No valid user IDs provided" },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
 
-    // Use parameterized query with ARRAY constructor for safety
-    // Build array elements as individual parameters
-    const arrayParams = validUserIds.map((_, idx) => `$${idx + 3}::uuid`).join(', ');
-    const allParams = [name.trim(), auth.userId, ...validUserIds];
-    
-    const [savedList] = await sql.unsafe(
-      `INSERT INTO saved_recipient_lists (name, created_by, recipient_user_ids)
-       VALUES ($1, $2::uuid, ARRAY[${arrayParams}]::uuid[])
-       RETURNING *`,
-      allParams
-    );
+    // Use parameterized query with sql.array() for safety (fixes SQL injection vulnerability)
+    const [savedList] = await sql`
+      INSERT INTO saved_recipient_lists (name, created_by, recipient_user_ids)
+      VALUES (${name.trim()}, ${userId}::uuid, ${sql.array(validUserIds, 'uuid')})
+      RETURNING *
+    `;
 
-    return NextResponse.json({
+    logSecurityEvent('saved_list_created', userId, { 
+      listId: savedList.id,
+      recipientCount: validUserIds.length
+    });
+    
+    const response = NextResponse.json({
       success: true,
       data: savedList,
     });
+    
+    return addSecurityHeaders(response);
 
   } catch (error: any) {
     console.error("Error creating saved recipient list:", error);
-    console.error("Error details:", {
-      message: error?.message,
-      code: error?.code,
-      detail: error?.detail,
-      hint: error?.hint,
-      name: error?.name,
-      recipientUserIds: recipientUserIds?.slice(0, 3), // Log first 3 for debugging
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('saved_list_creation_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
     });
-    return NextResponse.json({
-      error: error?.message || "Failed to create saved list",
-      details: process.env.NODE_ENV === 'development' ? error?.message : undefined,
-    }, { status: 500 });
+    
+    const response = NextResponse.json(
+      { 
+        error: error?.message || "Failed to create saved list",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
+      { status: 500 }
+    );
+    
+    return addSecurityHeaders(response);
   }
 }
 
