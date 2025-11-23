@@ -154,7 +154,7 @@ export async function POST(
       message: `Profile edits locked and status restored to ${finalStatus}` 
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
     
   } catch (error: any) {
     console.error("Error locking carrier profile edits:", error);
