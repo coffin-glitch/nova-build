@@ -429,6 +429,24 @@ export async function PUT(request: NextRequest) {
     const auth = await requireApiCarrier(request);
     const userId = auth.userId;
 
+    // Check rate limit for authenticated write operation
+    const rateLimit = await checkApiRateLimit(request, {
+      userId,
+      routeType: 'authenticated'
+    });
+
+    if (!rateLimit.allowed) {
+      const response = NextResponse.json(
+        {
+          error: 'Rate limit exceeded',
+          message: `Too many requests. Please try again after ${rateLimit.retryAfter} seconds.`,
+          retryAfter: rateLimit.retryAfter
+        },
+        { status: 429 }
+      );
+      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    }
+
     const body = await request.json();
     const { id, triggerConfig, isActive } = body;
 
