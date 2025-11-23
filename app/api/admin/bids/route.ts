@@ -1,5 +1,6 @@
-import sql from "@/lib/db";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
 import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
+import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
 /**
@@ -8,14 +9,43 @@ import { NextRequest, NextResponse } from "next/server";
  */
 export async function GET(req: NextRequest) {
   try {
-    // Use unified auth (supports Supabase and Clerk)
-    await requireApiAdmin(req);
+    const auth = await requireApiAdmin(req);
+    const userId = auth.userId;
 
-  const { searchParams } = new URL(req.url);
-  const limit = Math.min(parseInt(searchParams.get("limit") || "200", 10), 1000);
+    const { searchParams } = new URL(req.url);
+    const limitParam = searchParams.get("limit") || "200";
 
-    const rows = await sql/*sql*/`
-      select
+    // Input validation
+    const validation = validateInput(
+      { limitParam },
+      {
+        limitParam: { type: 'string', pattern: /^\d+$/, maxLength: 10, required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_admin_bids_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
+    const limit = Math.min(parseInt(limitParam, 10), 1000);
+
+    // Validate limit range
+    if (limit < 1 || limit > 1000) {
+      logSecurityEvent('invalid_admin_bids_limit', userId, { limit });
+      const response = NextResponse.json(
+        { error: "Limit must be between 1 and 1000" },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
+    const rows = await sql`
+      SELECT
         bid_number,
         distance_miles,
         pickup_timestamp,
@@ -24,18 +54,44 @@ export async function GET(req: NextRequest) {
         received_at,
         expires_at,
         0 as stop_count
-      from telegram_bids
-      order by received_at desc
-      limit ${limit}
+      FROM telegram_bids
+      ORDER BY received_at DESC
+      LIMIT ${limit}
     `;
-    return NextResponse.json(rows);
+
+    logSecurityEvent('admin_bids_accessed', userId, { limit, count: rows.length });
+    
+    const response = NextResponse.json(rows);
+    
+    return addSecurityHeaders(response);
+    
   } catch (error: any) {
-    if (error.message === "Unauthorized") {
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
       return unauthorizedResponse();
     }
-    if (error.message === "Admin access required" || error.message?.includes("Forbidden")) {
-      return NextResponse.json({ error: error.message || "Admin access required" }, { status: 403 });
+    
+    if (error.message?.includes("Forbidden")) {
+      const response = NextResponse.json(
+        { error: error.message || "Admin access required" },
+        { status: 403 }
+      );
+      return addSecurityHeaders(response);
     }
-    throw error;
+    
+    logSecurityEvent('admin_bids_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to fetch bids",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
+      { status: 500 }
+    );
+    
+    return addSecurityHeaders(response);
   }
 }
