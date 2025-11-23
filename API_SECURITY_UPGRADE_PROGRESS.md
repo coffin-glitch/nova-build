@@ -109,13 +109,14 @@
 - **2025-01-16:** Phase 1.39 - Secure carrier health and AI assistant routes (CRITICAL: Fixed update route function signature)
 - **2025-01-16:** Phase 1.40 - Secure AI assistant knowledge/memory, admin messages, appeal conversations, and bid routes (CRITICAL: Fixed SQL injection in awarded-bids)
 - **2025-01-16:** Phase 1.41 - Secure admin bids route
+- **2025-01-16:** Phase 1.42 - Secure admin bid management routes
 - **2025-01-16:** Database pool and rate limiting analysis completed
 
 ## Routes Secured So Far
 
-**Total: 151 routes (204 endpoints)**
+**Total: 158 routes (211 endpoints)**
 
-**Progress:** 76.6% of total routes (151/197 routes secured)
+**Progress:** 80.2% of total routes (158/197 routes secured)
 1. `/api/bids/route.ts` (GET)
 2. `/api/loads/route.ts` (GET, POST)
 3. `/api/telegram-bids/route.ts` (GET)
@@ -273,6 +274,13 @@
 155. `/api/admin/bid-lifecycle/[bidNumber]/route.ts` (GET)
 156. `/api/admin/bid-load-info/[bidNumber]/route.ts` (GET)
 157. `/api/admin/bids/route.ts` (GET)
+158. `/api/admin/bids/[bidNumber]/route.ts` (DELETE)
+159. `/api/admin/bids/[bidNumber]/details/route.ts` (GET)
+160. `/api/admin/bids/[bidNumber]/remove-award/route.ts` (POST)
+161. `/api/admin/bids/[bidNumber]/re-award/route.ts` (POST)
+162. `/api/admin/bids/[bidNumber]/no-contest/route.ts` (POST)
+163. `/api/admin/bids/[bidNumber]/documents/route.ts` (GET)
+164. `/api/admin/bids-with-carrier-bids/route.ts` (GET)
 
 ## Security Improvements Summary
 
