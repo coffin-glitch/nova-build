@@ -1,3 +1,4 @@
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
 import { forbiddenResponse, requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
@@ -86,10 +87,14 @@ export async function GET(request: NextRequest) {
       ORDER BY c.last_message_at DESC NULLS LAST, c.created_at DESC
     `;
 
-    return NextResponse.json({ 
+    logSecurityEvent('admin_conversations_accessed', userId);
+    
+    const response = NextResponse.json({ 
       ok: true, 
       data: conversations 
     });
+    
+    return addSecurityHeaders(response);
 
   } catch (error: any) {
     console.error("Error fetching admin conversations:", error);
@@ -102,9 +107,18 @@ export async function GET(request: NextRequest) {
       return forbiddenResponse(error.message || "Admin access required");
     }
     
-    return NextResponse.json({ 
-      error: "Failed to fetch conversations" 
+    logSecurityEvent('admin_conversations_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json({ 
+      error: "Failed to fetch conversations",
+      details: process.env.NODE_ENV === 'development' 
+        ? (error instanceof Error ? error.message : 'Unknown error')
+        : undefined
     }, { status: 500 });
+    
+    return addSecurityHeaders(response);
   }
 }
 
@@ -120,10 +134,30 @@ export async function POST(req: NextRequest) {
     // Support both user_id (for any user) and carrier_user_id/admin_user_id (for backward compatibility)
     const targetUserId = user_id || carrier_user_id || admin_user_id;
 
+    // Input validation
+    const validation = validateInput(
+      { user_id, carrier_user_id, admin_user_id },
+      {
+        user_id: { type: 'string', maxLength: 200, required: false },
+        carrier_user_id: { type: 'string', maxLength: 200, required: false },
+        admin_user_id: { type: 'string', maxLength: 200, required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_conversation_create_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     if (!targetUserId) {
-      return NextResponse.json({ 
+      const response = NextResponse.json({ 
         error: "Missing required field: user_id, carrier_user_id, or admin_user_id" 
       }, { status: 400 });
+      return addSecurityHeaders(response);
     }
 
     // CRITICAL: Prevent self-conversations (user chatting with themselves)
@@ -232,17 +266,35 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ 
+    logSecurityEvent('admin_conversation_created', userId, { targetUserId, isTargetAdmin });
+    
+    const response = NextResponse.json({ 
       ok: true, 
       conversation_id: result[0].id,
       message: "Conversation created successfully"
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error creating admin conversation:", error);
-    return NextResponse.json({ 
-      error: "Failed to create conversation" 
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('admin_conversation_create_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json({ 
+      error: "Failed to create conversation",
+      details: process.env.NODE_ENV === 'development' 
+        ? (error instanceof Error ? error.message : 'Unknown error')
+        : undefined
     }, { status: 500 });
+    
+    return addSecurityHeaders(response);
   }
 }
 
@@ -266,21 +318,43 @@ export async function DELETE(request: NextRequest) {
         RETURNING id
       `;
       
-      return NextResponse.json({ 
+      logSecurityEvent('admin_self_conversations_deleted', userId, { deletedCount: result.length });
+      
+      const response = NextResponse.json({ 
         ok: true, 
         message: `Deleted ${result.length} self-conversation(s)`,
         deleted_count: result.length
       });
+      
+      return addSecurityHeaders(response);
     }
     
     // Otherwise, delete a specific conversation
     const body = await request.json();
     const { conversation_id } = body;
+
+    // Input validation
+    const validation = validateInput(
+      { conversation_id },
+      {
+        conversation_id: { type: 'string', pattern: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, maxLength: 50, required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_conversation_delete_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
     
     if (!conversation_id) {
-      return NextResponse.json({ 
+      const response = NextResponse.json({ 
         error: "Missing required field: conversation_id" 
       }, { status: 400 });
+      return addSecurityHeaders(response);
     }
     
     // Verify the user has access to this conversation
@@ -302,15 +376,33 @@ export async function DELETE(request: NextRequest) {
       WHERE id = ${conversation_id}
     `;
     
-    return NextResponse.json({ 
+    logSecurityEvent('admin_conversation_deleted', userId, { conversationId: conversation_id });
+    
+    const response = NextResponse.json({ 
       ok: true, 
       message: "Conversation deleted successfully"
     });
     
-  } catch (error) {
+    return addSecurityHeaders(response);
+    
+  } catch (error: any) {
     console.error("Error deleting conversation:", error);
-    return NextResponse.json({ 
-      error: "Failed to delete conversation" 
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('admin_conversation_delete_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json({ 
+      error: "Failed to delete conversation",
+      details: process.env.NODE_ENV === 'development' 
+        ? (error instanceof Error ? error.message : 'Unknown error')
+        : undefined
     }, { status: 500 });
+    
+    return addSecurityHeaders(response);
   }
 }

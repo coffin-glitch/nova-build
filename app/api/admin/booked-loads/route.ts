@@ -1,7 +1,12 @@
+import { addSecurityHeaders, logSecurityEvent } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
+
     // Get today's date range
     const today = new Date();
     const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
@@ -15,7 +20,9 @@ export async function GET(request: NextRequest) {
     const totalBooked = bookedLoads.length;
     const totalRevenue = bookedLoads.reduce((sum, load) => sum + (load.rate || 0), 0);
 
-    return NextResponse.json({
+    logSecurityEvent('booked_loads_accessed', userId);
+    
+    const response = NextResponse.json({
       success: true,
       data: {
         bookedLoads,
@@ -25,12 +32,31 @@ export async function GET(request: NextRequest) {
         }
       }
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching booked loads:", error);
-    return NextResponse.json(
-      { success: false, error: "Failed to fetch booked loads" },
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('booked_loads_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        success: false, 
+        error: "Failed to fetch booked loads",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
