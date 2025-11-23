@@ -1,5 +1,6 @@
+import { addSecurityHeaders, logSecurityEvent } from "@/lib/api-security";
+import { requireApiAuth, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
-import { requireApiAuth } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
