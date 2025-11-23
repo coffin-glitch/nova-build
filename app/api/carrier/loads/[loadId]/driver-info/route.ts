@@ -1,5 +1,6 @@
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiCarrier, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
-import { requireApiCarrier } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 // Format phone number to 10 digits only
@@ -22,6 +23,23 @@ export async function GET(
     const userId = authResult.userId;
 
     const { loadId } = await params;
+
+    // Input validation
+    const validation = validateInput(
+      { loadId },
+      {
+        loadId: { required: true, type: 'string', maxLength: 100 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_load_driver_info_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
 
     // Handle both integer loadId and UUID loadOfferId
     let loadOfferId = loadId;
@@ -59,20 +77,45 @@ export async function GET(
     `;
 
     if (driverInfo.length === 0) {
-      return NextResponse.json({ error: "Load offer not found" }, { status: 404 });
+      logSecurityEvent('load_driver_info_not_found', userId, { loadId });
+      const response = NextResponse.json(
+        { error: "Load offer not found" },
+        { status: 404 }
+      );
+      return addSecurityHeaders(response);
     }
 
-    return NextResponse.json({
+    logSecurityEvent('load_driver_info_accessed', userId, { loadId });
+    
+    const response = NextResponse.json({
       ok: true,
       driver_info: driverInfo[0]
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching driver information:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch driver information" },
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('load_driver_info_fetch_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to fetch driver information",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 
@@ -99,25 +142,57 @@ export async function POST(
       location
     } = await request.json();
 
+    // Input validation
+    const validation = validateInput(
+      { loadId, driver_name, driver_phone, driver_email, driver_license_number, driver_license_state, truck_number, trailer_number, notes, location },
+      {
+        loadId: { required: true, type: 'string', maxLength: 100 },
+        driver_name: { required: true, type: 'string', minLength: 1, maxLength: 100 },
+        driver_phone: { required: true, type: 'string', pattern: /^[\d\s\-\(\)]+$/, maxLength: 20 },
+        driver_email: { type: 'string', pattern: /^[^\s@]+@[^\s@]+\.[^\s@]+$/, maxLength: 255, required: false },
+        driver_license_number: { type: 'string', maxLength: 50, required: false },
+        driver_license_state: { type: 'string', pattern: /^[A-Z]{2}$/, maxLength: 2, required: false },
+        truck_number: { type: 'string', maxLength: 50, required: false },
+        trailer_number: { type: 'string', maxLength: 50, required: false },
+        notes: { type: 'string', maxLength: 1000, required: false },
+        location: { type: 'string', maxLength: 200, required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_load_driver_info_update_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     // Validate required fields
     if (!driver_name?.trim()) {
-      return NextResponse.json({ 
-        error: "Driver name is required" 
-      }, { status: 400 });
+      const response = NextResponse.json(
+        { error: "Driver name is required" },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
 
     if (!driver_phone?.trim()) {
-      return NextResponse.json({ 
-        error: "Driver phone number is required" 
-      }, { status: 400 });
+      const response = NextResponse.json(
+        { error: "Driver phone number is required" },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
 
     // Format and validate phone number
     const formattedPhone = formatPhoneNumber(driver_phone);
     if (!formattedPhone) {
-      return NextResponse.json({ 
-        error: "Driver phone number must be exactly 10 digits" 
-      }, { status: 400 });
+      const response = NextResponse.json(
+        { error: "Driver phone number must be exactly 10 digits" },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
 
     // Handle both integer loadId and UUID loadOfferId
@@ -148,7 +223,12 @@ export async function POST(
     `;
 
     if (loadOffer.length === 0) {
-      return NextResponse.json({ error: "Load offer not found" }, { status: 404 });
+      logSecurityEvent('load_offer_not_found_for_driver_info', userId, { loadId });
+      const response = NextResponse.json(
+        { error: "Load offer not found" },
+        { status: 404 }
+      );
+      return addSecurityHeaders(response);
     }
 
     const currentStatus = loadOffer[0].status;
@@ -203,7 +283,9 @@ export async function POST(
       ) RETURNING id, timestamp
     `;
 
-    return NextResponse.json({
+    logSecurityEvent('load_driver_info_updated', userId, { loadId, eventId: eventResult[0].id });
+    
+    const response = NextResponse.json({
       ok: true,
       data: {
         eventId: eventResult[0].id,
@@ -211,12 +293,30 @@ export async function POST(
         message: "Driver information updated successfully"
       }
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error updating driver information:", error);
-    return NextResponse.json(
-      { error: "Failed to update driver information" },
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('load_driver_info_update_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to update driver information",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
