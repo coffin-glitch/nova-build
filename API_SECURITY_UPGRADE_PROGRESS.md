@@ -108,13 +108,14 @@
 - **2025-01-16:** Phase 1.38 - Secure Highway scraping, cookies, and carrier health routes
 - **2025-01-16:** Phase 1.39 - Secure carrier health and AI assistant routes (CRITICAL: Fixed update route function signature)
 - **2025-01-16:** Phase 1.40 - Secure AI assistant knowledge/memory, admin messages, appeal conversations, and bid routes (CRITICAL: Fixed SQL injection in awarded-bids)
+- **2025-01-16:** Phase 1.41 - Secure admin bids route
 - **2025-01-16:** Database pool and rate limiting analysis completed
 
 ## Routes Secured So Far
 
-**Total: 150 routes (203 endpoints)**
+**Total: 151 routes (204 endpoints)**
 
-**Progress:** 76.1% of total routes (150/197 routes secured)
+**Progress:** 76.6% of total routes (151/197 routes secured)
 1. `/api/bids/route.ts` (GET)
 2. `/api/loads/route.ts` (GET, POST)
 3. `/api/telegram-bids/route.ts` (GET)
@@ -271,6 +272,7 @@
 154. `/api/admin/awarded-bids/route.ts` (GET) - CRITICAL: Fixed SQL injection
 155. `/api/admin/bid-lifecycle/[bidNumber]/route.ts` (GET)
 156. `/api/admin/bid-load-info/[bidNumber]/route.ts` (GET)
+157. `/api/admin/bids/route.ts` (GET)
 
 ## Security Improvements Summary
 
