@@ -97,13 +97,14 @@
 - **2025-01-16:** Phase 1.27 - Secure archive-bids/history route (Fixed SQL injection)
 - **2025-01-16:** Phase 1.28 - Secure remaining archive routes (Fixed SQL injection)
 - **2025-01-16:** Phase 1.29 - Secure users batch, carrier-bids, bid-messages, and MC access control routes
+- **2025-01-16:** Phase 1.30 - Secure archive details, end-of-day, auto-archiving status, and admin analytics routes
 - **2025-01-16:** Database pool and rate limiting analysis completed
 
 ## Routes Secured So Far
 
-**Total: 97 routes (142 endpoints)**
+**Total: 102 routes (148 endpoints)**
 
-**Progress:** 49.2% of total routes (97/197 routes secured)
+**Progress:** 51.8% of total routes (102/197 routes secured)
 1. `/api/bids/route.ts` (GET)
 2. `/api/loads/route.ts` (GET, POST)
 3. `/api/telegram-bids/route.ts` (GET)
@@ -207,6 +208,11 @@
 101. `/api/carrier-bids/[bidNumber]/route.ts` (DELETE)
 102. `/api/bid-messages/[bidNumber]/route.ts` (GET, POST)
 103. `/api/admin/mc-access-control/route.ts` (GET, POST)
+104. `/api/archive-bids/end-of-day/route.ts` (POST)
+105. `/api/archive-bids/details/route.ts` (GET)
+106. `/api/archive-bids/auto-archiving-status/route.ts` (GET)
+107. `/api/admin/bid-analytics/heat-map/route.ts` (GET)
+108. `/api/admin/carrier-leaderboard-grouped/route.ts` (GET)
 
 ## Security Improvements Summary
 
