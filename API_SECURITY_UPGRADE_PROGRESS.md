@@ -1,7 +1,7 @@
 # API Security Upgrade Progress
 
 **Last Updated:** 2025-01-16  
-**Status:** Phase 1 Nearly Complete (96.4%)
+**Status:** Phase 1 Nearly Complete (98.5%)
 
 ---
 
@@ -116,13 +116,14 @@
 - **2025-01-16:** Phase 1.46 - Secure carriers list, security dashboard, unlock routes, and conversations
 - **2025-01-16:** Phase 1.47 - Secure appeal conversation routes
 - **2025-01-16:** Phase 1.48 - Secure admin loads and EAX routes
+- **2025-01-16:** Phase 1.49 - Secure remaining dev-admin routes (CRITICAL: assign-role was unprotected!)
 - **2025-01-16:** Database pool and rate limiting analysis completed
 
 ## Routes Secured So Far
 
-**Total: 190 routes (246 endpoints)**
+**Total: 194 routes (250 endpoints)**
 
-**Progress:** 96.4% of total routes (190/197 routes secured)
+**Progress:** 98.5% of total routes (194/197 routes secured)
 1. `/api/bids/route.ts` (GET)
 2. `/api/loads/route.ts` (GET, POST)
 3. `/api/telegram-bids/route.ts` (GET)
@@ -319,6 +320,10 @@
 194. `/api/admin/uploads/eax-xlsx/route.ts` (POST)
 195. `/api/admin/eax/import/route.ts` (POST)
 196. `/api/admin/eax/export/route.ts` (POST)
+197. `/api/dev-admin/assign-role/route.ts` (POST) - **CRITICAL: Was unprotected!**
+198. `/api/dev-admin/db-health/route.ts` (GET)
+199. `/api/dev-admin/test-key/route.ts` (GET) - **CRITICAL: Removed key exposure**
+200. `/api/telegram-forwarder/stream/route.ts` (GET) - Enhanced security headers
 
 ## Security Improvements Summary
 
