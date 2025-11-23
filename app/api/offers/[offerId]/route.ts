@@ -244,7 +244,7 @@ export async function PUT(
       offer: updateResult[0]
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
 
   } catch (error: any) {
     console.error("Error managing offer:", error);
