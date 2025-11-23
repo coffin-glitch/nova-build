@@ -1,4 +1,5 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -7,14 +8,34 @@ export async function GET(
   { params }: { params: Promise<{ bidNumber: string }> }
 ) {
   try {
-    await requireApiAdmin(request);
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
+    
     const { bidNumber } = await params;
 
+    // Input validation
+    const validation = validateInput(
+      { bidNumber },
+      {
+        bidNumber: { required: true, type: 'string', pattern: /^[A-Z0-9\-_]+$/, maxLength: 100 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_bid_documents_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     if (!bidNumber) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: "Bid number is required" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Get all documents for this bid with carrier information
@@ -30,21 +51,38 @@ export async function GET(
       ORDER BY bd.uploaded_at DESC
     `;
 
-    return NextResponse.json({
+    logSecurityEvent('bid_documents_accessed', userId, { bidNumber, documentCount: documents.length });
+    
+    const response = NextResponse.json({
       success: true,
       data: documents
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching documents:", error);
-    return NextResponse.json(
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('bid_documents_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
       {
         success: false,
         error: "Failed to fetch documents",
-        details: error instanceof Error ? error.message : 'Unknown error'
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
       },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 

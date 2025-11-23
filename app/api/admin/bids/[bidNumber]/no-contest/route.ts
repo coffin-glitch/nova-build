@@ -1,5 +1,6 @@
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
 import { markBidAsNoContest } from '@/lib/auctions';
-import { requireApiAdmin } from '@/lib/auth-api-helper';
+import { requireApiAdmin, unauthorizedResponse } from '@/lib/auth-api-helper';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(
@@ -15,25 +16,61 @@ export async function POST(
     const body = await request.json();
     const { admin_notes } = body;
 
+    // Input validation
+    const validation = validateInput(
+      { bidNumber, admin_notes },
+      {
+        bidNumber: { required: true, type: 'string', pattern: /^[A-Z0-9\-_]+$/, maxLength: 100 },
+        admin_notes: { type: 'string', maxLength: 2000, required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_no_contest_input', userId, { errors: validation.errors, bidNumber });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     await markBidAsNoContest({
       bid_number: bidNumber,
       awarded_by: userId,
       admin_notes: admin_notes || undefined,
     });
 
-    return NextResponse.json({ 
+    logSecurityEvent('bid_marked_no_contest', userId, { bidNumber });
+    
+    const response = NextResponse.json({ 
       success: true,
       message: `Bid #${bidNumber} marked as "No Contest". All carriers have been notified.`
     });
+    
+    return addSecurityHeaders(response);
+    
   } catch (error: any) {
     console.error('Error marking bid as no contest:', error);
-    return NextResponse.json(
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('no_contest_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
       { 
-        error: error.message || 'Failed to mark bid as no contest',
-        details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        error: "Failed to mark bid as no contest",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error.message || 'Failed to mark bid as no contest')
+          : undefined
       },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 

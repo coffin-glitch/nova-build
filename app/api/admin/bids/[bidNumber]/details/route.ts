@@ -1,6 +1,7 @@
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 import sql from "@/lib/db";
-import { requireApiAdmin } from "@/lib/auth-api-helper";
 
 /**
  * API endpoint to fetch a single bid's details by bid_number
@@ -11,15 +12,34 @@ export async function GET(
   { params }: { params: Promise<{ bidNumber: string }> }
 ) {
   try {
-    await requireApiAdmin(request);
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
     
     const { bidNumber } = await params;
 
+    // Input validation
+    const validation = validateInput(
+      { bidNumber },
+      {
+        bidNumber: { required: true, type: 'string', pattern: /^[A-Z0-9\-_]+$/, maxLength: 100 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_bid_details_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     if (!bidNumber) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: "Bid number is required" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Query telegram_bids directly by exact bid_number match
@@ -88,7 +108,9 @@ export async function GET(
       }
     }
 
-    return NextResponse.json({
+    logSecurityEvent('bid_details_accessed', userId, { bidNumber });
+    
+    const response = NextResponse.json({
       ok: true,
       data: {
         ...bidData,
@@ -97,12 +119,31 @@ export async function GET(
         stops_count: normalizedStops ? normalizedStops.length : 0,
       }
     });
+    
+    return addSecurityHeaders(response);
+    
   } catch (error: any) {
     console.error("Error fetching bid details:", error);
-    return NextResponse.json(
-      { error: error.message || "Failed to fetch bid details" },
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('bid_details_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to fetch bid details",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error.message || "Failed to fetch bid details")
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 

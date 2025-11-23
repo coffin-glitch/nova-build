@@ -1,3 +1,5 @@
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from '@/lib/db';
 import { NextRequest, NextResponse } from "next/server";
 
@@ -6,13 +8,34 @@ export async function DELETE(
   { params }: { params: Promise<{ bidNumber: string }> }
 ) {
   try {
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
+
     const { bidNumber } = await params;
 
+    // Input validation
+    const validation = validateInput(
+      { bidNumber },
+      {
+        bidNumber: { required: true, type: 'string', pattern: /^[A-Z0-9\-_]+$/, maxLength: 100 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_bid_delete_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     if (!bidNumber) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: "Bid number is required" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     // First delete carrier bids for this bid number
@@ -34,19 +57,36 @@ export async function DELETE(
       );
     }
 
-    return NextResponse.json({
+    logSecurityEvent('bid_deleted', userId, { bidNumber });
+    
+    const response = NextResponse.json({
       success: true,
       message: `Bid ${bidNumber} deleted successfully`
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Delete bid error:", error);
-    return NextResponse.json(
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('bid_delete_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
       {
         error: "Failed to delete bid",
-        details: error instanceof Error ? error.message : 'Unknown error'
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
       },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }

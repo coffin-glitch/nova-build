@@ -1,5 +1,6 @@
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
 import { reAwardAuction } from '@/lib/auctions';
-import { requireApiAdmin } from '@/lib/auth-api-helper';
+import { requireApiAdmin, unauthorizedResponse } from '@/lib/auth-api-helper';
 import sql from '@/lib/db';
 import { NextRequest, NextResponse } from "next/server";
 
@@ -16,18 +17,40 @@ export async function POST(
     const body = await request.json();
     const { winnerUserId, adminNotes, marginCents } = body;
 
+    // Input validation
+    const validation = validateInput(
+      { bidNumber, winnerUserId, adminNotes, marginCents },
+      {
+        bidNumber: { required: true, type: 'string', pattern: /^[A-Z0-9\-_]+$/, maxLength: 100 },
+        winnerUserId: { required: true, type: 'string', minLength: 1, maxLength: 200 },
+        adminNotes: { type: 'string', maxLength: 2000, required: false },
+        marginCents: { type: 'number', min: 0, max: 100000000, required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_re_award_input', userId, { errors: validation.errors, bidNumber });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     if (!bidNumber) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: "Bid number is required" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     if (!winnerUserId) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: "Winner user ID is required" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Re-award the auction using the reAwardAuction function
@@ -95,24 +118,45 @@ export async function POST(
     const winnerAmountDollars = (awardDetails[0]?.winner_amount_cents / 100).toFixed(2);
     const winnerName = awardDetails[0]?.winner_legal_name || 'Unknown Carrier';
 
-    return NextResponse.json({
+    logSecurityEvent('bid_re_awarded', userId, { 
+      bidNumber, 
+      winnerUserId,
+      winnerAmount: winnerAmountDollars
+    });
+    
+    const response = NextResponse.json({
       success: true,
       data: responseData,
       winnerName: winnerName,
       winnerAmount: winnerAmountDollars,
       message: `Auction ${bidNumber} re-awarded successfully to ${winnerName}`
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Re-award bid error:", error);
-    return NextResponse.json(
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('re_award_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
       {
         success: false,
         error: "Failed to re-award bid",
-        details: error instanceof Error ? error.message : 'Unknown error'
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
       },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 
