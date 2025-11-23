@@ -1,3 +1,5 @@
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -6,24 +8,48 @@ export async function PATCH(
   { params }: { params: Promise<{ rrNumber: string }> }
 ) {
   try {
+    // Require admin authentication for load updates
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
+    
     const { rrNumber } = await params;
     const body = await request.json();
     const { status } = body;
 
+    // Input validation
+    const validation = validateInput(
+      { rrNumber, status },
+      {
+        rrNumber: { required: true, type: 'string', pattern: /^[A-Z0-9\-_]+$/, maxLength: 100 },
+        status: { required: true, type: 'string', enum: ['active', 'published', 'completed', 'cancelled', 'archived'] }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_load_update_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     if (!status) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: "Status is required" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Validate status
     const validStatuses = ["active", "published", "completed", "cancelled", "archived"];
     if (!validStatuses.includes(status)) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: "Invalid status. Must be one of: " + validStatuses.join(", ") },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Update the load status
@@ -37,25 +63,46 @@ export async function PATCH(
     `;
 
     if (!Array.isArray(result) || result.length === 0) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: "Load not found" },
         { status: 404 }
       );
+      return addSecurityHeaders(response);
     }
 
     const updatedLoad = result[0];
 
-    return NextResponse.json({
+    logSecurityEvent('load_status_updated', userId, { rrNumber, newStatus: status });
+    
+    const response = NextResponse.json({
       success: true,
       load: updatedLoad
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error updating load:", error);
-    return NextResponse.json(
-      { error: "Failed to update load", details: error instanceof Error ? error.message : 'Unknown error' },
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('load_update_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to update load",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 
@@ -64,7 +111,28 @@ export async function GET(
   { params }: { params: Promise<{ rrNumber: string }> }
 ) {
   try {
+    // Require authentication for load details
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
+    
     const { rrNumber } = await params;
+
+    // Input validation
+    const validation = validateInput(
+      { rrNumber },
+      {
+        rrNumber: { required: true, type: 'string', pattern: /^[A-Z0-9\-_]+$/, maxLength: 100 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_load_details_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
 
     const result = await sql`
       SELECT 

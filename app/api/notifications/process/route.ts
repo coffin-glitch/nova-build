@@ -1,3 +1,5 @@
+import { addSecurityHeaders, logSecurityEvent } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from '@/lib/db';
 import { notificationQueue, urgentNotificationQueue } from '@/lib/notification-queue';
 import { NextRequest, NextResponse } from "next/server";
@@ -6,6 +8,10 @@ import { NextRequest, NextResponse } from "next/server";
 // Actual processing happens in worker processes
 export async function POST(request: NextRequest) {
   try {
+    // Require admin authentication for notification processing
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
+    
     console.log("Starting notification job enqueueing...");
     
     // Get all active triggers grouped by user
@@ -64,19 +70,42 @@ export async function POST(request: NextRequest) {
 
     console.log(`Notification job enqueueing completed. Enqueued ${enqueuedCount} user jobs.`);
 
-    return NextResponse.json({
+    logSecurityEvent('notification_jobs_enqueued', userId, { 
+      usersProcessed: enqueuedCount,
+      totalTriggers: allTriggers.length
+    });
+    
+    const response = NextResponse.json({
       ok: true,
       message: `Enqueued ${enqueuedCount} notification jobs`,
       usersProcessed: enqueuedCount,
       totalTriggers: allTriggers.length,
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error enqueueing notification jobs:", error);
-    return NextResponse.json(
-      { error: "Failed to enqueue notification jobs", details: error instanceof Error ? error.message : 'Unknown error' },
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('notification_jobs_enqueue_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to enqueue notification jobs",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 

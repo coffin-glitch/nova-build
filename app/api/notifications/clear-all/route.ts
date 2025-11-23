@@ -14,16 +14,37 @@ export async function POST(request: NextRequest) {
       WHERE user_id = ${userId}
     `;
 
-    return NextResponse.json({
+    logSecurityEvent('notifications_cleared', userId);
+    
+    const response = NextResponse.json({
       success: true,
       message: "All notifications cleared"
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error clearing notifications:", error);
-    return NextResponse.json({
-      error: "Failed to clear notifications"
-    }, { status: 500 });
+    
+    if (error.message === "Unauthorized" || error.message === "Authentication required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('notifications_clear_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to clear notifications",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
+      { status: 500 }
+    );
+    
+    return addSecurityHeaders(response);
   }
 }
 

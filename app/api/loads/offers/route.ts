@@ -1,4 +1,5 @@
-import { requireApiCarrier } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiCarrier, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -6,49 +7,163 @@ import { NextRequest, NextResponse } from "next/server";
 export async function GET(
   request: NextRequest
 ) {
-  const { searchParams } = new URL(request.url);
-  const rr = searchParams.get('rrNumber');
-  
-  if (!rr) {
-    return NextResponse.json({ error: "rrNumber parameter is required" }, { status: 400 });
-  }
+  try {
+    // Require authentication for viewing offers
+    const auth = await requireApiCarrier(request);
+    const userId = auth.userId;
+    
+    const { searchParams } = new URL(request.url);
+    const rr = searchParams.get('rrNumber');
+    
+    // Input validation
+    const validation = validateInput(
+      { rr },
+      {
+        rr: { required: true, type: 'string', pattern: /^[A-Z0-9\-_]+$/, maxLength: 100 }
+      }
+    );
 
-  // Get offers (Supabase-only)
-  const offers = await sql`
-    select o.id, o.amount_cents, o.note, o.created_at, o.supabase_user_id as user_id
-      from load_offers o
-     where o.load_rr_number = ${rr}
-     order by o.offer_amount asc, o.created_at asc
-     limit 500
-  `;
-  return NextResponse.json({ offers });
+    if (!validation.valid) {
+      logSecurityEvent('invalid_load_offers_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+    
+    if (!rr) {
+      const response = NextResponse.json(
+        { error: "rrNumber parameter is required" },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
+    // Get offers (Supabase-only)
+    const offers = await sql`
+      SELECT o.id, o.amount_cents, o.note, o.created_at, o.supabase_user_id as user_id
+      FROM load_offers o
+      WHERE o.load_rr_number = ${rr}
+      ORDER BY o.offer_amount ASC, o.created_at ASC
+      LIMIT 500
+    `;
+    
+    const response = NextResponse.json({ offers });
+    return addSecurityHeaders(response);
+    
+  } catch (error: any) {
+    console.error("Error fetching load offers:", error);
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('load_offers_fetch_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        offers: [],
+        error: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : "Failed to fetch offers"
+      },
+      { status: 500 }
+    );
+    
+    return addSecurityHeaders(response);
+  }
 }
 
 // POST place offer
 export async function POST(
   request: NextRequest
 ) {
-  // Ensure user is carrier (Supabase-only)
-  const auth = await requireApiCarrier(request);
-  const userId = auth.userId;
-  
-  const { searchParams } = new URL(request.url);
-  const rr = searchParams.get('rrNumber');
-  
-  if (!rr) return new NextResponse("Bad request", { status: 400 });
+  try {
+    // Ensure user is carrier (Supabase-only)
+    const auth = await requireApiCarrier(request);
+    const userId = auth.userId;
+    
+    const { searchParams } = new URL(request.url);
+    const rr = searchParams.get('rrNumber');
+    
+    const body = await request.json().catch(()=>({}));
+    const amount = Number(body.amount);
+    const note = (body.note || "").toString().slice(0, 500);
+    
+    // Input validation
+    const validation = validateInput(
+      { rr, amount, note },
+      {
+        rr: { required: true, type: 'string', pattern: /^[A-Z0-9\-_]+$/, maxLength: 100 },
+        amount: { required: true, type: 'number', min: 0.01, max: 1000000 },
+        note: { type: 'string', maxLength: 500, required: false }
+      }
+    );
 
-  const body = await request.json().catch(()=>({}));
-  const amount = Number(body.amount);
-  const note = (body.note || "").toString().slice(0, 500);
-  if (!Number.isFinite(amount) || amount <= 0) {
-    return new NextResponse("Invalid amount", { status: 400 });
+    if (!validation.valid) {
+      logSecurityEvent('invalid_load_offer_create_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+    
+    if (!rr) {
+      const response = NextResponse.json(
+        { error: "rrNumber parameter is required" },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      const response = NextResponse.json(
+        { error: "Invalid amount" },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
+    // Insert offer (Supabase-only)
+    const inserted = await sql`
+      INSERT INTO load_offers (load_rr_number, supabase_user_id, offer_amount, notes)
+      VALUES (${rr}, ${userId}, ${Math.round(amount * 100)}, ${note})
+      RETURNING id, load_rr_number, supabase_user_id as user_id, offer_amount as amount_cents, notes as note, created_at
+    `;
+    
+    logSecurityEvent('load_offer_created', userId, { 
+      rrNumber: rr,
+      amount: Math.round(amount * 100)
+    });
+    
+    const response = NextResponse.json(inserted[0], { status: 201 });
+    return addSecurityHeaders(response);
+    
+  } catch (error: any) {
+    console.error("Error creating load offer:", error);
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('load_offer_create_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to create offer",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
+      { status: 500 }
+    );
+    
+    return addSecurityHeaders(response);
   }
-
-  // Insert offer (Supabase-only)
-  const inserted = await sql`
-    insert into load_offers (load_rr_number, supabase_user_id, offer_amount, notes)
-    values (${rr}, ${userId}, ${Math.round(amount * 100)}, ${note})
-    returning id, load_rr_number, supabase_user_id as user_id, offer_amount as amount_cents, notes as note, created_at
-  `;
-  return NextResponse.json(inserted[0], { status: 201 });
 }
