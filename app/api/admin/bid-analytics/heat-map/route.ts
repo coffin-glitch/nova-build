@@ -1,4 +1,5 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { parseAddress, extractCityStateForMatching } from "@/lib/format";
@@ -9,12 +10,32 @@ import { parseAddress, extractCityStateForMatching } from "@/lib/format";
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireApiAdmin(request);
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
     
     const { searchParams } = new URL(request.url);
     const timeframe = searchParams.get("timeframe") || "all"; // Default to "all" to show all bids
     const startDate = searchParams.get("startDate");
     const endDate = searchParams.get("endDate");
+
+    // Input validation
+    const validation = validateInput(
+      { timeframe, startDate, endDate },
+      {
+        timeframe: { type: 'string', enum: ['all', '7', '30', '90', '365'], required: false },
+        startDate: { type: 'string', pattern: /^\d{4}-\d{2}-\d{2}$/, maxLength: 10, required: false },
+        endDate: { type: 'string', pattern: /^\d{4}-\d{2}-\d{2}$/, maxLength: 10, required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_heat_map_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
     
     // Calculate date threshold - support both timeframe and custom date range
     let dateThreshold: string | null = null;
@@ -758,7 +779,13 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({
+    logSecurityEvent('heat_map_analytics_accessed', userId, { 
+      timeframe,
+      startDate: startDate || null,
+      endDate: endDate || null
+    });
+    
+    const response = NextResponse.json({
       success: true,
       data: {
         stateStats,
@@ -777,14 +804,30 @@ export async function GET(request: NextRequest) {
         },
       },
     });
+    
+    return addSecurityHeaders(response);
+    
   } catch (error: any) {
     console.error("Error fetching heat map analytics:", error);
-    return NextResponse.json(
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('heat_map_analytics_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
       {
         success: false,
-        error: error.message || "Failed to fetch heat map analytics",
+        error: process.env.NODE_ENV === 'development' 
+          ? (error.message || "Failed to fetch heat map analytics")
+          : "Failed to fetch heat map analytics",
       },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }

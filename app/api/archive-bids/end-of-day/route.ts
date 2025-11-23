@@ -1,3 +1,5 @@
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from '@/lib/db';
 import { NextRequest, NextResponse } from "next/server";
 
@@ -41,8 +43,31 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
   try {
+    // Require admin authentication for archive operations
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
+    
     const body = await request.json().catch(() => ({}));
     const targetDate = body?.targetDate;
+
+    // Input validation (targetDate is optional)
+    if (targetDate) {
+      const validation = validateInput(
+        { targetDate },
+        {
+          targetDate: { type: 'string', pattern: /^\d{4}-\d{2}-\d{2}$/, maxLength: 10, required: false }
+        }
+      );
+
+      if (!validation.valid) {
+        logSecurityEvent('invalid_end_of_day_archive_input', userId, { errors: validation.errors });
+        const response = NextResponse.json(
+          { error: `Invalid input: ${validation.errors.join(', ')}` },
+          { status: 400 }
+        );
+        return addSecurityHeaders(response);
+      }
+    }
 
     let result;
     let updatedCount = 0;
@@ -92,19 +117,43 @@ export async function POST(request: NextRequest) {
       updatedCount = result[0]?.updated_count || 0;
     }
     
-    return NextResponse.json({
+    logSecurityEvent('end_of_day_archive_executed', userId, { 
+      targetDate: targetDate || 'default',
+      updatedCount
+    });
+    
+    const response = NextResponse.json({
       ok: true,
       updated: updatedCount,
       message: targetDate 
         ? `Successfully archived ${updatedCount} bids for ${targetDate}`
         : `Successfully set archived_at for ${updatedCount} bids`
     });
-  } catch (error) {
+    
+    return addSecurityHeaders(response);
+    
+  } catch (error: any) {
     console.error("End of day archiving error:", error);
-    return NextResponse.json(
-      { error: "Failed to run end of day archiving", details: error instanceof Error ? error.message : 'Unknown error' },
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('end_of_day_archive_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to run end of day archiving",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 

@@ -1,16 +1,40 @@
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from '@/lib/db';
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
+    // Require admin authentication for archive details
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
+    
     const { searchParams } = new URL(request.url);
     const bidNumber = searchParams.get("bidNumber");
     
+    // Input validation
+    const validation = validateInput(
+      { bidNumber },
+      {
+        bidNumber: { required: true, type: 'string', pattern: /^[A-Z0-9\-_]+$/, maxLength: 100 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_archive_details_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+    
     if (!bidNumber) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: "Bid number is required" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Get archived bid details
@@ -28,10 +52,12 @@ export async function GET(request: NextRequest) {
     `;
 
     if (archivedBid.length === 0) {
-      return NextResponse.json(
+      logSecurityEvent('archive_bid_details_not_found', userId, { bidNumber });
+      const response = NextResponse.json(
         { error: "Archived bid not found" },
         { status: 404 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Get all carrier bids for this bid number
@@ -94,7 +120,9 @@ export async function GET(request: NextRequest) {
       ORDER BY event_time ASC
     `;
 
-    return NextResponse.json({
+    logSecurityEvent('archive_bid_details_accessed', userId, { bidNumber });
+    
+    const response = NextResponse.json({
       ok: true,
       data: {
         archivedBid: archivedBid[0],
@@ -104,13 +132,31 @@ export async function GET(request: NextRequest) {
         timelineEvents: timelineEvents || []
       }
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching bid history:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch bid history" },
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('archive_bid_details_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to fetch bid history",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 

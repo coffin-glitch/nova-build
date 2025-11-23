@@ -1,4 +1,5 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -13,7 +14,8 @@ g.__grouped_leader_cache = g.__grouped_leader_cache || new Map<string, { t: numb
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireApiAdmin(request);
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
 
     const { searchParams } = new URL(request.url);
     const timeframe = searchParams.get("timeframe") || "30";
@@ -24,6 +26,29 @@ export async function GET(request: NextRequest) {
     const sortBy = searchParams.get("sortBy") || "total_bids";
     const groupBy = searchParams.get("groupBy") || "mc"; // "mc" or "dot"
     const minCarriers = parseInt(searchParams.get("minCarriers") || "1");
+
+    // Input validation
+    const validation = validateInput(
+      { timeframe, startDateParam, endDateParam, limitParam, sortBy, groupBy, minCarriers },
+      {
+        timeframe: { type: 'string', maxLength: 20, required: false },
+        startDateParam: { type: 'string', pattern: /^\d{4}-\d{2}-\d{2}$/, maxLength: 10, required: false },
+        endDateParam: { type: 'string', pattern: /^\d{4}-\d{2}-\d{2}$/, maxLength: 10, required: false },
+        limitParam: { type: 'string', maxLength: 10, required: false },
+        sortBy: { type: 'string', enum: ['total_bids', 'win_rate', 'total_revenue', 'carriers_count', 'avg_bid'], required: false },
+        groupBy: { type: 'string', enum: ['mc', 'dot'], required: false },
+        minCarriers: { type: 'number', min: 1, max: 100, required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_leaderboard_grouped_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { success: false, error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
 
     // Calculate date range - support custom date range, "today", "all", or numeric days
     let startDate: Date | null = null;
@@ -365,7 +390,14 @@ export async function GET(request: NextRequest) {
       })
     );
 
-    return NextResponse.json({
+    logSecurityEvent('carrier_leaderboard_grouped_accessed', userId, { 
+      groupBy,
+      sortBy,
+      limit,
+      timeframe: timeframe || 'custom'
+    });
+    
+    const response = NextResponse.json({
       success: true,
       data: {
         groups: groupsWithCarriers,
@@ -379,34 +411,32 @@ export async function GET(request: NextRequest) {
         limit: limit
       }
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Carrier leaderboard grouped API error:", error);
     
-    if (error instanceof Error) {
-      if (error.message === "Unauthorized" || error.message.includes("Unauthorized")) {
-        return NextResponse.json(
-          { success: false, error: "Authentication required", details: error.message },
-          { status: 401 }
-        );
-      }
-      
-      if (error.message === "Admin access required" || error.message.includes("Admin access")) {
-        return NextResponse.json(
-          { success: false, error: "Admin access required", details: error.message },
-          { status: 403 }
-        );
-      }
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
     }
     
-    return NextResponse.json(
+    logSecurityEvent('carrier_leaderboard_grouped_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
       {
         success: false,
         error: "Failed to fetch grouped leaderboard",
-        details: error instanceof Error ? error.message : 'Unknown error'
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
       },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 
