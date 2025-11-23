@@ -1,4 +1,5 @@
-import { requireApiAdmin, requireApiCarrier } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, requireApiCarrier, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -25,6 +26,23 @@ export async function GET(
     const { offerId } = await params;
     const id = offerId;
 
+    // Input validation
+    const validation = validateInput(
+      { offerId },
+      {
+        offerId: { required: true, type: 'string', maxLength: 50 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_offer_messages_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     // Get offer messages
     const messages = await sql`
       SELECT 
@@ -40,17 +58,35 @@ export async function GET(
       ORDER BY om.created_at ASC
     `;
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       ok: true,
       data: messages
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching offer messages:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch messages" },
+    
+    if (error.message === "Unauthorized" || error.message === "Authentication required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('offer_messages_fetch_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to fetch messages",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 
@@ -76,6 +112,24 @@ export async function POST(
 
     const { offerId } = await params;
     const id = offerId;
+    
+    // Input validation for offerId
+    const offerIdValidation = validateInput(
+      { offerId },
+      {
+        offerId: { required: true, type: 'string', maxLength: 50 }
+      }
+    );
+
+    if (!offerIdValidation.valid) {
+      logSecurityEvent('invalid_offer_message_create_input', userId, { errors: offerIdValidation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${offerIdValidation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+    
     const body = await request.json();
     const { message } = MessageSchema.parse(body);
 
@@ -92,7 +146,12 @@ export async function POST(
     `;
 
     if (offerResult.length === 0) {
-      return NextResponse.json({ error: "Offer not found or access denied" }, { status: 404 });
+      logSecurityEvent('offer_message_unauthorized_access', userId, { offerId: id });
+      const response = NextResponse.json(
+        { error: "Offer not found or access denied" },
+        { status: 404 }
+      );
+      return addSecurityHeaders(response);
     }
 
     // Create message
@@ -140,19 +199,42 @@ export async function POST(
       `;
     }
 
-    return NextResponse.json({
+    logSecurityEvent('offer_message_sent', userId, { 
+      offerId: id,
+      userRole
+    });
+    
+    const response = NextResponse.json({
       ok: true,
       data: {
         id: messageResult[0].id,
         created_at: messageResult[0].created_at
       }
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error sending offer message:", error);
-    return NextResponse.json(
-      { error: "Failed to send message" },
+    
+    if (error.message === "Unauthorized" || error.message === "Authentication required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('offer_message_send_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to send message",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }

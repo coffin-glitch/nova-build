@@ -1,4 +1,6 @@
-import { NextResponse } from "next/server";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAuth, unauthorizedResponse } from "@/lib/auth-api-helper";
+import { NextRequest, NextResponse } from "next/server";
 import sql from "@/lib/db";
 
 // Utility to build ILIKE patterns safely
@@ -9,20 +11,51 @@ function ilike(s?: string|null) {
   return `%${v.replace(/[%_]/g, '')}%`;
 }
 
-export async function POST(req: Request) {
-  const body = await req.json().catch(() => ({}));
-  const {
-    q,
-    origin,
-    destination,
-    equipment,
-    pickupFrom, // ISO yyyy-mm-dd
-    pickupTo,   // ISO yyyy-mm-dd
-    milesMin,
-    milesMax,
-    limit = 60,
-    offset = 0,
-  } = body || {};
+export async function POST(req: NextRequest) {
+  try {
+    // Require authentication for load search
+    const auth = await requireApiAuth(req);
+    const userId = auth.userId;
+    
+    const body = await req.json().catch(() => ({}));
+    const {
+      q,
+      origin,
+      destination,
+      equipment,
+      pickupFrom, // ISO yyyy-mm-dd
+      pickupTo,   // ISO yyyy-mm-dd
+      milesMin,
+      milesMax,
+      limit = 60,
+      offset = 0,
+    } = body || {};
+
+    // Input validation
+    const validation = validateInput(
+      { q, origin, destination, equipment, pickupFrom, pickupTo, milesMin, milesMax, limit, offset },
+      {
+        q: { type: 'string', maxLength: 200, required: false },
+        origin: { type: 'string', maxLength: 200, required: false },
+        destination: { type: 'string', maxLength: 200, required: false },
+        equipment: { type: 'string', maxLength: 100, required: false },
+        pickupFrom: { type: 'string', pattern: /^\d{4}-\d{2}-\d{2}$/, required: false },
+        pickupTo: { type: 'string', pattern: /^\d{4}-\d{2}-\d{2}$/, required: false },
+        milesMin: { type: 'number', min: 0, max: 10000, required: false },
+        milesMax: { type: 'number', min: 0, max: 10000, required: false },
+        limit: { type: 'number', min: 1, max: 200, required: false },
+        offset: { type: 'number', min: 0, required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_load_search_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
 
   const oLike = ilike(origin);
   const dLike = ilike(destination);
@@ -56,17 +89,91 @@ export async function POST(req: Request) {
   params.push(offset);
   const offsetIdx = params.length;
 
-  const where = clauses.length ? `where ${clauses.join(' AND ')}` : '';
-  const query = `
-    select rr_number, equipment, total_miles, revenue, purchase, margin,
-           origin_city, origin_state, destination_city, destination_state,
-           pickup_date, delivery_date, updated_at
-    from public.loads
-    ${where.replace(/\$(\d+)/g, (_:any,n:string)=>`$${Number(n)}`)}
-    order by pickup_date nulls last, updated_at desc
-    limit $${limitIdx} offset $${offsetIdx}
-  `;
-  const rows = await (sql as any).unsafe(query, params);
+    // Use parameterized query instead of sql.unsafe to prevent SQL injection
+    // Build query using sql template literals
+    let query = sql`
+      SELECT 
+        rr_number, 
+        equipment, 
+        total_miles, 
+        revenue, 
+        purchase, 
+        margin,
+        origin_city, 
+        origin_state, 
+        destination_city, 
+        destination_state,
+        pickup_date, 
+        delivery_date, 
+        updated_at
+      FROM public.loads
+      WHERE published = true
+    `;
 
-  return NextResponse.json({ rows });
+    // Add filters using parameterized queries
+    if (oLike) {
+      query = sql`${query} AND (CONCAT_WS(', ', origin_city, origin_state) ILIKE ${oLike})`;
+    }
+    if (dLike) {
+      query = sql`${query} AND (CONCAT_WS(', ', destination_city, destination_state) ILIKE ${dLike})`;
+    }
+    if (eLike) {
+      query = sql`${query} AND equipment ILIKE ${eLike}`;
+    }
+    if (qLike) {
+      query = sql`${query} AND (
+        rr_number::text ILIKE ${qLike}
+        OR COALESCE(origin_city, '') ILIKE ${qLike}
+        OR COALESCE(destination_city, '') ILIKE ${qLike}
+        OR COALESCE(equipment, '') ILIKE ${qLike}
+      )`;
+    }
+    if (pickupFrom) {
+      query = sql`${query} AND pickup_date >= ${pickupFrom}`;
+    }
+    if (pickupTo) {
+      query = sql`${query} AND pickup_date <= ${pickupTo}`;
+    }
+    if (milesMin != null && milesMin !== '') {
+      query = sql`${query} AND COALESCE(total_miles, 0) >= ${Number(milesMin)}`;
+    }
+    if (milesMax != null && milesMax !== '') {
+      query = sql`${query} AND COALESCE(total_miles, 0) <= ${Number(milesMax)}`;
+    }
+
+    query = sql`${query} ORDER BY pickup_date NULLS LAST, updated_at DESC LIMIT ${Math.min(limit, 200)} OFFSET ${Math.max(0, offset)}`;
+    
+    const rows = await query;
+
+    logSecurityEvent('load_search_performed', userId, { 
+      hasQuery: !!q,
+      resultCount: rows.length
+    });
+    
+    const response = NextResponse.json({ rows });
+    return addSecurityHeaders(response);
+    
+  } catch (error: any) {
+    console.error("Error searching loads:", error);
+    
+    if (error.message === "Unauthorized" || error.message === "Authentication required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('load_search_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        rows: [],
+        error: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : "Failed to search loads"
+      },
+      { status: 500 }
+    );
+    
+    return addSecurityHeaders(response);
+  }
 }

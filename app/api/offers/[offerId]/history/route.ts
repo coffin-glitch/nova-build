@@ -1,4 +1,5 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import { NextRequest } from "next/server";
 import sql from "@/lib/db";
 import { NextResponse } from "next/server";
@@ -9,10 +10,28 @@ export async function GET(
 ) {
   try {
     // This will throw if user is not admin
-    await requireApiAdmin(req);
+    const auth = await requireApiAdmin(req);
+    const userId = auth.userId;
 
     const { offerId } = await params;
     const id = offerId;
+
+    // Input validation
+    const validation = validateInput(
+      { offerId },
+      {
+        offerId: { required: true, type: 'string', maxLength: 50 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_offer_history_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
 
     // Get offer history with user information
     const history = await sql`
@@ -26,13 +45,36 @@ export async function GET(
       ORDER BY oh.performed_at DESC
     `;
 
-    return NextResponse.json({
+    logSecurityEvent('offer_history_accessed', userId, { offerId });
+    
+    const response = NextResponse.json({
       ok: true,
       history: history
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching offer history:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('offer_history_fetch_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Internal server error",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
+      { status: 500 }
+    );
+    
+    return addSecurityHeaders(response);
   }
 }

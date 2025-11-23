@@ -1,4 +1,5 @@
-import { requireApiAdmin, requireApiCarrier } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, requireApiCarrier, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -10,6 +11,23 @@ export async function GET(
   try {
     const resolvedParams = await params;
     const offerId = resolvedParams.offerId;
+
+    // Input validation
+    const validation = validateInput(
+      { offerId },
+      {
+        offerId: { required: true, type: 'string', maxLength: 50 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_offer_comments_input', undefined, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
 
     // Get comments with author information
     const comments = await sql`
@@ -36,17 +54,31 @@ export async function GET(
       ORDER BY oc.created_at ASC
     `;
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       ok: true,
       comments: comments
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching offer comments:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch comments", details: error instanceof Error ? error.message : String(error) },
+    
+    logSecurityEvent('offer_comments_fetch_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to fetch comments",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 
@@ -62,11 +94,31 @@ export async function POST(
     const body = await request.json();
     const { comment_text, is_internal = false } = body;
 
+    // Input validation
+    const validation = validateInput(
+      { offerId, comment_text, is_internal },
+      {
+        offerId: { required: true, type: 'string', maxLength: 50 },
+        comment_text: { required: true, type: 'string', minLength: 1, maxLength: 2000 },
+        is_internal: { type: 'boolean', required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_offer_comment_create_input', undefined, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     if (!comment_text || comment_text.trim().length === 0) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: "Comment text is required" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Check if user is admin or carrier (Supabase-only)
@@ -91,10 +143,11 @@ export async function POST(
     `;
 
     if (result.length === 0) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: "Failed to create comment" },
         { status: 500 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Get the full comment with author details (Supabase-only)
@@ -118,16 +171,39 @@ export async function POST(
       WHERE oc.id = ${result[0].id}
     `;
 
-    return NextResponse.json({
+    logSecurityEvent('offer_comment_created', userId, { 
+      offerId,
+      isInternal: is_internal
+    });
+    
+    const response = NextResponse.json({
       ok: true,
       comment: newComment[0]
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error creating offer comment:", error);
-    return NextResponse.json(
-      { error: "Failed to create comment", details: error instanceof Error ? error.message : String(error) },
+    
+    if (error.message === "Unauthorized" || error.message === "Authentication required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('offer_comment_create_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to create comment",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }

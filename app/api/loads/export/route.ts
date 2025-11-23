@@ -1,10 +1,33 @@
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
   try {
+    // Require admin authentication for load export
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
+    
     const { searchParams } = new URL(request.url);
     const format = searchParams.get("format") || "csv";
+    
+    // Input validation
+    const formatValidation = validateInput(
+      { format },
+      {
+        format: { type: 'string', enum: ['csv', 'excel'], required: false }
+      }
+    );
+
+    if (!formatValidation.valid) {
+      logSecurityEvent('invalid_load_export_format', userId, { errors: formatValidation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid format: ${formatValidation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
     
     const body = await request.json();
     const { filters = {}, rrNumbers = [] } = body;
@@ -46,18 +69,35 @@ export async function POST(request: NextRequest) {
     } else if (format === "excel") {
       return generateExcel(loadsArray);
     } else {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: "Invalid format. Must be 'csv' or 'excel'" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error exporting loads:", error);
-    return NextResponse.json(
-      { error: "Failed to export loads", details: error instanceof Error ? error.message : 'Unknown error' },
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('load_export_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to export loads",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 
