@@ -106,13 +106,14 @@
 - **2025-01-16:** Phase 1.36 - Secure Highway-related admin routes and margin analytics
 - **2025-01-16:** Phase 1.37 - Secure admin analytics and management routes (CRITICAL: Fixed auth functions)
 - **2025-01-16:** Phase 1.38 - Secure Highway scraping, cookies, and carrier health routes
+- **2025-01-16:** Phase 1.39 - Secure carrier health and AI assistant routes (CRITICAL: Fixed update route function signature)
 - **2025-01-16:** Database pool and rate limiting analysis completed
 
 ## Routes Secured So Far
 
-**Total: 135 routes (183 endpoints)**
+**Total: 143 routes (194 endpoints)**
 
-**Progress:** 68.5% of total routes (135/197 routes secured)
+**Progress:** 72.6% of total routes (143/197 routes secured)
 1. `/api/bids/route.ts` (GET)
 2. `/api/loads/route.ts` (GET, POST)
 3. `/api/telegram-bids/route.ts` (GET)
@@ -254,6 +255,14 @@
 139. `/api/admin/highway-cookies/get/route.ts` (GET)
 140. `/api/admin/highway-cookies/store/route.ts` (POST, OPTIONS)
 141. `/api/admin/carrier-health/route.ts` (GET)
+142. `/api/admin/carrier-health/auto-scrape/route.ts` (POST, OPTIONS)
+143. `/api/admin/carrier-health/playwright-scrape/route.ts` (POST)
+144. `/api/admin/carrier-health/get/route.ts` (GET)
+145. `/api/admin/carrier-health/store/route.ts` (POST)
+146. `/api/admin/carrier-health/update/route.ts` (PUT) - CRITICAL: Fixed function signature
+147. `/api/admin/carrier-health/scores/route.ts` (GET)
+148. `/api/admin/carrier-health/wipe/route.ts` (DELETE)
+149. `/api/admin/ai-assistant/route.ts` (GET, POST)
 
 ## Security Improvements Summary
 
