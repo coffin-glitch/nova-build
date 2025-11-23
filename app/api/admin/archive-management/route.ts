@@ -4,70 +4,150 @@ import {
   getArchiveStatistics,
   verifyArchiveIntegrity
 } from "@/lib/archive-migration";
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
-    await requireApiAdmin(request);
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
 
     const { searchParams } = new URL(request.url);
     const action = searchParams.get("action");
 
+    // Input validation
+    const validation = validateInput(
+      { action },
+      {
+        action: { type: 'string', enum: ['statistics', 'integrity'], required: false }
+      }
+    );
+
+    if (!validation.valid && action) {
+      logSecurityEvent('invalid_archive_management_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     switch (action) {
       case "statistics":
         const stats = await getArchiveStatistics();
-        return NextResponse.json({ ok: true, data: stats });
+        logSecurityEvent('archive_statistics_accessed', userId);
+        const statsResponse = NextResponse.json({ ok: true, data: stats });
+        return addSecurityHeaders(statsResponse);
 
       case "integrity":
         const integrity = await verifyArchiveIntegrity();
-        return NextResponse.json({ ok: true, data: integrity });
+        logSecurityEvent('archive_integrity_checked', userId);
+        const integrityResponse = NextResponse.json({ ok: true, data: integrity });
+        return addSecurityHeaders(integrityResponse);
 
       default:
-        return NextResponse.json({ error: "Invalid action" }, { status: 400 });
+        const defaultResponse = NextResponse.json({ error: "Invalid action" }, { status: 400 });
+        return addSecurityHeaders(defaultResponse);
     }
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Archive management API error:", error);
-    return NextResponse.json(
-      { error: "Failed to process request" },
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('archive_management_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to process request",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    await requireApiAdmin(request);
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
 
-    const { action } = await request.json();
+    const body = await request.json();
+    const { action } = body;
+
+    // Input validation
+    const validation = validateInput(
+      { action },
+      {
+        action: { required: true, type: 'string', enum: ['archive', 'cleanup'] }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_archive_management_post_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
 
     switch (action) {
       case "archive":
         const archiveResult = await archiveExpiredBids();
-        return NextResponse.json({ 
+        logSecurityEvent('archive_bids_triggered', userId, { archived: archiveResult.archived });
+        const archiveResponse = NextResponse.json({ 
           ok: true, 
           data: archiveResult,
           message: `Successfully archived ${archiveResult.archived} bids`
         });
+        return addSecurityHeaders(archiveResponse);
 
       case "cleanup":
         const cleanupResult = await cleanupOldArchiveTables();
-        return NextResponse.json({ 
+        logSecurityEvent('archive_cleanup_triggered', userId, { cleaned: cleanupResult.cleaned.length });
+        const cleanupResponse = NextResponse.json({ 
           ok: true, 
           data: cleanupResult,
           message: `Cleanup completed. Cleaned: ${cleanupResult.cleaned.length} tables`
         });
+        return addSecurityHeaders(cleanupResponse);
 
       default:
-        return NextResponse.json({ error: "Invalid action" }, { status: 400 });
+        const defaultResponse = NextResponse.json({ error: "Invalid action" }, { status: 400 });
+        return addSecurityHeaders(defaultResponse);
     }
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Archive management API error:", error);
-    return NextResponse.json(
-      { error: "Failed to process request" },
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('archive_management_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to process request",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }

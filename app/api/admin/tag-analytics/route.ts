@@ -1,21 +1,41 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
-    // Ensure user is admin
-    await requireApiAdmin(request);
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
 
     const { searchParams } = new URL(request.url);
     const tag = searchParams.get("tag");
     const timeframe = searchParams.get("timeframe") || "30";
 
+    // Input validation
+    const validation = validateInput(
+      { tag, timeframe },
+      {
+        tag: { required: true, type: 'string', pattern: /^[A-Z0-9\-_]+$/, maxLength: 50 },
+        timeframe: { type: 'string', pattern: /^(all|\d+)$/, maxLength: 20, required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_tag_analytics_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { success: false, error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     if (!tag) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { success: false, error: "Tag parameter is required" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Calculate date range
@@ -168,7 +188,9 @@ export async function GET(request: NextRequest) {
       LIMIT 20
     `;
 
-    return NextResponse.json({
+    logSecurityEvent('tag_analytics_accessed', userId, { tag, timeframe });
+    
+    const response = NextResponse.json({
       success: true,
       data: {
         summary: summary[0] || {},
@@ -184,17 +206,32 @@ export async function GET(request: NextRequest) {
         }
       }
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Tag analytics API error:", error);
-    return NextResponse.json(
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('tag_analytics_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
       { 
         success: false,
         error: "Failed to fetch tag analytics",
-        details: error instanceof Error ? error.message : 'Unknown error'
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
       },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 

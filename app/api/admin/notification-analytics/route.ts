@@ -1,15 +1,38 @@
-import { requireAdmin } from "@/lib/auth";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
 // GET /api/admin/notification-analytics - Get trigger analytics for admin
 export async function GET(request: NextRequest) {
   try {
-    await requireAdmin();
+    const auth = await requireApiAdmin(request);
+    const adminUserId = auth.userId;
 
     const { searchParams } = new URL(request.url);
-    const days = parseInt(searchParams.get('days') || '30');
+    const daysParam = searchParams.get('days') || '30';
     const userId = searchParams.get('userId'); // Optional: filter by specific user
+
+    // Input validation
+    const days = parseInt(daysParam);
+    const validation = validateInput(
+      { daysParam, userId },
+      {
+        daysParam: { type: 'string', pattern: /^\d+$/, maxLength: 10, required: false },
+        userId: { type: 'string', pattern: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, maxLength: 50, required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_notification_analytics_input', adminUserId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
+    const validDays = isNaN(days) || days < 1 || days > 365 ? 30 : days;
 
     // Get trigger statistics
     const triggerStats = await sql`
@@ -27,7 +50,7 @@ export async function GET(request: NextRequest) {
         MAX(nl.sent_at) as last_notification
       FROM notification_triggers nt
       LEFT JOIN notification_logs nl ON nt.id = nl.trigger_id
-        AND nl.sent_at >= NOW() - make_interval(days => ${days})
+        AND nl.sent_at >= NOW() - make_interval(days => ${validDays})
       LEFT JOIN auth.users u ON nt.supabase_carrier_user_id = u.id::text
       ${userId ? sql`WHERE nt.supabase_carrier_user_id = ${userId}` : sql``}
       GROUP BY nt.id, nt.trigger_type, nt.is_active, nt.created_at, nt.updated_at, nt.supabase_carrier_user_id, u.email
@@ -45,7 +68,7 @@ export async function GET(request: NextRequest) {
         AVG(CASE WHEN nl.sent_at >= NOW() - make_interval(days => ${days}) THEN 1 ELSE 0 END) as avg_notifications_per_trigger
       FROM notification_triggers nt
       LEFT JOIN notification_logs nl ON nt.id = nl.trigger_id
-        AND nl.sent_at >= NOW() - make_interval(days => ${days})
+        AND nl.sent_at >= NOW() - make_interval(days => ${validDays})
       ${userId ? sql`WHERE nt.supabase_carrier_user_id = ${userId}` : sql``}
     `;
 
@@ -58,7 +81,7 @@ export async function GET(request: NextRequest) {
         COUNT(DISTINCT nl.bid_number) as unique_bids
       FROM notification_triggers nt
       LEFT JOIN notification_logs nl ON nt.id = nl.trigger_id
-        AND nl.sent_at >= NOW() - make_interval(days => ${days})
+        AND nl.sent_at >= NOW() - make_interval(days => ${validDays})
       ${userId ? sql`WHERE nt.supabase_carrier_user_id = ${userId}` : sql``}
       GROUP BY nt.trigger_type
       ORDER BY notification_count DESC
@@ -76,7 +99,7 @@ export async function GET(request: NextRequest) {
         MAX(nl.sent_at) as last_notification
       FROM notification_triggers nt
       LEFT JOIN notification_logs nl ON nt.id = nl.trigger_id
-        AND nl.sent_at >= NOW() - make_interval(days => ${days})
+        AND nl.sent_at >= NOW() - make_interval(days => ${validDays})
       LEFT JOIN auth.users u ON nt.supabase_carrier_user_id = u.id::text
       ${userId ? sql`WHERE nt.supabase_carrier_user_id = ${userId}` : sql``}
       GROUP BY nt.id, nt.trigger_type, nt.is_active, u.email
@@ -195,7 +218,7 @@ export async function GET(request: NextRequest) {
         MAX(nl.sent_at) as last_notification
       FROM notification_triggers nt
       LEFT JOIN notification_logs nl ON nt.id = nl.trigger_id
-        AND nl.sent_at >= NOW() - make_interval(days => ${days})
+        AND nl.sent_at >= NOW() - make_interval(days => ${validDays})
       LEFT JOIN auth.users u ON nt.supabase_carrier_user_id = u.id::text
       LEFT JOIN carrier_profiles cp ON nt.supabase_carrier_user_id = cp.supabase_user_id
       ${userId ? sql`WHERE nt.supabase_carrier_user_id = ${userId}` : sql``}
@@ -218,16 +241,54 @@ export async function GET(request: NextRequest) {
         triggerConfigs: triggerConfigSummary,
         hourlyDistribution,
         topCarriers,
-        period: `${days} days`
+        period: `${validDays} days`
       }
     });
+    
+    logSecurityEvent('notification_analytics_accessed', adminUserId, { days: validDays, userId: userId || null });
+    
+    const response = NextResponse.json({
+      ok: true,
+      data: {
+        overall: overallStats[0] || {},
+        triggers: triggerStats,
+        typeBreakdown,
+        topTriggers,
+        deliveryStatus: deliveryStatusBreakdown,
+        dailyTrends,
+        notificationTypes: notificationTypeBreakdown,
+        inactiveTriggers,
+        triggerConfigs: triggerConfigSummary,
+        hourlyDistribution,
+        topCarriers,
+        period: `${validDays} days`
+      }
+    });
+    
+    return addSecurityHeaders(response);
 
   } catch (error: any) {
     console.error('Error fetching notification analytics:', error);
-    return NextResponse.json(
-      { error: "Failed to fetch analytics", details: error?.message },
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('notification_analytics_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to fetch analytics",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error?.message || 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 

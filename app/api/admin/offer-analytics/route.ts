@@ -1,11 +1,12 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
-    // Ensure user is admin (Supabase-only)
-    await requireApiAdmin(request);
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
 
     // Get basic offer statistics
     const basicStats = await sql`
@@ -104,7 +105,9 @@ export async function GET(request: NextRequest) {
       AND updated_at > created_at
     `;
 
-    return NextResponse.json({
+    logSecurityEvent('offer_analytics_accessed', userId);
+    
+    const response = NextResponse.json({
       success: true,
       analytics: {
         basicStats: basicStats[0],
@@ -120,12 +123,30 @@ export async function GET(request: NextRequest) {
         }
       }
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching offer analytics:", error);
-    return NextResponse.json(
-      { error: "Internal server error", details: error instanceof Error ? error.message : String(error) },
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('offer_analytics_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Internal server error",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : String(error))
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
