@@ -306,7 +306,7 @@ export async function POST(request: NextRequest) {
         }
       });
       
-      return addSecurityHeaders(response);
+      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
     } else {
       // Create new (only if disabling - active MCs don't need entries)
       if (!is_active) {
