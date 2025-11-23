@@ -114,13 +114,14 @@
 - **2025-01-16:** Phase 1.44 - Secure conversation read, messages, offers, and chat messages routes
 - **2025-01-16:** Phase 1.45 - Secure carrier management routes (profile, approve, decline, history, lock, tier, status)
 - **2025-01-16:** Phase 1.46 - Secure carriers list, security dashboard, unlock routes, and conversations
+- **2025-01-16:** Phase 1.47 - Secure appeal conversation routes
 - **2025-01-16:** Database pool and rate limiting analysis completed
 
 ## Routes Secured So Far
 
-**Total: 181 routes (237 endpoints)**
+**Total: 183 routes (239 endpoints)**
 
-**Progress:** 91.9% of total routes (181/197 routes secured)
+**Progress:** 92.9% of total routes (183/197 routes secured)
 1. `/api/bids/route.ts` (GET)
 2. `/api/loads/route.ts` (GET, POST)
 3. `/api/telegram-bids/route.ts` (GET)
@@ -308,6 +309,8 @@
 185. `/api/admin/carriers/[userId]/unlock/route.ts` (POST)
 186. `/api/admin/carriers/[userId]/unlock-edits/route.ts` (POST) - removed debug logs
 187. `/api/admin/conversations/[conversationId]/route.ts` (GET, POST) - added input validation
+188. `/api/admin/appeal-conversations/[conversationId]/route.ts` (GET, POST)
+189. `/api/admin/appeal-conversations/[conversationId]/read/route.ts` (POST)
 
 ## Security Improvements Summary
 
