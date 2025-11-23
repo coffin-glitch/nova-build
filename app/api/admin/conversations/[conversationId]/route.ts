@@ -99,6 +99,23 @@ export async function POST(
 
     const { conversationId } = await params;
 
+    // Input validation
+    const validation = validateInput(
+      { conversationId },
+      {
+        conversationId: { required: true, type: 'string', pattern: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, maxLength: 50 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_conversation_post_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     // Verify the user has access to this conversation
     // Allow access if user is admin_user_id OR if user is carrier_user_id (for admin-to-admin chats)
     const conversation = await sql`
@@ -114,7 +131,12 @@ export async function POST(
     `;
 
     if (conversation.length === 0) {
-      return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
+      logSecurityEvent('conversation_not_found_post', userId, { conversationId });
+      const response = NextResponse.json(
+        { error: "Conversation not found" },
+        { status: 404 }
+      );
+      return addSecurityHeaders(response);
     }
 
     // Check if request has FormData (file upload) or JSON (text message)
