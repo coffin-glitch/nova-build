@@ -149,7 +149,7 @@ export async function POST(request: NextRequest) {
           data: archiveResult,
           message: `Successfully archived ${archiveResult.archived} bids`
         });
-        return addSecurityHeaders(archiveResponse);
+        return addRateLimitHeaders(addSecurityHeaders(archiveResponse), rateLimit);
 
       case "cleanup":
         const cleanupResult = await cleanupOldArchiveTables();
@@ -159,7 +159,7 @@ export async function POST(request: NextRequest) {
           data: cleanupResult,
           message: `Cleanup completed. Cleaned: ${cleanupResult.cleaned.length} tables`
         });
-        return addSecurityHeaders(cleanupResponse);
+        return addRateLimitHeaders(addSecurityHeaders(cleanupResponse), rateLimit);
 
       default:
         const defaultResponse = NextResponse.json({ error: "Invalid action" }, { status: 400 });
