@@ -101,13 +101,14 @@
 - **2025-01-16:** Phase 1.31 - Secure admin bid-stats and conversation stats routes
 - **2025-01-16:** Phase 1.32 - Fix missing security imports in notifications clear-all route
 - **2025-01-16:** Phase 1.33 - Secure health check, get-user-id, test, and set-admin routes (CRITICAL: set-admin now requires admin auth)
+- **2025-01-16:** Phase 1.34 - Secure telegram-bids-optimized, railway-logs, dev-admin, and telegram-forwarder routes (CRITICAL: Fixed SQL injection in telegram-bids-optimized)
 - **2025-01-16:** Database pool and rate limiting analysis completed
 
 ## Routes Secured So Far
 
-**Total: 109 routes (155 endpoints)**
+**Total: 114 routes (161 endpoints)**
 
-**Progress:** 55.3% of total routes (109/197 routes secured)
+**Progress:** 57.9% of total routes (114/197 routes secured)
 1. `/api/bids/route.ts` (GET)
 2. `/api/loads/route.ts` (GET, POST)
 3. `/api/telegram-bids/route.ts` (GET)
@@ -223,6 +224,11 @@
 113. `/api/get-user-id/route.ts` (GET)
 114. `/api/test/route.ts` (GET)
 115. `/api/set-admin/route.ts` (POST) - **CRITICAL: Now requires admin auth**
+116. `/api/telegram-bids-optimized/route.ts` (GET) - **CRITICAL: Fixed SQL injection**
+117. `/api/railway-logs/route.ts` (GET)
+118. `/api/dev-admin/verify-key/route.ts` (POST)
+119. `/api/dev-admin/users/route.ts` (GET)
+120. `/api/telegram-forwarder/route.ts` (GET, POST)
 
 ## Security Improvements Summary
 
