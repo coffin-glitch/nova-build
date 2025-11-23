@@ -70,7 +70,7 @@ export async function GET(
       data: chatMessages 
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
 
   } catch (error: any) {
     console.error("Error fetching carrier chat messages:", error);
