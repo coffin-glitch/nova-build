@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
       data: conversations 
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
 
   } catch (error: any) {
     console.error("Error fetching admin appeal conversations:", error);
@@ -143,11 +143,12 @@ export async function POST(request: NextRequest) {
         console.log(`Updated appeal conversation ${existingConversation[0].id} to use current admin`);
       }
       
-      return NextResponse.json({ 
+      const response = NextResponse.json({ 
         ok: true, 
         conversation_id: existingConversation[0].id,
         message: "Appeal conversation already exists"
       });
+      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
     }
 
     // Create new appeal conversation
@@ -175,7 +176,7 @@ export async function POST(request: NextRequest) {
       message: "Appeal conversation created successfully"
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
 
   } catch (error: any) {
     console.error("Error creating admin appeal conversation:", error);

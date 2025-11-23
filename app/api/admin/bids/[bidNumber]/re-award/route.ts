@@ -152,7 +152,7 @@ export async function POST(
       message: `Auction ${bidNumber} re-awarded successfully to ${winnerName}`
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
 
   } catch (error: any) {
     console.error("Re-award bid error:", error);

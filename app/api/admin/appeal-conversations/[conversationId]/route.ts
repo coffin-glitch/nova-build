@@ -88,7 +88,7 @@ export async function GET(
       data: messages 
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
 
   } catch (error: any) {
     console.error("Error fetching admin appeal conversation messages:", error);
@@ -214,7 +214,7 @@ export async function POST(
       data: result[0]
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
 
   } catch (error: any) {
     console.error("Error sending appeal response:", error);

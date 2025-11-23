@@ -67,7 +67,7 @@ export async function POST(
       message: "Profile unlocked successfully" 
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
 
   } catch (error: any) {
     console.error("Error unlocking carrier profile:", error);

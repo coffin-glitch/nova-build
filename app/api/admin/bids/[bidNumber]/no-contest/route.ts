@@ -67,7 +67,7 @@ export async function POST(
       message: `Bid #${bidNumber} marked as "No Contest". All carriers have been notified.`
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
     
   } catch (error: any) {
     console.error('Error marking bid as no contest:', error);
