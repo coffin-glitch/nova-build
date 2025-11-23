@@ -1,4 +1,5 @@
 import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { checkApiRateLimit, addRateLimitHeaders } from "@/lib/api-rate-limiting";
 import { requireApiAdmin, requireApiCarrier, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
@@ -10,6 +11,24 @@ export async function PUT(
   try {
     const auth = await requireApiAdmin(request);
     const adminUserId = auth.userId;
+
+    // Check rate limit for admin write operation
+    const rateLimit = await checkApiRateLimit(request, {
+      userId: adminUserId,
+      routeType: 'admin'
+    });
+
+    if (!rateLimit.allowed) {
+      const response = NextResponse.json(
+        {
+          error: 'Rate limit exceeded',
+          message: `Too many requests. Please try again after ${rateLimit.retryAfter} seconds.`,
+          retryAfter: rateLimit.retryAfter
+        },
+        { status: 429 }
+      );
+      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    }
 
     const { rrNumber } = await params;
 
@@ -176,17 +195,38 @@ export async function GET(
   try {
     // Try to get auth - if admin, show all; if carrier, show limited; if none, show public
     let userRole: 'admin' | 'carrier' | null = null;
+    let userId: string | undefined = undefined;
     try {
       const auth = await requireApiAdmin(request);
       userRole = 'admin';
+      userId = auth.userId;
     } catch {
       // Not admin, try carrier
       try {
-        await requireApiCarrier(request);
+        const auth = await requireApiCarrier(request);
         userRole = 'carrier';
+        userId = auth.userId;
       } catch {
         // Public access
       }
+    }
+
+    // Check rate limit (admin read-only, carrier read-only, or public)
+    const rateLimit = await checkApiRateLimit(request, {
+      userId,
+      routeType: userRole === 'admin' ? 'readOnly' : userRole === 'carrier' ? 'readOnly' : 'public'
+    });
+
+    if (!rateLimit.allowed) {
+      const response = NextResponse.json(
+        {
+          error: 'Rate limit exceeded',
+          message: `Too many requests. Please try again after ${rateLimit.retryAfter} seconds.`,
+          retryAfter: rateLimit.retryAfter
+        },
+        { status: 429 }
+      );
+      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
     }
 
     const { rrNumber } = await params;
