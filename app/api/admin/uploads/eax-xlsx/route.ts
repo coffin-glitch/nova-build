@@ -1,4 +1,5 @@
 import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { checkApiRateLimit, addRateLimitHeaders } from "@/lib/api-rate-limiting";
 import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 import sql from "@/lib/db";
@@ -8,6 +9,25 @@ export async function POST(request: NextRequest) {
   try {
     const auth = await requireApiAdmin(request);
     const userId = auth.userId;
+
+    // Check rate limit for file upload
+    const rateLimit = await checkApiRateLimit(request, {
+      userId,
+      routeType: 'fileUpload'
+    });
+
+    if (!rateLimit.allowed) {
+      const response = NextResponse.json(
+        {
+          ok: false,
+          error: 'Rate limit exceeded',
+          message: `Too many file uploads. Please try again after ${rateLimit.retryAfter} seconds.`,
+          retryAfter: rateLimit.retryAfter
+        },
+        { status: 429 }
+      );
+      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    }
 
     const formData = await request.formData();
     const file = formData.get("file") as File;
@@ -246,7 +266,7 @@ export async function POST(request: NextRequest) {
         }
       });
       
-      return addSecurityHeaders(response);
+      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
 
     } catch (dbError: any) {
       console.error("Database error during Excel processing:", dbError);
