@@ -256,6 +256,24 @@ export async function POST(request: NextRequest) {
     const auth = await requireApiAdmin(request);
     const userId = auth.userId;
 
+    // Check rate limit for admin write operation (bulk operations are critical)
+    const rateLimit = await checkApiRateLimit(request, {
+      userId,
+      routeType: 'admin'
+    });
+
+    if (!rateLimit.allowed) {
+      const response = NextResponse.json(
+        {
+          error: 'Rate limit exceeded',
+          message: `Too many requests. Please try again after ${rateLimit.retryAfter} seconds.`,
+          retryAfter: rateLimit.retryAfter
+        },
+        { status: 429 }
+      );
+      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    }
+
     const body = await request.json();
     const { action, rrNumbers } = body;
 
@@ -399,7 +417,7 @@ export async function POST(request: NextRequest) {
       affectedLoads: action === 'unpublish_all' ? 'all' : validRrNumbers
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
 
   } catch (error: any) {
     console.error("Error performing admin bulk operation:", error);

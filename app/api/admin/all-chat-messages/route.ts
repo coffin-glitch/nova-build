@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
       data: chatMessages 
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
 
   } catch (error: any) {
     console.error("Error fetching all chat messages:", error);
