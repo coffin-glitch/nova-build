@@ -105,13 +105,14 @@
 - **2025-01-16:** Phase 1.35 - Secure debug-archive, test-auth, test-highway-key, and telegram-forwarder stream routes
 - **2025-01-16:** Phase 1.36 - Secure Highway-related admin routes and margin analytics
 - **2025-01-16:** Phase 1.37 - Secure admin analytics and management routes (CRITICAL: Fixed auth functions)
+- **2025-01-16:** Phase 1.38 - Secure Highway scraping, cookies, and carrier health routes
 - **2025-01-16:** Database pool and rate limiting analysis completed
 
 ## Routes Secured So Far
 
-**Total: 129 routes (176 endpoints)**
+**Total: 135 routes (183 endpoints)**
 
-**Progress:** 65.5% of total routes (129/197 routes secured)
+**Progress:** 68.5% of total routes (135/197 routes secured)
 1. `/api/bids/route.ts` (GET)
 2. `/api/loads/route.ts` (GET, POST)
 3. `/api/telegram-bids/route.ts` (GET)
@@ -247,6 +248,12 @@
 133. `/api/admin/notification-analytics/route.ts` (GET) - CRITICAL: Fixed auth function
 134. `/api/admin/auth-metrics/route.ts` (GET) - CRITICAL: Fixed function signature
 135. `/api/admin/archive-management/route.ts` (GET, POST)
+136. `/api/admin/highway-scrape/carrier/route.ts` (POST)
+137. `/api/admin/highway-scrape/search/route.ts` (POST)
+138. `/api/admin/highway-scrape/refresh/route.ts` (POST)
+139. `/api/admin/highway-cookies/get/route.ts` (GET)
+140. `/api/admin/highway-cookies/store/route.ts` (POST, OPTIONS)
+141. `/api/admin/carrier-health/route.ts` (GET)
 
 ## Security Improvements Summary
 
