@@ -1,8 +1,13 @@
+import { addSecurityHeaders, logSecurityEvent } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from '@/lib/db';
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    // Require admin authentication for detailed health check
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
     // Get PostgreSQL version and basic info
     const versionResult = await sql`SELECT version()`;
     const version = versionResult[0]?.version || 'Unknown';
@@ -55,7 +60,9 @@ export async function GET() {
       version: row.extversion
     }));
 
-    return NextResponse.json({
+    logSecurityEvent('health_check_db_detailed_accessed', userId);
+    
+    const response = NextResponse.json({
       ok: true,
       timestamp: new Date().toISOString(),
       database: {
@@ -75,12 +82,28 @@ export async function GET() {
         query_stats: extensions.some(ext => ext.name === 'pg_stat_statements')
       }
     });
-  } catch (error) {
+    
+    return addSecurityHeaders(response);
+    
+  } catch (error: any) {
     console.error('Database health check error:', error);
-    return NextResponse.json({
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('health_check_db_detailed_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json({
       ok: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: process.env.NODE_ENV === 'development' 
+        ? (error instanceof Error ? error.message : 'Unknown error')
+        : 'Database health check failed',
       timestamp: new Date().toISOString()
     }, { status: 500 });
+    
+    return addSecurityHeaders(response);
   }
 }
