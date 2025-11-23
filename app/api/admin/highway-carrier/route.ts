@@ -1,19 +1,39 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
-    await requireApiAdmin(request);
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
 
     const { searchParams } = new URL(request.url);
     const mcNumber = searchParams.get("mc");
 
+    // Input validation
+    const validation = validateInput(
+      { mcNumber },
+      {
+        mcNumber: { required: true, type: 'string', pattern: /^\d+$/, maxLength: 20 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_highway_carrier_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { ok: false, error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     if (!mcNumber) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { ok: false, error: "MC number is required" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Check if we have cached data for this MC
@@ -34,15 +54,19 @@ export async function GET(request: NextRequest) {
     `;
 
     if (cached.length === 0) {
-      return NextResponse.json(
+      logSecurityEvent('highway_carrier_not_found', userId, { mcNumber });
+      const response = NextResponse.json(
         { ok: false, error: "No cached data found for this MC number" },
         { status: 404 }
       );
+      return addSecurityHeaders(response);
     }
 
     const record = cached[0];
 
-    return NextResponse.json({
+    logSecurityEvent('highway_carrier_accessed', userId, { mcNumber });
+    
+    const response = NextResponse.json({
       ok: true,
       data: {
         mc_number: record.mc_number,
@@ -53,15 +77,31 @@ export async function GET(request: NextRequest) {
         data: record.data,
       },
     });
+    
+    return addSecurityHeaders(response);
+    
   } catch (error: any) {
     console.error("Error fetching Highway carrier data:", error);
-    return NextResponse.json(
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('highway_carrier_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
       {
         ok: false,
-        error: error.message || "Failed to fetch carrier data",
+        error: process.env.NODE_ENV === 'development' 
+          ? (error.message || "Failed to fetch carrier data")
+          : "Failed to fetch carrier data",
       },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 

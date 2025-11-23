@@ -1,9 +1,11 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
-    await requireApiAdmin(request);
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
 
     const apiKey = process.env.HIGHWAY_API_KEY;
     if (!apiKey) {
@@ -41,7 +43,9 @@ export async function GET(request: NextRequest) {
         body: responseText.substring(0, 500)
       });
 
-      return NextResponse.json({
+      logSecurityEvent('highway_direct_test_accessed', userId);
+      
+      const responseObj = NextResponse.json({
         success: response.ok,
         status: response.status,
         statusText: response.statusText,
@@ -53,15 +57,44 @@ export async function GET(request: NextRequest) {
           UserAgent: headers['User-Agent']
         }
       });
+      
+      return addSecurityHeaders(responseObj);
+      
     } catch (error: any) {
       console.error('[Test] Fetch error:', error);
-      return NextResponse.json({
-        error: error.message,
-        stack: error.stack
+      
+      logSecurityEvent('highway_direct_test_error', userId, { 
+        error: error.message || 'Fetch error' 
+      });
+      
+      const responseObj = NextResponse.json({
+        error: process.env.NODE_ENV === 'development' 
+          ? error.message
+          : 'Failed to test Highway API',
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
       }, { status: 500 });
+      
+      return addSecurityHeaders(responseObj);
     }
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('highway_direct_test_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: process.env.NODE_ENV === 'development' 
+          ? error.message
+          : "Failed to test Highway API"
+      },
+      { status: 500 }
+    );
+    
+    return addSecurityHeaders(response);
   }
 }
 

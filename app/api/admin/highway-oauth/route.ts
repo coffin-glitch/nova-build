@@ -1,6 +1,7 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
-import { NextRequest, NextResponse } from "next/server";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import axios from "axios";
+import { NextRequest, NextResponse } from "next/server";
 
 /**
  * Highway OAuth Token Endpoint
@@ -16,16 +17,37 @@ const HIGHWAY_OAUTH_TOKEN_URL = "https://staging.highway.com/core/oauth/tokens";
 
 export async function POST(request: NextRequest) {
   try {
-    await requireApiAdmin(request);
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
 
     const body = await request.json();
     const { client_id, client_secret, grant_type = "client_credentials" } = body;
 
+    // Input validation
+    const validation = validateInput(
+      { client_id, client_secret, grant_type },
+      {
+        client_id: { required: true, type: 'string', minLength: 1, maxLength: 500 },
+        client_secret: { required: true, type: 'string', minLength: 1, maxLength: 500 },
+        grant_type: { type: 'string', enum: ['client_credentials', 'authorization_code'], required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_highway_oauth_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     if (!client_id || !client_secret) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: "Missing client_id or client_secret" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Try OAuth client credentials flow (if Highway supports it for API access)
@@ -45,7 +67,12 @@ export async function POST(request: NextRequest) {
       }
     );
 
-    return NextResponse.json({
+    logSecurityEvent('highway_oauth_attempted', userId, { 
+      success: response.status === 200,
+      status: response.status
+    });
+    
+    const responseObj = NextResponse.json({
       success: response.status === 200,
       status: response.status,
       data: response.data,
@@ -53,16 +80,31 @@ export async function POST(request: NextRequest) {
         ? "OAuth token obtained successfully" 
         : "OAuth token request failed - Highway may not support OAuth for API access",
     }, { status: response.status });
+    
+    return addSecurityHeaders(responseObj);
 
   } catch (error: any) {
     console.error("Highway OAuth error:", error);
-    return NextResponse.json(
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('highway_oauth_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
       { 
         error: "Failed to get OAuth token",
-        details: error.message 
+        details: process.env.NODE_ENV === 'development' 
+          ? error.message
+          : undefined
       },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 

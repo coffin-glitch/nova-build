@@ -1,15 +1,36 @@
-import { requireApiAdmin } from '@/lib/auth-api-helper';
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from '@/lib/auth-api-helper';
 import sql from '@/lib/db';
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
-    await requireApiAdmin(request);
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
     
     const { searchParams } = new URL(request.url);
     const dateFrom = searchParams.get('dateFrom');
     const dateTo = searchParams.get('dateTo');
     const stateTag = searchParams.get('stateTag');
+
+    // Input validation
+    const validation = validateInput(
+      { dateFrom, dateTo, stateTag },
+      {
+        dateFrom: { type: 'string', pattern: /^\d{4}-\d{2}-\d{2}$/, maxLength: 10, required: false },
+        dateTo: { type: 'string', pattern: /^\d{4}-\d{2}-\d{2}$/, maxLength: 10, required: false },
+        stateTag: { type: 'string', pattern: /^[A-Z0-9\-_]+$/, maxLength: 10, required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_margin_analytics_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
 
     // Build date filter conditions
     const dateConditions: any[] = [];
@@ -218,7 +239,13 @@ export async function GET(request: NextRequest) {
       ORDER BY total_margin_cents DESC
     `;
 
-    return NextResponse.json({
+    logSecurityEvent('margin_analytics_accessed', userId, { 
+      dateFrom: dateFrom || null,
+      dateTo: dateTo || null,
+      stateTag: stateTag || null
+    });
+    
+    const response = NextResponse.json({
       success: true,
       data: {
         overall: overallStats[0] || {},
@@ -232,13 +259,31 @@ export async function GET(request: NextRequest) {
         adminPerformance: adminPerformance
       }
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Margin analytics error:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch margin analytics" },
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('margin_analytics_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to fetch margin analytics",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 
