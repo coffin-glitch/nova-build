@@ -90,13 +90,15 @@
 - **2025-01-16:** Phase 1.20 - Secure offer comments/history/messages and load search/export routes (Fixed SQL injection)
 - **2025-01-16:** Phase 1.21 - Secure loads individual, offers, and notification routes
 - **2025-01-16:** Phase 1.22 - Secure carrier profile, notifications, favorites, conversations, messages, and admin routes
+- **2025-01-16:** Phase 1.23 - Secure carrier offer history and driver info routes
+- **2025-01-16:** Phase 1.24 - Secure remaining driver info and appeal conversation routes
 - **2025-01-16:** Database pool and rate limiting analysis completed
 
 ## Routes Secured So Far
 
-**Total: 75 routes (113 endpoints)**
+**Total: 81 routes (120 endpoints)**
 
-**Progress:** 38.1% of total routes (75/197 routes secured)
+**Progress:** 41.1% of total routes (81/197 routes secured)
 1. `/api/bids/route.ts` (GET)
 2. `/api/loads/route.ts` (GET, POST)
 3. `/api/telegram-bids/route.ts` (GET)
@@ -178,6 +180,12 @@
 79. `/api/carrier/messages/responses/[messageId]/read/route.ts` (POST)
 80. `/api/carrier/chat-message/route.ts` (POST)
 81. `/api/carrier/admins/route.ts` (GET)
+82. `/api/carrier/offers/[offerId]/history/route.ts` (GET)
+83. `/api/carrier/offers/[offerId]/driver-info/route.ts` (GET, PUT)
+84. `/api/carrier/loads/[loadId]/driver-info/route.ts` (GET, POST)
+85. `/api/carrier/load-lifecycle/[loadId]/driver-info/route.ts` (POST)
+86. `/api/carrier/bids/driver-info/route.ts` (GET, POST)
+87. `/api/carrier/appeal-conversations/route.ts` (GET, POST)
 
 ## Security Improvements Summary
 
