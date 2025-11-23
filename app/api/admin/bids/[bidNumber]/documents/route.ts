@@ -77,7 +77,7 @@ export async function GET(
       data: documents
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
 
   } catch (error: any) {
     console.error("Error fetching documents:", error);

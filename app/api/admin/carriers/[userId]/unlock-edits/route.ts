@@ -179,7 +179,7 @@ export async function POST(
         : "Carrier profile edits enabled successfully" 
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
     
   } catch (error: any) {
     console.error("Error enabling carrier profile edits:", error);
