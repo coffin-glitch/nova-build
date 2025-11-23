@@ -113,13 +113,14 @@
 - **2025-01-16:** Phase 1.43 - Secure booked loads and conversations routes
 - **2025-01-16:** Phase 1.44 - Secure conversation read, messages, offers, and chat messages routes
 - **2025-01-16:** Phase 1.45 - Secure carrier management routes (profile, approve, decline, history, lock, tier, status)
+- **2025-01-16:** Phase 1.46 - Secure carriers list, security dashboard, unlock routes, and conversations
 - **2025-01-16:** Database pool and rate limiting analysis completed
 
 ## Routes Secured So Far
 
-**Total: 176 routes (232 endpoints)**
+**Total: 181 routes (237 endpoints)**
 
-**Progress:** 89.3% of total routes (176/197 routes secured)
+**Progress:** 91.9% of total routes (181/197 routes secured)
 1. `/api/bids/route.ts` (GET)
 2. `/api/loads/route.ts` (GET, POST)
 3. `/api/telegram-bids/route.ts` (GET)
@@ -302,6 +303,11 @@
 180. `/api/admin/carriers/[userId]/lock-edits/route.ts` (POST)
 181. `/api/admin/carriers/[userId]/tier/route.ts` (GET, PUT)
 182. `/api/admin/carriers/[userId]/toggle-status/route.ts` (POST)
+183. `/api/admin/carriers/route.ts` (GET) - removed debug logs
+184. `/api/admin/security-dashboard/route.ts` (POST) - added input validation
+185. `/api/admin/carriers/[userId]/unlock/route.ts` (POST)
+186. `/api/admin/carriers/[userId]/unlock-edits/route.ts` (POST) - removed debug logs
+187. `/api/admin/conversations/[conversationId]/route.ts` (GET, POST) - added input validation
 
 ## Security Improvements Summary
 
