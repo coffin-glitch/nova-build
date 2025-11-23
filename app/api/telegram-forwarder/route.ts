@@ -85,7 +85,7 @@ export async function GET(request: NextRequest) {
       logSecurityEvent('telegram_forwarder_status_accessed', userId);
       
       const responseObj = NextResponse.json(data);
-      return addSecurityHeaders(responseObj);
+      return addRateLimitHeaders(addSecurityHeaders(responseObj), rateLimit);
       
     } catch (fetchError: any) {
       console.error('Error fetching from Railway:', fetchError);

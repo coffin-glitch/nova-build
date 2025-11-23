@@ -91,7 +91,7 @@ export async function GET(
       comments: comments
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
 
   } catch (error: any) {
     console.error("Error fetching offer comments:", error);

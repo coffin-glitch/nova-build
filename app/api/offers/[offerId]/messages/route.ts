@@ -82,7 +82,7 @@ export async function GET(
       data: messages
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
 
   } catch (error: any) {
     console.error("Error fetching offer messages:", error);

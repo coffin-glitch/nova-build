@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
       allTables: allTablesArray.map((t: any) => t.table_name)
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
     
   } catch (error: any) {
     console.error("❌ Database health check error:", error);
