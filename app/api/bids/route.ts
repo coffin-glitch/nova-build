@@ -159,6 +159,6 @@ export async function GET(req: NextRequest) {
       error: "Using mock data - database unavailable"
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
   }
 }
