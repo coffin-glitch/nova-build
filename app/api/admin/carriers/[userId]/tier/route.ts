@@ -108,6 +108,24 @@ export async function PUT(
   try {
     const auth = await requireApiAdmin(request);
     const adminUserId = auth.userId;
+
+    // Check rate limit for admin write operation
+    const rateLimit = await checkApiRateLimit(request, {
+      userId: adminUserId,
+      routeType: 'admin'
+    });
+
+    if (!rateLimit.allowed) {
+      const response = NextResponse.json(
+        {
+          error: 'Rate limit exceeded',
+          message: `Too many requests. Please try again after ${rateLimit.retryAfter} seconds.`,
+          retryAfter: rateLimit.retryAfter
+        },
+        { status: 429 }
+      );
+      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    }
     
     const { userId } = await params;
 
@@ -169,7 +187,7 @@ export async function PUT(
       message: `Tier updated to ${tier}` 
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
     
   } catch (error: any) {
     console.error("Error updating user tier:", error);
