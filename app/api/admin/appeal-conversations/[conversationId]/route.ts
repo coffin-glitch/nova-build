@@ -1,4 +1,5 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -13,6 +14,23 @@ export async function GET(
 
     const { conversationId } = await params;
 
+    // Input validation
+    const validation = validateInput(
+      { conversationId },
+      {
+        conversationId: { required: true, type: 'string', pattern: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, maxLength: 50 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_appeal_conversation_get_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     // Verify the admin has access to this appeal conversation
     const conversation = await sql`
       SELECT id FROM conversations 
@@ -20,7 +38,12 @@ export async function GET(
     `;
 
     if (conversation.length === 0) {
-      return NextResponse.json({ error: "Appeal conversation not found" }, { status: 404 });
+      logSecurityEvent('appeal_conversation_not_found', userId, { conversationId });
+      const response = NextResponse.json(
+        { error: "Appeal conversation not found" },
+        { status: 404 }
+      );
+      return addSecurityHeaders(response);
     }
 
     // Get messages for this appeal conversation
@@ -39,16 +62,34 @@ export async function GET(
       ORDER BY cm.created_at ASC
     `;
 
-    return NextResponse.json({ 
+    logSecurityEvent('appeal_conversation_messages_accessed', userId, { conversationId, messageCount: messages.length });
+    
+    const response = NextResponse.json({ 
       ok: true, 
       data: messages 
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching admin appeal conversation messages:", error);
-    return NextResponse.json({ 
-      error: "Failed to fetch appeal conversation messages" 
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('appeal_conversation_get_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json({ 
+      error: "Failed to fetch appeal conversation messages",
+      details: process.env.NODE_ENV === 'development' 
+        ? (error instanceof Error ? error.message : 'Unknown error')
+        : undefined
     }, { status: 500 });
+    
+    return addSecurityHeaders(response);
   }
 }
 
@@ -62,13 +103,42 @@ export async function POST(
     const userId = auth.userId;
 
     const { conversationId } = await params;
+
+    // Input validation for conversationId
+    const conversationIdValidation = validateInput(
+      { conversationId },
+      {
+        conversationId: { required: true, type: 'string', pattern: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, maxLength: 50 }
+      }
+    );
+
+    if (!conversationIdValidation.valid) {
+      logSecurityEvent('invalid_appeal_conversation_post_input', userId, { errors: conversationIdValidation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${conversationIdValidation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     const body = await request.json();
     const { message } = body;
 
-    if (!message) {
-      return NextResponse.json({ 
-        error: "Missing required field: message" 
-      }, { status: 400 });
+    // Input validation for message
+    const messageValidation = validateInput(
+      { message },
+      {
+        message: { required: true, type: 'string', minLength: 1, maxLength: 5000 }
+      }
+    );
+
+    if (!messageValidation.valid) {
+      logSecurityEvent('invalid_appeal_message_input', userId, { errors: messageValidation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${messageValidation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
 
     // Verify the admin has access to this appeal conversation
@@ -78,7 +148,12 @@ export async function POST(
     `;
 
     if (conversation.length === 0) {
-      return NextResponse.json({ error: "Appeal conversation not found" }, { status: 404 });
+      logSecurityEvent('appeal_conversation_not_found_post', userId, { conversationId });
+      const response = NextResponse.json(
+        { error: "Appeal conversation not found" },
+        { status: 404 }
+      );
+      return addSecurityHeaders(response);
     }
 
     // Create new appeal response message (Supabase-only)
@@ -94,16 +169,34 @@ export async function POST(
       RETURNING id, created_at
     `;
 
-    return NextResponse.json({ 
+    logSecurityEvent('appeal_response_sent', userId, { conversationId, messageLength: message.length });
+    
+    const response = NextResponse.json({ 
       ok: true, 
       message: "Appeal response sent successfully",
       data: result[0]
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error sending appeal response:", error);
-    return NextResponse.json({ 
-      error: "Failed to send appeal response" 
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('appeal_response_send_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json({ 
+      error: "Failed to send appeal response",
+      details: process.env.NODE_ENV === 'development' 
+        ? (error instanceof Error ? error.message : 'Unknown error')
+        : undefined
     }, { status: 500 });
+    
+    return addSecurityHeaders(response);
   }
 }

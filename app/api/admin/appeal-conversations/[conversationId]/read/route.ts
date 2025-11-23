@@ -1,4 +1,5 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -13,6 +14,23 @@ export async function POST(
 
     const { conversationId } = await params;
 
+    // Input validation
+    const validation = validateInput(
+      { conversationId },
+      {
+        conversationId: { required: true, type: 'string', pattern: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, maxLength: 50 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_appeal_read_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     // Verify the admin has access to this appeal conversation
     const conversation = await sql`
       SELECT id FROM conversations 
@@ -20,7 +38,12 @@ export async function POST(
     `;
 
     if (conversation.length === 0) {
-      return NextResponse.json({ error: "Appeal conversation not found" }, { status: 404 });
+      logSecurityEvent('appeal_conversation_not_found_read', userId, { conversationId });
+      const response = NextResponse.json(
+        { error: "Appeal conversation not found" },
+        { status: 404 }
+      );
+      return addSecurityHeaders(response);
     }
 
     // Mark all unread carrier messages in this appeal conversation as read by the admin
@@ -53,15 +76,33 @@ export async function POST(
       }
     }
 
-    return NextResponse.json({ 
+    logSecurityEvent('appeal_messages_marked_read', userId, { conversationId, unreadCount: unreadMessages.length });
+    
+    const response = NextResponse.json({ 
       ok: true, 
       message: "Appeal messages marked as read" 
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error marking appeal messages as read:", error);
-    return NextResponse.json({ 
-      error: "Failed to mark appeal messages as read" 
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('appeal_read_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json({ 
+      error: "Failed to mark appeal messages as read",
+      details: process.env.NODE_ENV === 'development' 
+        ? (error instanceof Error ? error.message : 'Unknown error')
+        : undefined
     }, { status: 500 });
+    
+    return addSecurityHeaders(response);
   }
 }
