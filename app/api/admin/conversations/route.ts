@@ -1,5 +1,5 @@
-import { addRateLimitHeaders } from "@/lib/api-rate-limiting";
 import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { checkApiRateLimit, addRateLimitHeaders } from "@/lib/api-rate-limiting";
 import { forbiddenResponse, requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";

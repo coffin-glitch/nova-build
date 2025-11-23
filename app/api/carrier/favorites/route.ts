@@ -1,5 +1,5 @@
+import { addRateLimitHeaders, checkApiRateLimit } from "@/lib/api-rate-limiting";
 import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
-import { checkApiRateLimit, addRateLimitHeaders } from "@/lib/api-rate-limiting";
 import { requireApiCarrier, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
@@ -264,7 +264,7 @@ export async function POST(request: NextRequest) {
           ok: true, 
           message: "Bid added to favorites" 
         });
-        return addSecurityHeaders(response);
+        return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
       } else {
         // This shouldn't happen since we checked above, but handle it
         console.log('[favorites POST] Favorite already exists (ON CONFLICT DO NOTHING)');
@@ -365,6 +365,24 @@ export async function DELETE(request: NextRequest) {
     const auth = await requireApiCarrier(request);
     const userId = auth.userId;
 
+    // Check rate limit for authenticated write operation
+    const rateLimit = await checkApiRateLimit(request, {
+      userId,
+      routeType: 'authenticated'
+    });
+
+    if (!rateLimit.allowed) {
+      const response = NextResponse.json(
+        {
+          error: 'Rate limit exceeded',
+          message: `Too many requests. Please try again after ${rateLimit.retryAfter} seconds.`,
+          retryAfter: rateLimit.retryAfter
+        },
+        { status: 429 }
+      );
+      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    }
+
     const { searchParams } = new URL(request.url);
     const bid_number = searchParams.get('bid_number');
 
@@ -407,7 +425,7 @@ export async function DELETE(request: NextRequest) {
       message: "Bid removed from favorites" 
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
 
   } catch (error: any) {
     console.error('Error removing from favorites:', error);
