@@ -1,4 +1,5 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
@@ -1123,12 +1124,30 @@ async function getSystemAnalytics(params: any) {
 // GET endpoint to retrieve conversation history
 export async function GET(request: NextRequest) {
   try {
-    // Ensure user is admin
     const auth = await requireApiAdmin(request);
     const userId = auth.userId;
 
     const { searchParams } = new URL(request.url);
     const conversationId = searchParams.get("conversation_id");
+
+    // Input validation
+    if (conversationId) {
+      const validation = validateInput(
+        { conversationId },
+        {
+          conversationId: { type: 'string', pattern: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, maxLength: 50 }
+        }
+      );
+
+      if (!validation.valid) {
+        logSecurityEvent('invalid_ai_assistant_get_input', userId, { errors: validation.errors });
+        const response = NextResponse.json(
+          { error: `Invalid input: ${validation.errors.join(', ')}` },
+          { status: 400 }
+        );
+        return addSecurityHeaders(response);
+      }
+    }
 
     if (conversationId) {
       // Get specific conversation with messages
@@ -1154,12 +1173,19 @@ export async function GET(request: NextRequest) {
       `;
 
       if (conversation.length === 0) {
-        return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
+        logSecurityEvent('ai_assistant_conversation_not_found', userId, { conversationId });
+        const response = NextResponse.json({ error: "Conversation not found" }, { status: 404 });
+        return addSecurityHeaders(response);
       }
 
-      return NextResponse.json({
+      logSecurityEvent('ai_assistant_conversation_retrieved', userId, { conversationId });
+      
+      const response = NextResponse.json({
         conversation: conversation[0],
       });
+      
+      return addSecurityHeaders(response);
+      
     } else {
       // Get all conversations for this admin
       const conversations = await sql`
@@ -1181,43 +1207,81 @@ export async function GET(request: NextRequest) {
         LIMIT 50
       `;
 
-      return NextResponse.json({
+      logSecurityEvent('ai_assistant_conversations_listed', userId);
+      
+      const response = NextResponse.json({
         conversations: conversations || [],
       });
+      
+      return addSecurityHeaders(response);
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error("AI Assistant GET error:", error);
-    return NextResponse.json(
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('ai_assistant_get_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
       {
         error: "Failed to retrieve conversations",
-        details: error instanceof Error ? error.message : "Unknown error",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : "Unknown error")
+          : undefined,
       },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    // Ensure user is admin
     const auth = await requireApiAdmin(request);
     const userId = auth.userId;
 
     // Check if OpenAI API key is configured
     if (!process.env.OPENAI_API_KEY) {
-      return NextResponse.json(
+      logSecurityEvent('ai_assistant_openai_key_not_configured', userId);
+      const response = NextResponse.json(
         { error: "OpenAI API key not configured. Add OPENAI_API_KEY to .env.local" },
         { status: 500 }
       );
+      return addSecurityHeaders(response);
     }
 
-    const { message, conversationId, conversationHistory = [] } = await request.json();
+    const body = await request.json();
+    const { message, conversationId, conversationHistory = [] } = body;
+
+    // Input validation
+    const validation = validateInput(
+      { message, conversationId },
+      {
+        message: { required: true, type: 'string', minLength: 1, maxLength: 10000 },
+        conversationId: { type: 'string', pattern: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, maxLength: 50, required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_ai_assistant_post_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
 
     if (!message) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: "Message is required" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Handle conversation reset requests
@@ -1742,11 +1806,15 @@ ${memoryContext}`;
         }
       }
 
-      return NextResponse.json({
+      logSecurityEvent('ai_assistant_message_sent', userId, { conversationId: currentConversationId, hasFunctionCall: !!functionName });
+      
+      const response = NextResponse.json({
         response: aiResponse,
         usage: secondCompletion.usage,
         conversationId: currentConversationId,
       });
+      
+      return addSecurityHeaders(response);
     }
 
     // Generate embedding for AI response
@@ -1809,54 +1877,66 @@ ${memoryContext}`;
       }
     }
 
-    // Return direct response
-    return NextResponse.json({
+    logSecurityEvent('ai_assistant_message_sent', userId, { conversationId: currentConversationId });
+    
+    const response = NextResponse.json({
       response: aiResponse,
       usage: completion.usage,
       conversationId: currentConversationId,
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("AI Assistant API error:", error);
-    console.error("Error details:", {
-      message: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
-      name: error instanceof Error ? error.name : undefined,
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('ai_assistant_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
     });
     
     // Check for specific error types
     if (error instanceof Error) {
       // OpenAI API errors
       if (error.message.includes("API key") || error.message.includes("authentication")) {
-        return NextResponse.json(
+        const response = NextResponse.json(
           {
             error: "OpenAI API authentication failed",
             details: "Please check your OPENAI_API_KEY in .env.local",
           },
           { status: 500 }
         );
+        return addSecurityHeaders(response);
       }
       
       // Database errors (like vector extension not enabled)
       if (error.message.includes("vector") || error.message.includes("extension")) {
-        return NextResponse.json(
+        const response = NextResponse.json(
           {
             error: "Database vector extension error",
             details: "The pgvector extension may not be enabled. Run the migration: db/migrations/112_ai_assistant_advanced_memory.sql",
           },
           { status: 500 }
         );
+        return addSecurityHeaders(response);
       }
     }
     
-    return NextResponse.json(
+    const response = NextResponse.json(
       {
         error: "Failed to process AI request",
-        details: error instanceof Error ? error.message : "Unknown error",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : "Unknown error")
+          : undefined,
         stack: process.env.NODE_ENV === 'development' && error instanceof Error ? error.stack : undefined,
       },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 

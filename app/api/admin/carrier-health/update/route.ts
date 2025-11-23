@@ -1,4 +1,5 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { calculateHealthScore } from "@/lib/carrier-health-scorer";
 import { NextRequest, NextResponse } from "next/server";
@@ -9,7 +10,8 @@ import { NextRequest, NextResponse } from "next/server";
  */
 export async function PUT(request: NextRequest) {
   try {
-    const userId = await requireApiAdmin(request);
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
     
     const body = await request.json();
     const {
@@ -30,12 +32,30 @@ export async function PUT(request: NextRequest) {
       crashes24Months,
       driverFitnessPercentile,
     } = body;
+
+    // Input validation
+    const validation = validateInput(
+      { mcNumber },
+      {
+        mcNumber: { required: true, type: 'string', pattern: /^\d+$/, maxLength: 20 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_carrier_health_update_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { ok: false, error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
     
     if (!mcNumber) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { ok: false, error: "MC number is required" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
     
     // Get existing data
@@ -116,7 +136,9 @@ export async function PUT(request: NextRequest) {
       );
     }
     
-    return NextResponse.json({
+    logSecurityEvent('carrier_health_updated', userId, { mcNumber });
+    
+    const response = NextResponse.json({
       ok: true,
       message: "Health data updated successfully",
       data: {
@@ -137,15 +159,31 @@ export async function PUT(request: NextRequest) {
         breakdown: healthScore.breakdown,
       },
     });
+    
+    return addSecurityHeaders(response);
+    
   } catch (error: any) {
     console.error("Error updating carrier health data:", error);
-    return NextResponse.json(
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('carrier_health_update_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
       {
         ok: false,
-        error: error.message || "Failed to update health data",
+        error: process.env.NODE_ENV === 'development' 
+          ? (error.message || "Failed to update health data")
+          : "Failed to update health data",
       },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 

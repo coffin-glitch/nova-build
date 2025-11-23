@@ -1,4 +1,5 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import { extractCarrierUrl, parseDirectoryData, parseOverviewData } from "@/lib/carrier-health-parser";
 import { calculateHealthScore } from "@/lib/carrier-health-scorer";
 import sql from "@/lib/db";
@@ -53,20 +54,62 @@ export async function POST(request: NextRequest) {
     const auth = await requireApiAdmin(request);
     const userId = auth.userId || '';
     
-    const { mcNumber, carrierName, carrierUrl, overviewHtml, directoryHtml } = await request.json();
+    const body = await request.json();
+    const { mcNumber, carrierName, carrierUrl, overviewHtml, directoryHtml } = body;
+
+    // Input validation
+    const validation = validateInput(
+      { mcNumber, carrierName, carrierUrl, overviewHtml, directoryHtml },
+      {
+        mcNumber: { required: true, type: 'string', pattern: /^\d+$/, maxLength: 20 },
+        carrierName: { type: 'string', maxLength: 500, required: false },
+        carrierUrl: { type: 'string', pattern: /^https?:\/\/.+/, maxLength: 500, required: false },
+        overviewHtml: { type: 'string', maxLength: 5000000, required: false }, // 5MB max for HTML
+        directoryHtml: { type: 'string', maxLength: 5000000, required: false } // 5MB max for HTML
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_auto_scrape_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { ok: false, error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      if (origin && allowedOrigins.some(allowed => origin.includes(allowed))) {
+        response.headers.set('Access-Control-Allow-Origin', origin);
+      } else {
+        response.headers.set('Access-Control-Allow-Origin', '*');
+      }
+      response.headers.set('Access-Control-Allow-Credentials', 'true');
+      return addSecurityHeaders(response);
+    }
     
     if (!mcNumber) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { ok: false, error: "MC number is required" },
         { status: 400 }
       );
+      if (origin && allowedOrigins.some(allowed => origin.includes(allowed))) {
+        response.headers.set('Access-Control-Allow-Origin', origin);
+      } else {
+        response.headers.set('Access-Control-Allow-Origin', '*');
+      }
+      response.headers.set('Access-Control-Allow-Credentials', 'true');
+      return addSecurityHeaders(response);
     }
     
     if (!overviewHtml && !directoryHtml) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { ok: false, error: "At least overview HTML or directory HTML is required" },
         { status: 400 }
       );
+      if (origin && allowedOrigins.some(allowed => origin.includes(allowed))) {
+        response.headers.set('Access-Control-Allow-Origin', origin);
+      } else {
+        response.headers.set('Access-Control-Allow-Origin', '*');
+      }
+      response.headers.set('Access-Control-Allow-Credentials', 'true');
+      return addSecurityHeaders(response);
     }
     
     // Extract URL if not provided
@@ -306,6 +349,8 @@ export async function POST(request: NextRequest) {
       RETURNING id, mc_number, health_score, health_status, bluewire_score
     `;
     
+    logSecurityEvent('carrier_health_auto_scraped', userId, { mcNumber });
+    
     const response = NextResponse.json({
       ok: true,
       message: "Health data scraped and stored successfully",
@@ -330,26 +375,19 @@ export async function POST(request: NextRequest) {
     }
     response.headers.set('Access-Control-Allow-Credentials', 'true');
     
-    return response;
+    return addSecurityHeaders(response);
   } catch (error: any) {
     console.error("Error auto-scraping carrier health data:", error);
-    console.error("Error stack:", error.stack);
-    console.error("Error details:", {
-      message: error.message,
-      name: error.name,
-      code: error.code,
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('carrier_health_auto_scrape_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
     });
     
     // Add CORS headers even for errors
-    const errorResponse = NextResponse.json(
-      {
-        ok: false,
-        error: error.message || "Failed to scrape health data",
-        details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
-      },
-      { status: 500 }
-    );
-    
     const origin = request.headers.get('origin');
     const allowedOrigins = [
       'https://highway.com',
@@ -359,6 +397,17 @@ export async function POST(request: NextRequest) {
       process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null,
     ].filter(Boolean);
     
+    const errorResponse = NextResponse.json(
+      {
+        ok: false,
+        error: process.env.NODE_ENV === 'development' 
+          ? (error.message || "Failed to scrape health data")
+          : "Failed to scrape health data",
+        details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+      },
+      { status: 500 }
+    );
+    
     if (origin && allowedOrigins.some(allowed => origin.includes(allowed))) {
       errorResponse.headers.set('Access-Control-Allow-Origin', origin);
     } else {
@@ -366,7 +415,7 @@ export async function POST(request: NextRequest) {
     }
     errorResponse.headers.set('Access-Control-Allow-Credentials', 'true');
     
-    return errorResponse;
+    return addSecurityHeaders(errorResponse);
   }
 }
 

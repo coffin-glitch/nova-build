@@ -1,4 +1,5 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import { extractCarrierUrl, parseDirectoryData, parseOverviewData } from "@/lib/carrier-health-parser";
 import { calculateHealthScore } from "@/lib/carrier-health-scorer";
 import sql from "@/lib/db";
@@ -9,20 +10,43 @@ export async function POST(request: NextRequest) {
     const auth = await requireApiAdmin(request);
     const userId = auth.userId || '';
     
-    const { mcNumber, carrierUrl, overviewHtml, directoryHtml } = await request.json();
+    const body = await request.json();
+    const { mcNumber, carrierUrl, overviewHtml, directoryHtml } = body;
+
+    // Input validation
+    const validation = validateInput(
+      { mcNumber, carrierUrl, overviewHtml, directoryHtml },
+      {
+        mcNumber: { required: true, type: 'string', pattern: /^\d+$/, maxLength: 20 },
+        carrierUrl: { type: 'string', pattern: /^https?:\/\/.+/, maxLength: 500, required: false },
+        overviewHtml: { type: 'string', maxLength: 5000000, required: false }, // 5MB max
+        directoryHtml: { type: 'string', maxLength: 5000000, required: false } // 5MB max
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_carrier_health_store_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { ok: false, error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
     
     if (!mcNumber) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { ok: false, error: "MC number is required" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
     
     if (!carrierUrl && !overviewHtml && !directoryHtml) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { ok: false, error: "At least carrier URL, overview HTML, or directory HTML is required" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
     
     // Extract URL from overview/directory if not provided
@@ -228,7 +252,9 @@ export async function POST(request: NextRequest) {
       RETURNING id, mc_number, health_score, health_status, bluewire_score
     `;
     
-    return NextResponse.json({
+    logSecurityEvent('carrier_health_stored', userId, { mcNumber });
+    
+    const response = NextResponse.json({
       ok: true,
       message: "Health data stored successfully",
       data: {
@@ -244,15 +270,31 @@ export async function POST(request: NextRequest) {
       },
       healthScore,
     });
+    
+    return addSecurityHeaders(response);
+    
   } catch (error: any) {
     console.error("Error storing carrier health data:", error);
-    return NextResponse.json(
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('carrier_health_store_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
       {
         ok: false,
-        error: error.message || "Failed to store health data",
+        error: process.env.NODE_ENV === 'development' 
+          ? (error.message || "Failed to store health data")
+          : "Failed to store health data",
       },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 

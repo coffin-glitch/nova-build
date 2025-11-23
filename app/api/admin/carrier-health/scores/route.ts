@@ -1,28 +1,73 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
-    await requireApiAdmin(request);
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
     
     const { searchParams } = new URL(request.url);
     const mcsParam = searchParams.get("mcs");
-    
-    if (!mcsParam) {
-      return NextResponse.json({
-        ok: true,
-        scores: {},
-      });
+
+    // Input validation
+    if (mcsParam) {
+      const validation = validateInput(
+        { mcsParam },
+        {
+          mcsParam: { type: 'string', pattern: /^[\d,]+$/, maxLength: 1000 } // Max 1000 chars for comma-separated MCs
+        }
+      );
+
+      if (!validation.valid) {
+        logSecurityEvent('invalid_carrier_health_scores_input', userId, { errors: validation.errors });
+        const response = NextResponse.json(
+          { ok: false, error: `Invalid input: ${validation.errors.join(', ')}` },
+          { status: 400 }
+        );
+        return addSecurityHeaders(response);
+      }
     }
     
-    const mcNumbers = mcsParam.split(',').filter(Boolean);
-    
-    if (mcNumbers.length === 0) {
-      return NextResponse.json({
+    if (!mcsParam) {
+      const response = NextResponse.json({
         ok: true,
         scores: {},
       });
+      return addSecurityHeaders(response);
+    }
+    
+    const mcNumbers = mcsParam.split(',').filter(Boolean).map(mc => mc.trim());
+    
+    // Validate each MC number and limit count
+    if (mcNumbers.length === 0) {
+      const response = NextResponse.json({
+        ok: true,
+        scores: {},
+      });
+      return addSecurityHeaders(response);
+    }
+
+    // Limit to max 100 MC numbers per request
+    if (mcNumbers.length > 100) {
+      logSecurityEvent('carrier_health_scores_too_many', userId, { count: mcNumbers.length });
+      const response = NextResponse.json(
+        { ok: false, error: "Too many MC numbers (max 100)" },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
+    // Validate each MC number format
+    const invalidMCs = mcNumbers.filter(mc => !/^\d+$/.test(mc) || mc.length > 20);
+    if (invalidMCs.length > 0) {
+      logSecurityEvent('invalid_carrier_health_scores_mc_format', userId, { invalidMCs });
+      const response = NextResponse.json(
+        { ok: false, error: `Invalid MC number format: ${invalidMCs.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
     
     const result = await sql`
@@ -55,20 +100,38 @@ export async function GET(request: NextRequest) {
       };
     }
     
-    return NextResponse.json({
+    logSecurityEvent('carrier_health_scores_retrieved', userId, { mcCount: mcNumbers.length });
+    
+    const response = NextResponse.json({
       ok: true,
       scores,
     });
+    
+    return addSecurityHeaders(response);
+    
   } catch (error: any) {
     console.error("Error retrieving health scores:", error);
-    return NextResponse.json(
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('carrier_health_scores_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
       {
         ok: false,
-        error: error.message || "Failed to retrieve health scores",
+        error: process.env.NODE_ENV === 'development' 
+          ? (error.message || "Failed to retrieve health scores")
+          : "Failed to retrieve health scores",
         scores: {},
       },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 

@@ -1,4 +1,5 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import { extractCarrierUrl, parseDirectoryData, parseOverviewData } from "@/lib/carrier-health-parser";
 import { calculateHealthScore } from "@/lib/carrier-health-scorer";
 import sql from "@/lib/db";
@@ -39,13 +40,33 @@ export async function POST(request: NextRequest) {
     const auth = await requireApiAdmin(request);
     const userId = auth.userId || '';
     
-    const { mcNumber, carrierUrl } = await request.json();
+    const body = await request.json();
+    const { mcNumber, carrierUrl } = body;
+
+    // Input validation
+    const validation = validateInput(
+      { mcNumber, carrierUrl },
+      {
+        mcNumber: { type: 'string', pattern: /^\d+$/, maxLength: 20, required: false },
+        carrierUrl: { type: 'string', pattern: /^https?:\/\/.+/, maxLength: 500, required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_playwright_scrape_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { ok: false, error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
     
     if (!mcNumber && !carrierUrl) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { ok: false, error: "MC number or carrier URL is required" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
     
     // Launch browser
@@ -257,7 +278,9 @@ export async function POST(request: NextRequest) {
       
       await browser.close();
       
-      return NextResponse.json({
+      logSecurityEvent('carrier_health_playwright_scraped', userId, { mcNumber: finalMcNumber });
+      
+      const response = NextResponse.json({
         ok: true,
         message: "Health data scraped and stored successfully",
         data: {
@@ -272,19 +295,35 @@ export async function POST(request: NextRequest) {
           status: healthScore.status,
         },
       });
+      
+      return addSecurityHeaders(response);
+      
     } catch (error: any) {
       await browser.close();
       throw error;
     }
   } catch (error: any) {
     console.error("Error Playwright scraping carrier health data:", error);
-    return NextResponse.json(
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('carrier_health_playwright_scrape_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
       {
         ok: false,
-        error: error.message || "Failed to scrape health data",
+        error: process.env.NODE_ENV === 'development' 
+          ? (error.message || "Failed to scrape health data")
+          : "Failed to scrape health data",
       },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 

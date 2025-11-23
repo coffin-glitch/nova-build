@@ -1,4 +1,5 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -8,16 +9,35 @@ import { NextRequest, NextResponse } from "next/server";
  */
 export async function DELETE(request: NextRequest) {
   try {
-    await requireApiAdmin(request);
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
     
     const { searchParams } = new URL(request.url);
     const mcNumber = searchParams.get("mc");
+
+    // Input validation
+    const validation = validateInput(
+      { mcNumber },
+      {
+        mcNumber: { required: true, type: 'string', pattern: /^\d+$/, maxLength: 20 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_carrier_health_wipe_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { ok: false, error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
     
     if (!mcNumber) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { ok: false, error: "MC number is required" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
     
     // Delete all health data for this MC number
@@ -28,26 +48,46 @@ export async function DELETE(request: NextRequest) {
     `;
     
     if (result.length === 0) {
-      return NextResponse.json({
+      logSecurityEvent('carrier_health_wipe_not_found', userId, { mcNumber });
+      const response = NextResponse.json({
         ok: false,
         error: "No health data found for this MC number",
       });
+      return addSecurityHeaders(response);
     }
     
-    return NextResponse.json({
+    logSecurityEvent('carrier_health_wiped', userId, { mcNumber, deletedCount: result.length });
+    
+    const response = NextResponse.json({
       ok: true,
       message: `Successfully wiped all health data for MC ${mcNumber}`,
       deletedCount: result.length,
     });
+    
+    return addSecurityHeaders(response);
+    
   } catch (error: any) {
     console.error("Error wiping carrier health data:", error);
-    return NextResponse.json(
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('carrier_health_wipe_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
       {
         ok: false,
-        error: error.message || "Failed to wipe health data",
+        error: process.env.NODE_ENV === 'development' 
+          ? (error.message || "Failed to wipe health data")
+          : "Failed to wipe health data",
       },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 

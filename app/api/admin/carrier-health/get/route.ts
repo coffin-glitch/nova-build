@@ -1,20 +1,40 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import { calculateHealthScore } from "@/lib/carrier-health-scorer";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
-    await requireApiAdmin(request);
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
     
     const { searchParams } = new URL(request.url);
     const mcNumber = searchParams.get("mc");
+
+    // Input validation
+    const validation = validateInput(
+      { mcNumber },
+      {
+        mcNumber: { required: true, type: 'string', pattern: /^\d+$/, maxLength: 20 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_carrier_health_get_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { ok: false, error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
     
     if (!mcNumber) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { ok: false, error: "MC number is required" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
     
     const result = await sql`
@@ -61,22 +81,40 @@ export async function GET(request: NextRequest) {
       }
     }
     
-    return NextResponse.json({
+    logSecurityEvent('carrier_health_retrieved', userId, { mcNumber });
+    
+    const response = NextResponse.json({
       ok: true,
       data: {
         ...result[0],
         breakdown,
       },
     });
+    
+    return addSecurityHeaders(response);
+    
   } catch (error: any) {
     console.error("Error retrieving carrier health data:", error);
-    return NextResponse.json(
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('carrier_health_get_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
       {
         ok: false,
-        error: error.message || "Failed to retrieve health data",
+        error: process.env.NODE_ENV === 'development' 
+          ? (error.message || "Failed to retrieve health data")
+          : "Failed to retrieve health data",
       },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 
