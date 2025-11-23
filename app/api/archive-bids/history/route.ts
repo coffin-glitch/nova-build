@@ -1,8 +1,14 @@
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from '@/lib/db';
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
+    // Require admin authentication for archive access
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
+    
     const { searchParams } = new URL(request.url);
     
     // Parse query parameters
@@ -19,58 +25,42 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(parseInt(searchParams.get("limit") || "100"), 1000);
     const offset = parseInt(searchParams.get("offset") || "0");
 
-    // Start with base condition (already filtered in main query)
-    const whereConditionsList = [];
-    
-    // Add additional filters
-    if (bidNumber) {
-      whereConditionsList.push(`tb.bid_number ILIKE '%${bidNumber.replace(/'/g, "''")}%'`);
+    // Input validation
+    const validation = validateInput(
+      { bidNumber, dateFrom, dateTo, city, tag, milesMin, milesMax, sourceChannel, sortBy, sortOrder, limit, offset },
+      {
+        bidNumber: { type: 'string', maxLength: 100, required: false },
+        dateFrom: { type: 'string', pattern: /^\d{4}-\d{2}-\d{2}$/, maxLength: 10, required: false },
+        dateTo: { type: 'string', pattern: /^\d{4}-\d{2}-\d{2}$/, maxLength: 10, required: false },
+        city: { type: 'string', maxLength: 100, required: false },
+        tag: { type: 'string', maxLength: 100, required: false },
+        milesMin: { type: 'string', pattern: /^\d+$/, maxLength: 10, required: false },
+        milesMax: { type: 'string', pattern: /^\d+$/, maxLength: 10, required: false },
+        sourceChannel: { type: 'string', maxLength: 50, required: false },
+        sortBy: { type: 'string', enum: ['archived_at', 'received_at', 'distance_miles', 'bids_count'], required: false },
+        sortOrder: { type: 'string', enum: ['asc', 'desc'], required: false },
+        limit: { type: 'number', min: 1, max: 1000 },
+        offset: { type: 'number', min: 0 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_archive_history_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
+
+    // Build query using parameterized queries (fixes SQL injection)
+    // Use conditional WHERE clauses with sql template literals
+    // Validate and sanitize sortBy - only allow safe column names
+    const validSortBy = ['archived_at', 'received_at', 'distance_miles'].includes(sortBy) ? sortBy : 'archived_at';
+    const validSortOrder = sortOrder === 'asc' ? 'ASC' : 'DESC';
     
-    if (dateFrom) {
-      // Convert archived_at from UTC to CDT for date comparison
-      // archived_at stores UTC timestamp, we display in CDT
-      whereConditionsList.push(`DATE(tb.archived_at AT TIME ZONE 'America/Chicago') >= '${dateFrom}'`);
-    }
-    
-    if (dateTo) {
-      // Convert archived_at from UTC to CDT for date comparison
-      whereConditionsList.push(`DATE(tb.archived_at AT TIME ZONE 'America/Chicago') <= '${dateTo}'`);
-    }
-    
-    if (city) {
-      whereConditionsList.push(`tb.stops::text ILIKE '%${city.replace(/'/g, "''")}%'`);
-    }
-    
-    if (tag) {
-      whereConditionsList.push(`tb.tag ILIKE '%${tag.replace(/'/g, "''")}%'`);
-    }
-    
-    if (milesMin) {
-      whereConditionsList.push(`tb.distance_miles >= ${parseInt(milesMin)}`);
-    }
-    
-    if (milesMax) {
-      whereConditionsList.push(`tb.distance_miles <= ${parseInt(milesMax)}`);
-    }
-    
-    if (sourceChannel) {
-      whereConditionsList.push(`tb.source_channel = '${sourceChannel.replace(/'/g, "''")}'`);
-    }
-    
-    // Build ORDER BY clause - bids_count must be sorted in-memory
-    let orderBy;
-    if (sortBy !== 'bids_count') {
-      orderBy = sql.unsafe(`ORDER BY tb.${sortBy} ${sortOrder.toUpperCase()}`);
-    } else {
-      orderBy = sql.unsafe(`ORDER BY tb.archived_at DESC`); // Default ordering before in-memory sort
-    }
-    
-    // Query to get archived bids (only those with archived_at set)
-    // If we want expired bids (archived_at IS NULL), use expired_bids view
-    const wherePart = whereConditionsList.length > 0 
-      ? `AND ${whereConditionsList.join(' AND ')}` 
-      : '';
+    // Build ORDER BY clause safely - use sql.unsafe only for validated column names
+    const orderByClause = sql.unsafe(`ORDER BY tb.${validSortBy} ${validSortOrder}`);
     
     const rows = await sql`
       SELECT 
@@ -80,8 +70,16 @@ export async function GET(request: NextRequest) {
           ELSE 'UNKNOWN'
         END as state_tag
       FROM telegram_bids tb
-      WHERE tb.archived_at IS NOT NULL ${sql.unsafe(wherePart)}
-      ${orderBy}
+      WHERE tb.archived_at IS NOT NULL
+        ${bidNumber ? sql`AND tb.bid_number ILIKE ${'%' + bidNumber + '%'}` : sql``}
+        ${dateFrom ? sql`AND DATE(tb.archived_at AT TIME ZONE 'America/Chicago') >= ${dateFrom}::date` : sql``}
+        ${dateTo ? sql`AND DATE(tb.archived_at AT TIME ZONE 'America/Chicago') <= ${dateTo}::date` : sql``}
+        ${city ? sql`AND tb.stops::text ILIKE ${'%' + city + '%'}` : sql``}
+        ${tag ? sql`AND tb.tag ILIKE ${'%' + tag + '%'}` : sql``}
+        ${milesMin ? sql`AND tb.distance_miles >= ${parseInt(milesMin)}` : sql``}
+        ${milesMax ? sql`AND tb.distance_miles <= ${parseInt(milesMax)}` : sql``}
+        ${sourceChannel ? sql`AND tb.source_channel = ${sourceChannel}` : sql``}
+      ${orderByClause}
       LIMIT ${limit} OFFSET ${offset}
     `;
 
@@ -135,7 +133,15 @@ export async function GET(request: NextRequest) {
     const countResult = await sql`
       SELECT COUNT(*) as total
       FROM telegram_bids tb
-      WHERE tb.archived_at IS NOT NULL ${sql.unsafe(wherePart)}
+      WHERE tb.archived_at IS NOT NULL
+        ${bidNumber ? sql`AND tb.bid_number ILIKE ${'%' + bidNumber + '%'}` : sql``}
+        ${dateFrom ? sql`AND DATE(tb.archived_at AT TIME ZONE 'America/Chicago') >= ${dateFrom}::date` : sql``}
+        ${dateTo ? sql`AND DATE(tb.archived_at AT TIME ZONE 'America/Chicago') <= ${dateTo}::date` : sql``}
+        ${city ? sql`AND tb.stops::text ILIKE ${'%' + city + '%'}` : sql``}
+        ${tag ? sql`AND tb.tag ILIKE ${'%' + tag + '%'}` : sql``}
+        ${milesMin ? sql`AND tb.distance_miles >= ${parseInt(milesMin)}` : sql``}
+        ${milesMax ? sql`AND tb.distance_miles <= ${parseInt(milesMax)}` : sql``}
+        ${sourceChannel ? sql`AND tb.source_channel = ${sourceChannel}` : sql``}
     `;
 
     const total = countResult[0]?.total || 0;
@@ -154,7 +160,15 @@ export async function GET(request: NextRequest) {
         COUNT(DISTINCT CASE WHEN tag IS NOT NULL THEN tag ELSE 'UNKNOWN' END) as unique_states,
         COUNT(DISTINCT tag) as unique_tags
       FROM telegram_bids tb
-      WHERE tb.archived_at IS NOT NULL ${sql.unsafe(wherePart)}
+      WHERE tb.archived_at IS NOT NULL
+        ${bidNumber ? sql`AND tb.bid_number ILIKE ${'%' + bidNumber + '%'}` : sql``}
+        ${dateFrom ? sql`AND DATE(tb.archived_at AT TIME ZONE 'America/Chicago') >= ${dateFrom}::date` : sql``}
+        ${dateTo ? sql`AND DATE(tb.archived_at AT TIME ZONE 'America/Chicago') <= ${dateTo}::date` : sql``}
+        ${city ? sql`AND tb.stops::text ILIKE ${'%' + city + '%'}` : sql``}
+        ${tag ? sql`AND tb.tag ILIKE ${'%' + tag + '%'}` : sql``}
+        ${milesMin ? sql`AND tb.distance_miles >= ${parseInt(milesMin)}` : sql``}
+        ${milesMax ? sql`AND tb.distance_miles <= ${parseInt(milesMax)}` : sql``}
+        ${sourceChannel ? sql`AND tb.source_channel = ${sourceChannel}` : sql``}
     `;
 
     // Get archive activity by day - UNFILTERED totals for each day
@@ -173,7 +187,11 @@ export async function GET(request: NextRequest) {
       LIMIT 30
     `;
 
-    return NextResponse.json({
+    logSecurityEvent('archive_bids_history_accessed', userId, { 
+      filters: { bidNumber, dateFrom, dateTo, city, tag, milesMin, milesMax, sourceChannel, sortBy, sortOrder }
+    });
+    
+    const response = NextResponse.json({
       ok: true,
       data: enrichedRows,
       pagination: {
@@ -198,12 +216,30 @@ export async function GET(request: NextRequest) {
         sortOrder
       }
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching archive bids history:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch archive bids history" },
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('archive_bids_history_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to fetch archive bids history",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
