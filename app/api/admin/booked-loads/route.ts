@@ -1,4 +1,5 @@
 import { addSecurityHeaders, logSecurityEvent } from "@/lib/api-security";
+import { checkApiRateLimit, addRateLimitHeaders } from "@/lib/api-rate-limiting";
 import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -6,6 +7,25 @@ export async function GET(request: NextRequest) {
   try {
     const auth = await requireApiAdmin(request);
     const userId = auth.userId;
+
+    // Check rate limit for admin read operation
+    const rateLimit = await checkApiRateLimit(request, {
+      userId,
+      routeType: 'readOnly'
+    });
+
+    if (!rateLimit.allowed) {
+      const response = NextResponse.json(
+        {
+          success: false,
+          error: 'Rate limit exceeded',
+          message: `Too many requests. Please try again after ${rateLimit.retryAfter} seconds.`,
+          retryAfter: rateLimit.retryAfter
+        },
+        { status: 429 }
+      );
+      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    }
 
     // Get today's date range
     const today = new Date();
@@ -33,7 +53,7 @@ export async function GET(request: NextRequest) {
       }
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
 
   } catch (error: any) {
     console.error("Error fetching booked loads:", error);
