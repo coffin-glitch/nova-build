@@ -342,7 +342,7 @@ export async function POST(request: NextRequest) {
           }
         });
         
-        return addSecurityHeaders(response);
+        return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
       } else {
         // MC is active but not in table - that's fine, it's active by default
         logSecurityEvent('mc_access_control_active_default', adminUserId, { mcNumber: mc_number });
