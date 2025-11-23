@@ -1,4 +1,5 @@
 import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { checkApiRateLimit, addRateLimitHeaders } from "@/lib/api-rate-limiting";
 import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import { NextRequest } from "next/server";
 import sql from "@/lib/db";
@@ -9,6 +10,24 @@ export async function PUT(req: NextRequest) {
     // Ensure user is admin
     const auth = await requireApiAdmin(req);
     const userId = auth.userId;
+
+    // Check rate limit for admin write operation (bulk operations are critical)
+    const rateLimit = await checkApiRateLimit(req, {
+      userId,
+      routeType: 'admin'
+    });
+
+    if (!rateLimit.allowed) {
+      const response = NextResponse.json(
+        {
+          error: 'Rate limit exceeded',
+          message: `Too many requests. Please try again after ${rateLimit.retryAfter} seconds.`,
+          retryAfter: rateLimit.retryAfter
+        },
+        { status: 429 }
+      );
+      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    }
 
     const body = await req.json();
     const { offerIds, action, adminNotes } = body;

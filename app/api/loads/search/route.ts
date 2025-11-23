@@ -1,4 +1,5 @@
 import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { checkApiRateLimit, addRateLimitHeaders } from "@/lib/api-rate-limiting";
 import { requireApiAuth, unauthorizedResponse } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 import sql from "@/lib/db";
@@ -16,6 +17,24 @@ export async function POST(req: NextRequest) {
     // Require authentication for load search
     const auth = await requireApiAuth(req);
     const userId = auth.userId;
+
+    // Check rate limit for search operation
+    const rateLimit = await checkApiRateLimit(req, {
+      userId,
+      routeType: 'search'
+    });
+
+    if (!rateLimit.allowed) {
+      const response = NextResponse.json(
+        {
+          error: 'Rate limit exceeded',
+          message: `Too many requests. Please try again after ${rateLimit.retryAfter} seconds.`,
+          retryAfter: rateLimit.retryAfter
+        },
+        { status: 429 }
+      );
+      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    }
     
     const body = await req.json().catch(() => ({}));
     const {

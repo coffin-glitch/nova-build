@@ -1,4 +1,5 @@
 import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { checkApiRateLimit, addRateLimitHeaders } from "@/lib/api-rate-limiting";
 import sql from "@/lib/db";
 import { sendEmail } from "@/lib/email/notify";
 import { NextRequest, NextResponse } from "next/server";
@@ -9,6 +10,23 @@ import { NextRequest, NextResponse } from "next/server";
  */
 export async function POST(request: NextRequest) {
   try {
+    // Check rate limit for public write operation (contact form)
+    const rateLimit = await checkApiRateLimit(request, {
+      routeType: 'public'
+    });
+
+    if (!rateLimit.allowed) {
+      const response = NextResponse.json(
+        {
+          error: 'Rate limit exceeded',
+          message: `Too many requests. Please try again after ${rateLimit.retryAfter} seconds.`,
+          retryAfter: rateLimit.retryAfter
+        },
+        { status: 429 }
+      );
+      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    }
+
     const body = await request.json();
     const { name, email, subject, message } = body;
 
