@@ -73,7 +73,7 @@ export async function POST(
       data: { notificationId }
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
 
   } catch (error: any) {
     console.error("Error marking notification as read:", error);
