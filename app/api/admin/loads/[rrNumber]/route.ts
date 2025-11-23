@@ -1,4 +1,5 @@
-import { requireApiAdmin, requireApiCarrier } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, requireApiCarrier, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -7,10 +8,28 @@ export async function PUT(
   { params }: { params: Promise<{ rrNumber: string }> }
 ) {
   try {
-    // Ensure user is admin (Supabase-only)
-    await requireApiAdmin(request);
+    const auth = await requireApiAdmin(request);
+    const adminUserId = auth.userId;
 
     const { rrNumber } = await params;
+
+    // Input validation for rrNumber
+    const rrNumberValidation = validateInput(
+      { rrNumber },
+      {
+        rrNumber: { required: true, type: 'string', pattern: /^[A-Z0-9\-_]+$/, maxLength: 100 }
+      }
+    );
+
+    if (!rrNumberValidation.valid) {
+      logSecurityEvent('invalid_load_update_rrnumber', adminUserId, { errors: rrNumberValidation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${rrNumberValidation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     const body = await request.json();
     
     const {
@@ -61,7 +80,12 @@ export async function PUT(
     `;
 
     if (existingLoad.length === 0) {
-      return NextResponse.json({ error: "Load not found" }, { status: 404 });
+      logSecurityEvent('load_not_found_update', adminUserId, { rrNumber });
+      const response = NextResponse.json(
+        { error: "Load not found" },
+        { status: 404 }
+      );
+      return addSecurityHeaders(response);
     }
 
     // Update the load with all provided fields
@@ -105,18 +129,43 @@ export async function PUT(
     `;
 
     if (updateResult.length === 0) {
-      return NextResponse.json({ error: "Failed to update load" }, { status: 500 });
+      logSecurityEvent('load_update_failed', adminUserId, { rrNumber });
+      const response = NextResponse.json(
+        { error: "Failed to update load" },
+        { status: 500 }
+      );
+      return addSecurityHeaders(response);
     }
 
-    return NextResponse.json({ 
+    logSecurityEvent('load_updated', adminUserId, { rrNumber });
+    
+    const response = NextResponse.json({ 
       success: true,
       message: "Load updated successfully",
       load: updateResult[0]
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error updating load:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('load_update_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json({ 
+      error: "Internal server error",
+      details: process.env.NODE_ENV === 'development' 
+        ? (error instanceof Error ? error.message : 'Unknown error')
+        : undefined
+    }, { status: 500 });
+    
+    return addSecurityHeaders(response);
   }
 }
 
@@ -141,6 +190,22 @@ export async function GET(
     }
 
     const { rrNumber } = await params;
+
+    // Input validation for rrNumber
+    const rrNumberValidation = validateInput(
+      { rrNumber },
+      {
+        rrNumber: { required: true, type: 'string', pattern: /^[A-Z0-9\-_]+$/, maxLength: 100 }
+      }
+    );
+
+    if (!rrNumberValidation.valid) {
+      const response = NextResponse.json(
+        { error: `Invalid input: ${rrNumberValidation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
 
     // Get load details - admins see all fields, carriers see limited fields
     let loadResult;
@@ -171,16 +236,34 @@ export async function GET(
     }
 
     if (loadResult.length === 0) {
-      return NextResponse.json({ error: "Load not found" }, { status: 404 });
+      const response = NextResponse.json(
+        { error: "Load not found" },
+        { status: 404 }
+      );
+      return addSecurityHeaders(response);
     }
 
-    return NextResponse.json({ 
+    const response = NextResponse.json({ 
       success: true,
       load: loadResult[0]
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching load:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    const response = NextResponse.json({ 
+      error: "Internal server error",
+      details: process.env.NODE_ENV === 'development' 
+        ? (error instanceof Error ? error.message : 'Unknown error')
+        : undefined
+    }, { status: 500 });
+    
+    return addSecurityHeaders(response);
   }
 }

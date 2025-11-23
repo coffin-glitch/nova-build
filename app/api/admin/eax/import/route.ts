@@ -1,4 +1,5 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import sql from "@/lib/db";
@@ -61,11 +62,48 @@ function cityStateSplit(s: any) {
 }
 
 export async function POST(request: NextRequest) {
-  await requireApiAdmin(request);
+  try {
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
 
-  const formData = await request.formData();
-  const file = formData.get("file") as File | null;
-  if (!file) return NextResponse.json({ ok: false, error: "Missing file" }, { status: 400 });
+    const formData = await request.formData();
+    const file = formData.get("file") as File | null;
+    
+    if (!file) {
+      logSecurityEvent('eax_import_no_file', userId);
+      const response = NextResponse.json(
+        { ok: false, error: "Missing file" },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
+    // Validate file size (max 50MB)
+    const maxSize = 50 * 1024 * 1024; // 50MB
+    if (file.size > maxSize) {
+      logSecurityEvent('eax_import_size_exceeded', userId, { 
+        fileSize: file.size,
+        fileName: file.name
+      });
+      const response = NextResponse.json(
+        { ok: false, error: "File size exceeds 50MB limit" },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
+    // Validate file type
+    if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
+      logSecurityEvent('eax_import_invalid_type', userId, { 
+        fileName: file.name,
+        fileType: file.type
+      });
+      const response = NextResponse.json(
+        { ok: false, error: "Only Excel files (.xlsx, .xls) are supported" },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
 
   const buf = Buffer.from(await file.arrayBuffer());
   const wb = XLSX.read(buf, { type: "buffer" });
@@ -124,9 +162,17 @@ export async function POST(request: NextRequest) {
   const validRows = normalized.filter((r: any) => !r.__invalid && r.rr_number) as Array<z.infer<typeof RowSchema>>;
   const invalid = normalized.filter((r: any) => r.__invalid);
 
-  if (!validRows.length) {
-    return NextResponse.json({ ok: false, inserted: 0, updated: 0, skipped: rowsRaw.length, invalid }, { status: 400 });
-  }
+    if (!validRows.length) {
+      logSecurityEvent('eax_import_no_valid_rows', userId, { 
+        totalRows: rowsRaw.length,
+        invalidCount: invalid.length
+      });
+      const response = NextResponse.json(
+        { ok: false, inserted: 0, updated: 0, skipped: rowsRaw.length, invalid },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
 
   let inserted = 0;
   let updated = 0;
@@ -207,5 +253,47 @@ export async function POST(request: NextRequest) {
     }
   });
 
-  return NextResponse.json({ ok: true, inserted, updated, skipped: invalid.length, invalidCount: invalid.length });
+    logSecurityEvent('eax_import_success', userId, { 
+      fileName: file.name,
+      fileSize: file.size,
+      inserted,
+      updated,
+      skipped: invalid.length,
+      invalidCount: invalid.length
+    });
+    
+    const response = NextResponse.json({ 
+      ok: true, 
+      inserted, 
+      updated, 
+      skipped: invalid.length, 
+      invalidCount: invalid.length 
+    });
+    
+    return addSecurityHeaders(response);
+    
+  } catch (error: any) {
+    console.error("EAX import error:", error);
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('eax_import_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        ok: false,
+        error: "Failed to import EAX file",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
+      { status: 500 }
+    );
+    
+    return addSecurityHeaders(response);
+  }
 }

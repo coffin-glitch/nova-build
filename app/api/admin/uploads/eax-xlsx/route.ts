@@ -1,28 +1,51 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 import sql from "@/lib/db";
 import * as XLSX from "xlsx";
 
 export async function POST(request: NextRequest) {
   try {
-    await requireApiAdmin(request);
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
 
     const formData = await request.formData();
     const file = formData.get("file") as File;
 
     if (!file) {
-      return NextResponse.json(
+      logSecurityEvent('eax_xlsx_upload_no_file', userId);
+      const response = NextResponse.json(
         { ok: false, error: "No file provided" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
+    }
+
+    // Validate file size (max 50MB)
+    const maxSize = 50 * 1024 * 1024; // 50MB
+    if (file.size > maxSize) {
+      logSecurityEvent('eax_xlsx_upload_size_exceeded', userId, { 
+        fileSize: file.size,
+        fileName: file.name
+      });
+      const response = NextResponse.json(
+        { ok: false, error: "File size exceeds 50MB limit" },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
 
     // Validate file type
     if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
-      return NextResponse.json(
+      logSecurityEvent('eax_xlsx_upload_invalid_type', userId, { 
+        fileName: file.name,
+        fileType: file.type
+      });
+      const response = NextResponse.json(
         { ok: false, error: "Only Excel files (.xlsx, .xls) are supported" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Convert file to buffer
@@ -37,10 +60,12 @@ export async function POST(request: NextRequest) {
     const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
     
     if (jsonData.length < 2) {
-      return NextResponse.json(
+      logSecurityEvent('eax_xlsx_upload_empty', userId, { fileName: file.name });
+      const response = NextResponse.json(
         { ok: false, error: "Excel file appears to be empty or has no data rows" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Parse EAX Excel format
@@ -199,7 +224,16 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      return NextResponse.json({
+      logSecurityEvent('eax_xlsx_upload_success', userId, { 
+        fileName: file.name,
+        fileSize: file.size,
+        rowsProcessed: parsedLoads.length,
+        inserted,
+        updated,
+        errors
+      });
+      
+      const response = NextResponse.json({
         ok: true,
         message: `Successfully processed ${parsedLoads.length} loads from Excel file`,
         data: {
@@ -211,36 +245,60 @@ export async function POST(request: NextRequest) {
           errors,
         }
       });
+      
+      return addSecurityHeaders(response);
 
-    } catch (dbError) {
+    } catch (dbError: any) {
       console.error("Database error during Excel processing:", dbError);
-      return NextResponse.json(
+      
+      logSecurityEvent('eax_xlsx_upload_db_error', userId, { 
+        error: dbError instanceof Error ? dbError.message : String(dbError) 
+      });
+      
+      const response = NextResponse.json(
         { 
           ok: false,
           error: "Failed to save data to database",
-          details: dbError instanceof Error ? dbError.message : "Unknown database error"
+          details: process.env.NODE_ENV === 'development' 
+            ? (dbError instanceof Error ? dbError.message : "Unknown database error")
+            : undefined
         },
         { status: 500 }
       );
+      
+      return addSecurityHeaders(response);
     }
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Excel upload error:", error);
     
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
     if (error instanceof Error && error.message.includes("403")) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { ok: false, error: "Access denied. Admin privileges required." },
         { status: 403 }
       );
+      return addSecurityHeaders(response);
     }
 
-    return NextResponse.json(
+    logSecurityEvent('eax_xlsx_upload_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
       { 
         ok: false,
         error: "Failed to process Excel file",
-        details: error instanceof Error ? error.message : "Unknown error"
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : "Unknown error")
+          : undefined
       },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }

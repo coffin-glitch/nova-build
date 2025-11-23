@@ -1,4 +1,5 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -7,10 +8,38 @@ export async function GET(
   { params }: { params: Promise<{ offerId: string }> }
 ) {
   try {
-    // Ensure user is admin (Supabase-only)
-    await requireApiAdmin(request);
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
 
     const { offerId } = await params;
+
+    // Input validation
+    const validation = validateInput(
+      { offerId },
+      {
+        offerId: { required: true, type: 'string', pattern: /^\d+$/, maxLength: 20 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_load_lifecycle_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
+    // Validate offerId is a valid number
+    const offerIdNum = Number(offerId);
+    if (isNaN(offerIdNum) || offerIdNum <= 0) {
+      logSecurityEvent('invalid_load_lifecycle_offerid', userId, { offerId });
+      const response = NextResponse.json(
+        { error: "Invalid offer ID" },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
 
     // Get load lifecycle events for the offer
     const events = await sql`
@@ -35,7 +64,9 @@ export async function GET(
 
     const currentStatus = events.length > 0 ? events[events.length - 1].status : 'pending';
 
-    return NextResponse.json({
+    logSecurityEvent('load_lifecycle_accessed', userId, { offerId, eventCount: events.length });
+    
+    const response = NextResponse.json({
       ok: true,
       data: {
         events: events.map(event => ({
@@ -54,12 +85,30 @@ export async function GET(
         currentStatus
       }
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching admin load lifecycle:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch lifecycle data" },
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('load_lifecycle_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to fetch lifecycle data",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
