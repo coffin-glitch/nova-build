@@ -1,9 +1,15 @@
+import { addSecurityHeaders, logSecurityEvent } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
-    console.log("🔍 Checking database schema...");
+    // Require admin authentication for database health check
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
+    
+    logSecurityEvent('db_health_check_accessed', userId);
     
     // Check if user_roles table exists and what columns it has
     const tableInfo = await sql`
@@ -36,20 +42,34 @@ export async function GET(request: NextRequest) {
     `;
     
     const allTablesArray = Array.isArray(allTables) ? allTables : [];
-    console.log("📚 All tables:", allTablesArray.map((t: any) => t.table_name));
     
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       userRolesTableExists: Array.isArray(tableExists) ? (tableExists[0]?.exists || false) : false,
       userRolesColumns: tableInfo,
       allTables: allTablesArray.map((t: any) => t.table_name)
     });
     
+    return addSecurityHeaders(response);
+    
   } catch (error: any) {
     console.error("❌ Database health check error:", error);
-    return NextResponse.json({
-      success: false,
-      error: error.message
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('db_health_check_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
     });
+    
+    const response = NextResponse.json({
+      success: false,
+      error: process.env.NODE_ENV === 'development' 
+        ? (error instanceof Error ? error.message : 'Unknown error')
+        : 'Database health check failed'
+    }, { status: 500 });
+    
+    return addSecurityHeaders(response);
   }
 }

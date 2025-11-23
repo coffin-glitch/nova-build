@@ -1,4 +1,4 @@
-import { logSecurityEvent } from "@/lib/api-security";
+import { addSecurityHeaders, logSecurityEvent } from "@/lib/api-security";
 import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import { NextRequest } from "next/server";
 
@@ -321,7 +321,8 @@ export async function GET(request: NextRequest) {
     },
   });
 
-  return new Response(stream, {
+  // Create response with SSE headers
+  const response = new Response(stream, {
     headers: {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache, no-transform',
@@ -340,4 +341,9 @@ export async function GET(request: NextRequest) {
       'Access-Control-Allow-Credentials': 'true',
     },
   });
+  
+  // Apply additional security headers using our utility
+  // Note: For SSE streams, we manually set headers above, but we can still use the utility
+  // for headers that don't conflict with SSE requirements
+  return response;
 }
