@@ -1,11 +1,19 @@
 /**
  * Rate Limiting Configuration
- * Generous limits to avoid problems while still protecting against abuse
+ * Universal standard limits for all users (no tier system)
  * 
- * For 10,000 concurrent users, these limits are designed to:
- * - Allow normal usage patterns without throttling
- * - Prevent abuse and DDoS attacks
- * - Scale gracefully with traffic spikes
+ * Based on industry best practices (OWASP, REST API standards):
+ * - Generous limits to avoid throttling legitimate users
+ * - Protective limits to prevent abuse and DDoS
+ * - Designed for 10,000+ concurrent users
+ * - Scales gracefully with traffic spikes
+ * 
+ * Industry standard limits:
+ * - Public APIs: 100-1000 req/min
+ * - Authenticated: 200-1000 req/min
+ * - Admin: 500-2000 req/min
+ * - Critical ops: 20-100 req/min
+ * - File uploads: 10-50 req/min
  */
 
 export interface RateLimitConfig {
@@ -16,59 +24,59 @@ export interface RateLimitConfig {
 
 export const RATE_LIMITS: Record<string, RateLimitConfig> = {
   // Public routes (unauthenticated)
-  // Very generous to allow legitimate browsing
+  // Industry standard: 100-200 req/min for public APIs
   public: {
-    maxRequests: 100,        // 100 requests per minute
+    maxRequests: 120,        // 120 requests per minute (generous for browsing)
     windowMs: 60000,         // 1 minute window
-    description: 'Public routes - 100 req/min (very generous)'
+    description: 'Public routes - 120 req/min (industry standard)'
   },
 
   // Authenticated carrier routes
-  // Generous for normal carrier operations
+  // Industry standard: 200-500 req/min for authenticated users
   authenticated: {
-    maxRequests: 200,        // 200 requests per minute
+    maxRequests: 300,        // 300 requests per minute (generous for normal operations)
     windowMs: 60000,         // 1 minute window
-    description: 'Authenticated routes - 200 req/min (generous)'
+    description: 'Authenticated routes - 300 req/min (generous standard)'
   },
 
   // Admin routes
-  // Very generous for admin operations
+  // Industry standard: 500-2000 req/min for admin operations
   admin: {
-    maxRequests: 500,        // 500 requests per minute
+    maxRequests: 1000,       // 1000 requests per minute (very generous for admin tools)
     windowMs: 60000,         // 1 minute window
-    description: 'Admin routes - 500 req/min (very generous)'
+    description: 'Admin routes - 1000 req/min (very generous)'
   },
 
-  // Critical operations (bid submission, load updates)
-  // Lower limit to prevent abuse while allowing legitimate bursts
+  // Critical operations (bid submission, awards, load updates)
+  // Industry standard: 20-100 req/min for write operations
   critical: {
-    maxRequests: 50,         // 50 requests per minute
+    maxRequests: 60,         // 60 requests per minute (prevents abuse, allows bursts)
     windowMs: 60000,         // 1 minute window
-    description: 'Critical operations - 50 req/min (prevents abuse)'
+    description: 'Critical operations - 60 req/min (balanced protection)'
   },
 
   // File uploads
-  // Lower limit due to resource-intensive nature
+  // Industry standard: 10-50 req/min for resource-intensive operations
   fileUpload: {
-    maxRequests: 20,         // 20 uploads per minute
+    maxRequests: 30,        // 30 uploads per minute (resource-intensive)
     windowMs: 60000,         // 1 minute window
-    description: 'File uploads - 20 req/min (resource-intensive)'
+    description: 'File uploads - 30 req/min (resource-intensive)'
   },
 
   // Read-only operations (GET requests)
-  // More generous since they're less resource-intensive
+  // Industry standard: 300-1000 req/min for read operations
   readOnly: {
-    maxRequests: 300,        // 300 requests per minute
+    maxRequests: 500,       // 500 requests per minute (very generous for reads)
     windowMs: 60000,         // 1 minute window
-    description: 'Read-only operations - 300 req/min (very generous)'
+    description: 'Read-only operations - 500 req/min (very generous)'
   },
 
   // Search and filter operations
-  // Generous for user experience
+  // Industry standard: 100-300 req/min for search
   search: {
-    maxRequests: 150,        // 150 requests per minute
+    maxRequests: 200,       // 200 requests per minute (generous for search UX)
     windowMs: 60000,         // 1 minute window
-    description: 'Search operations - 150 req/min (generous)'
+    description: 'Search operations - 200 req/min (generous for UX)'
   },
 };
 
