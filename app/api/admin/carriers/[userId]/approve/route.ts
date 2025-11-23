@@ -1,3 +1,4 @@
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
 import sql from "@/lib/db";
 import { requireApiAdmin, unauthorizedResponse, forbiddenResponse } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
@@ -10,12 +11,47 @@ export async function POST(
   try {
     // Await params in Next.js 15
     const { userId } = await params;
+
+    // Input validation for userId
+    const userIdValidation = validateInput(
+      { userId },
+      {
+        userId: { required: true, type: 'string', maxLength: 200 }
+      }
+    );
+
+    if (!userIdValidation.valid) {
+      logSecurityEvent('invalid_carrier_approve_userid', undefined, { errors: userIdValidation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${userIdValidation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
     
     // Use unified auth (supports Supabase and Clerk)
     const auth = await requireApiAdmin(request);
     const adminUserId = auth.userId;
 
-    const { review_notes } = await request.json();
+    const body = await request.json();
+    const { review_notes } = body;
+
+    // Input validation for body
+    const bodyValidation = validateInput(
+      { review_notes },
+      {
+        review_notes: { type: 'string', maxLength: 2000, required: false }
+      }
+    );
+
+    if (!bodyValidation.valid) {
+      logSecurityEvent('invalid_carrier_approve_body', adminUserId, { errors: bodyValidation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${bodyValidation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
 
     // Get current profile data before updating for history (Supabase-only)
     const currentProfile = await sql`
@@ -43,7 +79,12 @@ export async function POST(
     `;
 
     if (currentProfile.length === 0) {
-      return NextResponse.json({ error: "Carrier profile not found" }, { status: 404 });
+      logSecurityEvent('carrier_approve_not_found', adminUserId, { userId });
+      const response = NextResponse.json(
+        { error: "Carrier profile not found" },
+        { status: 404 }
+      );
+      return addSecurityHeaders(response);
     }
 
     const profileUserId = currentProfile[0].supabase_user_id || userId;
@@ -137,11 +178,16 @@ export async function POST(
       WHERE cp.supabase_user_id = ${profileUserId}
     `;
 
-    return NextResponse.json({ 
+    logSecurityEvent('carrier_profile_approved', adminUserId, { carrierUserId: profileUserId });
+    
+    const response = NextResponse.json({ 
       success: true, 
       message: "Carrier profile approved successfully",
       profile: updatedProfile[0] || null
     });
+    
+    return addSecurityHeaders(response);
+    
   } catch (error: any) {
     console.error("Error approving carrier profile:", error);
     
@@ -153,9 +199,20 @@ export async function POST(
       return forbiddenResponse(error.message || "Admin access required");
     }
     
-    return NextResponse.json(
-      { error: "Failed to approve carrier profile" },
+    logSecurityEvent('carrier_approve_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to approve carrier profile",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }

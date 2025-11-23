@@ -1,4 +1,5 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { clearCarrierRelatedCaches } from "@/lib/cache-invalidation";
@@ -8,10 +9,27 @@ export async function GET(
   { params }: { params: Promise<{ userId: string }> }
 ) {
   try {
-    // Ensure user is admin (Supabase-only)
-    await requireApiAdmin(request);
+    const auth = await requireApiAdmin(request);
+    const adminUserId = auth.userId;
 
     const { userId } = await params;
+
+    // Input validation
+    const validation = validateInput(
+      { userId },
+      {
+        userId: { required: true, type: 'string', maxLength: 200 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_carrier_get_input', adminUserId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
 
     // Get carrier profile with email
     const profiles = await sql`
@@ -33,9 +51,11 @@ export async function GET(
     `;
 
     if (profiles.length === 0) {
-      return NextResponse.json({ 
+      logSecurityEvent('carrier_not_found', adminUserId, { userId });
+      const response = NextResponse.json({ 
         error: "Carrier not found" 
       }, { status: 404 });
+      return addSecurityHeaders(response);
     }
 
     const carrier = profiles[0];
@@ -68,7 +88,9 @@ export async function GET(
       console.error(`Error fetching email for user ${userId}:`, error);
     }
 
-    return NextResponse.json({ 
+    logSecurityEvent('carrier_profile_accessed', adminUserId, { carrierUserId: userId });
+    
+    const response = NextResponse.json({ 
       ok: true, 
       data: {
         ...carrier,
@@ -76,12 +98,28 @@ export async function GET(
         company_name: carrier.legal_name || carrier.company_name || 'N/A'
       }
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching carrier profile:", error);
-    return NextResponse.json({ 
-      error: "Failed to fetch profile" 
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('carrier_profile_get_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json({ 
+      error: "Failed to fetch profile",
+      details: process.env.NODE_ENV === 'development' 
+        ? (error instanceof Error ? error.message : 'Unknown error')
+        : undefined
     }, { status: 500 });
+    
+    return addSecurityHeaders(response);
   }
 }
 
@@ -90,10 +128,28 @@ export async function PUT(
   { params }: { params: Promise<{ userId: string }> }
 ) {
   try {
-    // Ensure user is admin (Supabase-only)
-    await requireApiAdmin(request);
+    const auth = await requireApiAdmin(request);
+    const adminUserId = auth.userId;
 
     const { userId: carrierUserId } = await params;
+
+    // Input validation for userId
+    const userIdValidation = validateInput(
+      { carrierUserId },
+      {
+        carrierUserId: { required: true, type: 'string', maxLength: 200 }
+      }
+    );
+
+    if (!userIdValidation.valid) {
+      logSecurityEvent('invalid_carrier_update_userid', adminUserId, { errors: userIdValidation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${userIdValidation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     const body = await request.json();
     const {
       company_name,
@@ -102,6 +158,27 @@ export async function PUT(
       contact_name,
       phone
     } = body;
+
+    // Input validation for body
+    const bodyValidation = validateInput(
+      { company_name, mc_number, dot_number, contact_name, phone },
+      {
+        company_name: { type: 'string', maxLength: 200, required: false },
+        mc_number: { type: 'string', maxLength: 20, required: false },
+        dot_number: { type: 'string', maxLength: 20, required: false },
+        contact_name: { type: 'string', maxLength: 200, required: false },
+        phone: { type: 'string', maxLength: 50, required: false }
+      }
+    );
+
+    if (!bodyValidation.valid) {
+      logSecurityEvent('invalid_carrier_update_body', adminUserId, { errors: bodyValidation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${bodyValidation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
 
     // Update carrier profile (Supabase-only)
     await sql`
@@ -119,15 +196,33 @@ export async function PUT(
     // Clear caches to ensure updated data appears immediately
     await clearCarrierRelatedCaches(carrierUserId);
 
-    return NextResponse.json({ 
+    logSecurityEvent('carrier_profile_updated', adminUserId, { carrierUserId });
+    
+    const response = NextResponse.json({ 
       ok: true, 
       message: "Profile updated successfully" 
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error updating carrier profile:", error);
-    return NextResponse.json({ 
-      error: "Failed to update profile" 
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('carrier_profile_update_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json({ 
+      error: "Failed to update profile",
+      details: process.env.NODE_ENV === 'development' 
+        ? (error instanceof Error ? error.message : 'Unknown error')
+        : undefined
     }, { status: 500 });
+    
+    return addSecurityHeaders(response);
   }
 }

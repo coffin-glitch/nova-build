@@ -1,3 +1,4 @@
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
 import { forbiddenResponse, requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import { clearCarrierRelatedCaches } from "@/lib/cache-invalidation";
 import sql from "@/lib/db";
@@ -10,18 +11,47 @@ export async function POST(
   try {
     // Await params in Next.js 15
     const { userId } = await params;
+
+    // Input validation for userId
+    const userIdValidation = validateInput(
+      { userId },
+      {
+        userId: { required: true, type: 'string', maxLength: 200 }
+      }
+    );
+
+    if (!userIdValidation.valid) {
+      logSecurityEvent('invalid_carrier_decline_userid', undefined, { errors: userIdValidation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${userIdValidation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
     
     // Use unified auth (supports Supabase and Clerk)
     const auth = await requireApiAdmin(request);
     const adminUserId = auth.userId;
 
-    const { decline_reason, review_notes } = await request.json();
+    const body = await request.json();
+    const { decline_reason, review_notes } = body;
 
-    if (!decline_reason) {
-      return NextResponse.json(
-        { error: "Decline reason is required" },
+    // Input validation for body
+    const bodyValidation = validateInput(
+      { decline_reason, review_notes },
+      {
+        decline_reason: { required: true, type: 'string', minLength: 1, maxLength: 500 },
+        review_notes: { type: 'string', maxLength: 2000, required: false }
+      }
+    );
+
+    if (!bodyValidation.valid) {
+      logSecurityEvent('invalid_carrier_decline_body', adminUserId, { errors: bodyValidation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${bodyValidation.errors.join(', ')}` },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Get current profile data before updating for history (Supabase-only)
@@ -50,7 +80,12 @@ export async function POST(
     `;
 
     if (currentProfile.length === 0) {
-      return NextResponse.json({ error: "Carrier profile not found" }, { status: 404 });
+      logSecurityEvent('carrier_decline_not_found', adminUserId, { userId });
+      const response = NextResponse.json(
+        { error: "Carrier profile not found" },
+        { status: 404 }
+      );
+      return addSecurityHeaders(response);
     }
 
     const profileUserId = currentProfile[0].supabase_user_id || userId;
@@ -122,10 +157,15 @@ export async function POST(
       // Don't throw - profile decline should still succeed
     }
 
-    return NextResponse.json({ 
+    logSecurityEvent('carrier_profile_declined', adminUserId, { carrierUserId: profileUserId, declineReason: decline_reason });
+    
+    const response = NextResponse.json({ 
       success: true, 
       message: "Carrier profile declined successfully" 
     });
+    
+    return addSecurityHeaders(response);
+    
   } catch (error: any) {
     console.error("Error declining carrier profile:", error);
     
@@ -137,9 +177,20 @@ export async function POST(
       return forbiddenResponse(error.message || "Admin access required");
     }
     
-    return NextResponse.json(
-      { error: "Failed to decline carrier profile" },
+    logSecurityEvent('carrier_decline_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to decline carrier profile",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }

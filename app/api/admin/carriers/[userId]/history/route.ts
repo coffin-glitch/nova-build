@@ -1,4 +1,5 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -7,10 +8,27 @@ export async function GET(
   { params }: { params: Promise<{ userId: string }> }
 ) {
   try {
-    // Ensure user is admin (Supabase-only)
-    await requireApiAdmin(request);
+    const auth = await requireApiAdmin(request);
+    const adminUserId = auth.userId;
 
     const { userId } = await params;
+
+    // Input validation
+    const validation = validateInput(
+      { userId },
+      {
+        userId: { required: true, type: 'string', maxLength: 200 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_carrier_history_input', adminUserId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
 
     // Fetch profile history for the specified carrier
     const history = await sql`
@@ -39,15 +57,36 @@ export async function GET(
         : record.profile_data
     }));
 
-    return NextResponse.json({ 
+    logSecurityEvent('carrier_history_accessed', adminUserId, { carrierUserId: userId, historyCount: parsedHistory.length });
+    
+    const response = NextResponse.json({ 
       ok: true, 
       data: parsedHistory || [] 
     });
-  } catch (error) {
+    
+    return addSecurityHeaders(response);
+    
+  } catch (error: any) {
     console.error("Error fetching carrier profile history:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch profile history" },
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('carrier_history_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to fetch profile history",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }

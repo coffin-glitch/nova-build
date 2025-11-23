@@ -12,12 +12,9 @@ export async function POST(
     // Await params in Next.js 15
     const { userId } = await params;
     
-    console.log("Toggle status API called for userId:", userId);
-    
     // Use unified auth (supports Supabase and Clerk)
     const auth = await requireApiAdmin(request);
     const adminUserId = auth.userId;
-    console.log("Admin user ID:", adminUserId, "Provider:", auth.provider);
 
     // Input validation for userId
     const userIdValidation = validateInput(
@@ -58,8 +55,6 @@ export async function POST(
       return addSecurityHeaders(response);
     }
 
-    console.log("Processing toggle status for userId:", userId);
-    console.log("New status:", new_status);
 
     // Get current profile data before updating for history (Supabase-only)
     const currentProfile = await sql`
@@ -88,10 +83,7 @@ export async function POST(
       WHERE supabase_user_id = ${userId}
     `;
 
-    console.log("Current profile found:", currentProfile.length > 0 ? "Yes" : "No");
-
     if (currentProfile.length === 0) {
-      console.log("Carrier profile not found for userId:", userId);
       logSecurityEvent('toggle_status_profile_not_found', adminUserId, { targetUserId: userId });
       const response = NextResponse.json(
         { error: "Carrier profile not found" },
@@ -143,8 +135,6 @@ export async function POST(
     // Clear caches to ensure updated data appears immediately
     await clearCarrierRelatedCaches(profileUserId);
 
-    console.log("Profile updated successfully");
-
     // Create history record
     await sql`
       INSERT INTO carrier_profile_history (
@@ -169,10 +159,6 @@ export async function POST(
         (SELECT COALESCE(MAX(version_number), 0) + 1 FROM carrier_profile_history WHERE carrier_user_id = ${profileUserId})
       )
     `;
-    
-    console.log("History record created successfully");
-
-    console.log("Returning success response");
     
     logSecurityEvent('carrier_status_toggled', adminUserId, { 
       targetUserId: profileUserId,

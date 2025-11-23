@@ -7,13 +7,47 @@ export async function POST(
   { params }: { params: Promise<{ userId: string }> }
 ) {
   try {
-    // Ensure user is admin (Supabase-only)
     const auth = await requireApiAdmin(request);
     const adminUserId = auth.userId;
 
     const { userId: carrierUserId } = await params;
+
+    // Input validation for userId
+    const userIdValidation = validateInput(
+      { carrierUserId },
+      {
+        carrierUserId: { required: true, type: 'string', maxLength: 200 }
+      }
+    );
+
+    if (!userIdValidation.valid) {
+      logSecurityEvent('invalid_carrier_lock_userid', adminUserId, { errors: userIdValidation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${userIdValidation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     const body = await request.json();
     const { reason } = body;
+
+    // Input validation for body
+    const bodyValidation = validateInput(
+      { reason },
+      {
+        reason: { type: 'string', maxLength: 500, required: false }
+      }
+    );
+
+    if (!bodyValidation.valid) {
+      logSecurityEvent('invalid_carrier_lock_body', adminUserId, { errors: bodyValidation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${bodyValidation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
 
     // Lock carrier profile (Supabase-only)
     await sql`
@@ -21,19 +55,37 @@ export async function POST(
         is_locked = true,
         locked_at = CURRENT_TIMESTAMP,
         locked_by = ${adminUserId},
-        lock_reason = ${reason}
+        lock_reason = ${reason || null}
       WHERE supabase_user_id = ${carrierUserId}
     `;
 
-    return NextResponse.json({ 
+    logSecurityEvent('carrier_profile_locked', adminUserId, { carrierUserId, reason: reason || null });
+    
+    const response = NextResponse.json({ 
       ok: true, 
       message: "Profile locked successfully" 
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error locking carrier profile:", error);
-    return NextResponse.json({ 
-      error: "Failed to lock profile" 
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('carrier_lock_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json({ 
+      error: "Failed to lock profile",
+      details: process.env.NODE_ENV === 'development' 
+        ? (error instanceof Error ? error.message : 'Unknown error')
+        : undefined
     }, { status: 500 });
+    
+    return addSecurityHeaders(response);
   }
 }
