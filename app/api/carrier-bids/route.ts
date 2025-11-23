@@ -1,4 +1,5 @@
 import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { checkApiRateLimit, addRateLimitHeaders } from "@/lib/api-rate-limiting";
 import { getCarrierProfile, upsertCarrierBid, validateCarrierProfileComplete } from "@/lib/auctions";
 import { requireApiCarrier, unauthorizedResponse } from "@/lib/auth-api-helper";
 import { validateMoneyInput } from "@/lib/format";
@@ -9,6 +10,25 @@ export async function POST(request: NextRequest) {
     // Ensure user is carrier (Supabase-only)
     const auth = await requireApiCarrier(request);
     const userId = auth.userId;
+
+    // Check rate limit for critical operation (bid submission)
+    const rateLimit = await checkApiRateLimit(request, {
+      userId,
+      routeType: 'critical'
+    });
+
+    if (!rateLimit.allowed) {
+      const response = NextResponse.json(
+        {
+          ok: false,
+          error: 'Rate limit exceeded',
+          message: `Too many bid submissions. Please try again after ${rateLimit.retryAfter} seconds.`,
+          retryAfter: rateLimit.retryAfter
+        },
+        { status: 429 }
+      );
+      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    }
 
     const body = await request.json();
     const { bid_number, amount, notes } = body;
@@ -81,7 +101,7 @@ export async function POST(request: NextRequest) {
       data: bid,
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
     
   } catch (error: any) {
     console.error("Carrier bid API error:", error);

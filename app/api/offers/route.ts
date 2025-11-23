@@ -1,4 +1,5 @@
 import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { checkApiRateLimit, addRateLimitHeaders } from "@/lib/api-rate-limiting";
 import { requireApiCarrier, requireApiAdmin, unauthorizedResponse, forbiddenResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
@@ -8,6 +9,24 @@ export async function POST(request: NextRequest) {
     // Ensure user is carrier (Supabase-only)
     const auth = await requireApiCarrier(request);
     const userId = auth.userId;
+
+    // Check rate limit for critical operation (offer submission)
+    const rateLimit = await checkApiRateLimit(request, {
+      userId,
+      routeType: 'critical'
+    });
+
+    if (!rateLimit.allowed) {
+      const response = NextResponse.json(
+        {
+          error: 'Rate limit exceeded',
+          message: `Too many offer submissions. Please try again after ${rateLimit.retryAfter} seconds.`,
+          retryAfter: rateLimit.retryAfter
+        },
+        { status: 429 }
+      );
+      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    }
 
     const body = await request.json();
     const { loadRrNumber, offerAmount, notes } = body;
@@ -97,7 +116,7 @@ export async function POST(request: NextRequest) {
       message: "Offer submitted successfully" 
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
 
   } catch (error: any) {
     console.error("Error creating offer:", error);
