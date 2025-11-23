@@ -164,7 +164,7 @@ export async function PUT(
       load: updateResult[0]
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
 
   } catch (error: any) {
     console.error("Error updating load:", error);
@@ -288,7 +288,7 @@ export async function GET(
       load: loadResult[0]
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
 
   } catch (error: any) {
     console.error("Error fetching load:", error);

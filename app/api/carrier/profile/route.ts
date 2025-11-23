@@ -314,7 +314,7 @@ export async function POST(request: NextRequest) {
       submitted_for_approval: submit_for_approval
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
 
   } catch (error) {
     console.error("Error updating carrier profile:", error);

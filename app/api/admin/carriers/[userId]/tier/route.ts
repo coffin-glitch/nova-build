@@ -76,7 +76,7 @@ export async function GET(
       tier: result[0].tier || 'standard' 
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
     
   } catch (error: any) {
     console.error("Error fetching user tier:", error);
