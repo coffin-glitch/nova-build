@@ -562,7 +562,7 @@ export async function PUT(request: NextRequest) {
       message: "Notification trigger updated successfully"
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
 
   } catch (error: any) {
     console.error("Error updating notification trigger:", error);

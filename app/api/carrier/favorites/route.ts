@@ -294,7 +294,7 @@ export async function POST(request: NextRequest) {
               ok: true, 
               message: "Bid added to favorites" 
             });
-            return addSecurityHeaders(response);
+            return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
           } else {
             console.log('[favorites POST] Favorite already exists (fallback)');
             const response = NextResponse.json({ 
