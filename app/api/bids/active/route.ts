@@ -1,9 +1,26 @@
 import { addSecurityHeaders, logSecurityEvent } from "@/lib/api-security";
+import { checkApiRateLimit, addRateLimitHeaders } from "@/lib/api-rate-limiting";
 import { NextRequest, NextResponse } from "next/server";
 import sql from "@/lib/db";
 
 export async function GET(request: NextRequest) {
   try {
+    // Check rate limit for public route (IP-based)
+    const rateLimit = await checkApiRateLimit(request, {
+      routeType: 'public'
+    });
+
+    if (!rateLimit.allowed) {
+      const response = NextResponse.json(
+        {
+          error: 'Rate limit exceeded',
+          message: `Too many requests. Please try again after ${rateLimit.retryAfter} seconds.`,
+          retryAfter: rateLimit.retryAfter
+        },
+        { status: 429 }
+      );
+      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    }
     // Use parameterized query instead of sql.unsafe to prevent SQL injection
     const rows = await sql`
       SELECT id, bid_code, distance_miles, message_posted_at, expires_at, is_usps, tags
@@ -14,7 +31,7 @@ export async function GET(request: NextRequest) {
     `;
     
     const response = NextResponse.json({ bids: rows });
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
     
   } catch (error: any) {
     console.error("Error fetching active bids:", error);

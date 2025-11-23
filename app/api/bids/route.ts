@@ -1,4 +1,5 @@
 import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { checkApiRateLimit, addRateLimitHeaders } from "@/lib/api-rate-limiting";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -64,6 +65,25 @@ export async function GET(req: NextRequest) {
     const q = url.searchParams.get("q") || "";
     const tag = url.searchParams.get("tag") || "";
     const limitParam = url.searchParams.get("limit") || "50";
+
+    // Check rate limit (search operation if search param present, otherwise public)
+    const hasSearch = q || tag;
+    
+    const rateLimit = await checkApiRateLimit(req, {
+      routeType: hasSearch ? 'search' : 'public'
+    });
+
+    if (!rateLimit.allowed) {
+      const response = NextResponse.json(
+        {
+          error: 'Rate limit exceeded',
+          message: `Too many requests. Please try again after ${rateLimit.retryAfter} seconds.`,
+          retryAfter: rateLimit.retryAfter
+        },
+        { status: 429 }
+      );
+      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    }
 
     // Input validation
     const validation = validateInput(
