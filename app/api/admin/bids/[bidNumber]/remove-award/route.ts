@@ -71,7 +71,7 @@ export async function POST(
       message: `Award for Bid #${bidNumber} has been removed successfully. The bid is now available for re-award.`
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
 
   } catch (error: any) {
     console.error("Remove award error:", error);
