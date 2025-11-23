@@ -170,7 +170,7 @@ export async function POST(req: NextRequest) {
     });
     
     const response = NextResponse.json({ rows });
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
     
   } catch (error: any) {
     console.error("Error searching loads:", error);
