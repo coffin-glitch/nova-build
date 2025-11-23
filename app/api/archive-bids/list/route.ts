@@ -1,8 +1,14 @@
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from '@/lib/db';
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
+    // Require admin authentication for archive access
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
+    
     const { searchParams } = new URL(request.url);
     const date = searchParams.get("date") || undefined;
     const city = searchParams.get("city") || undefined;
@@ -13,46 +19,33 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(parseInt(searchParams.get("limit") || "100"), 100);
     const offset = parseInt(searchParams.get("offset") || "0");
 
-    // Build query with PostgreSQL template literals
-    let whereConditions = [];
-    let queryParams = [];
+    // Input validation
+    const validation = validateInput(
+      { date, city, state, milesMin, milesMax, sortBy, limit, offset },
+      {
+        date: { type: 'string', pattern: /^\d{4}-\d{2}-\d{2}$/, maxLength: 10, required: false },
+        city: { type: 'string', maxLength: 100, required: false },
+        state: { type: 'string', maxLength: 100, required: false },
+        milesMin: { type: 'string', pattern: /^\d+$/, maxLength: 10, required: false },
+        milesMax: { type: 'string', pattern: /^\d+$/, maxLength: 10, required: false },
+        sortBy: { type: 'string', enum: ['date', 'bids'], required: false },
+        limit: { type: 'number', min: 1, max: 100 },
+        offset: { type: 'number', min: 0 }
+      }
+    );
 
-    if (date) {
-      // Convert archived_at from UTC to CDT for date comparison
-      whereConditions.push(`DATE(archived_at AT TIME ZONE 'America/Chicago') = $${queryParams.length + 1}`);
-      queryParams.push(date);
+    if (!validation.valid) {
+      logSecurityEvent('invalid_archive_list_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
 
-    if (city) {
-      whereConditions.push(`LOWER(stops) LIKE LOWER($${queryParams.length + 1})`);
-      queryParams.push(`%${city}%`);
-    }
-
-    if (state) {
-      whereConditions.push(`LOWER(tag) LIKE LOWER($${queryParams.length + 1})`);
-      queryParams.push(`%${state}%`);
-    }
-
-    if (milesMin) {
-      whereConditions.push(`distance_miles >= $${queryParams.length + 1}`);
-      queryParams.push(parseInt(milesMin));
-    }
-
-    if (milesMax) {
-      whereConditions.push(`distance_miles <= $${queryParams.length + 1}`);
-      queryParams.push(parseInt(milesMax));
-    }
-
-    const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
-    
-    // Build ORDER BY clause
-    let orderBy = 'ORDER BY archived_at DESC, received_at DESC';
-    if (sortBy === 'bids') {
-      orderBy = 'ORDER BY archived_at DESC, distance_miles ASC';
-    }
-
-    // Get archived bids with carrier bid counts (archived_at IS NOT NULL means fully archived)
-    const query = `
+    // Build query using parameterized queries (fixes SQL injection)
+    // Use conditional WHERE clauses with sql template literals
+    const rows = await sql`
       SELECT 
         tb.*,
         CASE 
@@ -86,27 +79,32 @@ export async function GET(request: NextRequest) {
         )
       ) lowest_bid ON tb.bid_number = lowest_bid.bid_number
       WHERE tb.archived_at IS NOT NULL
-      ${whereClause}
-      ${orderBy}
-      LIMIT $${queryParams.length + 1} OFFSET $${queryParams.length + 2}
+        ${date ? sql`AND DATE(archived_at AT TIME ZONE 'America/Chicago') = ${date}::date` : sql``}
+        ${city ? sql`AND LOWER(stops) LIKE LOWER(${'%' + city + '%'})` : sql``}
+        ${state ? sql`AND LOWER(tag) LIKE LOWER(${'%' + state + '%'})` : sql``}
+        ${milesMin ? sql`AND distance_miles >= ${parseInt(milesMin)}` : sql``}
+        ${milesMax ? sql`AND distance_miles <= ${parseInt(milesMax)}` : sql``}
+      ${sortBy === 'bids' 
+        ? sql`ORDER BY archived_at DESC, distance_miles ASC`
+        : sql`ORDER BY archived_at DESC, received_at DESC`}
+      LIMIT ${limit} OFFSET ${offset}
     `;
 
-    // Use sql.unsafe to execute raw SQL with parameters
-    const rows = await (sql as any).unsafe(query, queryParams.concat([limit, offset]));
-
     // Get total count for pagination
-    const countQuery = `
+    const countResult = await sql`
       SELECT COUNT(*) as total
       FROM telegram_bids tb
       WHERE tb.archived_at IS NOT NULL
-      ${whereClause}
+        ${date ? sql`AND DATE(archived_at AT TIME ZONE 'America/Chicago') = ${date}::date` : sql``}
+        ${city ? sql`AND LOWER(stops) LIKE LOWER(${'%' + city + '%'})` : sql``}
+        ${state ? sql`AND LOWER(tag) LIKE LOWER(${'%' + state + '%'})` : sql``}
+        ${milesMin ? sql`AND distance_miles >= ${parseInt(milesMin)}` : sql``}
+        ${milesMax ? sql`AND distance_miles <= ${parseInt(milesMax)}` : sql``}
     `;
-    const countResult = await (sql as any).unsafe(countQuery, queryParams);
     const total = parseInt(countResult[0]?.total || '0');
 
     // Get archive statistics by date
-    // Convert archived_at from UTC to CDT for grouping
-    const statsQuery = `
+    const stats = await sql`
       SELECT 
         DATE(archived_at AT TIME ZONE 'America/Chicago') as archived_date,
         COUNT(*) as bid_count,
@@ -119,9 +117,12 @@ export async function GET(request: NextRequest) {
       ORDER BY archived_date DESC
       LIMIT 30
     `;
-    const stats = await (sql as any).unsafe(statsQuery, []);
 
-    return NextResponse.json({
+    logSecurityEvent('archive_bids_list_accessed', userId, { 
+      filters: { date, city, state, milesMin, milesMax, sortBy }
+    });
+    
+    const response = NextResponse.json({
       ok: true,
       data: rows,
       pagination: {
@@ -140,15 +141,30 @@ export async function GET(request: NextRequest) {
         sortBy
       }
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Archived bids API error:", error);
-    return NextResponse.json(
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('archive_bids_list_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
       {
         error: "Failed to fetch archived bids",
-        details: error instanceof Error ? error.message : 'Unknown error'
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
       },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
