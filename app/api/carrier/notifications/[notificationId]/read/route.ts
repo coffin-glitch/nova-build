@@ -1,5 +1,6 @@
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiCarrier, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
-import { requireApiCarrier } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(
@@ -12,6 +13,23 @@ export async function POST(
 
     const { notificationId } = await params;
 
+    // Input validation
+    const validation = validateInput(
+      { notificationId },
+      {
+        notificationId: { required: true, type: 'string', pattern: /^\d+$/, maxLength: 50 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_notification_read_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     // Mark notification as read (using main notifications table)
     const result = await sql`
       UPDATE notifications 
@@ -21,19 +39,44 @@ export async function POST(
     `;
 
     if (result.length === 0) {
-      return NextResponse.json({ error: "Notification not found" }, { status: 404 });
+      logSecurityEvent('notification_not_found', userId, { notificationId });
+      const response = NextResponse.json(
+        { error: "Notification not found" },
+        { status: 404 }
+      );
+      return addSecurityHeaders(response);
     }
 
-    return NextResponse.json({
+    logSecurityEvent('carrier_notification_marked_read', userId, { notificationId });
+    
+    const response = NextResponse.json({
       ok: true,
       data: { notificationId }
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error marking notification as read:", error);
-    return NextResponse.json(
-      { error: "Failed to mark notification as read" },
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('carrier_notification_read_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to mark notification as read",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }

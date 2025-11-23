@@ -1,5 +1,6 @@
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiCarrier, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
-import { requireApiCarrier } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 // GET /api/carrier/favorites/check - Check if specific bids are favorited
@@ -29,21 +30,43 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const bid_numbers = searchParams.get('bid_numbers');
 
+    // Input validation
+    const validation = validateInput(
+      { bid_numbers },
+      {
+        bid_numbers: { required: true, type: 'string', maxLength: 2000 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_favorites_check_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     if (!bid_numbers) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: "Bid numbers are required" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
-    // Parse comma-separated bid numbers
-    const bidNumbersArray = bid_numbers.split(',').map(bn => bn.trim()).filter(bn => bn.length > 0);
+    // Parse comma-separated bid numbers and validate each
+    const bidNumbersArray = bid_numbers.split(',')
+      .map(bn => bn.trim())
+      .filter(bn => bn.length > 0 && /^[A-Z0-9\-_]+$/.test(bn) && bn.length <= 100)
+      .slice(0, 100); // Limit to 100 bid numbers
 
     if (bidNumbersArray.length === 0) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: "No valid bid numbers provided" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Get favorites for the specified bid numbers
@@ -84,10 +107,16 @@ export async function GET(request: NextRequest) {
       return acc;
     }, {} as Record<string, boolean>);
 
-    return NextResponse.json({ 
+    logSecurityEvent('favorites_check_performed', userId, { 
+      bidCount: bidNumbersArray.length 
+    });
+    
+    const response = NextResponse.json({ 
       ok: true, 
       data: result 
     });
+    
+    return addSecurityHeaders(response);
 
   } catch (error: any) {
     console.error('Error checking favorites:', error);
@@ -96,9 +125,25 @@ export async function GET(request: NextRequest) {
       code: error?.code,
       stack: error?.stack
     });
-    return NextResponse.json(
-      { error: "Failed to check favorites", details: error?.message },
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('favorites_check_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to check favorites",
+        details: process.env.NODE_ENV === 'development' 
+          ? error?.message
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }

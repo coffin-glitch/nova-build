@@ -1,4 +1,5 @@
-import { requireApiCarrier } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiCarrier, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -24,16 +25,35 @@ export async function GET(request: NextRequest) {
       ORDER BY cr.created_at DESC
     `;
 
-    return NextResponse.json({ 
+    const response = NextResponse.json({ 
       ok: true, 
       data: responses || []
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching responses:", error);
-    return NextResponse.json({ 
-      error: "Failed to fetch responses" 
-    }, { status: 500 });
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('carrier_responses_fetch_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to fetch responses",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
+      { status: 500 }
+    );
+    
+    return addSecurityHeaders(response);
   }
 }
 
@@ -48,10 +68,30 @@ export async function POST(request: NextRequest) {
       response
     } = body;
 
+    // Input validation
+    const validation = validateInput(
+      { message_id, response },
+      {
+        message_id: { required: true, type: 'string', maxLength: 50 },
+        response: { required: true, type: 'string', minLength: 1, maxLength: 2000 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_carrier_response_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     if (!message_id || !response) {
-      return NextResponse.json({ 
-        error: "Missing required fields: message_id, response" 
-      }, { status: 400 });
+      const response = NextResponse.json(
+        { error: "Missing required fields: message_id, response" },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
 
     // Create carrier response
@@ -67,16 +107,40 @@ export async function POST(request: NextRequest) {
       RETURNING id
     `;
 
-    return NextResponse.json({ 
+    logSecurityEvent('carrier_response_sent', userId, { 
+      messageId: message_id,
+      responseId: result[0].id
+    });
+    
+    const response = NextResponse.json({ 
       ok: true, 
       message: "Response sent successfully",
       data: { id: result[0].id }
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error sending response:", error);
-    return NextResponse.json({ 
-      error: "Failed to send response" 
-    }, { status: 500 });
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('carrier_response_send_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to send response",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
+      { status: 500 }
+    );
+    
+    return addSecurityHeaders(response);
   }
 }

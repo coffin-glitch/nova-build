@@ -1,5 +1,6 @@
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiCarrier, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
-import { requireApiCarrier } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(
@@ -12,6 +13,23 @@ export async function POST(
 
     const { conversationId } = await params;
 
+    // Input validation
+    const validation = validateInput(
+      { conversationId },
+      {
+        conversationId: { required: true, type: 'string', maxLength: 50 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_conversation_read_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     // Verify the user has access to this conversation
     const conversation = await sql`
       SELECT id FROM conversations 
@@ -19,7 +37,12 @@ export async function POST(
     `;
 
     if (conversation.length === 0) {
-      return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
+      logSecurityEvent('conversation_read_unauthorized', userId, { conversationId });
+      const response = NextResponse.json(
+        { error: "Conversation not found" },
+        { status: 404 }
+      );
+      return addSecurityHeaders(response);
     }
 
     // Mark all unread messages in this conversation as read
@@ -53,15 +76,39 @@ export async function POST(
       }
     }
 
-    return NextResponse.json({ 
+    logSecurityEvent('conversation_messages_marked_read', userId, { 
+      conversationId,
+      messageCount: unreadMessages.length
+    });
+    
+    const response = NextResponse.json({ 
       ok: true, 
       message: "Messages marked as read" 
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error marking messages as read:", error);
-    return NextResponse.json({ 
-      error: "Failed to mark messages as read" 
-    }, { status: 500 });
+    
+    if (error.message === "Unauthorized" || error.message === "Carrier access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('conversation_read_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to mark messages as read",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
+      { status: 500 }
+    );
+    
+    return addSecurityHeaders(response);
   }
 }
