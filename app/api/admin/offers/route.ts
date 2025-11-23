@@ -1,11 +1,12 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
-    // Ensure user is admin (Supabase-only)
-    await requireApiAdmin(request);
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
 
     // Get all offers with load details
     const offers = await sql`
@@ -35,16 +36,36 @@ export async function GET(request: NextRequest) {
       ORDER BY lo.created_at DESC
     `;
 
-    return NextResponse.json({
+    logSecurityEvent('admin_offers_accessed', userId, { offerCount: offers.length });
+    
+    const response = NextResponse.json({
       ok: true,
       offers: offers
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching admin offers:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch offers", details: error instanceof Error ? error.message : String(error) },
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('admin_offers_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to fetch offers",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : String(error))
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }

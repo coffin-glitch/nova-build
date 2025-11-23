@@ -1,4 +1,5 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -15,10 +16,30 @@ export async function POST(request: NextRequest) {
       message
     } = body;
 
+    // Input validation
+    const validation = validateInput(
+      { carrier_user_id, subject, message },
+      {
+        carrier_user_id: { required: true, type: 'string', maxLength: 200 },
+        subject: { type: 'string', maxLength: 200, required: false },
+        message: { required: true, type: 'string', minLength: 1, maxLength: 5000 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_admin_message_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     if (!carrier_user_id || !message) {
-      return NextResponse.json({ 
+      const response = NextResponse.json({ 
         error: "Missing required fields: carrier_user_id, message" 
       }, { status: 400 });
+      return addSecurityHeaders(response);
     }
 
     // Create admin message
@@ -35,16 +56,34 @@ export async function POST(request: NextRequest) {
       RETURNING id
     `;
 
-    return NextResponse.json({ 
+    logSecurityEvent('admin_message_sent', userId, { carrierUserId: carrier_user_id });
+    
+    const response = NextResponse.json({ 
       ok: true, 
       message: "Message sent successfully",
       data: { id: result[0].id }
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error sending admin message:", error);
-    return NextResponse.json({ 
-      error: "Failed to send message" 
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('admin_message_send_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json({ 
+      error: "Failed to send message",
+      details: process.env.NODE_ENV === 'development' 
+        ? (error instanceof Error ? error.message : 'Unknown error')
+        : undefined
     }, { status: 500 });
+    
+    return addSecurityHeaders(response);
   }
 }

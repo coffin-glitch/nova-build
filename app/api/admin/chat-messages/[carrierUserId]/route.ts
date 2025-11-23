@@ -1,4 +1,5 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -7,10 +8,27 @@ export async function GET(
   { params }: { params: Promise<{ carrierUserId: string }> }
 ) {
   try {
-    // Ensure user is admin (Supabase-only)
-    await requireApiAdmin(request);
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
 
     const { carrierUserId } = await params;
+
+    // Input validation
+    const validation = validateInput(
+      { carrierUserId },
+      {
+        carrierUserId: { required: true, type: 'string', maxLength: 200 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_chat_messages_get_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
 
     // Get chat messages for specific carrier (Supabase-only)
     const chatMessages = await sql`
@@ -25,15 +43,33 @@ export async function GET(
       ORDER BY created_at ASC
     `;
 
-    return NextResponse.json({ 
+    logSecurityEvent('carrier_chat_messages_accessed', userId, { carrierUserId, messageCount: chatMessages.length });
+    
+    const response = NextResponse.json({ 
       ok: true, 
       data: chatMessages 
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching carrier chat messages:", error);
-    return NextResponse.json({ 
-      error: "Failed to fetch chat messages" 
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('carrier_chat_messages_get_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json({ 
+      error: "Failed to fetch chat messages",
+      details: process.env.NODE_ENV === 'development' 
+        ? (error instanceof Error ? error.message : 'Unknown error')
+        : undefined
     }, { status: 500 });
+    
+    return addSecurityHeaders(response);
   }
 }

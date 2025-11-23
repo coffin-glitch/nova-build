@@ -1,4 +1,5 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -12,6 +13,23 @@ export async function POST(
     const userId = auth.userId;
 
     const { conversationId } = await params;
+
+    // Input validation
+    const validation = validateInput(
+      { conversationId },
+      {
+        conversationId: { required: true, type: 'string', pattern: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, maxLength: 50 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_conversation_read_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
 
     // Verify the admin has access to this conversation
     // Allow access if user is admin_user_id OR if user is carrier_user_id (for admin-to-admin chats)
@@ -63,15 +81,33 @@ export async function POST(
       }
     }
 
-    return NextResponse.json({ 
+    logSecurityEvent('conversation_messages_marked_read', userId, { conversationId, unreadCount: unreadMessages.length });
+    
+    const response = NextResponse.json({ 
       ok: true, 
       message: "Messages marked as read" 
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error marking admin messages as read:", error);
-    return NextResponse.json({ 
-      error: "Failed to mark messages as read" 
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('conversation_read_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json({ 
+      error: "Failed to mark messages as read",
+      details: process.env.NODE_ENV === 'development' 
+        ? (error instanceof Error ? error.message : 'Unknown error')
+        : undefined
     }, { status: 500 });
+    
+    return addSecurityHeaders(response);
   }
 }
