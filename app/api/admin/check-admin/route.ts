@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
     logSecurityEvent('admin_status_checked', adminUserId, { checkedUserId: userId, isAdmin });
     
     const response = NextResponse.json({ isAdmin });
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
     
   } catch (error: any) {
     console.error("❌ Check admin API error:", error);

@@ -183,7 +183,7 @@ export async function GET(request: NextRequest) {
         data: result
       });
       
-      return addSecurityHeaders(response);
+      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
     }
   } catch (error: any) {
     console.error("Error getting MC access control:", error);
@@ -214,6 +214,25 @@ export async function POST(request: NextRequest) {
   try {
     const auth = await requireApiAdmin(request);
     const adminUserId = auth.userId;
+
+    // Check rate limit for admin write operation
+    const rateLimit = await checkApiRateLimit(request, {
+      userId: adminUserId,
+      routeType: 'admin'
+    });
+
+    if (!rateLimit.allowed) {
+      const response = NextResponse.json(
+        {
+          ok: false,
+          error: 'Rate limit exceeded',
+          message: `Too many requests. Please try again after ${rateLimit.retryAfter} seconds.`,
+          retryAfter: rateLimit.retryAfter
+        },
+        { status: 429 }
+      );
+      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    }
     
     const { mc_number, is_active, disabled_reason } = await request.json();
     

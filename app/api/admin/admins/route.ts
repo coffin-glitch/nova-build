@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
     logSecurityEvent('admin_list_accessed', userId, { adminCount: admins.length });
     
     const response = NextResponse.json(admins || []);
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
     
   } catch (error: any) {
     console.error("Error fetching admins:", error);

@@ -71,7 +71,7 @@ export async function GET(request: NextRequest) {
         }
       });
       
-      return addSecurityHeaders(defaultResponse);
+      return addRateLimitHeaders(addSecurityHeaders(defaultResponse), rateLimit);
     }
 
     logSecurityEvent('admin_profile_accessed', userId);
@@ -81,7 +81,7 @@ export async function GET(request: NextRequest) {
       data: profile[0]
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
 
   } catch (error: any) {
     console.error("Error fetching admin profile:", error);
