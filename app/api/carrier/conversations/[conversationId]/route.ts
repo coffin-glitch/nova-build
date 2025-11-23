@@ -15,6 +15,24 @@ export async function GET(
 
     const { conversationId } = await params;
 
+    // Check rate limit for read-only carrier operation
+    const rateLimit = await checkApiRateLimit(request, {
+      userId,
+      routeType: 'readOnly'
+    });
+
+    if (!rateLimit.allowed) {
+      const response = NextResponse.json(
+        {
+          error: 'Rate limit exceeded',
+          message: `Too many requests. Please try again after ${rateLimit.retryAfter} seconds.`,
+          retryAfter: rateLimit.retryAfter
+        },
+        { status: 429 }
+      );
+      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    }
+
     // Verify the user has access to this conversation
     const conversation = await sql`
       SELECT id FROM conversations 
@@ -53,7 +71,7 @@ export async function GET(
       data: messages 
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
 
   } catch (error: any) {
     console.error("Error fetching conversation messages:", error);

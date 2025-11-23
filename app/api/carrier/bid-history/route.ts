@@ -1,4 +1,5 @@
 import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { checkApiRateLimit, addRateLimitHeaders } from "@/lib/api-rate-limiting";
 import { requireApiCarrier, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from '@/lib/db';
 import { NextRequest, NextResponse } from "next/server";
@@ -7,6 +8,27 @@ export async function GET(request: NextRequest) {
   try {
     const auth = await requireApiCarrier(request);
     const userId = auth.userId;
+
+    // Check rate limit (search operation if status param present, otherwise read-only)
+    const { searchParams } = new URL(request.url);
+    const hasStatus = searchParams.get("status");
+    
+    const rateLimit = await checkApiRateLimit(request, {
+      userId,
+      routeType: hasStatus ? 'search' : 'readOnly'
+    });
+
+    if (!rateLimit.allowed) {
+      const response = NextResponse.json(
+        {
+          error: 'Rate limit exceeded',
+          message: `Too many requests. Please try again after ${rateLimit.retryAfter} seconds.`,
+          retryAfter: rateLimit.retryAfter
+        },
+        { status: 429 }
+      );
+      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    }
 
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status"); // 'won', 'lost', 'pending', 'cancelled'
@@ -114,7 +136,7 @@ export async function GET(request: NextRequest) {
       }
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
 
   } catch (error: any) {
     console.error("Error fetching carrier bid history:", error);
