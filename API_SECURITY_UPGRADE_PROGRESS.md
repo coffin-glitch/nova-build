@@ -89,13 +89,14 @@
 - **2025-01-16:** Phase 1.19 - Secure offers and bids routes (Fixed SQL injection)
 - **2025-01-16:** Phase 1.20 - Secure offer comments/history/messages and load search/export routes (Fixed SQL injection)
 - **2025-01-16:** Phase 1.21 - Secure loads individual, offers, and notification routes
+- **2025-01-16:** Phase 1.22 - Secure carrier profile, notifications, favorites, conversations, messages, and admin routes
 - **2025-01-16:** Database pool and rate limiting analysis completed
 
 ## Routes Secured So Far
 
-**Total: 64 routes (100 endpoints)**
+**Total: 75 routes (113 endpoints)**
 
-**Progress:** 32.5% of total routes (64/197 routes secured)
+**Progress:** 38.1% of total routes (75/197 routes secured)
 1. `/api/bids/route.ts` (GET)
 2. `/api/loads/route.ts` (GET, POST)
 3. `/api/telegram-bids/route.ts` (GET)
@@ -166,6 +167,17 @@
 68. `/api/notifications/queue-stats/route.ts` (GET) - Admin route
 69. `/api/notifications/process/route.ts` (POST) - Admin route
 70. `/api/notifications/clear-all/route.ts` (POST)
+71. `/api/carrier/profile/history/route.ts` (GET)
+72. `/api/carrier/notifications/read-all/route.ts` (POST)
+73. `/api/carrier/notifications/clear-all/route.ts` (POST)
+74. `/api/carrier/notifications/[notificationId]/read/route.ts` (POST)
+75. `/api/carrier/favorites/check/route.ts` (GET)
+76. `/api/carrier/conversations/[conversationId]/read/route.ts` (POST)
+77. `/api/carrier/messages/[messageId]/read/route.ts` (POST)
+78. `/api/carrier/messages/responses/route.ts` (GET, POST)
+79. `/api/carrier/messages/responses/[messageId]/read/route.ts` (POST)
+80. `/api/carrier/chat-message/route.ts` (POST)
+81. `/api/carrier/admins/route.ts` (GET)
 
 ## Security Improvements Summary
 
