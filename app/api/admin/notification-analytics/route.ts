@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
         COUNT(DISTINCT nt.supabase_carrier_user_id) as total_users_with_triggers,
         COUNT(DISTINCT nl.id) as total_notifications_sent,
         COUNT(DISTINCT nl.bid_number) as unique_bids_notified,
-        AVG(CASE WHEN nl.sent_at >= NOW() - make_interval(days => ${days}) THEN 1 ELSE 0 END) as avg_notifications_per_trigger
+        AVG(CASE WHEN nl.sent_at >= NOW() - make_interval(days => ${validDays}) THEN 1 ELSE 0 END) as avg_notifications_per_trigger
       FROM notification_triggers nt
       LEFT JOIN notification_logs nl ON nt.id = nl.trigger_id
         AND nl.sent_at >= NOW() - make_interval(days => ${validDays})
@@ -116,7 +116,7 @@ export async function GET(request: NextRequest) {
         COUNT(DISTINCT nl.bid_number) as unique_bids
       FROM notification_logs nl
       LEFT JOIN notification_triggers nt ON nl.trigger_id = nt.id
-      WHERE nl.sent_at >= NOW() - make_interval(days => ${days})
+      WHERE nl.sent_at >= NOW() - make_interval(days => ${validDays})
       ${userId ? sql`AND COALESCE(nl.supabase_carrier_user_id, nt.supabase_carrier_user_id) = ${userId}` : sql``}
       GROUP BY nl.delivery_status
       ORDER BY count DESC
@@ -132,7 +132,7 @@ export async function GET(request: NextRequest) {
         COUNT(DISTINCT nl.notification_type) as notification_types
       FROM notification_logs nl
       LEFT JOIN notification_triggers nt ON nl.trigger_id = nt.id
-      WHERE nl.sent_at >= NOW() - make_interval(days => ${days})
+      WHERE nl.sent_at >= NOW() - make_interval(days => ${validDays})
       ${userId ? sql`AND COALESCE(nl.supabase_carrier_user_id, nt.supabase_carrier_user_id) = ${userId}` : sql``}
       GROUP BY DATE(nl.sent_at)
       ORDER BY date DESC
@@ -148,7 +148,7 @@ export async function GET(request: NextRequest) {
         AVG(EXTRACT(EPOCH FROM (NOW() - nl.sent_at))/3600) as avg_hours_ago
       FROM notification_logs nl
       LEFT JOIN notification_triggers nt ON nl.trigger_id = nt.id
-      WHERE nl.sent_at >= NOW() - make_interval(days => ${days})
+      WHERE nl.sent_at >= NOW() - make_interval(days => ${validDays})
       ${userId ? sql`AND COALESCE(nl.supabase_carrier_user_id, nt.supabase_carrier_user_id) = ${userId}` : sql``}
       GROUP BY nl.notification_type
       ORDER BY count DESC
@@ -170,7 +170,7 @@ export async function GET(request: NextRequest) {
       WHERE nt.id NOT IN (
         SELECT DISTINCT trigger_id 
         FROM notification_logs 
-        WHERE sent_at >= NOW() - make_interval(days => ${days})
+        WHERE sent_at >= NOW() - make_interval(days => ${validDays})
         AND trigger_id IS NOT NULL
       )
       ${userId ? sql`AND nt.supabase_carrier_user_id = ${userId}` : sql``}
@@ -200,7 +200,7 @@ export async function GET(request: NextRequest) {
         COUNT(DISTINCT COALESCE(nl.supabase_carrier_user_id, nt.supabase_carrier_user_id)) as unique_users
       FROM notification_logs nl
       LEFT JOIN notification_triggers nt ON nl.trigger_id = nt.id
-      WHERE nl.sent_at >= NOW() - make_interval(days => ${days})
+      WHERE nl.sent_at >= NOW() - make_interval(days => ${validDays})
       ${userId ? sql`AND COALESCE(nl.supabase_carrier_user_id, nt.supabase_carrier_user_id) = ${userId}` : sql``}
       GROUP BY EXTRACT(HOUR FROM nl.sent_at)
       ORDER BY hour
