@@ -1,4 +1,5 @@
 import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { checkApiRateLimit, addRateLimitHeaders } from "@/lib/api-rate-limiting";
 import { requireApiAdmin, requireApiCarrier, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
@@ -11,6 +12,37 @@ export async function GET(
   try {
     const resolvedParams = await params;
     const offerId = resolvedParams.offerId;
+
+    // Check if user is admin or carrier for rate limiting
+    let userId: string;
+    let userRole: 'admin' | 'carrier';
+    try {
+      const adminAuth = await requireApiAdmin(request as NextRequest);
+      userId = adminAuth.userId;
+      userRole = 'admin';
+    } catch {
+      const carrierAuth = await requireApiCarrier(request as NextRequest);
+      userId = carrierAuth.userId;
+      userRole = 'carrier';
+    }
+
+    // Check rate limit (admin gets read-only, carrier gets authenticated)
+    const rateLimit = await checkApiRateLimit(request as NextRequest, {
+      userId,
+      routeType: 'readOnly'
+    });
+
+    if (!rateLimit.allowed) {
+      const response = NextResponse.json(
+        {
+          error: 'Rate limit exceeded',
+          message: `Too many requests. Please try again after ${rateLimit.retryAfter} seconds.`,
+          retryAfter: rateLimit.retryAfter
+        },
+        { status: 429 }
+      );
+      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    }
 
     // Input validation
     const validation = validateInput(
