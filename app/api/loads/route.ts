@@ -18,6 +18,23 @@ function clearCache() {
 
 export async function GET(request: NextRequest) {
   try {
+    // Check rate limit for public route (IP-based)
+    const rateLimit = await checkApiRateLimit(request, {
+      routeType: 'public'
+    });
+
+    if (!rateLimit.allowed) {
+      const response = NextResponse.json(
+        {
+          error: 'Rate limit exceeded',
+          message: `Too many requests. Please try again after ${rateLimit.retryAfter} seconds.`,
+          retryAfter: rateLimit.retryAfter
+        },
+        { status: 429 }
+      );
+      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    }
+
     // Input validation for query parameters
     const { searchParams } = new URL(request.url);
     const origin = searchParams.get("origin");
@@ -123,7 +140,7 @@ export async function GET(request: NextRequest) {
     }
 
     const response = NextResponse.json(result);
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
 
   } catch (error) {
     console.error("Error fetching loads:", error);

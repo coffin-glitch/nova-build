@@ -1,4 +1,5 @@
 import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { checkApiRateLimit, addRateLimitHeaders } from "@/lib/api-rate-limiting";
 import { requireApiAuth, unauthorizedResponse } from "@/lib/auth-api-helper";
 import { optimizedQueries } from "@/lib/db-optimized";
 import sql from "@/lib/db";
@@ -15,6 +16,25 @@ export async function GET(request: NextRequest) {
     const userId = auth.userId;
     
     const { searchParams } = new URL(request.url);
+    const hasSearch = searchParams.get("q") || searchParams.get("tag");
+
+    // Check rate limit (search operation if search param present, otherwise read-only)
+    const rateLimit = await checkApiRateLimit(request, {
+      userId,
+      routeType: hasSearch ? 'search' : 'readOnly'
+    });
+
+    if (!rateLimit.allowed) {
+      const response = NextResponse.json(
+        {
+          error: 'Rate limit exceeded',
+          message: `Too many requests. Please try again after ${rateLimit.retryAfter} seconds.`,
+          retryAfter: rateLimit.retryAfter
+        },
+        { status: 429 }
+      );
+      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    }
     const q = searchParams.get("q") || undefined;
     const tag = searchParams.get("tag") || undefined;
     const limitParam = searchParams.get("limit") || "50";
