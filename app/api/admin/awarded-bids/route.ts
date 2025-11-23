@@ -1,87 +1,119 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
-    console.log("🔍 Starting awarded bids API call");
-    
-    // Ensure user is admin (Supabase-only)
-    await requireApiAdmin(request);
-    console.log("✅ Admin authentication passed");
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
 
     // Parse query parameters
     const { searchParams } = new URL(request.url);
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '20');
+    const pageParam = searchParams.get('page') || '1';
+    const limitParam = searchParams.get('limit') || '20';
     const search = searchParams.get('search') || '';
     const status = searchParams.get('status') || 'all';
     const sortBy = searchParams.get('sortBy') || 'created_at';
     const sortOrder = searchParams.get('sortOrder') || 'desc';
-    
-    console.log("📋 Query params:", { page, limit, search, status, sortBy, sortOrder });
 
-    // Validate parameters
-    const validSortFields = ['bid_number', 'created_at', 'carrier_name'];
+    // Input validation
+    const validation = validateInput(
+      { pageParam, limitParam, search, status, sortBy, sortOrder },
+      {
+        pageParam: { type: 'string', pattern: /^\d+$/, maxLength: 10, required: false },
+        limitParam: { type: 'string', pattern: /^\d+$/, maxLength: 10, required: false },
+        search: { type: 'string', maxLength: 200, required: false },
+        status: { type: 'string', enum: ['all', 'awarded', 'bid_awarded', 'accepted', 'rejected'], maxLength: 50, required: false },
+        sortBy: { type: 'string', enum: ['bid_number', 'created_at', 'carrier_name', 'bid_amount', 'status'], maxLength: 50, required: false },
+        sortOrder: { type: 'string', enum: ['asc', 'desc'], maxLength: 10, required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_awarded_bids_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
+    const page = parseInt(pageParam);
+    const limit = parseInt(limitParam);
+
+    // Validate numeric ranges
+    if (page < 1 || page > 1000) {
+      logSecurityEvent('invalid_awarded_bids_page', userId, { page });
+      const response = NextResponse.json(
+        { error: "Page must be between 1 and 1000" },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
+    if (limit < 1 || limit > 100) {
+      logSecurityEvent('invalid_awarded_bids_limit', userId, { limit });
+      const response = NextResponse.json(
+        { error: "Limit must be between 1 and 100" },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
+    // Validate sort fields
+    const validSortFields = ['bid_number', 'created_at', 'carrier_name', 'bid_amount', 'status'];
     const validSortOrders = ['asc', 'desc'];
     
     if (!validSortFields.includes(sortBy)) {
-      return NextResponse.json({ error: "Invalid sort field" }, { status: 400 });
+      const response = NextResponse.json(
+        { error: "Invalid sort field" },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
     
     if (!validSortOrders.includes(sortOrder)) {
-      return NextResponse.json({ error: "Invalid sort order" }, { status: 400 });
+      const response = NextResponse.json(
+        { error: "Invalid sort order" },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
 
-    // Build WHERE clause - ensure we only get awarded bids
-    let whereConditions = [];
-    let queryParams = [];
+    // Build WHERE clause using parameterized queries
+    const whereConditions: any[] = [];
+    const queryParams: any[] = [];
     
     // Always filter for awarded bids only
-    whereConditions.push(`aa.bid_number IS NOT NULL`);
+    whereConditions.push(sql`aa.bid_number IS NOT NULL`);
     
     if (search) {
-      whereConditions.push(`(
-        aa.bid_number ILIKE $${queryParams.length + 1} OR 
-        cp.contact_name ILIKE $${queryParams.length + 1}
+      // Sanitize search input - only allow alphanumeric, spaces, and basic punctuation
+      const sanitizedSearch = search.replace(/[^a-zA-Z0-9\s\-_]/g, '');
+      whereConditions.push(sql`(
+        aa.bid_number ILIKE ${`%${sanitizedSearch}%`} OR 
+        cp.contact_name ILIKE ${`%${sanitizedSearch}%`}
       )`);
-      queryParams.push(`%${search}%`);
     }
     
     if (status !== 'all') {
-      whereConditions.push(`cb.status = $${queryParams.length + 1}`);
-      queryParams.push(status);
+      whereConditions.push(sql`cb.status = ${status}`);
     }
     
-    const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
+    // Build ORDER BY clause - use validated sortBy and sortOrder
+    const orderByField = sortBy;
+    const orderByClause = sql`ORDER BY ${sql.unsafe(orderByField)} ${sql.unsafe(sortOrder.toUpperCase())}`;
     
-    // Build ORDER BY clause - use column names from outer SELECT
-    let orderByField;
-    switch (sortBy) {
-      case 'bid_number':
-        orderByField = 'bid_number';
-        break;
-      case 'created_at':
-        orderByField = 'created_at';
-        break;
-      case 'carrier_name':
-        orderByField = 'carrier_name';
-        break;
-      case 'bid_amount':
-        orderByField = 'bid_amount';
-        break;
-      case 'status':
-        orderByField = 'status';
-        break;
-      default:
-        orderByField = 'created_at';
-    }
-    
-    const orderByClause = `ORDER BY ${orderByField} ${sortOrder.toUpperCase()}`;
-    
-    // Get total count for pagination using ROW_NUMBER() approach
-    // Use LEFT JOIN on carrier_bids to include awarded bids even if not accepted yet
-    const countQuery = `
+    // Build WHERE clause using parameterized queries
+    const whereClause = whereConditions.length > 0 
+      ? sql`WHERE ${whereConditions.reduce((acc, condition, index) => 
+          index === 0 ? condition : sql`${acc} AND ${condition}`
+        )}`
+      : sql``;
+
+    // Get total count for pagination using parameterized queries
+    const countResult = await sql`
       SELECT COUNT(*) as total
       FROM (
         SELECT 
@@ -97,20 +129,14 @@ export async function GET(request: NextRequest) {
       WHERE rn = 1
     `;
     
-    console.log("🔍 Executing count query...");
-    const countResult = await sql.unsafe(countQuery, queryParams);
     const totalCount = parseInt(countResult[0]?.total || '0');
     
     // Calculate pagination
     const offset = (page - 1) * limit;
     const totalPages = Math.ceil(totalCount / limit);
-    
-    console.log("📊 Pagination info:", { totalCount, totalPages, offset, limit });
 
-    // Get paginated results using ROW_NUMBER() to ensure uniqueness
-    // Use LEFT JOIN on carrier_bids to include awarded bids even if not accepted yet
-    // Note: winner_user_id was removed in migration 078, only supabase_winner_user_id exists
-    const dataQuery = `
+    // Get paginated results using parameterized queries
+    const bids = await sql`
       SELECT 
         bid_number,
         id,
@@ -171,30 +197,13 @@ export async function GET(request: NextRequest) {
         ${whereClause}
       ) ranked_bids
       WHERE rn = 1
-      ORDER BY ${orderByField} ${sortOrder.toUpperCase()}
-      LIMIT $${queryParams.length + 1} OFFSET $${queryParams.length + 2}
+      ${orderByClause}
+      LIMIT ${limit} OFFSET ${offset}
     `;
-    
-    console.log("🔍 Executing data query...");
-    console.log("📝 Query:", dataQuery);
-    console.log("📊 Query params:", [...queryParams, limit, offset]);
-    
-    let bids;
-    try {
-      bids = await sql.unsafe(dataQuery, [...queryParams, limit, offset]);
-      console.log("✅ SQL query executed successfully, found", bids.length, "bids");
-    } catch (error) {
-      console.error("❌ SQL query failed:", error);
-      console.error("❌ Query:", dataQuery);
-      console.error("❌ Params:", [...queryParams, limit, offset]);
-      if (error instanceof Error) {
-        console.error("❌ Error message:", error.message);
-        console.error("❌ Error stack:", error.stack);
-      }
-      throw error;
-    }
 
-    return NextResponse.json({
+    logSecurityEvent('awarded_bids_accessed', userId, { page, limit, totalCount });
+    
+    const response = NextResponse.json({
       bids,
       pagination: {
         page,
@@ -205,20 +214,30 @@ export async function GET(request: NextRequest) {
         hasPrevPage: page > 1
       }
     });
-  } catch (error) {
-    console.error("❌ Error fetching awarded bids:", error);
-    if (error instanceof Error) {
-      console.error("❌ Error name:", error.name);
-      console.error("❌ Error message:", error.message);
-      console.error("❌ Error stack:", error.stack);
+    
+    return addSecurityHeaders(response);
+    
+  } catch (error: any) {
+    console.error("Error fetching awarded bids:", error);
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
     }
-    return NextResponse.json(
+    
+    logSecurityEvent('awarded_bids_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
       { 
-        error: "Failed to fetch awarded bids", 
-        details: error instanceof Error ? error.message : "Unknown error",
-        stack: error instanceof Error ? error.stack : undefined
+        error: "Failed to fetch awarded bids",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : "Unknown error")
+          : undefined
       },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }

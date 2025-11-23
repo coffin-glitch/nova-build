@@ -1,4 +1,5 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -39,16 +40,33 @@ export async function GET(request: NextRequest) {
       ORDER BY c.last_message_at DESC
     `;
 
-    return NextResponse.json({ 
+    logSecurityEvent('admin_appeal_conversations_accessed', userId);
+    
+    const response = NextResponse.json({ 
       ok: true, 
       data: conversations 
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching admin appeal conversations:", error);
-    return NextResponse.json({ 
-      error: "Failed to fetch appeal conversations" 
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('admin_appeal_conversations_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json({ 
+      error: process.env.NODE_ENV === 'development' 
+        ? (error.message || "Failed to fetch appeal conversations")
+        : "Failed to fetch appeal conversations"
     }, { status: 500 });
+    
+    return addSecurityHeaders(response);
   }
 }
 
@@ -61,12 +79,29 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const { carrier_user_id } = body;
-    console.log('Admin appeal conversation POST - carrier_user_id:', carrier_user_id);
+
+    // Input validation
+    const validation = validateInput(
+      { carrier_user_id },
+      {
+        carrier_user_id: { required: true, type: 'string', pattern: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, maxLength: 50 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_appeal_conversation_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
 
     if (!carrier_user_id) {
-      return NextResponse.json({ 
+      const response = NextResponse.json({ 
         error: "Missing required field: carrier_user_id" 
       }, { status: 400 });
+      return addSecurityHeaders(response);
     }
 
     // Check if appeal conversation already exists (either with current admin or unassigned)
@@ -112,16 +147,33 @@ export async function POST(request: NextRequest) {
     `;
     console.log('Appeal conversation created:', result);
 
-    return NextResponse.json({ 
+    logSecurityEvent('appeal_conversation_created', userId, { carrierUserId: carrier_user_id, conversationId: result[0].id });
+    
+    const response = NextResponse.json({ 
       ok: true, 
       conversation_id: result[0].id,
       message: "Appeal conversation created successfully"
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error creating admin appeal conversation:", error);
-    return NextResponse.json({ 
-      error: "Failed to create appeal conversation" 
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('appeal_conversation_create_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json({ 
+      error: process.env.NODE_ENV === 'development' 
+        ? (error.message || "Failed to create appeal conversation")
+        : "Failed to create appeal conversation"
     }, { status: 500 });
+    
+    return addSecurityHeaders(response);
   }
 }

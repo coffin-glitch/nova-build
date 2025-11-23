@@ -1,4 +1,5 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { generateEmbedding } from "@/lib/ai-embeddings";
@@ -15,11 +16,29 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const query = searchParams.get("query");
 
+    // Input validation
+    const validation = validateInput(
+      { query },
+      {
+        query: { required: true, type: 'string', minLength: 1, maxLength: 1000 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_ai_memory_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
+
     if (!query) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: "Query parameter is required" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Generate embedding for the query
@@ -69,19 +88,40 @@ export async function GET(request: NextRequest) {
       `;
     }
 
-    return NextResponse.json({
+    logSecurityEvent('ai_memory_retrieved', userId, { 
+      personalMemoriesCount: personalMemories.length,
+      knowledgeBaseCount: knowledgeBase.length
+    });
+    
+    const response = NextResponse.json({
       personalMemories: personalMemories || [],
       knowledgeBase: knowledgeBase || [],
     });
-  } catch (error) {
+    
+    return addSecurityHeaders(response);
+    
+  } catch (error: any) {
     console.error("Memory recall error:", error);
-    return NextResponse.json(
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('ai_memory_recall_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
       {
         error: "Failed to retrieve memories",
-        details: error instanceof Error ? error.message : "Unknown error",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : "Unknown error")
+          : undefined,
       },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 

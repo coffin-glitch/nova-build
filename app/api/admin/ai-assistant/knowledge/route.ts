@@ -1,4 +1,5 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { extractKnowledgeFromConversation, generateEmbedding } from "@/lib/ai-embeddings";
@@ -12,13 +13,32 @@ export async function POST(request: NextRequest) {
     const auth = await requireApiAdmin(request);
     const userId = auth.userId;
 
-    const { conversationId } = await request.json();
+    const body = await request.json();
+    const { conversationId } = body;
+
+    // Input validation
+    const validation = validateInput(
+      { conversationId },
+      {
+        conversationId: { required: true, type: 'string', pattern: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, maxLength: 50 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_ai_knowledge_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
 
     if (!conversationId) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: "conversationId is required" },
         { status: 400 }
       );
+      return addSecurityHeaders(response);
     }
 
     // Get conversation messages
@@ -104,7 +124,9 @@ export async function POST(request: NextRequest) {
       memoryChunks.push(result[0]);
     }
 
-    return NextResponse.json({
+    logSecurityEvent('ai_knowledge_extracted', userId, { conversationId, insightsCount: storedInsights.length });
+    
+    const response = NextResponse.json({
       success: true,
       extracted: {
         insights: extracted.insights,
@@ -116,15 +138,31 @@ export async function POST(request: NextRequest) {
         memoryChunks: memoryChunks.length,
       },
     });
-  } catch (error) {
+    
+    return addSecurityHeaders(response);
+    
+  } catch (error: any) {
     console.error("Knowledge extraction error:", error);
-    return NextResponse.json(
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('ai_knowledge_extraction_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
       {
         error: "Failed to extract knowledge",
-        details: error instanceof Error ? error.message : "Unknown error",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : "Unknown error")
+          : undefined,
       },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 

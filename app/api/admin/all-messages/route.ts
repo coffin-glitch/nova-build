@@ -1,11 +1,12 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
-    // Ensure user is admin (Supabase-only)
-    await requireApiAdmin(request);
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
 
     // Get all admin messages
     const adminMessages = await sql`
@@ -23,15 +24,32 @@ export async function GET(request: NextRequest) {
       ORDER BY created_at DESC
     `;
 
-    return NextResponse.json({ 
+    logSecurityEvent('admin_messages_accessed', userId);
+    
+    const response = NextResponse.json({ 
       ok: true, 
       data: adminMessages 
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching all admin messages:", error);
-    return NextResponse.json({ 
-      error: "Failed to fetch admin messages" 
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('admin_messages_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json({ 
+      error: process.env.NODE_ENV === 'development' 
+        ? (error.message || "Failed to fetch admin messages")
+        : "Failed to fetch admin messages"
     }, { status: 500 });
+    
+    return addSecurityHeaders(response);
   }
 }
