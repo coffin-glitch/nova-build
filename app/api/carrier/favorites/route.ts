@@ -302,7 +302,7 @@ export async function POST(request: NextRequest) {
               message: "Bid already in favorites",
               alreadyExists: true
             });
-            return addSecurityHeaders(response);
+            return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
           }
         } catch (retryError: any) {
           console.error('[favorites POST] Fallback insert error:', retryError);
