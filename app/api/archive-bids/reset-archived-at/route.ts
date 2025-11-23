@@ -1,10 +1,33 @@
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from '@/lib/db';
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
   try {
+    // Require admin authentication for archive operations
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
+    
     const body = await request.json().catch(() => ({}));
     const targetDate = body?.targetDate || '2025-10-26';
+
+    // Input validation
+    const validation = validateInput(
+      { targetDate },
+      {
+        targetDate: { required: true, type: 'string', pattern: /^\d{4}-\d{2}-\d{2}$/, maxLength: 10 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_reset_archived_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
 
     // Reset archived_at to NULL and set is_archived = false for bids from the specified date
     // Simple UTC-based logic:
@@ -41,17 +64,38 @@ export async function POST(request: NextRequest) {
     `;
     updatedCount += result2.length;
 
-    return NextResponse.json({
+    logSecurityEvent('archived_at_reset', userId, { targetDate, updatedCount });
+    
+    const response = NextResponse.json({
       ok: true,
       updated: updatedCount,
       message: `Reset archived_at and is_archived for ${updatedCount} bids from ${targetDate}`
     });
-  } catch (error) {
+    
+    return addSecurityHeaders(response);
+    
+  } catch (error: any) {
     console.error("Error resetting archived_at:", error);
-    return NextResponse.json(
-      { error: "Failed to reset archived_at", details: error instanceof Error ? error.message : 'Unknown error' },
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('archived_at_reset_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to reset archived_at",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 

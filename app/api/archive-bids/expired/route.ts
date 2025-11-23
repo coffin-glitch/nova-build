@@ -1,8 +1,14 @@
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from '@/lib/db';
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
+    // Require admin authentication for archive access
+    const auth = await requireApiAdmin(request);
+    const userId = auth.userId;
+    
     const { searchParams } = new URL(request.url);
     
     // Parse query parameters
@@ -19,47 +25,43 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(parseInt(searchParams.get("limit") || "100"), 1000);
     const offset = parseInt(searchParams.get("offset") || "0");
 
-    // Build WHERE conditions
-    let whereConditions = [`archived_at IS NULL`]; // Only get expired but not archived bids
-    
-    if (dateFrom) {
-      whereConditions.push(`received_at::date >= '${dateFrom}'`);
+    // Input validation
+    const validation = validateInput(
+      { dateFrom, dateTo, city, state, tag, milesMin, milesMax, sourceChannel, sortBy, sortOrder, limit, offset },
+      {
+        dateFrom: { type: 'string', pattern: /^\d{4}-\d{2}-\d{2}$/, maxLength: 10, required: false },
+        dateTo: { type: 'string', pattern: /^\d{4}-\d{2}-\d{2}$/, maxLength: 10, required: false },
+        city: { type: 'string', maxLength: 100, required: false },
+        state: { type: 'string', maxLength: 100, required: false },
+        tag: { type: 'string', maxLength: 100, required: false },
+        milesMin: { type: 'string', pattern: /^\d+$/, maxLength: 10, required: false },
+        milesMax: { type: 'string', pattern: /^\d+$/, maxLength: 10, required: false },
+        sourceChannel: { type: 'string', maxLength: 50, required: false },
+        sortBy: { type: 'string', enum: ['received_at', 'distance_miles', 'archived_at'], required: false },
+        sortOrder: { type: 'string', enum: ['asc', 'desc'], required: false },
+        limit: { type: 'number', min: 1, max: 1000 },
+        offset: { type: 'number', min: 0 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_archive_expired_input', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
     }
+
+    // Build query using parameterized queries (fixes SQL injection)
+    // Validate and sanitize sortBy - only allow safe column names
+    const validSortBy = ['received_at', 'distance_miles', 'archived_at'].includes(sortBy) ? sortBy : 'received_at';
+    const validSortOrder = sortOrder === 'asc' ? 'ASC' : 'DESC';
     
-    if (dateTo) {
-      whereConditions.push(`received_at::date <= '${dateTo}'`);
-    }
+    // Build ORDER BY clause safely - use sql.unsafe only for validated column names
+    const orderByClause = sql.unsafe(`ORDER BY ${validSortBy} ${validSortOrder}`);
     
-    if (city) {
-      whereConditions.push(`stops::text ILIKE '%${city.replace(/'/g, "''")}%'`);
-    }
-    
-    if (state) {
-      whereConditions.push(`tag ILIKE '%${state.replace(/'/g, "''")}%'`);
-    }
-    
-    if (tag) {
-      whereConditions.push(`tag ILIKE '%${tag.replace(/'/g, "''")}%'`);
-    }
-    
-    if (milesMin) {
-      whereConditions.push(`distance_miles >= ${parseInt(milesMin)}`);
-    }
-    
-    if (milesMax) {
-      whereConditions.push(`distance_miles <= ${parseInt(milesMax)}`);
-    }
-    
-    if (sourceChannel) {
-      whereConditions.push(`source_channel = '${sourceChannel.replace(/'/g, "''")}'`);
-    }
-    
-    const whereClause = `WHERE ${whereConditions.join(' AND ')}`;
-    
-    // Build ORDER BY clause
-    let orderBy = `ORDER BY ${sortBy} ${sortOrder.toUpperCase()}`;
-    
-    // Query to get expired bids (archived_at IS NULL)
+    // Query to get expired bids (archived_at IS NULL) using parameterized queries
     const rows = await sql`
       SELECT 
         tb.*,
@@ -68,8 +70,16 @@ export async function GET(request: NextRequest) {
           ELSE 'UNKNOWN'
         END as state_tag
       FROM telegram_bids tb
-      ${sql.unsafe(whereClause)}
-      ${sql.unsafe(orderBy)}
+      WHERE tb.archived_at IS NULL
+        ${dateFrom ? sql`AND received_at::date >= ${dateFrom}::date` : sql``}
+        ${dateTo ? sql`AND received_at::date <= ${dateTo}::date` : sql``}
+        ${city ? sql`AND stops::text ILIKE ${'%' + city + '%'}` : sql``}
+        ${state ? sql`AND tag ILIKE ${'%' + state + '%'}` : sql``}
+        ${tag ? sql`AND tag ILIKE ${'%' + tag + '%'}` : sql``}
+        ${milesMin ? sql`AND distance_miles >= ${parseInt(milesMin)}` : sql``}
+        ${milesMax ? sql`AND distance_miles <= ${parseInt(milesMax)}` : sql``}
+        ${sourceChannel ? sql`AND source_channel = ${sourceChannel}` : sql``}
+      ${orderByClause}
       LIMIT ${limit} OFFSET ${offset}
     `;
 
@@ -113,8 +123,16 @@ export async function GET(request: NextRequest) {
     // Get total count for pagination
     const countResult = await sql`
       SELECT COUNT(*) as total
-      FROM telegram_bids
-      ${sql.unsafe(whereClause)}
+      FROM telegram_bids tb
+      WHERE tb.archived_at IS NULL
+        ${dateFrom ? sql`AND received_at::date >= ${dateFrom}::date` : sql``}
+        ${dateTo ? sql`AND received_at::date <= ${dateTo}::date` : sql``}
+        ${city ? sql`AND stops::text ILIKE ${'%' + city + '%'}` : sql``}
+        ${state ? sql`AND tag ILIKE ${'%' + state + '%'}` : sql``}
+        ${tag ? sql`AND tag ILIKE ${'%' + tag + '%'}` : sql``}
+        ${milesMin ? sql`AND distance_miles >= ${parseInt(milesMin)}` : sql``}
+        ${milesMax ? sql`AND distance_miles <= ${parseInt(milesMax)}` : sql``}
+        ${sourceChannel ? sql`AND source_channel = ${sourceChannel}` : sql``}
     `;
 
     const total = countResult[0]?.total || 0;
@@ -130,11 +148,23 @@ export async function GET(request: NextRequest) {
         MAX(distance_miles) as max_distance,
         COUNT(DISTINCT CASE WHEN tag IS NOT NULL THEN tag ELSE 'UNKNOWN' END) as unique_states,
         COUNT(DISTINCT tag) as unique_tags
-      FROM telegram_bids
-      ${sql.unsafe(whereClause)}
+      FROM telegram_bids tb
+      WHERE tb.archived_at IS NULL
+        ${dateFrom ? sql`AND received_at::date >= ${dateFrom}::date` : sql``}
+        ${dateTo ? sql`AND received_at::date <= ${dateTo}::date` : sql``}
+        ${city ? sql`AND stops::text ILIKE ${'%' + city + '%'}` : sql``}
+        ${state ? sql`AND tag ILIKE ${'%' + state + '%'}` : sql``}
+        ${tag ? sql`AND tag ILIKE ${'%' + tag + '%'}` : sql``}
+        ${milesMin ? sql`AND distance_miles >= ${parseInt(milesMin)}` : sql``}
+        ${milesMax ? sql`AND distance_miles <= ${parseInt(milesMax)}` : sql``}
+        ${sourceChannel ? sql`AND source_channel = ${sourceChannel}` : sql``}
     `;
 
-    return NextResponse.json({
+    logSecurityEvent('archive_expired_bids_accessed', userId, { 
+      filters: { dateFrom, dateTo, city, state, tag, milesMin, milesMax, sourceChannel, sortBy, sortOrder }
+    });
+    
+    const response = NextResponse.json({
       ok: true,
       data: enrichedRows,
       pagination: {
@@ -158,13 +188,31 @@ export async function GET(request: NextRequest) {
         sortOrder
       }
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching expired bids:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch expired bids" },
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('archive_expired_bids_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to fetch expired bids",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
+    
+    return addSecurityHeaders(response);
   }
 }
 
