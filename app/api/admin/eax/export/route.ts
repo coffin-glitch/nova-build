@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
       message: "Exporter started. Check the Chromium window." 
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
     
   } catch (error: any) {
     console.error("EAX export error:", error);
