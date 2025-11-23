@@ -17,18 +17,14 @@ Phase 2 implements rate limiting that:
 
 ---
 
-## Tier System Integration
+## Universal Rate Limiting
 
-### User Tiers (from notification system)
-- **Premium**: High-volume users (200 notifications/hour base)
-- **Standard**: Regular users (50 notifications/hour base)
-- **New**: New users (20 notifications/hour base)
+**Note:** Tier system is ONLY for notifications, not API rate limiting.
 
-### Rate Limit Multipliers by Tier
-For API rate limiting, we'll use generous multipliers:
-- **Premium**: 3x base limits (high-volume users need more API access)
-- **Standard**: 1x base limits (normal usage)
-- **New**: 0.5x base limits (prevent abuse from new accounts)
+All users get the same universal limits regardless of notification tier:
+- Universal limits for all authenticated users
+- IP-based limits for unauthenticated requests (0.75x base limit)
+- No tier multipliers for API rate limiting
 
 ---
 
@@ -52,44 +48,28 @@ For API rate limiting, we'll use generous multipliers:
 ### Phase 2.2: Apply Rate Limiting to Route Categories
 **Goal:** Apply rate limiting based on route type and user tier
 
-**Route Categories:**
+**Route Categories (Universal Limits):**
 1. **Public Routes** (unauthenticated)
-   - Base: 100 req/min
-   - Tier multiplier: N/A (no auth)
+   - Universal: 120 req/min
+   - IP-based: 90 req/min (0.75x for anonymous)
 
 2. **Authenticated Carrier Routes**
-   - Base: 200 req/min
-   - Premium: 600 req/min (3x)
-   - Standard: 200 req/min (1x)
-   - New: 100 req/min (0.5x)
+   - Universal: 300 req/min (all users)
 
 3. **Admin Routes**
-   - Base: 500 req/min
-   - All admins: 500 req/min (no tier multiplier)
+   - Universal: 1000 req/min (all admins)
 
 4. **Critical Operations** (bids, awards, etc.)
-   - Base: 50 req/min
-   - Premium: 150 req/min (3x)
-   - Standard: 50 req/min (1x)
-   - New: 25 req/min (0.5x)
+   - Universal: 60 req/min (all users)
 
 5. **File Uploads**
-   - Base: 20 req/min
-   - Premium: 60 req/min (3x)
-   - Standard: 20 req/min (1x)
-   - New: 10 req/min (0.5x)
+   - Universal: 30 req/min (all users)
 
 6. **Read-Only Operations** (GET requests)
-   - Base: 300 req/min
-   - Premium: 900 req/min (3x)
-   - Standard: 300 req/min (1x)
-   - New: 150 req/min (0.5x)
+   - Universal: 500 req/min (all users)
 
 7. **Search Operations**
-   - Base: 150 req/min
-   - Premium: 450 req/min (3x)
-   - Standard: 150 req/min (1x)
-   - New: 75 req/min (0.5x)
+   - Universal: 200 req/min (all users)
 
 **Tasks:**
 1. Create middleware wrapper function
@@ -123,44 +103,22 @@ For API rate limiting, we'll use generous multipliers:
 
 ## Rate Limit Configuration
 
-### Base Limits (per minute)
+### Universal Limits (per minute)
 ```typescript
 {
-  public: 100,           // Unauthenticated routes
-  authenticated: 200,    // Carrier routes (base)
-  admin: 500,            // Admin routes
-  critical: 50,          // Critical operations
-  fileUpload: 20,        // File uploads
-  readOnly: 300,         // GET requests
-  search: 150            // Search operations
+  public: 120,          // Unauthenticated routes (IP-based: 90 req/min)
+  authenticated: 300,   // Carrier routes (all users)
+  admin: 1000,          // Admin routes (all admins)
+  critical: 60,         // Critical operations (all users)
+  fileUpload: 30,       // File uploads (all users)
+  readOnly: 500,        // GET requests (all users)
+  search: 200           // Search operations (all users)
 }
 ```
 
-### Tier Multipliers
-```typescript
-{
-  premium: 3.0,    // 3x base limit
-  standard: 1.0,   // 1x base limit
-  new: 0.5         // 0.5x base limit (prevent abuse)
-}
-```
-
-### Effective Limits by Tier
-
-**Authenticated Routes:**
-- Premium: 600 req/min (200 * 3)
-- Standard: 200 req/min (200 * 1)
-- New: 100 req/min (200 * 0.5)
-
-**Critical Operations:**
-- Premium: 150 req/min (50 * 3)
-- Standard: 50 req/min (50 * 1)
-- New: 25 req/min (50 * 0.5)
-
-**Read-Only Operations:**
-- Premium: 900 req/min (300 * 3)
-- Standard: 300 req/min (300 * 1)
-- New: 150 req/min (300 * 0.5)
+### IP-Based Limits (for unauthenticated requests)
+- All route types: 0.75x base limit
+- Example: Public routes = 90 req/min (120 * 0.75)
 
 ---
 
@@ -221,8 +179,11 @@ For API rate limiting, we'll use generous multipliers:
 
 ## Notes
 
+- **Universal Limits:** All users get the same limits (no tier system for API)
+- **Tier System:** Only used for notifications, not API rate limiting
 - **Generous Limits:** Limits are intentionally generous to avoid throttling legitimate users
-- **Tier Integration:** Uses existing notification tier system
+- **Industry Standards:** Based on OWASP and REST API best practices
 - **Scalability:** Designed for 10,000+ concurrent users
 - **Redis:** Uses existing Redis infrastructure for distributed rate limiting
+- **Sliding Window:** Industry-standard algorithm for accurate rate limiting
 
