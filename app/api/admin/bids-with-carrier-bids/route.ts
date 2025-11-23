@@ -112,7 +112,7 @@ export async function GET(request: NextRequest) {
       data: result
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
 
   } catch (error: any) {
     console.error("Error fetching bids with carrier bids:", error);
