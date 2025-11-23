@@ -83,7 +83,7 @@ export async function DELETE(
       message: `Bid ${bidNumber} deleted successfully`
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
 
   } catch (error: any) {
     console.error("Delete bid error:", error);

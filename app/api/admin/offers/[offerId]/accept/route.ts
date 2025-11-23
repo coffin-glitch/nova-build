@@ -99,7 +99,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     
     const response = NextResponse.json({ ok: true });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
     
   } catch (error: any) {
     console.error("Error accepting offer:", error);

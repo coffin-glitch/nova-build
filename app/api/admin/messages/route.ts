@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
       data: { id: result[0].id }
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
 
   } catch (error: any) {
     console.error("Error sending admin message:", error);
