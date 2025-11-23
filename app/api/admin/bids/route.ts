@@ -1,4 +1,5 @@
 import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { checkApiRateLimit, addRateLimitHeaders } from "@/lib/api-rate-limiting";
 import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
@@ -11,6 +12,24 @@ export async function GET(req: NextRequest) {
   try {
     const auth = await requireApiAdmin(req);
     const userId = auth.userId;
+
+    // Check rate limit for read-only admin operation
+    const rateLimit = await checkApiRateLimit(req, {
+      userId,
+      routeType: 'readOnly'
+    });
+
+    if (!rateLimit.allowed) {
+      const response = NextResponse.json(
+        {
+          error: 'Rate limit exceeded',
+          message: `Too many requests. Please try again after ${rateLimit.retryAfter} seconds.`,
+          retryAfter: rateLimit.retryAfter
+        },
+        { status: 429 }
+      );
+      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    }
 
     const { searchParams } = new URL(req.url);
     const limitParam = searchParams.get("limit") || "200";
@@ -63,7 +82,7 @@ export async function GET(req: NextRequest) {
     
     const response = NextResponse.json(rows);
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
     
   } catch (error: any) {
     if (error.message === "Unauthorized" || error.message === "Admin access required") {
