@@ -88,7 +88,7 @@ export async function GET(
     const response = NextResponse.json({
       ok: true,
       data: {
-        events: events.map(event => ({
+        events: events.map((event: any) => ({
           id: event.id,
           status: event.status,
           timestamp: event.timestamp,
@@ -105,7 +105,7 @@ export async function GET(
       }
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
 
   } catch (error: any) {
     console.error("Error fetching admin load lifecycle:", error);

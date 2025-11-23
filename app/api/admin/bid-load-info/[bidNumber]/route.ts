@@ -75,7 +75,7 @@ export async function GET(
     
     const response = NextResponse.json(loadInfo[0]);
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
     
   } catch (error: any) {
     console.error("Error fetching load info:", error);
