@@ -5,13 +5,8 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
-    console.log("🔍 Admin carriers API called");
-    
     // Use unified auth (supports Supabase and Clerk)
     const auth = await requireApiAdmin(request);
-    console.log("👤 User ID:", auth.userId, "Role:", auth.userRole, "Provider:", auth.provider);
-
-    console.log("✅ User is admin, fetching carrier profiles...");
 
     // Fetch carrier profiles with approval workflow data (Supabase-only)
     const carriers = await sql`
@@ -43,20 +38,17 @@ export async function GET(request: NextRequest) {
       ORDER BY cp.created_at DESC
     `;
 
-    console.log("📊 Carriers query result:", carriers.length, "carriers found");
 
     // Fetch emails from Supabase for each carrier
     const carriersWithEmails = await Promise.all(
       carriers.map(async (carrier) => {
         try {
           const userId = carrier.supabase_user_id || carrier.user_id;
-          console.log(`🔍 Fetching email for user: ${userId}`);
           
           // Skip placeholder/test user IDs
           if (!userId || userId.includes('testcarrier') || 
               userId.includes('placeholder') || 
               userId.includes('YOUR_USER_ID')) {
-            console.log(`⏭️ Skipping placeholder user ID: ${userId}`);
             return {
               ...carrier,
               email: 'Test Account',
@@ -72,7 +64,6 @@ export async function GET(request: NextRequest) {
             `;
             
             if (cacheResult.length > 0 && cacheResult[0].email) {
-              console.log(`✅ Found email in cache for ${userId}: ${cacheResult[0].email}`);
               return {
                 ...carrier,
                 email: cacheResult[0].email,
@@ -90,7 +81,6 @@ export async function GET(request: NextRequest) {
               const { data: { user }, error } = await supabase.auth.admin.getUserById(userId);
               
               if (!error && user?.email) {
-                console.log(`✅ Found email from Supabase for ${userId}: ${user.email}`);
                 return {
                   ...carrier,
                   email: user.email,
@@ -106,7 +96,7 @@ export async function GET(request: NextRequest) {
               company_name: carrier.legal_name || carrier.company_name || 'N/A'
             };
           } catch (error) {
-            console.error(`❌ Error fetching email for user ${userId}:`, error);
+            console.error(`Error fetching email for user ${userId}:`, error);
             return {
               ...carrier,
               email: 'N/A',
@@ -114,7 +104,7 @@ export async function GET(request: NextRequest) {
             };
           }
         } catch (error) {
-          console.error(`❌ Error processing carrier:`, error);
+          console.error(`Error processing carrier:`, error);
           return {
             ...carrier,
             email: 'N/A',
@@ -123,8 +113,6 @@ export async function GET(request: NextRequest) {
         }
       })
     );
-
-    console.log("✅ Returning carriers data with emails");
     
     logSecurityEvent('admin_carriers_accessed', auth.userId);
     

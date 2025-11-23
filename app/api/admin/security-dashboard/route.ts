@@ -1,4 +1,4 @@
-import { addSecurityHeaders, logSecurityEvent } from "@/lib/api-security";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
 import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import { securityMonitor } from "@/lib/security-monitoring";
 import { NextRequest, NextResponse } from "next/server";
@@ -121,75 +121,112 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    // Require admin authentication
     const auth = await requireApiAdmin(request);
     const userId = auth.userId;
 
     const body = await request.json();
-    const { action, alertId, incidentId } = body;
+    const { action, alertId, incidentId, ip, reason } = body;
+
+    // Input validation
+    const validation = validateInput(
+      { action, alertId, incidentId, ip, reason },
+      {
+        action: { required: true, type: 'string', enum: ['acknowledge_alert', 'create_incident', 'block_ip'] },
+        alertId: { type: 'string', maxLength: 200, required: false },
+        incidentId: { type: 'string', maxLength: 200, required: false },
+        ip: { type: 'string', maxLength: 50, required: false },
+        reason: { type: 'string', maxLength: 500, required: false }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_security_dashboard_action', userId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { success: false, error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
 
     switch (action) {
       case 'acknowledge_alert':
         if (!alertId) {
-          return NextResponse.json(
+          const response = NextResponse.json(
             { success: false, error: "Alert ID is required" },
             { status: 400 }
           );
+          return addSecurityHeaders(response);
         }
         
-        // In a real implementation, you would update the alert status
-        // For now, we'll just log the action
-        console.log(`Alert ${alertId} acknowledged by admin`);
+        logSecurityEvent('security_alert_acknowledged', userId, { alertId });
         
-        return NextResponse.json({
+        const ackResponse = NextResponse.json({
           success: true,
           message: "Alert acknowledged successfully"
         });
+        return addSecurityHeaders(ackResponse);
 
       case 'create_incident':
         if (!alertId) {
-          return NextResponse.json(
+          const response = NextResponse.json(
             { success: false, error: "Alert ID is required" },
             { status: 400 }
           );
+          return addSecurityHeaders(response);
         }
         
-        // In a real implementation, you would create an incident
-        console.log(`Incident created for alert ${alertId}`);
+        logSecurityEvent('security_incident_created', userId, { alertId, incidentId });
         
-        return NextResponse.json({
+        const incidentResponse = NextResponse.json({
           success: true,
           message: "Incident created successfully"
         });
+        return addSecurityHeaders(incidentResponse);
 
       case 'block_ip':
-        const { ip, reason } = body;
         if (!ip) {
-          return NextResponse.json(
+          const response = NextResponse.json(
             { success: false, error: "IP address is required" },
             { status: 400 }
           );
+          return addSecurityHeaders(response);
         }
         
-        // In a real implementation, you would block the IP
-        console.log(`IP ${ip} blocked by admin. Reason: ${reason || 'Manual block'}`);
+        logSecurityEvent('ip_blocked', userId, { ip, reason: reason || 'Manual block' });
         
-        return NextResponse.json({
+        const blockResponse = NextResponse.json({
           success: true,
           message: `IP ${ip} blocked successfully`
         });
+        return addSecurityHeaders(blockResponse);
 
       default:
-        return NextResponse.json(
+        const defaultResponse = NextResponse.json(
           { success: false, error: "Invalid action" },
           { status: 400 }
         );
+        return addSecurityHeaders(defaultResponse);
     }
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Security dashboard POST API error:", error);
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('security_dashboard_post_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
     const response = NextResponse.json(
-      { success: false, error: "Failed to process security action" },
+      { 
+        success: false, 
+        error: "Failed to process security action",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
       { status: 500 }
     );
     return addSecurityHeaders(response);

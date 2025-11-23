@@ -1,4 +1,5 @@
-import { requireApiAdmin } from "@/lib/auth-api-helper";
+import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -7,10 +8,27 @@ export async function POST(
   { params }: { params: Promise<{ userId: string }> }
 ) {
   try {
-    // Ensure user is admin (Supabase-only)
-    await requireApiAdmin(request);
+    const auth = await requireApiAdmin(request);
+    const adminUserId = auth.userId;
 
     const { userId: carrierUserId } = await params;
+
+    // Input validation
+    const validation = validateInput(
+      { carrierUserId },
+      {
+        carrierUserId: { required: true, type: 'string', maxLength: 200 }
+      }
+    );
+
+    if (!validation.valid) {
+      logSecurityEvent('invalid_carrier_unlock_input', adminUserId, { errors: validation.errors });
+      const response = NextResponse.json(
+        { error: `Invalid input: ${validation.errors.join(', ')}` },
+        { status: 400 }
+      );
+      return addSecurityHeaders(response);
+    }
 
     // Unlock carrier profile (Supabase-only)
     await sql`
@@ -22,15 +40,33 @@ export async function POST(
       WHERE supabase_user_id = ${carrierUserId}
     `;
 
-    return NextResponse.json({ 
+    logSecurityEvent('carrier_profile_unlocked', adminUserId, { carrierUserId });
+    
+    const response = NextResponse.json({ 
       ok: true, 
       message: "Profile unlocked successfully" 
     });
+    
+    return addSecurityHeaders(response);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error unlocking carrier profile:", error);
-    return NextResponse.json({ 
-      error: "Failed to unlock profile" 
+    
+    if (error.message === "Unauthorized" || error.message === "Admin access required") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('carrier_unlock_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json({ 
+      error: "Failed to unlock profile",
+      details: process.env.NODE_ENV === 'development' 
+        ? (error instanceof Error ? error.message : 'Unknown error')
+        : undefined
     }, { status: 500 });
+    
+    return addSecurityHeaders(response);
   }
 }
