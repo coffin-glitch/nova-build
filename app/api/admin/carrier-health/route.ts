@@ -1,4 +1,5 @@
 import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { checkApiRateLimit, addRateLimitHeaders } from "@/lib/api-rate-limiting";
 import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import axios from "axios";
 import { NextRequest, NextResponse } from "next/server";
