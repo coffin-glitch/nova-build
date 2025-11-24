@@ -1,4 +1,5 @@
 import { addSecurityHeaders, logSecurityEvent } from "@/lib/api-security";
+import { checkApiRateLimit, addRateLimitHeaders } from "@/lib/api-rate-limiting";
 import { requireApiAuth, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
@@ -11,6 +12,25 @@ export async function GET(request: NextRequest) {
   try {
     const auth = await requireApiAuth(request);
     const userId = auth.userId;
+
+    // Check rate limit for authenticated read operation
+    const rateLimit = await checkApiRateLimit(request, {
+      userId,
+      routeType: 'readOnly'
+    });
+
+    if (!rateLimit.allowed) {
+      const response = NextResponse.json(
+        {
+          success: false,
+          error: 'Rate limit exceeded',
+          message: `Too many requests. Please try again after ${rateLimit.retryAfter} seconds.`,
+          retryAfter: rateLimit.retryAfter
+        },
+        { status: 429 }
+      );
+      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    }
 
     const unreadCount = await sql`
       SELECT COUNT(*) as count
