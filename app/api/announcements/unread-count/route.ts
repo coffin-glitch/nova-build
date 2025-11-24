@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
       unreadCount: parseInt(unreadCount[0].count),
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
 
   } catch (error: any) {
     console.error("Error fetching unread count:", error);
