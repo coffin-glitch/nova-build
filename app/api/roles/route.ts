@@ -1,4 +1,5 @@
 import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { checkApiRateLimit, addRateLimitHeaders } from "@/lib/api-rate-limiting";
 import { requireApiAdmin } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 import { getUserRole, isAdmin, isCarrier, syncAllUsers, getRoleStats } from "@/lib/role-manager";
@@ -8,6 +9,40 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get("userId");
     const action = searchParams.get("action") || "check";
+
+    // Determine rate limit type based on action
+    let routeType: 'readOnly' | 'admin' = 'readOnly';
+    if (action === 'sync' || action === 'stats') {
+      routeType = 'admin';
+    }
+
+    // Get auth for rate limiting (admin actions require auth)
+    let authUserId: string | undefined;
+    if (action === 'sync' || action === 'stats') {
+      const auth = await requireApiAdmin(request);
+      authUserId = auth.userId;
+    } else {
+      // For check actions, we can use IP-based limiting
+      authUserId = undefined;
+    }
+
+    // Check rate limit
+    const rateLimit = await checkApiRateLimit(request, {
+      userId: authUserId,
+      routeType
+    });
+
+    if (!rateLimit.allowed) {
+      const response = NextResponse.json(
+        {
+          error: 'Rate limit exceeded',
+          message: `Too many requests. Please try again after ${rateLimit.retryAfter} seconds.`,
+          retryAfter: rateLimit.retryAfter
+        },
+        { status: 429 }
+      );
+      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    }
     
     // Input validation
     const validation = validateInput(
