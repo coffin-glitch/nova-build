@@ -1,4 +1,5 @@
 import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { checkApiRateLimit, addRateLimitHeaders } from "@/lib/api-rate-limiting";
 import { getSupabaseUserInfo } from "@/lib/auth-unified";
 import { requireApiAuth, unauthorizedResponse } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
@@ -13,6 +14,24 @@ export async function GET(
     const requesterUserId = auth.userId;
     
     const { userId } = await params;
+
+    // Check rate limit for authenticated read operation
+    const rateLimit = await checkApiRateLimit(request, {
+      userId: requesterUserId,
+      routeType: 'readOnly'
+    });
+
+    if (!rateLimit.allowed) {
+      const response = NextResponse.json(
+        {
+          error: 'Rate limit exceeded',
+          message: `Too many requests. Please try again after ${rateLimit.retryAfter} seconds.`,
+          retryAfter: rateLimit.retryAfter
+        },
+        { status: 429 }
+      );
+      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    }
     
     // Input validation
     const validation = validateInput(
@@ -44,7 +63,7 @@ export async function GET(
     logSecurityEvent('user_info_accessed', requesterUserId, { targetUserId: userId });
     
     const response = NextResponse.json(userInfo);
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
     
   } catch (error: any) {
     console.error("Error fetching user info:", error);

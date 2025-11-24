@@ -1,4 +1,5 @@
 import { addSecurityHeaders, logSecurityEvent } from "@/lib/api-security";
+import { checkApiRateLimit, addRateLimitHeaders } from "@/lib/api-rate-limiting";
 import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
@@ -8,6 +9,24 @@ export async function GET(request: NextRequest) {
     // Require admin authentication for dev admin users access
     const auth = await requireApiAdmin(request);
     const userId = auth.userId;
+
+    // Check rate limit for admin read operation (user listing can be resource-intensive)
+    const rateLimit = await checkApiRateLimit(request, {
+      userId,
+      routeType: 'readOnly'
+    });
+
+    if (!rateLimit.allowed) {
+      const response = NextResponse.json(
+        {
+          error: 'Rate limit exceeded',
+          message: `Too many requests. Please try again after ${rateLimit.retryAfter} seconds.`,
+          retryAfter: rateLimit.retryAfter
+        },
+        { status: 429 }
+      );
+      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    }
     
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;

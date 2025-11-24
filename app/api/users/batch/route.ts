@@ -1,4 +1,5 @@
 import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
+import { checkApiRateLimit, addRateLimitHeaders } from "@/lib/api-rate-limiting";
 import { requireApiAuth, unauthorizedResponse } from "@/lib/auth-api-helper";
 import { getSupabaseUserInfo } from "@/lib/auth-unified";
 import sql from "@/lib/db";
@@ -12,6 +13,24 @@ export async function GET(request: NextRequest) {
     
     const { searchParams } = new URL(request.url);
     const ids = searchParams.get('ids');
+
+    // Check rate limit for authenticated read operation (batch operations can be resource-intensive)
+    const rateLimit = await checkApiRateLimit(request, {
+      userId: requesterUserId,
+      routeType: 'readOnly'
+    });
+
+    if (!rateLimit.allowed) {
+      const response = NextResponse.json(
+        {
+          error: 'Rate limit exceeded',
+          message: `Too many requests. Please try again after ${rateLimit.retryAfter} seconds.`,
+          retryAfter: rateLimit.retryAfter
+        },
+        { status: 429 }
+      );
+      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    }
     
     // Input validation
     const validation = validateInput(

@@ -1,4 +1,5 @@
 import { addSecurityHeaders, logSecurityEvent } from "@/lib/api-security";
+import { checkApiRateLimit, addRateLimitHeaders } from "@/lib/api-rate-limiting";
 import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -10,6 +11,25 @@ export async function GET(request: NextRequest) {
     // Require admin authentication - don't expose dev key to unauthorized users
     const auth = await requireApiAdmin(request);
     const userId = auth.userId;
+
+    // Check rate limit for admin read operation
+    const rateLimit = await checkApiRateLimit(request, {
+      userId,
+      routeType: 'readOnly'
+    });
+
+    if (!rateLimit.allowed) {
+      const response = NextResponse.json(
+        {
+          success: false,
+          error: 'Rate limit exceeded',
+          message: `Too many requests. Please try again after ${rateLimit.retryAfter} seconds.`,
+          retryAfter: rateLimit.retryAfter
+        },
+        { status: 429 }
+      );
+      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    }
     
     logSecurityEvent('dev_key_test_accessed', userId);
     
