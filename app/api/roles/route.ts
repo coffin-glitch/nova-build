@@ -101,7 +101,7 @@ export async function GET(request: NextRequest) {
         const adminStatus = await isAdmin(userId);
         console.log("🎯 Admin status:", adminStatus);
         const adminResponse = NextResponse.json({ isAdmin: adminStatus });
-        return addSecurityHeaders(adminResponse);
+        return addRateLimitHeaders(addSecurityHeaders(adminResponse), rateLimit);
 
       case "carrier":
         if (!userId) {
@@ -114,14 +114,14 @@ export async function GET(request: NextRequest) {
         const carrierStatus = await isCarrier(userId);
         console.log("🎯 Carrier status:", carrierStatus);
         const carrierResponse = NextResponse.json({ isCarrier: carrierStatus });
-        return addSecurityHeaders(carrierResponse);
+        return addRateLimitHeaders(addSecurityHeaders(carrierResponse), rateLimit);
 
       case "sync":
         console.log("🔄 Starting manual sync...");
         await syncAllUsers();
         console.log("✅ Manual sync completed");
         const syncResponse = NextResponse.json({ success: true, message: "Sync completed" });
-        return addSecurityHeaders(syncResponse);
+        return addRateLimitHeaders(addSecurityHeaders(syncResponse), rateLimit);
 
       case "stats":
         const stats = await getRoleStats();
