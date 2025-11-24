@@ -88,7 +88,7 @@ export async function GET(request: NextRequest) {
           isAdmin: role === "admin",
           isCarrier: role === "carrier" || role === "admin"
         });
-        return addSecurityHeaders(checkResponse);
+        return addRateLimitHeaders(addSecurityHeaders(checkResponse), rateLimit);
 
       case "admin":
         if (!userId) {
@@ -127,7 +127,7 @@ export async function GET(request: NextRequest) {
         const stats = await getRoleStats();
         console.log("📊 Role stats:", stats);
         const statsResponse = NextResponse.json(stats);
-        return addSecurityHeaders(statsResponse);
+        return addRateLimitHeaders(addSecurityHeaders(statsResponse), rateLimit);
 
       default:
         const defaultResponse = NextResponse.json({ error: "Invalid action" }, { status: 400 });
