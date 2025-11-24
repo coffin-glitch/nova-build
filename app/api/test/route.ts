@@ -1,11 +1,30 @@
 import { addSecurityHeaders, logSecurityEvent } from "@/lib/api-security";
-import { NextResponse } from "next/server";
+import { checkApiRateLimit, addRateLimitHeaders } from "@/lib/api-rate-limiting";
+import { NextRequest, NextResponse } from "next/server";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    // Check rate limit for public read operation
+    const rateLimit = await checkApiRateLimit(request, {
+      routeType: 'public'
+    });
+
+    if (!rateLimit.allowed) {
+      const response = NextResponse.json(
+        {
+          success: false,
+          error: 'Rate limit exceeded',
+          message: `Too many requests. Please try again after ${rateLimit.retryAfter} seconds.`,
+          retryAfter: rateLimit.retryAfter
+        },
+        { status: 429 }
+      );
+      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    }
+
     logSecurityEvent('test_api_accessed', undefined);
     const response = NextResponse.json({ success: true, message: "Test API is working" });
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
   } catch (error: any) {
     console.error("Test API error:", error);
     logSecurityEvent('test_api_error', undefined, { 
