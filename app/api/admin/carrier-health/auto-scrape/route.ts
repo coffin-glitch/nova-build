@@ -404,7 +404,7 @@ export async function POST(request: NextRequest) {
     }
     response.headers.set('Access-Control-Allow-Credentials', 'true');
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
   } catch (error: any) {
     console.error("Error auto-scraping carrier health data:", error);
     

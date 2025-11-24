@@ -117,7 +117,7 @@ export async function GET(request: NextRequest) {
       knowledgeBase: knowledgeBase || [],
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
     
   } catch (error: any) {
     console.error("Memory recall error:", error);

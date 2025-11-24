@@ -180,7 +180,7 @@ export async function PUT(request: NextRequest) {
       },
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
     
   } catch (error: any) {
     console.error("Error updating carrier health data:", error);

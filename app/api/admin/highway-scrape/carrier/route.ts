@@ -403,7 +403,7 @@ export async function POST(request: NextRequest) {
         },
       });
       
-      return addSecurityHeaders(response);
+      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
       
     } catch (error: any) {
       await browser.close();

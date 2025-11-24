@@ -547,7 +547,7 @@ export async function GET(request: NextRequest) {
       data: healthData,
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
     
   } catch (error: any) {
     console.error("Carrier health API error:", error);
