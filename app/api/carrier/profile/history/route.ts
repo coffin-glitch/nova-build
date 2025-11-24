@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     // Fetch profile history for the current user
@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
       data: parsedHistory || [] 
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
     
   } catch (error: any) {
     console.error("Error fetching profile history:", error);
@@ -85,6 +85,6 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

@@ -1,6 +1,6 @@
+import { addRateLimitHeaders, checkApiRateLimit } from "@/lib/api-rate-limiting";
 import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
-import { checkApiRateLimit, addRateLimitHeaders } from "@/lib/api-rate-limiting";
-import { requireApiCarrier, requireApiAdmin, unauthorizedResponse, forbiddenResponse } from "@/lib/auth-api-helper";
+import { forbiddenResponse, requireApiAdmin, requireApiCarrier, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -9,6 +9,15 @@ export async function POST(request: NextRequest) {
     // Ensure user is carrier (Supabase-only)
     const auth = await requireApiCarrier(request);
     const userId = auth.userId;
+
+    // Validate request size
+    const { validateRequestSize, getMaxSizeForContentType } = await import('@/lib/api-security');
+    const contentType = request.headers.get('content-type');
+    const maxSize = getMaxSizeForContentType(contentType);
+    const sizeError = await validateRequestSize(request, maxSize);
+    if (sizeError) {
+      return sizeError;
+    }
 
     // Check rate limit for critical operation (offer submission)
     const rateLimit = await checkApiRateLimit(request, {
@@ -25,7 +34,7 @@ export async function POST(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     const body = await request.json();
@@ -61,7 +70,7 @@ export async function POST(request: NextRequest) {
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Check if load exists and is published
@@ -76,7 +85,7 @@ export async function POST(request: NextRequest) {
         { error: "Load not found or not published" },
         { status: 404 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Check if carrier already has an offer for this load (Supabase-only)
@@ -91,7 +100,7 @@ export async function POST(request: NextRequest) {
         { error: "You already have an offer for this load" },
         { status: 409 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Create the offer with 24-hour expiration (Supabase-only)
@@ -116,31 +125,16 @@ export async function POST(request: NextRequest) {
       message: "Offer submitted successfully" 
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
   } catch (error: any) {
-    console.error("Error creating offer:", error);
-    
     // Handle auth errors
     if (error.message === "Unauthorized" || error.message === "Carrier access required") {
       return unauthorizedResponse();
     }
     
-    logSecurityEvent('offer_creation_error', undefined, { 
-      error: error instanceof Error ? error.message : String(error) 
-    });
-    
-    const response = NextResponse.json(
-      { 
-        error: "Internal server error",
-        details: process.env.NODE_ENV === 'development' 
-          ? (error instanceof Error ? error.message : 'Unknown error')
-          : undefined
-      },
-      { status: 500 }
-    );
-    
-    return addSecurityHeaders(response);
+    const { handleApiError } = await import('@/lib/api-security');
+    return handleApiError(error, 'offer_creation_error', undefined, 500, 'Failed to create offer');
   }
 }
 
@@ -184,7 +178,7 @@ export async function GET(request: NextRequest) {
       `;
       logSecurityEvent('offers_accessed_admin', userId);
       const response = NextResponse.json({ offers });
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     } else if (userRole === 'carrier') {
       // Carrier can only see their own non-expired offers - Supabase-only
       const offers = await sql`
@@ -208,10 +202,10 @@ export async function GET(request: NextRequest) {
       `;
       logSecurityEvent('offers_accessed_carrier', userId);
       const response = NextResponse.json({ offers });
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     } else {
       const response = NextResponse.json({ error: "Access denied" }, { status: 403 });
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
   } catch (error: any) {
@@ -239,6 +233,6 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

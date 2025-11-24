@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     const body = await request.json();
@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     if (!conversationId) {
@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
         { error: "conversationId is required" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Get conversation messages
@@ -158,7 +158,7 @@ export async function POST(request: NextRequest) {
       },
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     
   } catch (error: any) {
     console.error("Knowledge extraction error:", error);
@@ -181,7 +181,7 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 

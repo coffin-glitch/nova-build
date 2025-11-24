@@ -1,8 +1,8 @@
+import { addRateLimitHeaders, checkApiRateLimit } from "@/lib/api-rate-limiting";
 import { addSecurityHeaders, logSecurityEvent } from "@/lib/api-security";
-import { checkApiRateLimit, addRateLimitHeaders } from "@/lib/api-rate-limiting";
 import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
-import { getAuthMetricsForAPI } from "@/lib/auth-monitoring";
 import { getAuthConfig } from "@/lib/auth-config";
+import { getAuthMetricsForAPI } from "@/lib/auth-monitoring";
 import { NextRequest, NextResponse } from "next/server";
 
 /**
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
     
     const metrics = getAuthMetricsForAPI();
@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
       timestamp: new Date().toISOString(),
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     
   } catch (error: any) {
     if (error.message === "Unauthorized" || error.message === "Admin access required") {
@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
       { status: error.message === "Unauthorized" || error.message === "Admin access required" ? 401 : 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 

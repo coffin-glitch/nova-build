@@ -1,7 +1,7 @@
+import { addRateLimitHeaders, checkApiRateLimit } from "@/lib/api-rate-limiting";
 import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
-import { checkApiRateLimit, addRateLimitHeaders } from "@/lib/api-rate-limiting";
 import { awardAuction } from '@/lib/auctions';
-import { requireApiAdmin, unauthorizedResponse, forbiddenResponse } from '@/lib/auth-api-helper';
+import { forbiddenResponse, requireApiAdmin, unauthorizedResponse } from '@/lib/auth-api-helper';
 import sql from '@/lib/db';
 import { NextRequest, NextResponse } from "next/server";
 
@@ -30,7 +30,7 @@ export async function POST(
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
     
     const { bidNumber } = await params;
@@ -73,7 +73,7 @@ export async function POST(
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Award the auction using the existing function
@@ -158,7 +158,7 @@ export async function POST(
       message: `Auction ${bidNumber} awarded successfully to ${winnerName}`
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
   } catch (error: any) {
     console.error("Award bid error:", error);
@@ -187,7 +187,7 @@ export async function POST(
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
@@ -221,7 +221,7 @@ export async function GET(
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Get all bids for this auction with carrier details
@@ -324,7 +324,7 @@ export async function GET(
       }
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
 
   } catch (error: any) {
     console.error("Get bid details error:", error);
@@ -352,6 +352,6 @@ export async function GET(
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

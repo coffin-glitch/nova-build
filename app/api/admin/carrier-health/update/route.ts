@@ -30,7 +30,7 @@ export async function PUT(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
     
     const body = await request.json();
@@ -67,7 +67,7 @@ export async function PUT(request: NextRequest) {
         { ok: false, error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
     
     if (!mcNumber) {
@@ -75,7 +75,7 @@ export async function PUT(request: NextRequest) {
         { ok: false, error: "MC number is required" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
     
     // Get existing data
@@ -180,7 +180,7 @@ export async function PUT(request: NextRequest) {
       },
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     
   } catch (error: any) {
     console.error("Error updating carrier health data:", error);
@@ -203,7 +203,7 @@ export async function PUT(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 

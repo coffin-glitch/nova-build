@@ -1,5 +1,5 @@
+import { addRateLimitHeaders, checkApiRateLimit } from "@/lib/api-rate-limiting";
 import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
-import { checkApiRateLimit, addRateLimitHeaders } from "@/lib/api-rate-limiting";
 import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import { securityMonitor } from "@/lib/security-monitoring";
 import { NextRequest, NextResponse } from "next/server";
@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     // Get security dashboard data
@@ -44,6 +44,49 @@ export async function GET(request: NextRequest) {
     
     // Get suspicious IPs
     const suspiciousIPs = securityMonitor.getSuspiciousIPs();
+    
+    // Get rate limit violation statistics
+    const rateLimitEvents = recentEvents.filter(event => 
+      event.eventType === 'rate_limit_exceeded' || event.eventType === 'rate_limit_exceeded_ip'
+    );
+    
+    const rateLimitStats = {
+      totalViolations: rateLimitEvents.length,
+      violationsLast24h: rateLimitEvents.filter(event => 
+        new Date(event.timestamp).getTime() > Date.now() - 86400000
+      ).length,
+      violationsLastHour: rateLimitEvents.filter(event => 
+        new Date(event.timestamp).getTime() > Date.now() - 3600000
+      ).length,
+      topViolatingIPs: Object.entries(
+        rateLimitEvents.reduce((acc: Record<string, number>, event) => {
+          const ip = event.ip || 'unknown';
+          acc[ip] = (acc[ip] || 0) + 1;
+          return acc;
+        }, {})
+      )
+        .map(([ip, count]) => ({ ip, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 10),
+      topViolatingRoutes: Object.entries(
+        rateLimitEvents.reduce((acc: Record<string, number>, event) => {
+          const path = (event.details as any)?.path || 'unknown';
+          acc[path] = (acc[path] || 0) + 1;
+          return acc;
+        }, {})
+      )
+        .map(([path, count]) => ({ path, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 10),
+      violationsByType: Object.entries(
+        rateLimitEvents.reduce((acc: Record<string, number>, event) => {
+          const type = event.eventType;
+          acc[type] = (acc[type] || 0) + 1;
+          return acc;
+        }, {})
+      )
+        .map(([type, count]) => ({ type, count }))
+    };
     
     // Calculate security metrics
     const metrics = {
@@ -60,7 +103,10 @@ export async function GET(request: NextRequest) {
       ).length,
       eventsLastHour: recentEvents.filter(event => 
         new Date(event.timestamp).getTime() > Date.now() - 3600000
-      ).length
+      ).length,
+      rateLimitViolations: rateLimitStats.totalViolations,
+      rateLimitViolationsLast24h: rateLimitStats.violationsLast24h,
+      rateLimitViolationsLastHour: rateLimitStats.violationsLastHour
     };
 
     // Get event type distribution
@@ -107,11 +153,12 @@ export async function GET(request: NextRequest) {
           message: alert.message,
           timestamp: alert.timestamp,
           eventId: alert.eventId
-        }))
+        })),
+        rateLimitStats
       }
     });
 
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
   } catch (error: any) {
     console.error("Security dashboard API error:", error);
@@ -134,7 +181,7 @@ export async function GET(request: NextRequest) {
       },
       { status: 500 }
     );
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
@@ -164,7 +211,7 @@ export async function POST(request: NextRequest) {
         { success: false, error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     switch (action) {
@@ -174,7 +221,7 @@ export async function POST(request: NextRequest) {
             { success: false, error: "Alert ID is required" },
             { status: 400 }
           );
-          return addSecurityHeaders(response);
+          return addSecurityHeaders(response, request);
         }
         
         logSecurityEvent('security_alert_acknowledged', userId, { alertId });
@@ -191,7 +238,7 @@ export async function POST(request: NextRequest) {
             { success: false, error: "Alert ID is required" },
             { status: 400 }
           );
-          return addSecurityHeaders(response);
+          return addSecurityHeaders(response, request);
         }
         
         logSecurityEvent('security_incident_created', userId, { alertId, incidentId });
@@ -208,7 +255,7 @@ export async function POST(request: NextRequest) {
             { success: false, error: "IP address is required" },
             { status: 400 }
           );
-          return addSecurityHeaders(response);
+          return addSecurityHeaders(response, request);
         }
         
         logSecurityEvent('ip_blocked', userId, { ip, reason: reason || 'Manual block' });
@@ -248,6 +295,6 @@ export async function POST(request: NextRequest) {
       },
       { status: 500 }
     );
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

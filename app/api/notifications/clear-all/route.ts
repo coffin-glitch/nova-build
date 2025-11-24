@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     // Delete all notifications for this user
@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
       message: "All notifications cleared"
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
 
   } catch (error: any) {
     console.error("Error clearing notifications:", error);
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 

@@ -28,7 +28,7 @@ export async function PUT(
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, req), rateLimit);
     }
 
     const { offerId } = await params;
@@ -52,7 +52,7 @@ export async function PUT(
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, req);
     }
 
     if (!action || !['accept', 'reject', 'counter'].includes(action)) {
@@ -60,7 +60,7 @@ export async function PUT(
         { error: "Invalid action" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, req);
     }
 
     if (action === 'counter' && !counterAmount) {
@@ -68,7 +68,7 @@ export async function PUT(
         { error: "Counter amount required" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, req);
     }
 
     // Get the current offer
@@ -81,7 +81,7 @@ export async function PUT(
         { error: "Offer not found" },
         { status: 404 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, req);
     }
 
     const offer = offerResult[0];
@@ -91,7 +91,7 @@ export async function PUT(
         { error: "Offer is not pending" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, req);
     }
 
     let status;
@@ -244,7 +244,7 @@ export async function PUT(
       offer: updateResult[0]
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, req), rateLimit);
 
   } catch (error: any) {
     console.error("Error managing offer:", error);
@@ -267,6 +267,6 @@ export async function PUT(
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, req);
   }
 }

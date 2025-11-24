@@ -38,7 +38,7 @@ export async function GET(
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     const { loadId } = await params;
@@ -57,7 +57,7 @@ export async function GET(
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Handle both integer loadId and UUID loadOfferId
@@ -101,7 +101,7 @@ export async function GET(
         { error: "Load offer not found" },
         { status: 404 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     logSecurityEvent('load_driver_info_accessed', userId, { loadId });
@@ -111,7 +111,7 @@ export async function GET(
       driver_info: driverInfo[0]
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
   } catch (error: any) {
     console.error("Error fetching driver information:", error);
@@ -134,7 +134,7 @@ export async function GET(
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
@@ -163,7 +163,7 @@ export async function POST(
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     const { loadId } = await params;
@@ -202,7 +202,7 @@ export async function POST(
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Validate required fields
@@ -211,7 +211,7 @@ export async function POST(
         { error: "Driver name is required" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     if (!driver_phone?.trim()) {
@@ -219,7 +219,7 @@ export async function POST(
         { error: "Driver phone number is required" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Format and validate phone number
@@ -229,7 +229,7 @@ export async function POST(
         { error: "Driver phone number must be exactly 10 digits" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Handle both integer loadId and UUID loadOfferId
@@ -265,7 +265,7 @@ export async function POST(
         { error: "Load offer not found" },
         { status: 404 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     const currentStatus = loadOffer[0].status;
@@ -331,7 +331,7 @@ export async function POST(
       }
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
   } catch (error: any) {
     console.error("Error updating driver information:", error);
@@ -354,6 +354,6 @@ export async function POST(
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

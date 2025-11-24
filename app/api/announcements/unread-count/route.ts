@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     const unreadCount = await sql`
@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
       unreadCount: parseInt(unreadCount[0].count),
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
   } catch (error: any) {
     console.error("Error fetching unread count:", error);
@@ -69,7 +69,7 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 

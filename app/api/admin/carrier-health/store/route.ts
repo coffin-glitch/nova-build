@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
     
     const body = await request.json();
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
         { ok: false, error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
     
     if (!mcNumber) {
@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
         { ok: false, error: "MC number is required" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
     
     if (!carrierUrl && !overviewHtml && !directoryHtml) {
@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
         { ok: false, error: "At least carrier URL, overview HTML, or directory HTML is required" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
     
     // Extract URL from overview/directory if not provided
@@ -291,7 +291,7 @@ export async function POST(request: NextRequest) {
       healthScore,
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
     
   } catch (error: any) {
     console.error("Error storing carrier health data:", error);
@@ -314,7 +314,7 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 

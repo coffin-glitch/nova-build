@@ -1,5 +1,5 @@
+import { addRateLimitHeaders, checkApiRateLimit } from "@/lib/api-rate-limiting";
 import { addSecurityHeaders, logSecurityEvent } from "@/lib/api-security";
-import { checkApiRateLimit, addRateLimitHeaders } from "@/lib/api-rate-limiting";
 import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from '@/lib/db';
 import { NextRequest, NextResponse } from "next/server";
@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
     
     // Simple test to see what's in the database
@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
       dateRange: dateRange[0]
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
 
   } catch (error: any) {
     console.error("Debug API error:", error);
@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 

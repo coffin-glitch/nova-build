@@ -1,5 +1,5 @@
+import { addRateLimitHeaders, checkApiRateLimit } from "@/lib/api-rate-limiting";
 import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
-import { checkApiRateLimit, addRateLimitHeaders } from "@/lib/api-rate-limiting";
 import { getCarrierProfile, upsertCarrierBid, validateCarrierProfileComplete } from "@/lib/auctions";
 import { requireApiCarrier, unauthorizedResponse } from "@/lib/auth-api-helper";
 import { validateMoneyInput } from "@/lib/format";
@@ -10,6 +10,15 @@ export async function POST(request: NextRequest) {
     // Ensure user is carrier (Supabase-only)
     const auth = await requireApiCarrier(request);
     const userId = auth.userId;
+
+    // Validate request size
+    const { validateRequestSize, getMaxSizeForContentType } = await import('@/lib/api-security');
+    const contentType = request.headers.get('content-type');
+    const maxSize = getMaxSizeForContentType(contentType);
+    const sizeError = await validateRequestSize(request, maxSize);
+    if (sizeError) {
+      return sizeError;
+    }
 
     // Check rate limit for critical operation (bid submission)
     const rateLimit = await checkApiRateLimit(request, {
@@ -27,7 +36,7 @@ export async function POST(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     const body = await request.json();
@@ -49,7 +58,7 @@ export async function POST(request: NextRequest) {
         { ok: false, error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     if (!bid_number || !amount) {
@@ -57,19 +66,19 @@ export async function POST(request: NextRequest) {
         { ok: false, error: "Missing required fields: bid_number, amount" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Validate money input
-    const validation = validateMoneyInput(amount.toString());
-    if (!validation.isValid) {
+    const moneyValidation = validateMoneyInput(amount.toString());
+    if (!moneyValidation.isValid) {
       return NextResponse.json(
-        { ok: false, error: validation.error },
+        { ok: false, error: moneyValidation.error },
         { status: 400 }
       );
     }
 
-    const amount_cents = validation.cents!;
+    const amount_cents = moneyValidation.cents!;
 
     // Ensure carrier profile exists
     await getCarrierProfile(userId);
@@ -101,7 +110,7 @@ export async function POST(request: NextRequest) {
       data: bid,
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     
   } catch (error: any) {
     console.error("Carrier bid API error:", error);
@@ -115,7 +124,7 @@ export async function POST(request: NextRequest) {
         { ok: false, error: "Auction closed - bidding period has expired" },
         { status: 409 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     logSecurityEvent('carrier_bid_error', undefined, { 
@@ -132,7 +141,7 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
@@ -168,7 +177,7 @@ export async function GET(request: NextRequest) {
       },
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
     
   } catch (error: any) {
     console.error("Carrier bids GET API error:", error);
@@ -191,6 +200,6 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

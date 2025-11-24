@@ -30,7 +30,7 @@ export async function POST(
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
     
     const { bidNumber } = await params;
@@ -54,7 +54,7 @@ export async function POST(
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     if (!bidNumber) {
@@ -62,7 +62,7 @@ export async function POST(
         { error: "Bid number is required" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     if (!winnerUserId) {
@@ -70,7 +70,7 @@ export async function POST(
         { error: "Winner user ID is required" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Re-award the auction using the reAwardAuction function
@@ -152,7 +152,7 @@ export async function POST(
       message: `Auction ${bidNumber} re-awarded successfully to ${winnerName}`
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
   } catch (error: any) {
     console.error("Re-award bid error:", error);
@@ -176,7 +176,7 @@ export async function POST(
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 

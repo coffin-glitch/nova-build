@@ -1,10 +1,10 @@
+import { addRateLimitHeaders, checkApiRateLimit } from "@/lib/api-rate-limiting";
 import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
-import { checkApiRateLimit, addRateLimitHeaders } from "@/lib/api-rate-limiting";
-import sql from "@/lib/db";
 import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
-import { NextRequest, NextResponse } from "next/server";
-import { redisConnection } from "@/lib/notification-queue";
 import { clearCarrierRelatedCaches } from "@/lib/cache-invalidation";
+import sql from "@/lib/db";
+import { redisConnection } from "@/lib/notification-queue";
+import { NextRequest, NextResponse } from "next/server";
 
 // GET - Get user's current tier
 export async function GET(
@@ -30,7 +30,7 @@ export async function GET(
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
     
     const { userId } = await params;
@@ -49,7 +49,7 @@ export async function GET(
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     const result = await sql`
@@ -66,7 +66,7 @@ export async function GET(
         { error: "Carrier profile not found" },
         { status: 404 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     logSecurityEvent('carrier_tier_accessed', adminUserId, { carrierUserId: userId, tier: result[0].tier });
@@ -76,7 +76,7 @@ export async function GET(
       tier: result[0].tier || 'standard' 
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     
   } catch (error: any) {
     console.error("Error fetching user tier:", error);
@@ -96,7 +96,7 @@ export async function GET(
         : undefined
     }, { status: 500 });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
@@ -124,7 +124,7 @@ export async function PUT(
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
     
     const { userId } = await params;
@@ -143,7 +143,7 @@ export async function PUT(
         { error: `Invalid input: ${userIdValidation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     const body = await request.json();
@@ -163,7 +163,7 @@ export async function PUT(
         { error: "Invalid tier. Must be 'premium', 'standard', or 'new'" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Update tier
@@ -187,7 +187,7 @@ export async function PUT(
       message: `Tier updated to ${tier}` 
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     
   } catch (error: any) {
     console.error("Error updating user tier:", error);
@@ -207,7 +207,7 @@ export async function PUT(
         : undefined
     }, { status: 500 });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 

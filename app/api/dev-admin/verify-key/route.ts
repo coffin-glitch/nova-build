@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
     
     const { key } = await request.json();
@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
         { success: false, valid: false, error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
     
     // SECURITY FIX: Remove sensitive logging
@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
         valid: true, 
         message: "Dev key accepted" 
       });
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     } else {
       logSecurityEvent('dev_key_invalid', userId);
       const response = NextResponse.json({ 
@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
         valid: false, 
         error: "Invalid dev key" 
       });
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
   } catch (error: any) {
     console.error("❌ Dev key verification error:", error);
@@ -91,6 +91,6 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

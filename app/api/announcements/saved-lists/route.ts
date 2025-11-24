@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     const lists = await sql`
@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
       data: lists,
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
 
   } catch (error: any) {
     console.error("Error fetching saved recipient lists:", error);
@@ -74,7 +74,7 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     if (!name || !name.trim()) {
@@ -113,7 +113,7 @@ export async function POST(request: NextRequest) {
         { error: "Name is required" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     if (!Array.isArray(recipientUserIds) || recipientUserIds.length === 0) {
@@ -121,7 +121,7 @@ export async function POST(request: NextRequest) {
         { error: "At least one recipient is required" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Check if name already exists for this admin
@@ -138,7 +138,7 @@ export async function POST(request: NextRequest) {
         { error: "A list with this name already exists" },
         { status: 409 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Ensure all IDs are valid UUIDs
@@ -153,7 +153,7 @@ export async function POST(request: NextRequest) {
         { error: "No valid user IDs provided" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Use parameterized query with sql.array() for safety (fixes SQL injection vulnerability)
@@ -173,7 +173,7 @@ export async function POST(request: NextRequest) {
       data: savedList,
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
 
   } catch (error: any) {
     console.error("Error creating saved recipient list:", error);
@@ -196,7 +196,7 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 

@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
     const pageParam = searchParams.get('page') || '1';
     const limitParam = searchParams.get('limit') || '20';
@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     const page = parseInt(pageParam);
@@ -69,7 +69,7 @@ export async function GET(request: NextRequest) {
         { error: "Page must be between 1 and 1000" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     if (limit < 1 || limit > 100) {
@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
         { error: "Limit must be between 1 and 100" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Validate sort fields
@@ -90,7 +90,7 @@ export async function GET(request: NextRequest) {
         { error: "Invalid sort field" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
     
     if (!validSortOrders.includes(sortOrder)) {
@@ -98,7 +98,7 @@ export async function GET(request: NextRequest) {
         { error: "Invalid sort order" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Build WHERE clause using parameterized queries
@@ -235,7 +235,7 @@ export async function GET(request: NextRequest) {
       }
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     
   } catch (error: any) {
     console.error("Error fetching awarded bids:", error);
@@ -258,6 +258,6 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

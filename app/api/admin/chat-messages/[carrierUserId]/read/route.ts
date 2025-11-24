@@ -28,7 +28,7 @@ export async function POST(
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     const { carrierUserId } = await params;
@@ -47,7 +47,7 @@ export async function POST(
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Mark all chat messages from this carrier as read (Supabase-only)
@@ -66,7 +66,7 @@ export async function POST(
       message: "Messages marked as read" 
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
   } catch (error: any) {
     console.error("Error marking chat messages as read:", error);
@@ -86,6 +86,6 @@ export async function POST(
         : undefined
     }, { status: 500 });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

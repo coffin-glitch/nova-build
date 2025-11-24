@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
     const status = searchParams.get("status");
     const equipment = searchParams.get("equipment");
@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     const limit = Math.min(parseInt(limitParam), 100);
@@ -223,7 +223,7 @@ export async function GET(request: NextRequest) {
     });
     
     const response = NextResponse.json(result);
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
   } catch (error: any) {
     console.error("Error fetching admin loads:", error);
@@ -246,7 +246,7 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
@@ -271,7 +271,7 @@ export async function POST(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     const body = await request.json();
@@ -292,7 +292,7 @@ export async function POST(request: NextRequest) {
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     if (!action) {
@@ -300,7 +300,7 @@ export async function POST(request: NextRequest) {
         { error: "Action is required" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // For unpublish_all, we don't need rrNumbers
@@ -310,7 +310,7 @@ export async function POST(request: NextRequest) {
           { error: "rrNumbers array is required for this action" },
           { status: 400 }
         );
-        return addSecurityHeaders(response);
+        return addSecurityHeaders(response, request);
       }
 
       if (rrNumbers.length === 0) {
@@ -318,7 +318,7 @@ export async function POST(request: NextRequest) {
           { error: "At least one load must be selected" },
           { status: 400 }
         );
-        return addSecurityHeaders(response);
+        return addSecurityHeaders(response, request);
       }
 
       // Validate and sanitize rrNumbers
@@ -331,7 +331,7 @@ export async function POST(request: NextRequest) {
           { error: "No valid RR numbers provided" },
           { status: 400 }
         );
-        return addSecurityHeaders(response);
+        return addSecurityHeaders(response, request);
       }
     }
 
@@ -417,7 +417,7 @@ export async function POST(request: NextRequest) {
       affectedLoads: action === 'unpublish_all' ? 'all' : validRrNumbers
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
   } catch (error: any) {
     console.error("Error performing admin bulk operation:", error);
@@ -440,6 +440,6 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

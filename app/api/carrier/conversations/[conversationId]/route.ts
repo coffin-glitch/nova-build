@@ -1,9 +1,9 @@
+import { addRateLimitHeaders, checkApiRateLimit } from "@/lib/api-rate-limiting";
 import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
-import { checkApiRateLimit, addRateLimitHeaders } from "@/lib/api-rate-limiting";
 import { requireApiCarrier, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
-import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseService } from "@/lib/supabase";
+import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(
   request: NextRequest,
@@ -30,7 +30,7 @@ export async function GET(
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     // Verify the user has access to this conversation
@@ -71,7 +71,7 @@ export async function GET(
       data: messages 
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
   } catch (error: any) {
     console.error("Error fetching conversation messages:", error);
@@ -94,7 +94,7 @@ export async function GET(
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
@@ -127,7 +127,7 @@ export async function POST(
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     // Input validation
@@ -144,7 +144,7 @@ export async function POST(
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Verify the user has access to this conversation
@@ -155,7 +155,7 @@ export async function POST(
 
     if (conversation.length === 0) {
       const response = NextResponse.json({ error: "Conversation not found" }, { status: 404 });
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     // Check if request has FormData (file upload) or JSON (text message)
@@ -191,7 +191,7 @@ export async function POST(
             { error: "File size exceeds 10MB limit" },
             { status: 400 }
           );
-          return addSecurityHeaders(response);
+          return addSecurityHeaders(response, request);
         }
 
         // Validate file type
@@ -206,7 +206,7 @@ export async function POST(
             { error: "Invalid file type. Only JPEG, PNG, and PDF are allowed" },
             { status: 400 }
           );
-          return addSecurityHeaders(response);
+          return addSecurityHeaders(response, request);
         }
 
         // Upload file to Supabase Storage
@@ -365,7 +365,7 @@ export async function POST(
       data: result[0]
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
   } catch (error: any) {
     console.error("Error sending message:", error);
@@ -388,6 +388,6 @@ export async function POST(
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
     
     const body = await request.json().catch(() => ({}));
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Reset archived_at to NULL and set is_archived = false for bids from the specified date
@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
       message: `Reset archived_at and is_archived for ${updatedCount} bids from ${targetDate}`
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
     
   } catch (error: any) {
     console.error("Error resetting archived_at:", error);
@@ -114,7 +114,7 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 

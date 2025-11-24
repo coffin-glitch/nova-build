@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
     
     if (!userId) {
@@ -69,7 +69,7 @@ export async function GET(request: NextRequest) {
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     const limit = Math.min(parseInt(limitParam), 100); // Max 100
@@ -139,7 +139,7 @@ export async function GET(request: NextRequest) {
       }
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
   } catch (error: any) {
     console.error('Error fetching notifications:', error);
@@ -163,7 +163,7 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
@@ -210,7 +210,7 @@ export async function PUT(
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     const result = await sql`
@@ -226,7 +226,7 @@ export async function PUT(
         { error: "Notification not found" },
         { status: 404 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     logSecurityEvent('notification_marked_read', userId, { notification_id: id });
@@ -236,7 +236,7 @@ export async function PUT(
       message: "Notification marked as read" 
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
 
   } catch (error: any) {
     console.error('Error marking notification as read:', error);
@@ -259,7 +259,7 @@ export async function PUT(
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
@@ -306,7 +306,7 @@ export async function DELETE(
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     const result = await sql`
@@ -321,7 +321,7 @@ export async function DELETE(
         { error: "Notification not found" },
         { status: 404 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     logSecurityEvent('notification_deleted', userId, { notification_id: id });
@@ -331,7 +331,7 @@ export async function DELETE(
       message: "Notification deleted" 
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
 
   } catch (error: any) {
     console.error('Error deleting notification:', error);
@@ -354,6 +354,6 @@ export async function DELETE(
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

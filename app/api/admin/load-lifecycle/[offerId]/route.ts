@@ -27,7 +27,7 @@ export async function GET(
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     const { offerId } = await params;
@@ -46,7 +46,7 @@ export async function GET(
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Validate offerId is a valid number
@@ -57,7 +57,7 @@ export async function GET(
         { error: "Invalid offer ID" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Get load lifecycle events for the offer
@@ -105,7 +105,7 @@ export async function GET(
       }
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
   } catch (error: any) {
     console.error("Error fetching admin load lifecycle:", error);
@@ -128,6 +128,6 @@ export async function GET(
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

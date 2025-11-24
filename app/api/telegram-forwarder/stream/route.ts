@@ -1,6 +1,6 @@
-import { addSecurityHeaders, logSecurityEvent } from "@/lib/api-security";
 import { checkApiRateLimit } from "@/lib/api-rate-limiting";
-import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
+import { logSecurityEvent } from "@/lib/api-security";
+import { requireApiAdmin } from "@/lib/auth-api-helper";
 import { NextRequest } from "next/server";
 
 // Import WebSocket client library

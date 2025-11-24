@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
       data: profile 
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
   } catch (error: any) {
     console.error("Error fetching carrier profile:", error);
@@ -63,13 +63,13 @@ export async function GET(request: NextRequest) {
         const response = NextResponse.json({ 
           error: "Authentication required" 
         }, { status: 401 });
-        return addSecurityHeaders(response);
+        return addSecurityHeaders(response, request);
       }
       if (error.message === "Carrier access required" || error.message.includes("Carrier access")) {
         const response = NextResponse.json({ 
           error: "Carrier access required" 
         }, { status: 403 });
-        return addSecurityHeaders(response);
+        return addSecurityHeaders(response, request);
       }
     }
     
@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
       details: error?.message || String(error)
     }, { status: 500 });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
@@ -86,6 +86,15 @@ export async function POST(request: NextRequest) {
   try {
     const auth = await requireApiCarrier(request);
     const userId = auth.userId;
+
+    // Validate request size
+    const { validateRequestSize, getMaxSizeForContentType } = await import('@/lib/api-security');
+    const contentType = request.headers.get('content-type');
+    const maxSize = getMaxSizeForContentType(contentType);
+    const sizeError = await validateRequestSize(request, maxSize);
+    if (sizeError) {
+      return sizeError;
+    }
 
     // Check rate limit for authenticated write operation
     const rateLimit = await checkApiRateLimit(request, {
@@ -102,7 +111,7 @@ export async function POST(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
     
     const body = await request.json();
@@ -314,7 +323,7 @@ export async function POST(request: NextRequest) {
       submitted_for_approval: submit_for_approval
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
   } catch (error) {
     console.error("Error updating carrier profile:", error);
@@ -336,6 +345,6 @@ export async function POST(request: NextRequest) {
         : undefined
     }, { status: 500 });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

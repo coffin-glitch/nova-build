@@ -30,7 +30,7 @@ export async function GET(
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
     
     // Input validation
@@ -47,7 +47,7 @@ export async function GET(
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
     
     if (!userId) {
@@ -55,7 +55,7 @@ export async function GET(
         { error: "User ID is required" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     const userInfo = await getSupabaseUserInfo(userId);
@@ -63,7 +63,7 @@ export async function GET(
     logSecurityEvent('user_info_accessed', requesterUserId, { targetUserId: userId });
     
     const response = NextResponse.json(userInfo);
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     
   } catch (error: any) {
     console.error("Error fetching user info:", error);
@@ -86,6 +86,6 @@ export async function GET(
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

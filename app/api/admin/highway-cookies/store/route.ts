@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
     console.log('Storing cookies for userId:', userId);
     
@@ -140,7 +140,7 @@ export async function POST(request: NextRequest) {
         { ok: false, error: "No cookies provided" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Validate cookie count (reasonable limit)
@@ -150,7 +150,7 @@ export async function POST(request: NextRequest) {
         { ok: false, error: "Too many cookies provided (max 1000)" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Store storageState in database (Playwright format)
@@ -220,7 +220,7 @@ export async function POST(request: NextRequest) {
     response.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
     response.headers.set("Access-Control-Allow-Credentials", "true");
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     
   } catch (error: any) {
     console.error("Error storing Highway cookies:", error);
@@ -249,7 +249,7 @@ export async function POST(request: NextRequest) {
     response.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
     response.headers.set("Access-Control-Allow-Credentials", "true");
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 

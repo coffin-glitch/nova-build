@@ -29,7 +29,7 @@ export async function POST(
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     // Input validation
@@ -51,7 +51,7 @@ export async function POST(
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     if (!bidNumber) {
@@ -59,7 +59,7 @@ export async function POST(
         { error: "Bid number is required" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Verify the carrier has this bid awarded to them
@@ -89,7 +89,7 @@ export async function POST(
         { error: "No file provided" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     if (!documentType) {
@@ -97,22 +97,20 @@ export async function POST(
         { error: "Document type is required" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Validate file size (max 10MB)
+    const { validateFileSize } = await import('@/lib/api-security');
     const maxSize = 10 * 1024 * 1024; // 10MB
-    if (file.size > maxSize) {
+    const fileSizeError = validateFileSize(file, maxSize);
+    if (fileSizeError) {
       logSecurityEvent('bid_document_size_exceeded', userId, { 
         bidNumber, 
         fileSize: file.size,
         fileName: file.name
       });
-      const response = NextResponse.json(
-        { error: "File size exceeds 10MB limit" },
-        { status: 400 }
-      );
-      return addSecurityHeaders(response);
+      return fileSizeError;
     }
 
     // Validate file type
@@ -127,7 +125,7 @@ export async function POST(
         { error: "Invalid file type. Only JPEG, PNG, and PDF are allowed" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Upload file to Supabase Storage
@@ -178,7 +176,7 @@ export async function POST(
         },
         { status: 500 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Get public URL
@@ -223,7 +221,7 @@ export async function POST(
       data: result[0]
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
   } catch (error: any) {
     console.error("Error uploading document:", error);
@@ -247,7 +245,7 @@ export async function POST(
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
@@ -279,7 +277,7 @@ export async function GET(
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Get documents for this bid that belong to this carrier
@@ -296,7 +294,7 @@ export async function GET(
       data: documents
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
 
   } catch (error: any) {
     console.error("Error fetching documents:", error);
@@ -320,7 +318,7 @@ export async function GET(
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 

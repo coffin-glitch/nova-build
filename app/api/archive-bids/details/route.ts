@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
     
     const { searchParams } = new URL(request.url);
@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
     
     if (!bidNumber) {
@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
         { error: "Bid number is required" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Get archived bid details
@@ -76,7 +76,7 @@ export async function GET(request: NextRequest) {
         { error: "Archived bid not found" },
         { status: 404 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Get all carrier bids for this bid number
@@ -152,7 +152,7 @@ export async function GET(request: NextRequest) {
       }
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
 
   } catch (error: any) {
     console.error("Error fetching bid history:", error);
@@ -175,7 +175,7 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 

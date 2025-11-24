@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
       if (origin) {
         response.headers.set('Access-Control-Allow-Origin', origin);
       }
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     // Handle CORS
@@ -79,9 +79,6 @@ export async function POST(request: NextRequest) {
       process.env.NEXT_PUBLIC_APP_URL,
       process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null,
     ].filter(Boolean);
-    
-    const auth = await requireApiAdmin(request);
-    const userId = auth.userId || '';
     
     const body = await request.json();
     const { mcNumber, carrierName, carrierUrl, overviewHtml, directoryHtml } = body;
@@ -110,7 +107,7 @@ export async function POST(request: NextRequest) {
         response.headers.set('Access-Control-Allow-Origin', '*');
       }
       response.headers.set('Access-Control-Allow-Credentials', 'true');
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
     
     if (!mcNumber) {
@@ -124,7 +121,7 @@ export async function POST(request: NextRequest) {
         response.headers.set('Access-Control-Allow-Origin', '*');
       }
       response.headers.set('Access-Control-Allow-Credentials', 'true');
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
     
     if (!overviewHtml && !directoryHtml) {
@@ -138,7 +135,7 @@ export async function POST(request: NextRequest) {
         response.headers.set('Access-Control-Allow-Origin', '*');
       }
       response.headers.set('Access-Control-Allow-Credentials', 'true');
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
     
     // Extract URL if not provided
@@ -404,7 +401,7 @@ export async function POST(request: NextRequest) {
     }
     response.headers.set('Access-Control-Allow-Credentials', 'true');
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
   } catch (error: any) {
     console.error("Error auto-scraping carrier health data:", error);
     

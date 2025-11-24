@@ -1,5 +1,5 @@
+import { addRateLimitHeaders, checkApiRateLimit } from "@/lib/api-rate-limiting";
 import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
-import { checkApiRateLimit, addRateLimitHeaders } from "@/lib/api-rate-limiting";
 import { requireApiCarrier, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
@@ -35,7 +35,7 @@ export async function GET(
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     const { searchParams } = new URL(request.url);
@@ -100,7 +100,7 @@ export async function GET(
       data: driverInfo[0]
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
 
   } catch (error: any) {
     console.error("Error fetching driver information:", error);
@@ -123,7 +123,7 @@ export async function GET(
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
@@ -191,7 +191,7 @@ export async function POST(
         { error: `Invalid driver info: ${driverValidation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Validate required fields
@@ -200,7 +200,7 @@ export async function POST(
         { error: "Driver name is required" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     if (!driver_phone?.trim()) {
@@ -208,7 +208,7 @@ export async function POST(
         { error: "Driver phone number is required" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Format and validate phone number
@@ -218,7 +218,7 @@ export async function POST(
         { error: "Driver phone number must be exactly 10 digits" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Format secondary phone if provided
@@ -230,7 +230,7 @@ export async function POST(
           { error: "Secondary driver phone number must be exactly 10 digits" },
           { status: 400 }
         );
-        return addSecurityHeaders(response);
+        return addSecurityHeaders(response, request);
       }
     }
 
@@ -346,7 +346,7 @@ export async function POST(
       message: "Driver information updated successfully"
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
 
   } catch (error: any) {
     console.error("Error updating driver information:", error);
@@ -369,7 +369,7 @@ export async function POST(
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 

@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
     
     if (!auth?.userId) {
@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
         { valid: false, error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     if (!requiredRole || !['admin', 'carrier'].includes(requiredRole)) {
@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
         { valid: false, error: "Invalid role" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Get user role from unified auth
@@ -88,7 +88,7 @@ export async function GET(request: NextRequest) {
       provider: auth.authProvider
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
   } catch (error: any) {
     console.error('Role validation error:', error);
@@ -111,6 +111,6 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

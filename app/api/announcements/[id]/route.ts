@@ -33,7 +33,7 @@ export async function GET(
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     // Input validation
@@ -50,7 +50,7 @@ export async function GET(
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     if (userRole === 'admin') {
@@ -71,7 +71,7 @@ export async function GET(
           { error: "Announcement not found" },
           { status: 404 }
         );
-        return addSecurityHeaders(response);
+        return addSecurityHeaders(response, request);
       }
 
       logSecurityEvent('announcement_accessed', userId, { announcementId, role: 'admin' });
@@ -101,7 +101,7 @@ export async function GET(
         { error: "Announcement not found" },
         { status: 404 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     logSecurityEvent('announcement_accessed', userId, { announcementId, role: 'carrier' });
@@ -111,7 +111,7 @@ export async function GET(
       data: announcement,
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
 
   } catch (error: any) {
     console.error("Error fetching announcement:", error);
@@ -134,7 +134,7 @@ export async function GET(
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
@@ -154,7 +154,7 @@ export async function PUT(
         { error: "Unauthorized" },
         { status: 403 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     const body = await request.json();
@@ -180,7 +180,7 @@ export async function PUT(
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Build update query - only update provided fields using parameterized queries
@@ -229,7 +229,7 @@ export async function PUT(
         { error: "No fields to update" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Use parameterized query instead of sql.unsafe to prevent SQL injection
@@ -248,7 +248,7 @@ export async function PUT(
       data: announcement,
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
 
   } catch (error: any) {
     console.error("Error updating announcement:", error);
@@ -271,7 +271,7 @@ export async function PUT(
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
@@ -291,7 +291,7 @@ export async function DELETE(
         { error: "Unauthorized" },
         { status: 403 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     const { id: announcementId } = await Promise.resolve(params);
@@ -310,7 +310,7 @@ export async function DELETE(
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     await sql`
@@ -325,7 +325,7 @@ export async function DELETE(
       message: "Announcement deleted",
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
 
   } catch (error: any) {
     console.error("Error deleting announcement:", error);
@@ -348,7 +348,7 @@ export async function DELETE(
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 

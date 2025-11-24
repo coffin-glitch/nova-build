@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     const formData = await request.formData();
@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
         { ok: false, error: "Missing file" },
         { status: 400 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     // Validate file size (max 50MB)
@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
         { ok: false, error: "File size exceeds 50MB limit" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Validate file type
@@ -122,7 +122,7 @@ export async function POST(request: NextRequest) {
         { ok: false, error: "Only Excel files (.xlsx, .xls) are supported" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
   const buf = Buffer.from(await file.arrayBuffer());
@@ -191,7 +191,7 @@ export async function POST(request: NextRequest) {
         { ok: false, inserted: 0, updated: 0, skipped: rowsRaw.length, invalid },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
   let inserted = 0;
@@ -290,7 +290,7 @@ export async function POST(request: NextRequest) {
       invalidCount: invalid.length 
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     
   } catch (error: any) {
     console.error("EAX import error:", error);
@@ -314,6 +314,6 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

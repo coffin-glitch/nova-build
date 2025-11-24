@@ -28,7 +28,7 @@ export async function POST(
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     const { conversationId } = await params;
@@ -47,7 +47,7 @@ export async function POST(
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Verify the admin has access to this conversation
@@ -107,7 +107,7 @@ export async function POST(
       message: "Messages marked as read" 
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
   } catch (error: any) {
     console.error("Error marking admin messages as read:", error);
@@ -127,6 +127,6 @@ export async function POST(
         : undefined
     }, { status: 500 });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

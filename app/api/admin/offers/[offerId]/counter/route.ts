@@ -30,7 +30,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
     
     const { offerId } = await params;
@@ -49,7 +49,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         { ok: false, error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     const id = Number(offerId);
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         { ok: false, error: "Invalid offer ID" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
     
     const body = await request.json().catch(() => ({}));
@@ -71,7 +71,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         { ok: false, errors: parse.error.flatten() },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     await sql`
@@ -84,7 +84,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     
     const response = NextResponse.json({ ok: true });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
     
   } catch (error: any) {
     console.error("Error countering offer:", error);
@@ -108,6 +108,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

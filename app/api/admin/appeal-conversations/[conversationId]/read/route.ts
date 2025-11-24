@@ -28,7 +28,7 @@ export async function POST(
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     const { conversationId } = await params;
@@ -47,7 +47,7 @@ export async function POST(
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Verify the admin has access to this appeal conversation
@@ -62,7 +62,7 @@ export async function POST(
         { error: "Appeal conversation not found" },
         { status: 404 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Mark all unread carrier messages in this appeal conversation as read by the admin
@@ -102,7 +102,7 @@ export async function POST(
       message: "Appeal messages marked as read" 
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
   } catch (error: any) {
     console.error("Error marking appeal messages as read:", error);
@@ -122,6 +122,6 @@ export async function POST(
         : undefined
     }, { status: 500 });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

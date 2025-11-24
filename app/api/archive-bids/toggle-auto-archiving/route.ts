@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
     
     const body = await request.json();
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     if (enabled) {
@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
         message: 'Auto-archiving enabled'
       });
       
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     } else {
       // Disable the cron job
       await sql`
@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
         message: 'Auto-archiving disabled'
       });
       
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
   } catch (error: any) {
     console.error("Error toggling auto-archiving:", error);
@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 

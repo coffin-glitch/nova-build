@@ -30,7 +30,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
     
     const { offerId } = await params;
@@ -49,7 +49,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         { ok: false, error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     const id = Number(offerId);
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         { ok: false, error: "Invalid offer ID" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
     
     const body = await request.json().catch(() => ({}));
@@ -71,7 +71,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         { ok: false, errors: parse.error.flatten() },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     const offerRows = await sql`SELECT load_rr_number, supabase_user_id FROM load_offers WHERE id = ${id} LIMIT 1`;
@@ -81,7 +81,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         { ok: false, error: "Offer not found" },
         { status: 404 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     const { load_rr_number, supabase_user_id } = offerRows[0] as any;
@@ -99,7 +99,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     
     const response = NextResponse.json({ ok: true });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     
   } catch (error: any) {
     console.error("Error accepting offer:", error);
@@ -123,6 +123,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

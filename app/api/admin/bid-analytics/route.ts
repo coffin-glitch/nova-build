@@ -1,5 +1,5 @@
+import { addRateLimitHeaders, checkApiRateLimit } from "@/lib/api-rate-limiting";
 import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
-import { checkApiRateLimit, addRateLimitHeaders } from "@/lib/api-rate-limiting";
 import { requireApiAdmin, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     const { searchParams } = new URL(request.url);
@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
         { success: false, error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Calculate date range - support custom date range, "today", "all", or numeric days
@@ -122,7 +122,7 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
@@ -239,7 +239,7 @@ async function getBidOverview(startDate: Date, endDate: Date | null = null) {
     }
   });
   
-  return addSecurityHeaders(response);
+  return addSecurityHeaders(response, request);
 }
 
 // Helper function to calculate date range for hourly trends
@@ -370,7 +370,7 @@ async function getBidTrends(startDate: Date, hourlyTimeframe: string = "today", 
     }
   });
   
-  return addSecurityHeaders(response);
+  return addSecurityHeaders(response, request);
 }
 
 async function getPerformanceMetrics(startDate: Date, endDate: Date | null = null) {
@@ -449,7 +449,7 @@ async function getPerformanceMetrics(startDate: Date, endDate: Date | null = nul
     }
   });
   
-  return addSecurityHeaders(response);
+  return addSecurityHeaders(response, request);
 }
 
 async function getCarrierActivity(startDate: Date, endDate: Date | null = null) {
@@ -504,7 +504,7 @@ async function getCarrierActivity(startDate: Date, endDate: Date | null = null) 
     }
   });
   
-  return addSecurityHeaders(response);
+  return addSecurityHeaders(response, request);
 }
 
 async function getAuctionInsights(startDate: Date, endDate: Date | null = null) {
@@ -797,5 +797,5 @@ async function getAuctionInsights(startDate: Date, endDate: Date | null = null) 
     }
   });
   
-  return addSecurityHeaders(response);
+  return addSecurityHeaders(response, request);
 }

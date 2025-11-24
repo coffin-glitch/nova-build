@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
     // Mark expired offers as expired
     // Only update if expires_at and is_expired columns exist
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
         expiredCount: 0,
         message: 'Expiration not configured (expires_at column not found)' 
       });
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
     
     const result = await sql`
@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
       message: `Expired ${result.length} offers` 
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
   } catch (error: any) {
     console.error("Error expiring offers:", error);
@@ -115,7 +115,7 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
@@ -138,7 +138,7 @@ export async function GET(request: NextRequest) {
         expiringSoon: 0,
         expired: 0
       });
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
     
     // Get count of offers that will expire soon (within 1 hour)
@@ -164,7 +164,7 @@ export async function GET(request: NextRequest) {
       expired: parseInt(expired[0].count)
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
 
   } catch (error: any) {
     console.error("Error getting expiration stats:", error);
@@ -187,6 +187,6 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

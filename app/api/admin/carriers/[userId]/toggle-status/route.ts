@@ -33,7 +33,7 @@ export async function POST(
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     // Input validation for userId
@@ -50,7 +50,7 @@ export async function POST(
         { error: `Invalid input: ${userIdValidation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     const body = await request.json();
@@ -72,7 +72,7 @@ export async function POST(
         { error: `Invalid input: ${bodyValidation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
 
@@ -109,7 +109,7 @@ export async function POST(
         { error: "Carrier profile not found" },
         { status: 404 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     const profileUserId = currentProfile[0].supabase_user_id || userId;
@@ -120,7 +120,7 @@ export async function POST(
         { error: "Invalid status. Must be 'approved' or 'declined'" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Update profile status (Supabase-only)
@@ -191,7 +191,7 @@ export async function POST(
       message: `Profile status changed to ${new_status}` 
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     
   } catch (error: any) {
     console.error("Error toggling carrier profile status:", error);
@@ -218,7 +218,7 @@ export async function POST(
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 

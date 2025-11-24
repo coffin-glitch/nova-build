@@ -159,13 +159,31 @@ export async function requireApiCarrier(request?: NextRequest): Promise<ApiAuthR
  * Helper to return 401 Unauthorized response
  */
 export function unauthorizedResponse(): NextResponse {
-  return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { addSecurityHeaders } = require('./api-security');
+  const response = NextResponse.json(
+    { 
+      error: "Unauthorized",
+      message: "Authentication required",
+      code: "UNAUTHORIZED"
+    },
+    { status: 401 }
+  );
+  return addSecurityHeaders(response);
 }
 
 /**
  * Helper to return 403 Forbidden response
  */
 export function forbiddenResponse(message: string = "Forbidden"): NextResponse {
-  return NextResponse.json({ error: message }, { status: 403 });
+  const { addSecurityHeaders } = require('./api-security');
+  const response = NextResponse.json(
+    { 
+      error: "Forbidden",
+      message: message,
+      code: "FORBIDDEN"
+    },
+    { status: 403 }
+  );
+  return addSecurityHeaders(response);
 }
 

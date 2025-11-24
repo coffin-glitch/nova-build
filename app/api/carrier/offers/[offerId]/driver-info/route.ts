@@ -27,7 +27,7 @@ export async function PUT(
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     const { offerId } = await params;
@@ -64,7 +64,7 @@ export async function PUT(
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Validate required fields
@@ -73,7 +73,7 @@ export async function PUT(
         { error: "Missing required fields: driver_name, driver_phone, driver_license_number, driver_license_state" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Check if offer exists and belongs to this carrier
@@ -88,7 +88,7 @@ export async function PUT(
         { error: "Offer not found or access denied" },
         { status: 404 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     const offer = offerResult[0];
@@ -99,7 +99,7 @@ export async function PUT(
         { error: "Driver information can only be submitted for accepted offers" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     if (!offer.driver_info_required) {
@@ -107,7 +107,7 @@ export async function PUT(
         { error: "Driver information is not required for this offer" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Update the offer with driver information
@@ -153,7 +153,7 @@ export async function PUT(
       offer: updateResult[0]
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
 
   } catch (error: any) {
     console.error("Error submitting driver information:", error);
@@ -176,7 +176,7 @@ export async function PUT(
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
@@ -205,7 +205,7 @@ export async function GET(
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Carrier can only see their own offers
@@ -220,7 +220,7 @@ export async function GET(
         { error: "Offer not found" },
         { status: 404 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     logSecurityEvent('offer_driver_info_accessed', userId, { offerId });
@@ -230,7 +230,7 @@ export async function GET(
       offer: offerResult[0]
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
 
   } catch (error: any) {
     console.error("Error fetching offer:", error);
@@ -253,6 +253,6 @@ export async function GET(
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

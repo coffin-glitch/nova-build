@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     // Get all carrier chat messages with correct column names
@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
       data: chatMessages 
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
   } catch (error: any) {
     console.error("Error fetching all chat messages:", error);
@@ -63,13 +63,13 @@ export async function GET(request: NextRequest) {
         const response = NextResponse.json({ 
           error: "Authentication required" 
         }, { status: 401 });
-        return addSecurityHeaders(response);
+        return addSecurityHeaders(response, request);
       }
       if (error.message === "Admin access required" || error.message.includes("Admin access")) {
         const response = NextResponse.json({ 
           error: "Admin access required" 
         }, { status: 403 });
-        return addSecurityHeaders(response);
+        return addSecurityHeaders(response, request);
       }
     }
     
@@ -78,6 +78,6 @@ export async function GET(request: NextRequest) {
       details: error?.message || String(error)
     }, { status: 500 });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

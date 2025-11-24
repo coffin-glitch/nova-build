@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     // Test database connection with a simple query
@@ -29,14 +29,14 @@ export async function GET(request: NextRequest) {
     if (result && result.length > 0 && result[0].ok === 1) {
       logSecurityEvent('health_check_db_accessed', undefined);
       const response = NextResponse.json({ ok: true, timestamp: new Date().toISOString() });
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     } else {
       logSecurityEvent('health_check_db_unexpected_result', undefined);
       const response = NextResponse.json(
         { ok: false, error: "Unexpected query result" },
         { status: 500 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
   } catch (error: any) {
     console.error("Database health check failed:", error);
@@ -53,6 +53,6 @@ export async function GET(request: NextRequest) {
       },
       { status: 500 }
     );
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

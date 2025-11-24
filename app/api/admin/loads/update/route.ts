@@ -24,7 +24,7 @@ export async function PUT(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     const body = await request.json();
@@ -102,7 +102,7 @@ export async function PUT(request: NextRequest) {
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     if (!rrNumber) {
@@ -110,7 +110,7 @@ export async function PUT(request: NextRequest) {
         { error: "RR Number is required" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     const db = sql;
@@ -126,7 +126,7 @@ export async function PUT(request: NextRequest) {
         { error: "Load not found" },
         { status: 404 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Update the load
@@ -161,7 +161,7 @@ export async function PUT(request: NextRequest) {
         { error: "No changes made" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     logSecurityEvent('load_updated_via_update_route', adminUserId, { rrNumber });
@@ -172,7 +172,7 @@ export async function PUT(request: NextRequest) {
       rrNumber 
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
   } catch (error: any) {
     console.error("Error updating load:", error);
@@ -192,7 +192,7 @@ export async function PUT(request: NextRequest) {
         : undefined
     }, { status: 500 });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 

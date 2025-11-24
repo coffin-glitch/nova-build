@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
     
     const { searchParams } = new URL(request.url);
@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
           { ok: false, error: `Invalid input: ${validation.errors.join(', ')}` },
           { status: 400 }
         );
-        return addSecurityHeaders(response);
+        return addSecurityHeaders(response, request);
       }
     }
     
@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
         ok: true,
         scores: {},
       });
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
     
     const mcNumbers = mcsParam.split(',').filter(Boolean).map(mc => mc.trim());
@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
         ok: true,
         scores: {},
       });
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Limit to max 100 MC numbers per request
@@ -76,7 +76,7 @@ export async function GET(request: NextRequest) {
         { ok: false, error: "Too many MC numbers (max 100)" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Validate each MC number format
@@ -87,7 +87,7 @@ export async function GET(request: NextRequest) {
         { ok: false, error: `Invalid MC number format: ${invalidMCs.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
     
     const result = await sql`
@@ -127,7 +127,7 @@ export async function GET(request: NextRequest) {
       scores,
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     
   } catch (error: any) {
     console.error("Error retrieving health scores:", error);
@@ -151,7 +151,7 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 

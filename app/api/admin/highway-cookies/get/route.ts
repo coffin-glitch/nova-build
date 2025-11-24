@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
     
     console.log('Getting cookies for userId:', userId);
@@ -109,7 +109,7 @@ export async function GET(request: NextRequest) {
         cookieCount: storageState.cookies.length
       });
       
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
       
     } else if (Array.isArray(storageState)) {
       // Old format: just cookies array
@@ -120,7 +120,7 @@ export async function GET(request: NextRequest) {
           error: "Cookies data is empty",
           cookies: null,
         });
-        return addSecurityHeaders(response);
+        return addSecurityHeaders(response, request);
       }
       
       console.log('✅ Returning cookies (legacy format):', {
@@ -138,7 +138,7 @@ export async function GET(request: NextRequest) {
         cookieCount: storageState.length
       });
       
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
       
     } else {
       console.warn('Cookies data is invalid format');
@@ -147,7 +147,7 @@ export async function GET(request: NextRequest) {
         error: "Cookies data is invalid format",
         cookies: null,
       });
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
   } catch (error: any) {
     console.error("Error retrieving Highway cookies:", error);
@@ -170,7 +170,7 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 

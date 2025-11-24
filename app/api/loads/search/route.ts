@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, req), rateLimit);
     }
     
     const body = await req.json().catch(() => ({}));
@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, req);
     }
 
   const oLike = ilike(origin);
@@ -170,7 +170,7 @@ export async function POST(req: NextRequest) {
     });
     
     const response = NextResponse.json({ rows });
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, req), rateLimit);
     
   } catch (error: any) {
     console.error("Error searching loads:", error);
@@ -193,6 +193,6 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, req);
   }
 }

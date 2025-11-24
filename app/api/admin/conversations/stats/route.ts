@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     // Calculate average response time for admin messages
@@ -75,7 +75,7 @@ export async function GET(request: NextRequest) {
       avg_response_minutes: avgResponseMinutes
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
 
   } catch (error: any) {
     console.error("Error calculating response time stats:", error);
@@ -96,7 +96,7 @@ export async function GET(request: NextRequest) {
         : undefined
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 

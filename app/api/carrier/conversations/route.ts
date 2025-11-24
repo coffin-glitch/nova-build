@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
     
     if (!userId) {
@@ -121,7 +121,7 @@ export async function GET(request: NextRequest) {
       data: conversationsWithDefaults 
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
   } catch (error: any) {
     console.error("Error fetching conversations:", error);
@@ -137,7 +137,7 @@ export async function GET(request: NextRequest) {
       details: error?.message 
     }, { status: 500 });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
@@ -284,7 +284,7 @@ export async function POST(request: NextRequest) {
       }
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
 
   } catch (error) {
     console.error("Error creating conversation:", error);
@@ -294,6 +294,6 @@ export async function POST(request: NextRequest) {
       error: "Failed to create conversation" 
     }, { status: 500 });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

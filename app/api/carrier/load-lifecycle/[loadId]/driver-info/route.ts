@@ -36,7 +36,7 @@ export async function POST(
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     const { loadId } = await params;
@@ -62,7 +62,7 @@ export async function POST(
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Validate required driver information
@@ -71,7 +71,7 @@ export async function POST(
         { error: "Driver name and phone number are required" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Format and validate phone numbers
@@ -81,7 +81,7 @@ export async function POST(
         { error: "Driver phone number must be exactly 10 digits" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     let formattedSecondPhone = null;
@@ -114,7 +114,7 @@ export async function POST(
           { error: "Load not found or not accessible" },
           { status: 404 }
         );
-        return addSecurityHeaders(response);
+        return addSecurityHeaders(response, request);
       }
       
       loadOfferId = loadOfferResult[0].load_offer_id;
@@ -131,7 +131,7 @@ export async function POST(
           { error: "Load not found" },
           { status: 404 }
         );
-        return addSecurityHeaders(response);
+        return addSecurityHeaders(response, request);
       }
 
       loadOfferId = loadId;
@@ -149,7 +149,7 @@ export async function POST(
         { error: "Load offer not found" },
         { status: 404 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     const currentStatus = loadOffer[0].status;
@@ -232,7 +232,7 @@ export async function POST(
       }
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
 
   } catch (error: any) {
     console.error("Error updating driver information:", error);
@@ -255,7 +255,7 @@ export async function POST(
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 

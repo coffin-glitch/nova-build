@@ -28,7 +28,7 @@ export async function GET(
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     const { userId } = await params;
@@ -47,7 +47,7 @@ export async function GET(
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Get carrier profile with email
@@ -74,7 +74,7 @@ export async function GET(
       const response = NextResponse.json({ 
         error: "Carrier not found" 
       }, { status: 404 });
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     const carrier = profiles[0];
@@ -118,7 +118,7 @@ export async function GET(
       }
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
   } catch (error: any) {
     console.error("Error fetching carrier profile:", error);
@@ -138,7 +138,7 @@ export async function GET(
         : undefined
     }, { status: 500 });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
@@ -166,7 +166,7 @@ export async function PUT(
         { error: `Invalid input: ${userIdValidation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     const body = await request.json();
@@ -196,7 +196,7 @@ export async function PUT(
         { error: `Invalid input: ${bodyValidation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Update carrier profile (Supabase-only)
@@ -222,7 +222,7 @@ export async function PUT(
       message: "Profile updated successfully" 
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
 
   } catch (error: any) {
     console.error("Error updating carrier profile:", error);
@@ -242,6 +242,6 @@ export async function PUT(
         : undefined
     }, { status: 500 });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

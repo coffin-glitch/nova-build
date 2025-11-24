@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     const body = await request.json();
@@ -51,14 +51,14 @@ export async function POST(request: NextRequest) {
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     if (!carrier_user_id || !message) {
       const response = NextResponse.json({ 
         error: "Missing required fields: carrier_user_id, message" 
       }, { status: 400 });
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Create admin message
@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
       data: { id: result[0].id }
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
   } catch (error: any) {
     console.error("Error sending admin message:", error);
@@ -103,6 +103,6 @@ export async function POST(request: NextRequest) {
         : undefined
     }, { status: 500 });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

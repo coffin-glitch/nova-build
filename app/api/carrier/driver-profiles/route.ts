@@ -34,7 +34,7 @@ async function handleGetSuggestions(request: NextRequest, searchParams: URLSearc
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     const driverName = searchParams.get('driverName');
@@ -57,7 +57,7 @@ async function handleGetSuggestions(request: NextRequest, searchParams: URLSearc
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Format phone number if provided
@@ -83,7 +83,7 @@ async function handleGetSuggestions(request: NextRequest, searchParams: URLSearc
       }))
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
 
   } catch (error: any) {
     console.error("Error getting profile suggestions:", error);
@@ -106,7 +106,7 @@ async function handleGetSuggestions(request: NextRequest, searchParams: URLSearc
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
@@ -138,7 +138,7 @@ export async function GET(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     const profiles = await sql`
@@ -198,7 +198,7 @@ export async function GET(request: NextRequest) {
       }))
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
 
   } catch (error: any) {
     console.error("Error fetching driver profiles:", error);
@@ -221,7 +221,7 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
@@ -255,7 +255,7 @@ export async function PATCH(request: NextRequest) {
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     switch (action) {
@@ -264,7 +264,7 @@ export async function PATCH(request: NextRequest) {
           const response = NextResponse.json({ 
             error: "Profile orders array is required" 
           }, { status: 400 });
-          return addSecurityHeaders(response);
+          return addSecurityHeaders(response, request);
         }
 
         // Update each profile's display order individually
@@ -288,7 +288,7 @@ export async function PATCH(request: NextRequest) {
           const response = NextResponse.json({ 
             error: "Profile ID and new name are required" 
           }, { status: 400 });
-          return addSecurityHeaders(response);
+          return addSecurityHeaders(response, request);
         }
 
         const nameResult = await sql`
@@ -299,7 +299,7 @@ export async function PATCH(request: NextRequest) {
           const response = NextResponse.json({ 
             error: "A profile with this name already exists" 
           }, { status: 400 });
-          return addSecurityHeaders(response);
+          return addSecurityHeaders(response, request);
         }
 
         logSecurityEvent('driver_profile_name_updated', userId, { profileId, newName });
@@ -314,7 +314,7 @@ export async function PATCH(request: NextRequest) {
           const response = NextResponse.json({ 
             error: "Profile ID is required" 
           }, { status: 400 });
-          return addSecurityHeaders(response);
+          return addSecurityHeaders(response, request);
         }
 
         await sql`
@@ -356,7 +356,7 @@ export async function PATCH(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
@@ -403,7 +403,7 @@ export async function POST(request: NextRequest) {
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Format and validate phone number
@@ -544,7 +544,7 @@ export async function POST(request: NextRequest) {
       } : null
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
 
   } catch (error: any) {
     console.error("Error creating driver profile:", error);
@@ -567,7 +567,7 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
@@ -613,7 +613,7 @@ export async function PUT(request: NextRequest) {
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Format and validate phone number
@@ -696,7 +696,7 @@ export async function PUT(request: NextRequest) {
       message: "Driver profile updated successfully"
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
 
   } catch (error: any) {
     console.error("Error updating driver profile:", error);
@@ -719,7 +719,7 @@ export async function PUT(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
@@ -746,7 +746,7 @@ export async function DELETE(request: NextRequest) {
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Check if profile exists and belongs to user
@@ -779,7 +779,7 @@ export async function DELETE(request: NextRequest) {
       message: "Driver profile deleted successfully"
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
 
   } catch (error: any) {
     console.error("Error deleting driver profile:", error);
@@ -802,6 +802,6 @@ export async function DELETE(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

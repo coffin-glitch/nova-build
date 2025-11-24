@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
     
     // Always proxy to Railway service (works in both dev and prod)
@@ -174,7 +174,7 @@ export async function POST(request: NextRequest) {
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
     
     if (!action || !['start', 'stop'].includes(action)) {
@@ -182,7 +182,7 @@ export async function POST(request: NextRequest) {
         { error: 'Invalid action. Must be "start" or "stop"' },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Always proxy to Railway service

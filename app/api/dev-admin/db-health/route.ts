@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
     
     logSecurityEvent('db_health_check_accessed', userId);
@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
       allTables: allTablesArray.map((t: any) => t.table_name)
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     
   } catch (error: any) {
     console.error("❌ Database health check error:", error);
@@ -90,6 +90,6 @@ export async function GET(request: NextRequest) {
         : 'Database health check failed'
     }, { status: 500 });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

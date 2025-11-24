@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     // Fetch carrier profiles with approval workflow data (Supabase-only)
@@ -137,7 +137,7 @@ export async function GET(request: NextRequest) {
     logSecurityEvent('admin_carriers_accessed', userId);
     
     const response = NextResponse.json({ data: carriersWithEmails || [] });
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
   } catch (error: any) {
     console.error("❌ Error fetching carriers:", error);
     
@@ -163,6 +163,6 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

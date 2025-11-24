@@ -28,7 +28,7 @@ export async function GET(
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
     
     const { searchParams } = new URL(request.url);
@@ -48,7 +48,7 @@ export async function GET(
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
     
     if (!rr) {
@@ -56,7 +56,7 @@ export async function GET(
         { error: "rrNumber parameter is required" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Get offers (Supabase-only)
@@ -69,7 +69,7 @@ export async function GET(
     `;
     
     const response = NextResponse.json({ offers });
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     
   } catch (error: any) {
     console.error("Error fetching load offers:", error);
@@ -92,7 +92,7 @@ export async function GET(
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
@@ -128,7 +128,7 @@ export async function POST(
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
     
     if (!rr) {
@@ -136,7 +136,7 @@ export async function POST(
         { error: "rrNumber parameter is required" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     if (!Number.isFinite(amount) || amount <= 0) {
@@ -144,7 +144,7 @@ export async function POST(
         { error: "Invalid amount" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Insert offer (Supabase-only)
@@ -160,7 +160,7 @@ export async function POST(
     });
     
     const response = NextResponse.json(inserted[0], { status: 201 });
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
     
   } catch (error: any) {
     console.error("Error creating load offer:", error);
@@ -183,6 +183,6 @@ export async function POST(
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

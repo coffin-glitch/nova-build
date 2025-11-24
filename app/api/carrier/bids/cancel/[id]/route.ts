@@ -28,7 +28,7 @@ export async function DELETE(
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     const { id } = await params;
@@ -47,7 +47,7 @@ export async function DELETE(
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // First check if the bid exists and belongs to the user
@@ -94,7 +94,7 @@ export async function DELETE(
         { error: "Failed to cancel bid" },
         { status: 500 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     logSecurityEvent('bid_cancelled', userId, { bid_id: id, bid_number: bid.bid_number });
@@ -104,7 +104,7 @@ export async function DELETE(
       message: "Bid cancelled successfully" 
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
 
   } catch (error: any) {
     console.error('Error cancelling bid:', error);
@@ -127,7 +127,7 @@ export async function DELETE(
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 

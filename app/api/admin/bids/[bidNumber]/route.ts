@@ -27,7 +27,7 @@ export async function DELETE(
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     const { bidNumber } = await params;
@@ -46,7 +46,7 @@ export async function DELETE(
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     if (!bidNumber) {
@@ -54,7 +54,7 @@ export async function DELETE(
         { error: "Bid number is required" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // First delete carrier bids for this bid number
@@ -83,7 +83,7 @@ export async function DELETE(
       message: `Bid ${bidNumber} deleted successfully`
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
   } catch (error: any) {
     console.error("Delete bid error:", error);
@@ -106,6 +106,6 @@ export async function DELETE(
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

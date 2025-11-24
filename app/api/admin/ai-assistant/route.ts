@@ -1146,7 +1146,7 @@ export async function GET(request: NextRequest) {
           { error: `Invalid input: ${validation.errors.join(', ')}` },
           { status: 400 }
         );
-        return addSecurityHeaders(response);
+        return addSecurityHeaders(response, request);
       }
     }
 
@@ -1176,7 +1176,7 @@ export async function GET(request: NextRequest) {
       if (conversation.length === 0) {
         logSecurityEvent('ai_assistant_conversation_not_found', userId, { conversationId });
         const response = NextResponse.json({ error: "Conversation not found" }, { status: 404 });
-        return addSecurityHeaders(response);
+        return addSecurityHeaders(response, request);
       }
 
       logSecurityEvent('ai_assistant_conversation_retrieved', userId, { conversationId });
@@ -1185,7 +1185,7 @@ export async function GET(request: NextRequest) {
         conversation: conversation[0],
       });
       
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
       
     } else {
       // Get all conversations for this admin
@@ -1214,7 +1214,7 @@ export async function GET(request: NextRequest) {
         conversations: conversations || [],
       });
       
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
   } catch (error: any) {
     console.error("AI Assistant GET error:", error);
@@ -1237,7 +1237,7 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
@@ -1261,7 +1261,7 @@ export async function POST(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     // Check if OpenAI API key is configured
@@ -1271,7 +1271,7 @@ export async function POST(request: NextRequest) {
         { error: "OpenAI API key not configured. Add OPENAI_API_KEY to .env.local" },
         { status: 500 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     const body = await request.json();
@@ -1292,7 +1292,7 @@ export async function POST(request: NextRequest) {
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     if (!message) {
@@ -1300,7 +1300,7 @@ export async function POST(request: NextRequest) {
         { error: "Message is required" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Handle conversation reset requests
@@ -1833,7 +1833,7 @@ ${memoryContext}`;
         conversationId: currentConversationId,
       });
       
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Generate embedding for AI response
@@ -1904,7 +1904,7 @@ ${memoryContext}`;
       conversationId: currentConversationId,
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
 
   } catch (error: any) {
     console.error("AI Assistant API error:", error);
@@ -1928,7 +1928,7 @@ ${memoryContext}`;
           },
           { status: 500 }
         );
-        return addSecurityHeaders(response);
+        return addSecurityHeaders(response, request);
       }
       
       // Database errors (like vector extension not enabled)
@@ -1940,7 +1940,7 @@ ${memoryContext}`;
           },
           { status: 500 }
         );
-        return addSecurityHeaders(response);
+        return addSecurityHeaders(response, request);
       }
     }
     
@@ -1955,7 +1955,7 @@ ${memoryContext}`;
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 

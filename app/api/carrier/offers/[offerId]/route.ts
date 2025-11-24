@@ -27,7 +27,7 @@ export async function PUT(
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     const { offerId } = await params;
@@ -55,7 +55,7 @@ export async function PUT(
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     if (!action || (action === 'modify' && !offerAmount)) {
@@ -63,7 +63,7 @@ export async function PUT(
         { error: "Missing required fields" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // First, verify the offer belongs to this carrier and is in a modifiable state
@@ -138,7 +138,7 @@ export async function PUT(
         offer: result[0]
       });
       
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
 
     } else if (action === 'withdraw') {
       // Update the offer status to withdrawn
@@ -169,7 +169,7 @@ export async function PUT(
         offer: result[0]
       });
       
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
 
     } else if (action === 'accept_counter') {
       // Only allow accepting counter-offers for countered offers
@@ -208,7 +208,7 @@ export async function PUT(
         offer: result[0]
       });
       
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
 
     } else if (action === 'reject_counter') {
       // Only allow rejecting counter-offers for countered offers
@@ -246,14 +246,14 @@ export async function PUT(
         offer: result[0]
       });
       
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
 
     } else {
       const response = NextResponse.json(
         { error: "Invalid action" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
   } catch (error: any) {
@@ -277,7 +277,7 @@ export async function PUT(
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
@@ -305,7 +305,7 @@ export async function DELETE(
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // First, verify the offer belongs to this carrier and is in a deletable state
@@ -352,7 +352,7 @@ export async function DELETE(
       message: "Offer deleted successfully"
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
 
   } catch (error: any) {
     console.error("Error deleting carrier offer:", error);
@@ -375,6 +375,6 @@ export async function DELETE(
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

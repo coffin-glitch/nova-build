@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
     
     const { searchParams } = new URL(request.url);
@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
           { ok: false, error: `Invalid input: ${validation.errors.join(', ')}` },
           { status: 400 }
         );
-        return addSecurityHeaders(response);
+        return addSecurityHeaders(response, request);
       }
     }
     
@@ -183,7 +183,7 @@ export async function GET(request: NextRequest) {
         data: result
       });
       
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
   } catch (error: any) {
     console.error("Error getting MC access control:", error);
@@ -206,7 +206,7 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
@@ -231,7 +231,7 @@ export async function POST(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
     
     const { mc_number, is_active, disabled_reason } = await request.json();
@@ -252,7 +252,7 @@ export async function POST(request: NextRequest) {
         { ok: false, error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
     
     if (!mc_number) {
@@ -260,7 +260,7 @@ export async function POST(request: NextRequest) {
         { ok: false, error: "MC number is required" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
     
     // Check if MC access control already exists
@@ -306,7 +306,7 @@ export async function POST(request: NextRequest) {
         }
       });
       
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     } else {
       // Create new (only if disabling - active MCs don't need entries)
       if (!is_active) {
@@ -342,7 +342,7 @@ export async function POST(request: NextRequest) {
           }
         });
         
-        return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+        return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
       } else {
         // MC is active but not in table - that's fine, it's active by default
         logSecurityEvent('mc_access_control_active_default', adminUserId, { mcNumber: mc_number });
@@ -356,7 +356,7 @@ export async function POST(request: NextRequest) {
           }
         });
         
-        return addSecurityHeaders(response);
+        return addSecurityHeaders(response, request);
       }
     }
   } catch (error: any) {
@@ -380,7 +380,7 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 

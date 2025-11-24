@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
     
     const { searchParams } = new URL(request.url);
@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
         { isAdmin: false, error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
     
     console.log("🔍 Check Admin API: Received request");
@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
         { isAdmin: false, error: "userId is required" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
     
     console.log("📡 Checking admin status directly...");
@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
     logSecurityEvent('admin_status_checked', adminUserId, { checkedUserId: userId, isAdmin });
     
     const response = NextResponse.json({ isAdmin });
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     
   } catch (error: any) {
     console.error("❌ Check admin API error:", error);
@@ -101,6 +101,6 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

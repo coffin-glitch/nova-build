@@ -27,7 +27,7 @@ export async function PUT(
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     const { rrNumber } = await params;
@@ -46,7 +46,7 @@ export async function PUT(
         { error: `Invalid input: ${rrNumberValidation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     const body = await request.json();
@@ -104,7 +104,7 @@ export async function PUT(
         { error: "Load not found" },
         { status: 404 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Update the load with all provided fields
@@ -153,7 +153,7 @@ export async function PUT(
         { error: "Failed to update load" },
         { status: 500 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     logSecurityEvent('load_updated', adminUserId, { rrNumber });
@@ -164,7 +164,7 @@ export async function PUT(
       load: updateResult[0]
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
   } catch (error: any) {
     console.error("Error updating load:", error);
@@ -184,7 +184,7 @@ export async function PUT(
         : undefined
     }, { status: 500 });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
@@ -226,7 +226,7 @@ export async function GET(
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     const { rrNumber } = await params;
@@ -244,7 +244,7 @@ export async function GET(
         { error: `Invalid input: ${rrNumberValidation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Get load details - admins see all fields, carriers see limited fields
@@ -280,7 +280,7 @@ export async function GET(
         { error: "Load not found" },
         { status: 404 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     const response = NextResponse.json({ 
@@ -288,7 +288,7 @@ export async function GET(
       load: loadResult[0]
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
   } catch (error: any) {
     console.error("Error fetching load:", error);
@@ -304,6 +304,6 @@ export async function GET(
         : undefined
     }, { status: 500 });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

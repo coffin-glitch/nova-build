@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
     
     // Check if the cron job exists and is active
@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
       message: enabled ? 'Auto-archiving is enabled' : 'Auto-archiving is disabled'
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
     
   } catch (error: any) {
     console.error("Error fetching auto-archiving status:", error);
@@ -74,7 +74,7 @@ export async function GET(request: NextRequest) {
       { status: 200 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 

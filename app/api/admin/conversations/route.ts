@@ -10,6 +10,24 @@ export async function GET(request: NextRequest) {
     const auth = await requireApiAdmin(request);
     const userId = auth.userId;
 
+    // Check rate limit for admin read operation
+    const rateLimit = await checkApiRateLimit(request, {
+      userId,
+      routeType: 'readOnly'
+    });
+
+    if (!rateLimit.allowed) {
+      const response = NextResponse.json(
+        {
+          error: 'Rate limit exceeded',
+          message: `Too many requests. Please try again after ${rateLimit.retryAfter} seconds.`,
+          retryAfter: rateLimit.retryAfter
+        },
+        { status: 429 }
+      );
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
+    }
+
     // Get conversations for the current admin with unread counts
     // Includes both admin-to-carrier and admin-to-admin conversations
     // For admin-to-admin: current user can be in supabase_admin_user_id OR supabase_carrier_user_id
@@ -95,7 +113,7 @@ export async function GET(request: NextRequest) {
       data: conversations 
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
   } catch (error: any) {
     console.error("Error fetching admin conversations:", error);
@@ -119,7 +137,7 @@ export async function GET(request: NextRequest) {
         : undefined
     }, { status: 500 });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
@@ -151,14 +169,14 @@ export async function POST(req: NextRequest) {
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     if (!targetUserId) {
       const response = NextResponse.json({ 
         error: "Missing required field: user_id, carrier_user_id, or admin_user_id" 
       }, { status: 400 });
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // CRITICAL: Prevent self-conversations (user chatting with themselves)
@@ -275,7 +293,7 @@ export async function POST(req: NextRequest) {
       message: "Conversation created successfully"
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response, req), rateLimit);
 
   } catch (error: any) {
     console.error("Error creating admin conversation:", error);
@@ -295,7 +313,7 @@ export async function POST(req: NextRequest) {
         : undefined
     }, { status: 500 });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
@@ -305,6 +323,24 @@ export async function DELETE(request: NextRequest) {
     // Supabase auth only
     const auth = await requireApiAdmin(request);
     const userId = auth.userId;
+
+    // Check rate limit for admin write operation
+    const rateLimit = await checkApiRateLimit(request, {
+      userId,
+      routeType: 'admin'
+    });
+
+    if (!rateLimit.allowed) {
+      const response = NextResponse.json(
+        {
+          error: 'Rate limit exceeded',
+          message: `Too many requests. Please try again after ${rateLimit.retryAfter} seconds.`,
+          retryAfter: rateLimit.retryAfter
+        },
+        { status: 429 }
+      );
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
+    }
 
     const { searchParams } = new URL(request.url);
     const cleanup = searchParams.get('cleanup');
@@ -327,7 +363,7 @@ export async function DELETE(request: NextRequest) {
         deleted_count: result.length
       });
       
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
     
     // Otherwise, delete a specific conversation
@@ -348,14 +384,14 @@ export async function DELETE(request: NextRequest) {
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
     
     if (!conversation_id) {
       const response = NextResponse.json({ 
         error: "Missing required field: conversation_id" 
       }, { status: 400 });
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
     
     // Verify the user has access to this conversation
@@ -384,7 +420,7 @@ export async function DELETE(request: NextRequest) {
       message: "Conversation deleted successfully"
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     
   } catch (error: any) {
     console.error("Error deleting conversation:", error);
@@ -404,6 +440,6 @@ export async function DELETE(request: NextRequest) {
         : undefined
     }, { status: 500 });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

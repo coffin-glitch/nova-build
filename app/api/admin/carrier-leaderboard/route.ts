@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     const { searchParams } = new URL(request.url);
@@ -75,7 +75,7 @@ export async function GET(request: NextRequest) {
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Calculate date range - support custom date range, "today", "all", or numeric days
@@ -512,7 +512,7 @@ export async function GET(request: NextRequest) {
     });
     
     const response = NextResponse.json(payload);
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
 
   } catch (error: any) {
     console.error("Carrier leaderboard API error:", error);
@@ -544,7 +544,7 @@ export async function GET(request: NextRequest) {
           },
           { status: 403 }
         );
-        return addSecurityHeaders(response);
+        return addSecurityHeaders(response, request);
       }
     }
     
@@ -563,6 +563,6 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

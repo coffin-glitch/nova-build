@@ -1,4 +1,5 @@
 import NotificationAnalytics from "@/components/admin/NotificationAnalytics";
+import SecurityMonitoring from "@/components/admin/SecurityMonitoring";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { getAdminStats } from "@/lib/actions";
@@ -141,6 +142,19 @@ export default async function AdminDashboard() {
             </p>
           </div>
           <NotificationAnalytics />
+        </div>
+      </div>
+
+      {/* Security Monitoring Section */}
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold text-foreground">Security Monitoring</h2>
+            <p className="text-muted-foreground">
+              Real-time security events, alerts, and rate limit monitoring
+            </p>
+          </div>
+          <SecurityMonitoring />
         </div>
       </div>
     </div>

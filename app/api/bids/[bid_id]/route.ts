@@ -29,7 +29,7 @@ export async function GET(
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
     const { bid_id } = await params;
     const bid_number = bid_id;
@@ -48,7 +48,7 @@ export async function GET(
         { ok: false, error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     const summary = await getBidSummary(bid_number, userId);
@@ -58,7 +58,7 @@ export async function GET(
         { ok: false, error: "Bid not found" },
         { status: 404 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     logSecurityEvent('bid_details_accessed', userId, { bidNumber: bid_number });
@@ -68,7 +68,7 @@ export async function GET(
       data: summary,
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     
   } catch (error: any) {
     console.error("Bid details API error:", error);
@@ -91,6 +91,6 @@ export async function GET(
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

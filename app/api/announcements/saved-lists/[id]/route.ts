@@ -31,7 +31,7 @@ export async function GET(
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     const { id: listId } = await Promise.resolve(params);
@@ -50,7 +50,7 @@ export async function GET(
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     const [list] = await sql`
@@ -72,7 +72,7 @@ export async function GET(
         { error: "List not found" },
         { status: 404 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     logSecurityEvent('saved_list_accessed', userId, { listId });
@@ -82,7 +82,7 @@ export async function GET(
       data: list,
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
 
   } catch (error: any) {
     console.error("Error fetching saved recipient list:", error);
@@ -105,7 +105,7 @@ export async function GET(
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
@@ -141,7 +141,7 @@ export async function PUT(
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Check if list exists and belongs to user
@@ -158,7 +158,7 @@ export async function PUT(
         { error: "List not found" },
         { status: 404 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // If name is being changed, check for duplicates
@@ -177,7 +177,7 @@ export async function PUT(
           { error: "A list with this name already exists" },
           { status: 409 }
         );
-        return addSecurityHeaders(response);
+        return addSecurityHeaders(response, request);
       }
     }
 
@@ -188,7 +188,7 @@ export async function PUT(
           { error: "At least one recipient is required" },
           { status: 400 }
         );
-        return addSecurityHeaders(response);
+        return addSecurityHeaders(response, request);
       }
       
       // Validate UUIDs
@@ -202,7 +202,7 @@ export async function PUT(
           { error: "No valid user IDs provided" },
           { status: 400 }
         );
-        return addSecurityHeaders(response);
+        return addSecurityHeaders(response, request);
       }
       
       const [updatedList] = await sql`
@@ -222,7 +222,7 @@ export async function PUT(
         data: updatedList,
       });
       
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     } else if (name !== undefined) {
       const [updatedList] = await sql`
         UPDATE saved_recipient_lists
@@ -240,14 +240,14 @@ export async function PUT(
         data: updatedList,
       });
       
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     } else if (recipientUserIds !== undefined) {
       if (!Array.isArray(recipientUserIds) || recipientUserIds.length === 0) {
         const response = NextResponse.json(
           { error: "At least one recipient is required" },
           { status: 400 }
         );
-        return addSecurityHeaders(response);
+        return addSecurityHeaders(response, request);
       }
       
       // Validate UUIDs
@@ -261,7 +261,7 @@ export async function PUT(
           { error: "No valid user IDs provided" },
           { status: 400 }
         );
-        return addSecurityHeaders(response);
+        return addSecurityHeaders(response, request);
       }
       
       const [updatedList] = await sql`
@@ -280,11 +280,11 @@ export async function PUT(
         data: updatedList,
       });
       
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     const response = NextResponse.json({ success: true, message: "No changes provided" });
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
 
   } catch (error: any) {
     console.error("Error updating saved recipient list:", error);
@@ -307,7 +307,7 @@ export async function PUT(
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
@@ -339,7 +339,7 @@ export async function DELETE(
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     const result = await sql`
@@ -355,7 +355,7 @@ export async function DELETE(
         { error: "List not found" },
         { status: 404 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     logSecurityEvent('saved_list_deleted', userId, { listId });
@@ -365,7 +365,7 @@ export async function DELETE(
       message: "List deleted successfully",
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
 
   } catch (error: any) {
     console.error("Error deleting saved recipient list:", error);
@@ -388,7 +388,7 @@ export async function DELETE(
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 

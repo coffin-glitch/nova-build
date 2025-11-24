@@ -26,7 +26,7 @@ export async function POST(
         { error: `Invalid input: ${userIdValidation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
     
     // Use unified auth (supports Supabase and Clerk)
@@ -48,7 +48,7 @@ export async function POST(
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     const body = await request.json();
@@ -68,7 +68,7 @@ export async function POST(
         { error: `Invalid input: ${bodyValidation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Get current profile data before updating for history (Supabase-only)
@@ -104,7 +104,7 @@ export async function POST(
         { error: "Carrier profile not found" },
         { status: 404 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     const profileUserId = currentProfile[0].supabase_user_id || userId;
@@ -154,7 +154,7 @@ export async function POST(
       message: `Profile edits locked and status restored to ${finalStatus}` 
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     
   } catch (error: any) {
     console.error("Error locking carrier profile edits:", error);
@@ -180,7 +180,7 @@ export async function POST(
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 

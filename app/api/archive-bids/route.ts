@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     const limit = Math.min(parseInt(limitParam), 100); // Max 100
@@ -171,7 +171,7 @@ export async function GET(request: NextRequest) {
       dateRange: dateRange[0] || { earliest_date: null, latest_date: null }
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
 
   } catch (error: any) {
     console.error("Error fetching archived bids:", error);
@@ -182,7 +182,7 @@ export async function GET(request: NextRequest) {
         { error: "Admin access required" },
         { status: 403 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
     
     logSecurityEvent('archive_bids_error', undefined, { 
@@ -199,7 +199,7 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
@@ -226,7 +226,7 @@ export async function DELETE(request: NextRequest) {
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     const olderThanDays = Math.min(Math.max(parseInt(olderThanDaysParam), 1), 365); // Between 1 and 365 days
@@ -244,7 +244,7 @@ export async function DELETE(request: NextRequest) {
       deletedCount: deletedCount[0]?.cleanup_old_archived_bids || 0
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
 
   } catch (error: any) {
     console.error("Error cleaning up archived bids:", error);
@@ -255,7 +255,7 @@ export async function DELETE(request: NextRequest) {
         { error: "Admin access required" },
         { status: 403 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
     
     logSecurityEvent('archive_cleanup_error', undefined, { 
@@ -272,6 +272,6 @@ export async function DELETE(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

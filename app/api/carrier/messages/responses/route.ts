@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     // Fetch carrier responses
@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
       data: responses || []
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
 
   } catch (error: any) {
     console.error("Error fetching responses:", error);
@@ -73,7 +73,7 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
@@ -103,15 +103,15 @@ export async function POST(request: NextRequest) {
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     if (!message_id || !response) {
-      const response = NextResponse.json(
+      const errorResponse = NextResponse.json(
         { error: "Missing required fields: message_id, response" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(errorResponse, request);
     }
 
     // Create carrier response
@@ -132,13 +132,13 @@ export async function POST(request: NextRequest) {
       responseId: result[0].id
     });
     
-    const response = NextResponse.json({ 
+    const successResponse = NextResponse.json({ 
       ok: true, 
       message: "Response sent successfully",
       data: { id: result[0].id }
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(successResponse, request);
 
   } catch (error: any) {
     console.error("Error sending response:", error);
@@ -161,6 +161,6 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

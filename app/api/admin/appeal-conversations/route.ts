@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     // Get appeal conversations for the current admin with unread counts
@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
       data: conversations 
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
   } catch (error: any) {
     console.error("Error fetching admin appeal conversations:", error);
@@ -86,7 +86,7 @@ export async function GET(request: NextRequest) {
         : "Failed to fetch appeal conversations"
     }, { status: 500 });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
@@ -114,14 +114,14 @@ export async function POST(request: NextRequest) {
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     if (!carrier_user_id) {
       const response = NextResponse.json({ 
         error: "Missing required field: carrier_user_id" 
       }, { status: 400 });
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Check if appeal conversation already exists (either with current admin or unassigned)
@@ -148,7 +148,7 @@ export async function POST(request: NextRequest) {
         conversation_id: existingConversation[0].id,
         message: "Appeal conversation already exists"
       });
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     // Create new appeal conversation
@@ -176,7 +176,7 @@ export async function POST(request: NextRequest) {
       message: "Appeal conversation created successfully"
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
   } catch (error: any) {
     console.error("Error creating admin appeal conversation:", error);
@@ -195,6 +195,6 @@ export async function POST(request: NextRequest) {
         : "Failed to create appeal conversation"
     }, { status: 500 });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

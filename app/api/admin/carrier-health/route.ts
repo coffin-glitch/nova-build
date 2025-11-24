@@ -496,7 +496,7 @@ export async function GET(request: NextRequest) {
         },
         { status: 500 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     const { searchParams } = new URL(request.url);
@@ -516,7 +516,7 @@ export async function GET(request: NextRequest) {
         { ok: false, error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     if (!mcNumber) {
@@ -524,7 +524,7 @@ export async function GET(request: NextRequest) {
         { ok: false, error: "MC number is required" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Find carrier ID
@@ -547,7 +547,7 @@ export async function GET(request: NextRequest) {
       data: healthData,
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     
   } catch (error: any) {
     console.error("Carrier health API error:", error);
@@ -576,7 +576,7 @@ export async function GET(request: NextRequest) {
         { status: error.statusCode || 500 }
       );
       
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
     
     logSecurityEvent('carrier_health_error', undefined, { 
@@ -594,7 +594,7 @@ export async function GET(request: NextRequest) {
       { status: error.statusCode || 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 

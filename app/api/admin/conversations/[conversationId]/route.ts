@@ -29,7 +29,7 @@ export async function GET(
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     const { conversationId } = await params;
@@ -80,7 +80,7 @@ export async function GET(
       data: messages 
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
   } catch (error: any) {
     console.error("Error fetching admin conversation messages:", error);
@@ -103,7 +103,7 @@ export async function GET(
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
@@ -137,7 +137,7 @@ export async function POST(
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     // Input validation
@@ -154,7 +154,7 @@ export async function POST(
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Verify the user has access to this conversation
@@ -177,11 +177,11 @@ export async function POST(
         { error: "Conversation not found" },
         { status: 404 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Check if request has FormData (file upload) or JSON (text message)
-    const contentType = request.headers.get('content-type') || '';
+    // contentType already declared above
     let message = '';
     let attachmentUrl: string | null = null;
     let attachmentType: string | null = null;
@@ -202,18 +202,16 @@ export async function POST(
 
       if (file) {
         // Validate file size (max 10MB)
+        const { validateFileSize } = await import('@/lib/api-security');
         const maxSize = 10 * 1024 * 1024; // 10MB
-        if (file.size > maxSize) {
+        const fileSizeError = validateFileSize(file, maxSize);
+        if (fileSizeError) {
           logSecurityEvent('admin_file_upload_size_exceeded', userId, { 
             conversationId, 
             fileSize: file.size,
             fileName: file.name
           });
-          const response = NextResponse.json(
-            { error: "File size exceeds 10MB limit" },
-            { status: 400 }
-          );
-          return addSecurityHeaders(response);
+          return fileSizeError;
         }
 
         // Validate file type
@@ -228,7 +226,7 @@ export async function POST(
             { error: "Invalid file type. Only JPEG, PNG, and PDF are allowed" },
             { status: 400 }
           );
-          return addSecurityHeaders(response);
+          return addSecurityHeaders(response, request);
         }
 
         // Upload file to Supabase Storage
@@ -383,7 +381,7 @@ export async function POST(
       data: result[0]
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
   } catch (error: any) {
     console.error("Error sending admin message:", error);
@@ -406,6 +404,6 @@ export async function POST(
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

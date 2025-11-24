@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     const body = await request.json();
@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
         { ok: false, error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     if (!mcNumber || !carrierId || !carrierUrl) {
@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
         { ok: false, error: "MC number, carrier ID, and carrier URL are required" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Launch browser
@@ -403,7 +403,7 @@ export async function POST(request: NextRequest) {
         },
       });
       
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
       
     } catch (error: any) {
       await browser.close();
@@ -430,7 +430,7 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 

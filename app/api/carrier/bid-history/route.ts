@@ -1,5 +1,5 @@
+import { addRateLimitHeaders, checkApiRateLimit } from "@/lib/api-rate-limiting";
 import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
-import { checkApiRateLimit, addRateLimitHeaders } from "@/lib/api-rate-limiting";
 import { requireApiCarrier, unauthorizedResponse } from "@/lib/auth-api-helper";
 import sql from '@/lib/db';
 import { NextRequest, NextResponse } from "next/server";
@@ -27,10 +27,10 @@ export async function GET(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
-    const { searchParams } = new URL(request.url);
+    // searchParams already declared above
     const status = searchParams.get("status"); // 'won', 'lost', 'pending', 'cancelled'
     const limitParam = searchParams.get("limit") || "50";
     const offsetParam = searchParams.get("offset") || "0";
@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     const limit = Math.min(parseInt(limitParam), 100); // Max 100
@@ -136,7 +136,7 @@ export async function GET(request: NextRequest) {
       }
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
   } catch (error: any) {
     console.error("Error fetching carrier bid history:", error);
@@ -159,7 +159,7 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
@@ -167,6 +167,24 @@ export async function POST(request: NextRequest) {
   try {
     const auth = await requireApiCarrier(request);
     const userId = auth.userId;
+
+    // Check rate limit for critical operation (bid status update)
+    const rateLimit = await checkApiRateLimit(request, {
+      userId,
+      routeType: 'critical'
+    });
+
+    if (!rateLimit.allowed) {
+      const response = NextResponse.json(
+        {
+          error: 'Rate limit exceeded',
+          message: `Too many requests. Please try again after ${rateLimit.retryAfter} seconds.`,
+          retryAfter: rateLimit.retryAfter
+        },
+        { status: 429 }
+      );
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
+    }
 
     const body = await request.json();
     const { bidNumber, bidStatus, bidNotes } = body;
@@ -200,7 +218,7 @@ export async function POST(request: NextRequest) {
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
            // Update carrier bid outcome
@@ -250,7 +268,7 @@ export async function POST(request: NextRequest) {
       message: "Bid status updated successfully"
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
   } catch (error: any) {
     console.error("Error updating bid status:", error);
@@ -273,6 +291,6 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

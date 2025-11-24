@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, req), rateLimit);
     }
 
     const { searchParams } = new URL(req.url);
@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, req);
     }
 
     const limit = Math.min(parseInt(limitParam, 10), 1000);
@@ -60,7 +60,7 @@ export async function GET(req: NextRequest) {
         { error: "Limit must be between 1 and 1000" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, req);
     }
 
     const rows = await sql`
@@ -82,7 +82,7 @@ export async function GET(req: NextRequest) {
     
     const response = NextResponse.json(rows);
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, req), rateLimit);
     
   } catch (error: any) {
     if (error.message === "Unauthorized" || error.message === "Admin access required") {
@@ -94,7 +94,7 @@ export async function GET(req: NextRequest) {
         { error: error.message || "Admin access required" },
         { status: 403 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, req);
     }
     
     logSecurityEvent('admin_bids_error', undefined, { 
@@ -111,6 +111,6 @@ export async function GET(req: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, req);
   }
 }

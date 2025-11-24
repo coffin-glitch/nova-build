@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     const formData = await request.formData();
@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
         { ok: false, error: "No file provided" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Validate file size (max 50MB)
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
         { ok: false, error: "File size exceeds 50MB limit" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Validate file type
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
         { ok: false, error: "Only Excel files (.xlsx, .xls) are supported" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Convert file to buffer
@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
         { ok: false, error: "Excel file appears to be empty or has no data rows" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Parse EAX Excel format
@@ -266,7 +266,7 @@ export async function POST(request: NextRequest) {
         }
       });
       
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
     } catch (dbError: any) {
       console.error("Database error during Excel processing:", dbError);
@@ -286,7 +286,7 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
       
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
   } catch (error: any) {
@@ -301,7 +301,7 @@ export async function POST(request: NextRequest) {
         { ok: false, error: "Access denied. Admin privileges required." },
         { status: 403 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     logSecurityEvent('eax_xlsx_upload_error', undefined, { 
@@ -319,6 +319,6 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

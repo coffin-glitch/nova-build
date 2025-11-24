@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     const formData = await request.formData();
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
         { ok: false, error: "No file provided" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Validate file size (max 50MB for large DNU lists)
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
         { ok: false, error: `File size exceeds ${maxSize / 1024 / 1024}MB limit` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Validate file type
@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
         { ok: false, error: "Only Excel (.xlsx, .xls) and CSV (.csv) files are supported" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     console.log(`DNU Upload: Processing file "${file.name}"`);
@@ -296,7 +296,7 @@ export async function POST(request: NextRequest) {
       }
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
   } catch (error: any) {
     console.error("Error processing DNU upload:", error);
@@ -321,7 +321,7 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 

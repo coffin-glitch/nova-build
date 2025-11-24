@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
     const body = await request.json();
     const { mc_numbers, dot_numbers } = body;
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
         { ok: false, error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     if ((!mc_numbers || !Array.isArray(mc_numbers)) && (!dot_numbers || !Array.isArray(dot_numbers))) {
@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
         { ok: false, error: "mc_numbers or dot_numbers array required" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Clean and prepare MC and DOT numbers
@@ -132,7 +132,7 @@ export async function POST(request: NextRequest) {
       }
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
   } catch (error: any) {
     console.error("Error checking DNU status:", error);
@@ -152,7 +152,7 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 

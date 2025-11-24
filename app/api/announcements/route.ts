@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     const { searchParams } = new URL(request.url);
@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
         { success: false, error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     const limit = Math.min(parseInt(limitParam), 100); // Max 100
@@ -181,7 +181,7 @@ export async function GET(request: NextRequest) {
       },
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
   } catch (error: any) {
     console.error("Error fetching announcements:", error);
@@ -204,7 +204,7 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
@@ -219,7 +219,7 @@ export async function POST(request: NextRequest) {
     // Only admins can create announcements
     if (auth.userRole !== 'admin') {
       const response = NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     const body = await request.json();
@@ -243,7 +243,7 @@ export async function POST(request: NextRequest) {
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     if (!title || !message) {
@@ -251,7 +251,7 @@ export async function POST(request: NextRequest) {
         { error: "Title and message are required" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Validate priority
@@ -260,7 +260,7 @@ export async function POST(request: NextRequest) {
         { error: "Invalid priority level" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Validate recipientUserIds if provided
@@ -269,7 +269,7 @@ export async function POST(request: NextRequest) {
         { error: "recipientUserIds must be a non-empty array" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Create announcement
@@ -457,7 +457,7 @@ export async function POST(request: NextRequest) {
       emailsQueued: true, // Emails are sent asynchronously
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
 
   } catch (error: any) {
     console.error("Error creating announcement:", error);
@@ -480,7 +480,7 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 

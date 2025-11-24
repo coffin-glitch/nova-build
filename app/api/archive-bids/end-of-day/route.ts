@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
     
     const body = await request.json().catch(() => ({}));
@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
           { error: `Invalid input: ${validation.errors.join(', ')}` },
           { status: 400 }
         );
-        return addSecurityHeaders(response);
+        return addSecurityHeaders(response, request);
       }
     }
 
@@ -149,7 +149,7 @@ export async function POST(request: NextRequest) {
         : `Successfully set archived_at for ${updatedCount} bids`
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     
   } catch (error: any) {
     console.error("End of day archiving error:", error);
@@ -172,7 +172,7 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 

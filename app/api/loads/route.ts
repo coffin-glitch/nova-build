@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     // Input validation for query parameters
@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     const limit = Math.min(parseInt(limitParam), 100); // Max 100
@@ -140,7 +140,7 @@ export async function GET(request: NextRequest) {
     }
 
     const response = NextResponse.json(result);
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
   } catch (error) {
     console.error("Error fetching loads:", error);
@@ -158,7 +158,7 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
@@ -196,7 +196,7 @@ export async function POST(request: NextRequest) {
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     if (!Array.isArray(rrNumbers) || rrNumbers.length === 0) {
@@ -204,7 +204,7 @@ export async function POST(request: NextRequest) {
         { error: "At least one load must be selected" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     let result;
@@ -287,7 +287,7 @@ export async function POST(request: NextRequest) {
       affectedLoads: validRrNumbers
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
 
   } catch (error: any) {
     console.error("Error performing bulk operation:", error);
@@ -298,7 +298,7 @@ export async function POST(request: NextRequest) {
         { error: "Admin access required" },
         { status: 403 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
     
     logSecurityEvent('bulk_load_operation_error', undefined, { 
@@ -315,6 +315,6 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

@@ -29,7 +29,7 @@ export async function DELETE(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
     
     const { searchParams } = new URL(request.url);
@@ -49,7 +49,7 @@ export async function DELETE(request: NextRequest) {
         { ok: false, error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
     
     if (!mcNumber) {
@@ -57,7 +57,7 @@ export async function DELETE(request: NextRequest) {
         { ok: false, error: "MC number is required" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
     
     // Delete all health data for this MC number
@@ -73,7 +73,7 @@ export async function DELETE(request: NextRequest) {
         ok: false,
         error: "No health data found for this MC number",
       });
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
     
     logSecurityEvent('carrier_health_wiped', userId, { mcNumber, deletedCount: result.length });
@@ -84,7 +84,7 @@ export async function DELETE(request: NextRequest) {
       deletedCount: result.length,
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
     
   } catch (error: any) {
     console.error("Error wiping carrier health data:", error);
@@ -107,7 +107,7 @@ export async function DELETE(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 

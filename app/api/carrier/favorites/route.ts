@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
     
     if (!userId) {
@@ -140,7 +140,7 @@ export async function GET(request: NextRequest) {
       data: favoritesWithCountdown 
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
   } catch (error: any) {
     console.error('[favorites GET] Error fetching favorites:', error);
@@ -164,7 +164,7 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
@@ -214,7 +214,7 @@ export async function POST(request: NextRequest) {
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     console.log('[favorites POST] Adding favorite - userId:', userId, 'bid_number:', bid_number);
@@ -264,7 +264,7 @@ export async function POST(request: NextRequest) {
           ok: true, 
           message: "Bid added to favorites" 
         });
-        return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+        return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
       } else {
         // This shouldn't happen since we checked above, but handle it
         console.log('[favorites POST] Favorite already exists (ON CONFLICT DO NOTHING)');
@@ -273,7 +273,7 @@ export async function POST(request: NextRequest) {
           message: "Bid already in favorites",
           alreadyExists: true
         });
-        return addSecurityHeaders(response);
+        return addSecurityHeaders(response, request);
       }
     } catch (error: any) {
       // If the constraint doesn't exist, try without specifying it
@@ -294,7 +294,7 @@ export async function POST(request: NextRequest) {
               ok: true, 
               message: "Bid added to favorites" 
             });
-            return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+            return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
           } else {
             console.log('[favorites POST] Favorite already exists (fallback)');
             const response = NextResponse.json({ 
@@ -302,7 +302,7 @@ export async function POST(request: NextRequest) {
               message: "Bid already in favorites",
               alreadyExists: true
             });
-            return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+            return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
           }
         } catch (retryError: any) {
           console.error('[favorites POST] Fallback insert error:', retryError);
@@ -314,7 +314,7 @@ export async function POST(request: NextRequest) {
               message: "Bid already in favorites",
               alreadyExists: true
             });
-            return addSecurityHeaders(response);
+            return addSecurityHeaders(response, request);
           }
           throw retryError;
         }
@@ -326,7 +326,7 @@ export async function POST(request: NextRequest) {
           message: "Bid already in favorites",
           alreadyExists: true
         });
-        return addSecurityHeaders(response);
+        return addSecurityHeaders(response, request);
       } else {
         console.error('[favorites POST] Insert error:', error);
         throw error;
@@ -355,7 +355,7 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
@@ -380,7 +380,7 @@ export async function DELETE(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     const { searchParams } = new URL(request.url);
@@ -405,7 +405,7 @@ export async function DELETE(request: NextRequest) {
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Remove from favorites
@@ -425,7 +425,7 @@ export async function DELETE(request: NextRequest) {
       message: "Bid removed from favorites" 
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
   } catch (error: any) {
     console.error('Error removing from favorites:', error);
@@ -449,6 +449,6 @@ export async function DELETE(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

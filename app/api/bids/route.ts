@@ -82,7 +82,7 @@ export async function GET(req: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, req), rateLimit);
     }
 
     // Input validation
@@ -101,7 +101,7 @@ export async function GET(req: NextRequest) {
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, req);
     }
 
     const limit = Math.min(parseInt(limitParam), 100); // Max 100
@@ -118,7 +118,7 @@ export async function GET(req: NextRequest) {
     const rows = await base;
 
     const response = NextResponse.json({ ok: true, rows });
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, req);
   } catch (error: any) {
     console.error("Bids API error:", error);
     logSecurityEvent('bids_api_error', undefined, { 
@@ -159,6 +159,6 @@ export async function GET(req: NextRequest) {
       error: "Using mock data - database unavailable"
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, req), rateLimit);
   }
 }

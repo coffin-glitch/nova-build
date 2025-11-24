@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     const apiKey = process.env.HIGHWAY_API_KEY;
@@ -99,7 +99,7 @@ export async function GET(request: NextRequest) {
       })() : null
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
     
   } catch (error: any) {
     if (error.message === "Unauthorized" || error.message === "Admin access required") {
@@ -120,7 +120,7 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 

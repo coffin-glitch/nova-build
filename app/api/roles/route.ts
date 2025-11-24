@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
     
     // Input validation
@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Require admin auth for sensitive actions
@@ -79,7 +79,7 @@ export async function GET(request: NextRequest) {
             { error: "userId is required for check action" },
             { status: 400 }
           );
-          return addSecurityHeaders(response);
+          return addSecurityHeaders(response, request);
         }
         const role = await getUserRole(userId);
         console.log("🎯 Role result:", role);
@@ -96,7 +96,7 @@ export async function GET(request: NextRequest) {
             { error: "userId is required for admin action" },
             { status: 400 }
           );
-          return addSecurityHeaders(response);
+          return addSecurityHeaders(response, request);
         }
         const adminStatus = await isAdmin(userId);
         console.log("🎯 Admin status:", adminStatus);
@@ -109,7 +109,7 @@ export async function GET(request: NextRequest) {
             { error: "userId is required for carrier action" },
             { status: 400 }
           );
-          return addSecurityHeaders(response);
+          return addSecurityHeaders(response, request);
         }
         const carrierStatus = await isCarrier(userId);
         console.log("🎯 Carrier status:", carrierStatus);
@@ -142,7 +142,7 @@ export async function GET(request: NextRequest) {
         { error: "Admin access required" },
         { status: 403 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
     
     logSecurityEvent('roles_api_error', undefined, { 
@@ -159,6 +159,6 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

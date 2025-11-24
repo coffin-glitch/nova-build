@@ -26,7 +26,7 @@ export async function PUT(req: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, req), rateLimit);
     }
 
     const body = await req.json();
@@ -48,7 +48,7 @@ export async function PUT(req: NextRequest) {
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, req);
     }
 
     if (!offerIds || !Array.isArray(offerIds) || offerIds.length === 0) {
@@ -56,7 +56,7 @@ export async function PUT(req: NextRequest) {
         { error: "No offers selected" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, req);
     }
 
     if (!action || !['accept', 'reject'].includes(action)) {
@@ -64,7 +64,7 @@ export async function PUT(req: NextRequest) {
         { error: "Invalid action" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, req);
     }
 
     // Validate that all offers exist and are pending (Supabase-only)
@@ -83,7 +83,7 @@ export async function PUT(req: NextRequest) {
         { error: "Some offers not found or not pending" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, req);
     }
 
     // Update all offers
@@ -157,7 +157,7 @@ export async function PUT(req: NextRequest) {
       message: `${updateResult.length} offers ${action}ed successfully` 
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, req), rateLimit);
 
   } catch (error: any) {
     console.error("Error processing bulk offer action:", error);
@@ -180,6 +180,6 @@ export async function PUT(req: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, req);
   }
 }

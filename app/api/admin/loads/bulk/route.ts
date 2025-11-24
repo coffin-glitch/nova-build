@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
     
     const body = await request.json();
@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Validate action enum
@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
         { error: "Invalid action. Must be 'clear_all', 'archive', or 'delete'" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // For clear_all, we need confirmation
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
         { error: "Confirmation required. Please type 'CLEAR_ALL_LOADS' to confirm." },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     let result;
@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
             { error: "Load IDs required for archive action" },
             { status: 400 }
           );
-          return addSecurityHeaders(response);
+          return addSecurityHeaders(response, request);
         }
         // Archive selected loads by setting published to false and adding archived flag
         result = await sql`
@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
             { error: "Load IDs required for delete action" },
             { status: 400 }
           );
-          return addSecurityHeaders(response);
+          return addSecurityHeaders(response, request);
         }
         // Delete selected loads
         result = await sql`
@@ -134,7 +134,7 @@ export async function POST(request: NextRequest) {
       affectedRows: loadIds?.length || 0
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
   } catch (error: any) {
     console.error("Bulk operation error:", error);
@@ -157,7 +157,7 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 

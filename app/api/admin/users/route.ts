@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     const { searchParams } = new URL(request.url);
@@ -240,7 +240,7 @@ export async function GET(request: NextRequest) {
       },
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   } catch (error: any) {
     console.error("Admin users API error:", error);
     
@@ -266,7 +266,7 @@ export async function GET(request: NextRequest) {
       },
       { status: 500 }
     );
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
@@ -541,7 +541,7 @@ export async function PATCH(request: NextRequest) {
       message: `User role updated to ${role}. Please sign out and sign back in for changes to take effect immediately.`,
     });
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   } catch (error: any) {
     console.error("Admin users PATCH API error:", error);
     
@@ -567,7 +567,7 @@ export async function PATCH(request: NextRequest) {
       },
       { status: 500 }
     );
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
@@ -762,7 +762,7 @@ export async function DELETE(request: NextRequest) {
         deletionResults
       });
       
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     } catch (wipeError: any) {
       console.error(`❌ [Admin Users API] Error wiping/deleting user data:`, wipeError);
       throw wipeError;
@@ -792,6 +792,6 @@ export async function DELETE(request: NextRequest) {
       },
       { status: 500 }
     );
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }

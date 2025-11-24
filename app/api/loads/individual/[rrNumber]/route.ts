@@ -28,7 +28,7 @@ export async function PATCH(
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
     
     const { rrNumber } = await params;
@@ -50,7 +50,7 @@ export async function PATCH(
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     if (!status) {
@@ -58,7 +58,7 @@ export async function PATCH(
         { error: "Status is required" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Validate status
@@ -68,7 +68,7 @@ export async function PATCH(
         { error: "Invalid status. Must be one of: " + validStatuses.join(", ") },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Update the load status
@@ -86,7 +86,7 @@ export async function PATCH(
         { error: "Load not found" },
         { status: 404 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     const updatedLoad = result[0];
@@ -98,7 +98,7 @@ export async function PATCH(
       load: updatedLoad
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
   } catch (error: any) {
     console.error("Error updating load:", error);
@@ -121,7 +121,7 @@ export async function PATCH(
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
@@ -150,7 +150,7 @@ export async function GET(
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     const result = await sql`

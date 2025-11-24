@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
         },
         { status: 429 }
       );
-      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     const body = await request.json();
@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Validate required fields
@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
         { error: "Name, email, and message are required" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Validate email format
@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
         { error: "Invalid email address" },
         { status: 400 }
       );
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, request);
     }
 
     // Save to database first
@@ -196,7 +196,7 @@ This message was sent from the NOVA Build contact form.
       messageId: savedMessage.id,
     });
     
-    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
+    return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
   } catch (error: any) {
     console.error("[Contact Form] Error processing contact form:", error);
@@ -215,7 +215,7 @@ This message was sent from the NOVA Build contact form.
       { status: 500 }
     );
     
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, request);
   }
 }
 
