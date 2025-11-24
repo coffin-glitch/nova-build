@@ -81,14 +81,14 @@ export async function GET(request: NextRequest) {
       userRole
     });
     
-    const response = NextResponse.json({ 
+    const response = NextResponse.json({
       valid: isValid,
       userRole,
       requiredRole,
       provider: auth.authProvider
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
 
   } catch (error: any) {
     console.error('Role validation error:', error);
