@@ -149,7 +149,7 @@ export async function POST(request: NextRequest) {
         : `Successfully set archived_at for ${updatedCount} bids`
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
     
   } catch (error: any) {
     console.error("End of day archiving error:", error);

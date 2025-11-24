@@ -111,7 +111,7 @@ export async function GET(
       driver_info: driverInfo[0]
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
 
   } catch (error: any) {
     console.error("Error fetching driver information:", error);
@@ -313,7 +313,7 @@ export async function POST(
       }
     });
     
-    return addSecurityHeaders(response);
+    return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
 
   } catch (error: any) {
     console.error("Error updating driver information:", error);
