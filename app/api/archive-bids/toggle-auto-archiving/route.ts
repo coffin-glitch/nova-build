@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
         message: 'Auto-archiving enabled'
       });
       
-      return addSecurityHeaders(response);
+      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
     } else {
       // Disable the cron job
       await sql`
@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
         message: 'Auto-archiving disabled'
       });
       
-      return addSecurityHeaders(response);
+      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
     }
   } catch (error: any) {
     console.error("Error toggling auto-archiving:", error);
