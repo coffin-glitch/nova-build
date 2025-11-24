@@ -109,7 +109,7 @@ export async function GET(request: NextRequest) {
         cookieCount: storageState.cookies.length
       });
       
-      return addSecurityHeaders(response);
+      return addRateLimitHeaders(addSecurityHeaders(response), rateLimit);
       
     } else if (Array.isArray(storageState)) {
       // Old format: just cookies array
