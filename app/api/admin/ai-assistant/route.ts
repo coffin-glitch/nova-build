@@ -7,10 +7,15 @@ import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 
-// Initialize OpenAI client
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Lazy initialization of OpenAI client (only when needed at runtime)
+function getOpenAIClient(): OpenAI {
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error("OpenAI API key not configured");
+  }
+  return new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  });
+}
 
 // Define available functions the AI can call
 const functions = [
@@ -1605,6 +1610,7 @@ ${memoryContext}`;
 
     // Call OpenAI with function calling
     // Increased temperature to reduce repetition and encourage varied responses
+    const openai = getOpenAIClient();
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini", // Using gpt-4o-mini (cheapest GPT-4 model)
       messages,
@@ -1702,7 +1708,8 @@ ${memoryContext}`;
         },
       ];
 
-      const secondCompletion = await openai.chat.completions.create({
+      const openaiClient = getOpenAIClient();
+      const secondCompletion = await openaiClient.chat.completions.create({
         model: "gpt-4o-mini",
         messages: messagesForSecondCall,
         functions,
