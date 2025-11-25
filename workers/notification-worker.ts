@@ -581,6 +581,11 @@ async function processExactMatchTrigger(
       WHERE cf.supabase_carrier_user_id = ${userId}
         AND cf.bid_number = ${config.favoriteBidNumber}
     `;
+    
+    // Use stored favoriteStops from config if available (more accurate than DB)
+    if (favoriteRoutes.length > 0 && config.favoriteStops) {
+      favoriteRoutes[0].favorite_stops = config.favoriteStops;
+    }
   } else if (favoriteDistanceRange) {
     // Priority 2: Use distance range (fallback)
     console.log(`[ExactMatch] Processing trigger ${trigger.id} with distance range: ${favoriteDistanceRange.minDistance}-${favoriteDistanceRange.maxDistance} miles`);
@@ -668,6 +673,8 @@ async function processExactMatchTrigger(
     let routeMatches;
     if (matchType === 'exact') {
       // Exact match: Only filter by route, NOT by distance
+      // Use more robust matching - check both text LIKE and array contains
+      console.log(`[ExactMatch] Searching for exact match: origin="${origin}", dest="${destination}"`);
       routeMatches = await sql`
         SELECT 
           tb.bid_number,
@@ -682,15 +689,19 @@ async function processExactMatchTrigger(
           AND NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes')
           AND tb.bid_number != ${favorite.favorite_bid}
           AND (
-            -- Exact route match: same origin and destination
+            -- Exact route match: same origin and destination (check as text - most reliable)
             (tb.stops::text LIKE ${`%${origin}%`} AND tb.stops::text LIKE ${`%${destination}%`})
             OR
-            -- Tag match (state-based)
-            (tb.tag = ${favorite.favorite_tag})
+            -- Tag match (state-based) - only if we have tag
+            ${favorite.favorite_tag ? sql`(tb.tag = ${favorite.favorite_tag})` : sql`false`}
           )
         ORDER BY tb.received_at DESC
         LIMIT 10
       `;
+      console.log(`[ExactMatch] Found ${routeMatches.length} potential matches for exact match query`);
+      if (routeMatches.length > 0) {
+        console.log(`[ExactMatch] Potential matches:`, routeMatches.map(m => ({ bid: m.bid_number, stops: m.stops })));
+      }
     } else if (matchType === 'state' && favoriteDistanceRange) {
       // State match: Apply distance range filtering to the load's distance
       routeMatches = await sql`
@@ -839,6 +850,32 @@ async function processExactMatchTrigger(
       const shouldNotify = 
         (matchType === 'exact' && (isExactMatch || (isBackhaulMatch && backhaulEnabled))) ||
         (matchType === 'state' && (isStateMatch || (isBackhaulStateMatch && backhaulEnabled)));
+
+      // Log matching details for debugging exact matches
+      if (matchType === 'exact') {
+        if (shouldNotify) {
+          console.log(`[ExactMatch] ✅ MATCH FOUND for bid ${match.bid_number}:`, {
+            favoriteOrigin: `${favoriteOriginCityState.city}, ${favoriteOriginCityState.state}`,
+            favoriteDest: `${favoriteDestCityState.city}, ${favoriteDestCityState.state}`,
+            matchOrigin: `${matchOriginCityState.city}, ${matchOriginCityState.state}`,
+            matchDest: `${matchDestCityState.city}, ${matchDestCityState.state}`,
+            isExactMatch,
+            isBackhaulMatch,
+            backhaulEnabled
+          });
+        } else {
+          console.log(`[ExactMatch] ❌ NO MATCH for bid ${match.bid_number}:`, {
+            favoriteOrigin: `${favoriteOriginCityState.city}, ${favoriteOriginCityState.state}`,
+            favoriteDest: `${favoriteDestCityState.city}, ${favoriteDestCityState.state}`,
+            matchOrigin: `${matchOriginCityState.city}, ${matchOriginCityState.state}`,
+            matchDest: `${matchDestCityState.city}, ${matchDestCityState.state}`,
+            isExactMatch,
+            isBackhaulMatch,
+            backhaulEnabled,
+            reason: !isExactMatch && (!isBackhaulMatch || !backhaulEnabled) ? 'Not an exact match and backhaul not enabled' : 'Unknown'
+          });
+        }
+      }
 
       if (shouldNotify) {
         // Apply min match score filter if enabled

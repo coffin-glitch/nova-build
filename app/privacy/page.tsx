@@ -7,7 +7,7 @@ import { Calendar, Eye, FileText, Lock, Mail, Shield } from "lucide-react";
 import React from "react";
 
 export default function PrivacyPolicyPage() {
-  const { accentColor } = useAccentColor();
+  const { accentColor, accentColorStyle } = useAccentColor();
 
   const GlassCard = ({ children, className }: { children: React.ReactNode; className?: string }) => (
     <div
@@ -50,7 +50,7 @@ export default function PrivacyPolicyPage() {
           <GlassCard>
             <div className="space-y-4">
               <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
-                <FileText className="w-6 h-6 text-primary" />
+                <FileText className="w-6 h-6" style={accentColorStyle} />
                 1. Introduction
               </h2>
               <p className="text-muted-foreground leading-relaxed">
@@ -66,7 +66,7 @@ export default function PrivacyPolicyPage() {
           <GlassCard>
             <div className="space-y-4">
               <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
-                <Eye className="w-6 h-6 text-primary" />
+                <Eye className="w-6 h-6" style={accentColorStyle} />
                 2. Information We Collect
               </h2>
               
@@ -129,7 +129,7 @@ export default function PrivacyPolicyPage() {
           <GlassCard>
             <div className="space-y-4">
               <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
-                <Lock className="w-6 h-6 text-primary" />
+                <Lock className="w-6 h-6" style={accentColorStyle} />
                 3. How We Use Your Information
               </h2>
               <p className="text-muted-foreground leading-relaxed">
@@ -209,7 +209,7 @@ export default function PrivacyPolicyPage() {
           <GlassCard>
             <div className="space-y-4">
               <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
-                <Shield className="w-6 h-6 text-primary" />
+                <Shield className="w-6 h-6" style={accentColorStyle} />
                 5. Data Security
               </h2>
               <p className="text-muted-foreground leading-relaxed">
@@ -332,7 +332,7 @@ export default function PrivacyPolicyPage() {
           <GlassCard className="bg-primary/10 dark:bg-primary/5 border-primary/20 dark:border-primary/10">
             <div className="space-y-4">
               <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
-                <Mail className="w-6 h-6 text-primary" />
+                <Mail className="w-6 h-6" style={accentColorStyle} />
                 13. Contact Us
               </h2>
               <p className="text-muted-foreground leading-relaxed">
@@ -341,10 +341,10 @@ export default function PrivacyPolicyPage() {
               <div className="bg-background/50 rounded-lg p-4 space-y-2">
                 <p className="text-foreground font-medium">NOVA Build</p>
                 <p className="text-muted-foreground">
-                  Email: <a href="mailto:privacy@novafreight.io" className="text-primary hover:underline">privacy@novafreight.io</a>
+                  Email: <a href="mailto:privacy@novafreight.io" className="hover:underline" style={accentColorStyle}>privacy@novafreight.io</a>
                 </p>
                 <p className="text-muted-foreground">
-                  Website: <a href="https://novafreight.io" className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">novafreight.io</a>
+                  Website: <a href="https://novafreight.io" className="hover:underline" style={accentColorStyle} target="_blank" rel="noopener noreferrer">novafreight.io</a>
                 </p>
               </div>
             </div>

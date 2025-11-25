@@ -9,10 +9,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Search, Filter } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAccentColor } from "@/hooks/useAccentColor";
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
 export default function AnnouncementsPage() {
+  const { accentColor, accentColorStyle, accentBgStyle } = useAccentColor();
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState<string | null>(null);
@@ -58,7 +60,7 @@ export default function AnnouncementsPage() {
       <div className="container mx-auto px-4 py-8">
         <div className="text-center">
           <p className="text-destructive">Failed to load announcements</p>
-          <Button onClick={() => mutate()} className="mt-4">
+          <Button onClick={() => mutate()} className="mt-4" style={accentBgStyle}>
             Try Again
           </Button>
         </div>
@@ -79,7 +81,7 @@ export default function AnnouncementsPage() {
       {/* Search and Filters */}
       <div className="mb-6 space-y-4">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4" style={accentColorStyle} />
           <Input
             placeholder="Search announcements..."
             value={searchQuery}
@@ -89,12 +91,13 @@ export default function AnnouncementsPage() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          <Filter className="w-4 h-4 text-muted-foreground" />
+          <Filter className="w-4 h-4" style={accentColorStyle} />
           <span className="text-sm text-muted-foreground">Priority:</span>
           <Button
             variant={priorityFilter === null ? "default" : "outline"}
             size="sm"
             onClick={() => setPriorityFilter(null)}
+            style={priorityFilter === null ? accentBgStyle : { borderColor: accentColor }}
           >
             All
           </Button>
@@ -102,6 +105,7 @@ export default function AnnouncementsPage() {
             variant={priorityFilter === "urgent" ? "default" : "outline"}
             size="sm"
             onClick={() => setPriorityFilter(priorityFilter === "urgent" ? null : "urgent")}
+            style={priorityFilter === "urgent" ? accentBgStyle : { borderColor: accentColor }}
           >
             Urgent
           </Button>
@@ -109,6 +113,7 @@ export default function AnnouncementsPage() {
             variant={priorityFilter === "high" ? "default" : "outline"}
             size="sm"
             onClick={() => setPriorityFilter(priorityFilter === "high" ? null : "high")}
+            style={priorityFilter === "high" ? accentBgStyle : { borderColor: accentColor }}
           >
             High
           </Button>
@@ -116,6 +121,7 @@ export default function AnnouncementsPage() {
             variant={priorityFilter === "normal" ? "default" : "outline"}
             size="sm"
             onClick={() => setPriorityFilter(priorityFilter === "normal" ? null : "normal")}
+            style={priorityFilter === "normal" ? accentBgStyle : { borderColor: accentColor }}
           >
             Normal
           </Button>
@@ -123,6 +129,7 @@ export default function AnnouncementsPage() {
             variant={priorityFilter === "low" ? "default" : "outline"}
             size="sm"
             onClick={() => setPriorityFilter(priorityFilter === "low" ? null : "low")}
+            style={priorityFilter === "low" ? accentBgStyle : { borderColor: accentColor }}
           >
             Low
           </Button>

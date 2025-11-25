@@ -280,7 +280,14 @@ export function LiveMapView({ bids, className = "", onMarkerClick }: LiveMapView
     markersRef.current.forEach(marker => marker.remove());
     markersRef.current = [];
 
+    // Validate map is ready before proceeding
     if (!map || bidsData.length === 0) return;
+    
+    // Check if map is loaded and has a valid container
+    if (!map.loaded() || !map.getContainer()) {
+      console.warn('Map not ready for markers, skipping update');
+      return;
+    }
 
     const coordinates: Array<[number, number]> = [];
     
@@ -694,6 +701,12 @@ export function LiveMapView({ bids, className = "", onMarkerClick }: LiveMapView
         `;
       }
 
+      // Double-check map is still valid before adding marker (map might have been removed during async operations)
+      if (!map || !map.loaded() || !map.getContainer()) {
+        console.warn('Map no longer available, skipping marker creation');
+        continue;
+      }
+
       const mapboxgl = (await import('mapbox-gl')).default;
       
       // Configure marker with proper options per Mapbox GL JS docs
@@ -882,7 +895,15 @@ export function LiveMapView({ bids, className = "", onMarkerClick }: LiveMapView
   // Update markers when bids change
   useEffect(() => {
     if (mapRef.current && bids.length > 0) {
-      updateMarkers(bids, mapRef.current);
+      // Ensure map is loaded before updating markers
+      if (mapRef.current.loaded()) {
+        updateMarkers(bids, mapRef.current);
+      } else {
+        // Wait for map to load if not ready
+        mapRef.current.once('load', () => {
+          updateMarkers(bids, mapRef.current);
+        });
+      }
     }
   }, [bids, updateMarkers]);
 

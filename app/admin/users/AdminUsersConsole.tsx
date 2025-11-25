@@ -9,8 +9,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { useAccentColor } from "@/hooks/useAccentColor";
 import {
   Activity,
   AlertTriangle,
@@ -65,6 +67,7 @@ interface CarrierProfile {
   urgent_contact_email?: boolean;
   urgent_contact_phone?: boolean;
   notification_tier?: 'premium' | 'standard' | 'new';
+  notifications_disabled?: boolean;
 }
 
 interface AdminMessage {
@@ -102,7 +105,7 @@ interface ProfileHistory {
 }
 
 export function AdminUsersConsole() {
-  const accentColor = "hsl(221, 83%, 53%)"; // Default blue
+  const { accentColor, accentBgStyle, accentColorStyle } = useAccentColor();
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCarrier, setSelectedCarrier] = useState<CarrierProfile | null>(null);
   const [showProfileDialog, setShowProfileDialog] = useState(false);
@@ -122,7 +125,8 @@ export function AdminUsersConsole() {
   const [newAppealMessage, setNewAppealMessage] = useState("");
   const [isSendingAppealMessage, setIsSendingAppealMessage] = useState(false);
   const [showTierDialog, setShowTierDialog] = useState(false);
-  const [selectedTier, setSelectedTier] = useState<'premium' | 'standard' | 'new'>('standard');
+  const [selectedTier, setSelectedTier] = useState<'premium' | 'standard' | 'new'>('new');
+  const [notificationsDisabled, setNotificationsDisabled] = useState(false);
   const [isUpdatingTier, setIsUpdatingTier] = useState(false);
   const [isWipingData, setIsWipingData] = useState(false);
   const [showMainControl, setShowMainControl] = useState(false);
@@ -389,18 +393,21 @@ export function AdminUsersConsole() {
 
   const handleManageTier = async (carrier: CarrierProfile) => {
     setSelectedCarrier(carrier);
-    // Fetch current tier
+    // Fetch current tier and notifications status
     try {
       const response = await fetch(`/api/admin/carriers/${carrier.user_id}/tier`);
       if (response.ok) {
         const data = await response.json();
-        setSelectedTier(data.tier || 'standard');
+        setSelectedTier(data.tier || 'new');
+        setNotificationsDisabled(data.notifications_disabled || false);
       } else {
-        setSelectedTier(carrier.notification_tier || 'standard');
+        setSelectedTier(carrier.notification_tier || 'new');
+        setNotificationsDisabled(false);
       }
     } catch (error) {
       console.error('Error fetching tier:', error);
-      setSelectedTier(carrier.notification_tier || 'standard');
+      setSelectedTier(carrier.notification_tier || 'new');
+      setNotificationsDisabled(false);
     }
     setShowTierDialog(true);
   };
@@ -413,12 +420,15 @@ export function AdminUsersConsole() {
       const response = await fetch(`/api/admin/carriers/${selectedCarrier.user_id}/tier`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tier: selectedTier })
+        body: JSON.stringify({ 
+          tier: selectedTier,
+          notifications_disabled: notificationsDisabled
+        })
       });
 
       if (response.ok) {
         const data = await response.json();
-        toast.success(data.message || `Tier updated to ${selectedTier}`);
+        toast.success(data.message || `Tier updated to ${selectedTier}${notificationsDisabled ? ' (notifications disabled)' : ''}`);
         mutateCarriers();
         setShowTierDialog(false);
       } else {
@@ -732,7 +742,7 @@ export function AdminUsersConsole() {
       case 'declined':
         return <Badge variant="destructive">Declined</Badge>;
       case 'open':
-        return <Badge variant="outline" className="bg-blue-100 text-blue-800">Open</Badge>;
+        return <Badge variant="outline" style={{ backgroundColor: `${accentColor}15`, color: accentColor, borderColor: `${accentColor}40` }}>Open</Badge>;
       default:
         return <Badge variant="outline">Unknown</Badge>;
     }
@@ -749,7 +759,7 @@ export function AdminUsersConsole() {
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Building2 className="h-5 w-5 text-blue-600" />
+            <Building2 className="h-5 w-5" style={accentColorStyle} />
             <CardTitle className="text-lg">{carrier.company_name}</CardTitle>
             {carrier.mc_number && (() => {
               const healthData = getHealthScore(carrier.mc_number);
@@ -777,35 +787,43 @@ export function AdminUsersConsole() {
                     )}
                   </div>
                   {/* DNU Status Indicator */}
-                  <div className="relative">
-                    {isDNU ? (
-                      <div 
-                        className="w-3 h-3 rounded-full bg-red-500 animate-pulse"
-                        style={{ 
-                          filter: 'drop-shadow(0 0 4px rgba(239, 68, 68, 0.8))',
-                          animation: 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite'
-                        }}
-                        title="On DNU (Do Not Use) List"
-                      />
-                    ) : (
-                      <div 
-                        className="w-3 h-3 rounded-full bg-blue-500 animate-pulse"
-                        style={{ 
-                          filter: 'drop-shadow(0 0 4px rgba(59, 130, 246, 0.8))',
-                          animation: 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite'
-                        }}
-                        title="Not on DNU List"
-                      />
-                    )}
-                    <div 
-                      className={`absolute inset-0 rounded-full animate-ping ${
-                        isDNU ? 'bg-red-500/30' : 'bg-blue-500/30'
-                      }`}
-                      style={{ 
-                        animation: 'ping 2s cubic-bezier(0, 0, 0.2, 1) infinite'
-                      }}
-                    />
-                  </div>
+                    <div className="relative">
+                      {isDNU ? (
+                        <>
+                          <div 
+                            className="w-3 h-3 rounded-full bg-red-500 animate-pulse"
+                            style={{ 
+                              filter: 'drop-shadow(0 0 4px rgba(239, 68, 68, 0.8))',
+                              animation: 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite'
+                            }}
+                            title="On DNU (Do Not Use) List"
+                          />
+                          <div 
+                            className="absolute inset-0 rounded-full animate-ping bg-red-500/30"
+                            style={{ 
+                              animation: 'ping 2s cubic-bezier(0, 0, 0.2, 1) infinite'
+                            }}
+                          />
+                        </>
+                      ) : (
+                        <>
+                          <div 
+                            className="w-3 h-3 rounded-full bg-blue-500 animate-pulse"
+                            style={{ 
+                              filter: 'drop-shadow(0 0 4px rgba(59, 130, 246, 0.8))',
+                              animation: 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite'
+                            }}
+                            title="Not on DNU List"
+                          />
+                          <div 
+                            className="absolute inset-0 rounded-full animate-ping bg-blue-500/30"
+                            style={{ 
+                              animation: 'ping 2s cubic-bezier(0, 0, 0.2, 1) infinite'
+                            }}
+                          />
+                        </>
+                      )}
+                    </div>
                 </div>
               );
             })()}
@@ -858,7 +876,7 @@ export function AdminUsersConsole() {
             <div className="flex items-center gap-2">
               {carrier.urgent_contact_email && (
                 <div className="flex items-center gap-1 text-xs">
-                  <Mail className="w-3.5 h-3.5 text-blue-600" />
+                  <Mail className="w-3.5 h-3.5" style={accentColorStyle} />
                   <span className="text-muted-foreground">Email</span>
                 </div>
               )}
@@ -922,23 +940,21 @@ export function AdminUsersConsole() {
         )}
 
         {/* Notification Tier Badge */}
-        {carrier.notification_tier && (
-          <div className="flex items-center gap-2 pt-2 border-t border-border/50">
-            <span className="text-xs text-muted-foreground font-medium">Notification Tier:</span>
-            <Badge 
-              variant={carrier.notification_tier === 'premium' ? 'default' : 'secondary'}
-              className={
-                carrier.notification_tier === 'premium' 
-                  ? 'bg-purple-100 text-purple-800 border-purple-300' 
-                  : carrier.notification_tier === 'standard'
-                  ? 'bg-blue-100 text-blue-800 border-blue-300'
-                  : 'bg-gray-100 text-gray-800 border-gray-300'
-              }
-            >
-              {carrier.notification_tier.toUpperCase()}
-            </Badge>
-          </div>
-        )}
+        <div className="flex items-center gap-2 pt-2 border-t border-border/50">
+          <span className="text-xs text-muted-foreground font-medium">Notification Tier:</span>
+          <Badge 
+            variant={(carrier.notification_tier || 'new') === 'premium' ? 'default' : 'secondary'}
+            className={
+              (carrier.notification_tier || 'new') === 'premium' 
+                ? 'bg-purple-100 text-purple-800 border-purple-300' 
+                : (carrier.notification_tier || 'new') === 'standard'
+                ? 'bg-blue-100 text-blue-800 border-blue-300'
+                : 'bg-gray-100 text-gray-800 border-gray-300'
+            }
+          >
+            {(carrier.notification_tier || 'new').toUpperCase()}
+          </Badge>
+        </div>
 
         {/* Action Buttons */}
         <div className="grid grid-cols-2 gap-2 pt-2">
@@ -979,7 +995,7 @@ export function AdminUsersConsole() {
                 disabled={isLoadingHealth}
               >
                 {isLoadingHealth ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" style={accentColorStyle} />
                 ) : (
                   <Activity className="h-4 w-4 mr-2" />
                 )}
@@ -993,7 +1009,7 @@ export function AdminUsersConsole() {
                 disabled={isWipingData}
               >
                 {isWipingData ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" style={accentColorStyle} />
                 ) : (
                   <Trash2 className="h-4 w-4 mr-2" />
                 )}
@@ -1157,7 +1173,7 @@ export function AdminUsersConsole() {
       <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
         <div className="flex-1 max-w-md">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4" style={accentColorStyle} />
             <Input
               placeholder="Search carriers by company, MC#, contact name..."
               value={searchTerm}
@@ -1184,7 +1200,7 @@ export function AdminUsersConsole() {
             DNU Tracker
           </Button>
           <div className="flex items-center gap-2">
-            <Users className="h-5 w-5 text-blue-600" />
+            <Users className="h-5 w-5" style={accentColorStyle} />
             <span className="text-sm text-muted-foreground">
               {filteredCarriers.length} carriers
             </span>
@@ -1197,7 +1213,7 @@ export function AdminUsersConsole() {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2">
-              <Users className="h-5 w-5 text-blue-500" />
+              <Users className="h-5 w-5" style={accentColorStyle} />
               <div>
                 <div className="text-2xl font-bold">{carriers.length}</div>
                 <div className="text-sm text-muted-foreground">Total Carriers</div>
@@ -1234,7 +1250,7 @@ export function AdminUsersConsole() {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2">
-              <MessageSquare className="h-5 w-5 text-purple-500" />
+              <MessageSquare className="h-5 w-5" style={accentColorStyle} />
               <div>
                 <div className="text-2xl font-bold">
                   {conversations && Array.isArray(conversations) 
@@ -1439,9 +1455,11 @@ export function AdminUsersConsole() {
                     <div key={msg.id} className={`flex ${msg.sender_type === 'admin' ? 'justify-end' : 'justify-start'}`}>
                       <div className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm ${
                         msg.sender_type === 'admin' 
-                          ? 'bg-blue-500 text-white' 
+                          ? 'text-white' 
                           : 'bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200'
-                      }`}>
+                      }`}
+                      style={msg.sender_type === 'admin' ? accentBgStyle : undefined}
+                      >
                         <div className="font-semibold text-xs mb-1">
                           {msg.sender_type === 'admin' ? 'You' : selectedCarrier.company_name}
                         </div>
@@ -1749,7 +1767,7 @@ export function AdminUsersConsole() {
         <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Shield className="h-5 w-5 text-blue-600" />
+              <Shield className="h-5 w-5" style={accentColorStyle} />
               Carrier Health Report - {selectedCarrier?.company_name}
             </DialogTitle>
           </DialogHeader>
@@ -1757,7 +1775,7 @@ export function AdminUsersConsole() {
           {isLoadingHealth ? (
             <div className="flex items-center justify-center py-12">
               <div className="text-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 mx-auto mb-4" style={{ borderColor: accentColor }}></div>
                 <p className="text-muted-foreground">Fetching health data from Highway...</p>
               </div>
             </div>
@@ -1864,6 +1882,28 @@ export function AdminUsersConsole() {
                     </label>
                   </div>
                 </div>
+              </div>
+
+              {/* Kill Switch - Disable All Notifications */}
+              <div className="pt-4 border-t border-border/50">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <Label className="text-sm font-medium">Disable All Notifications</Label>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Completely turn off all notifications from the railway system for this carrier. This overrides tier settings.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={notificationsDisabled}
+                    onCheckedChange={setNotificationsDisabled}
+                    disabled={isUpdatingTier}
+                  />
+                </div>
+                {notificationsDisabled && (
+                  <div className="mt-2 p-2 bg-red-500/10 border border-red-500/30 rounded text-xs text-red-400">
+                    ⚠️ All notifications are currently disabled for this carrier
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-end gap-2 pt-4">

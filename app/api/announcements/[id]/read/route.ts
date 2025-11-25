@@ -10,12 +10,13 @@ import { NextRequest, NextResponse } from "next/server";
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const auth = await requireApiAuth(request);
     const userId = auth.userId;
-    const announcementId = params.id;
+    const { id } = await params;
+    const announcementId = id;
 
     // Check rate limit for authenticated write operation
     const rateLimit = await checkApiRateLimit(request, {

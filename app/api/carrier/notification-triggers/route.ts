@@ -120,11 +120,14 @@ export async function GET(request: NextRequest) {
             LIMIT 1
           `;
           
+          // Use stored favoriteStops from config if available (most accurate), otherwise use from DB
+          const route = config.favoriteStops || favoriteResult[0]?.stops || null;
+          
           return {
             ...trigger,
             trigger_config: config,
-            bid_number: favoriteResult[0]?.bid_number || null,
-            route: favoriteResult[0]?.stops || null,
+            bid_number: config.favoriteBidNumber, // Always use the stored bid number
+            route: route,
             distance_range: config.favoriteDistanceRange
           };
         }
@@ -328,6 +331,38 @@ export async function POST(request: NextRequest) {
       return addSecurityHeaders(response, request);
     }
 
+    // Check for duplicate exact match alerts for the same bid number
+    if (triggerType === 'exact_match' && triggerConfig.matchType === 'exact' && triggerConfig.favoriteBidNumber) {
+      const existingTriggers = await sql`
+        SELECT id, trigger_config
+        FROM notification_triggers
+        WHERE supabase_carrier_user_id = ${userId}
+          AND trigger_type = 'exact_match'
+          AND is_active = true
+      `;
+      
+      for (const existing of existingTriggers) {
+        let existingConfig = existing.trigger_config;
+        if (typeof existingConfig === 'string') {
+          try {
+            existingConfig = JSON.parse(existingConfig);
+          } catch {
+            continue;
+          }
+        }
+        
+        // Check if it's an exact match for the same bid number
+        if (existingConfig.matchType === 'exact' && 
+            (existingConfig.favoriteBidNumber === triggerConfig.favoriteBidNumber ||
+             (existingConfig.favoriteBidNumbers && existingConfig.favoriteBidNumbers.includes(triggerConfig.favoriteBidNumber)))) {
+          return NextResponse.json(
+            { error: `You already have an exact match alert active for bid #${triggerConfig.favoriteBidNumber}.` },
+            { status: 400 }
+          );
+        }
+      }
+    }
+    
     // Check for duplicate state matches
     if (triggerType === 'exact_match' && triggerConfig.matchType === 'state') {
       const originState = triggerConfig.originState;
@@ -682,12 +717,15 @@ function validateTriggerConfig(triggerType: NotificationTriggerType, config: Not
       break;
     
     case 'exact_match':
-      // Check for new distance range format or legacy bid numbers
-      if (!config.favoriteDistanceRange && (!config.favoriteBidNumbers || config.favoriteBidNumbers.length === 0)) {
-        return "Either favorite distance range or favorite bid numbers are required for exact match";
+      // For exact matches, we need either favoriteBidNumber or favoriteStops
+      // Distance range is NOT required for exact matches (only route matters)
+      if (!config.favoriteBidNumber && (!config.favoriteStops || config.favoriteStops.length === 0) && 
+          (!config.favoriteBidNumbers || config.favoriteBidNumbers.length === 0)) {
+        return "Favorite bid number or stops are required for exact match";
       }
       
-      // Validate distance range if provided
+      // Validate distance range if provided (optional - only used for legacy compatibility)
+      // Note: For exact matches, distance is ignored - only route matching matters
       if (config.favoriteDistanceRange) {
         if (typeof config.favoriteDistanceRange.minDistance !== 'number' || 
             typeof config.favoriteDistanceRange.maxDistance !== 'number') {

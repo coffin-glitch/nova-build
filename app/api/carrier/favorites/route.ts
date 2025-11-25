@@ -192,6 +192,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check rate limit for write operation
+    const rateLimit = await checkApiRateLimit(request, {
+      userId,
+      routeType: 'write'
+    });
+
+    if (!rateLimit.allowed) {
+      const response = NextResponse.json(
+        {
+          error: 'Rate limit exceeded',
+          message: `Too many requests. Please try again after ${rateLimit.retryAfter} seconds.`,
+          retryAfter: rateLimit.retryAfter
+        },
+        { status: 429 }
+      );
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
+    }
+
     const body = await request.json();
     const { bid_number } = body;
 
@@ -239,11 +257,12 @@ export async function POST(request: NextRequest) {
     
     if (existingFavorite.length > 0) {
       console.log('[favorites POST] Favorite already exists');
-      return NextResponse.json({ 
+      const response = NextResponse.json({ 
         ok: true, 
         message: "Bid already in favorites",
         alreadyExists: true
       });
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
     // Add to favorites

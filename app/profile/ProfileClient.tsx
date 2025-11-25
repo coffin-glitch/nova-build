@@ -283,7 +283,7 @@ export default function ProfileClient() {
   if (userLoading || supabaseLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+        <Loader2 className="w-8 h-8 animate-spin" style={accentColorStyle} />
       </div>
     );
   }
@@ -307,8 +307,8 @@ export default function ProfileClient() {
           <Card className="border border-white/20 shadow-2xl bg-white/10 dark:bg-black/10 backdrop-blur-xl">
             <CardHeader className="pb-4">
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-gradient-to-br from-blue-500/10 to-purple-500/10 border border-blue-500/20">
-                  <User className="w-5 h-5 text-blue-600" />
+                <div className="p-2 rounded-lg border" style={{ backgroundColor: `${accentColor}15`, borderColor: `${accentColor}30` }}>
+                  <User className="w-5 h-5" style={accentColorStyle} />
                 </div>
                 <div>
                   <CardTitle className="text-2xl">Personal Information</CardTitle>
@@ -360,8 +360,8 @@ export default function ProfileClient() {
           <Card className="border border-white/20 shadow-2xl bg-white/10 dark:bg-black/10 backdrop-blur-xl">
             <CardHeader className="pb-4">
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-gradient-to-br from-emerald-500/10 to-teal-500/10 border border-emerald-500/20">
-                  <Building2 className="w-5 h-5 text-emerald-600" />
+                <div className="p-2 rounded-lg border" style={{ backgroundColor: `${accentColor}15`, borderColor: `${accentColor}30` }}>
+                  <Building2 className="w-5 h-5" style={accentColorStyle} />
                 </div>
                 <div>
                   <CardTitle className="text-2xl">Company Information</CardTitle>
@@ -406,8 +406,8 @@ export default function ProfileClient() {
             <CardHeader className="pb-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-gradient-to-br from-amber-500/10 to-orange-500/10 border border-amber-500/20">
-                    <Bell className="w-5 h-5 text-amber-600" />
+                  <div className="p-2 rounded-lg border" style={{ backgroundColor: `${accentColor}15`, borderColor: `${accentColor}30` }}>
+                    <Bell className="w-5 h-5" style={accentColorStyle} />
                   </div>
                   <div>
                     <CardTitle className="text-2xl">Notification Preferences</CardTitle>
@@ -540,8 +540,8 @@ export default function ProfileClient() {
           <Card className="border border-white/20 shadow-2xl bg-white/10 dark:bg-black/10 backdrop-blur-xl">
             <CardHeader className="pb-4">
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-gradient-to-br from-violet-500/10 to-purple-500/10 border border-violet-500/20">
-                  <CreditCard className="w-5 h-5 text-violet-600" />
+                <div className="p-2 rounded-lg border" style={{ backgroundColor: `${accentColor}15`, borderColor: `${accentColor}30` }}>
+                  <CreditCard className="w-5 h-5" style={accentColorStyle} />
                 </div>
                 <div>
                   <CardTitle className="text-2xl">Payment Methods</CardTitle>
@@ -564,8 +564,8 @@ export default function ProfileClient() {
           <Card className="border border-white/20 shadow-2xl bg-white/10 dark:bg-black/10 backdrop-blur-xl">
             <CardHeader>
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-gradient-to-br from-red-500/10 to-rose-500/10 border border-red-500/20">
-                  <Shield className="w-5 h-5 text-red-600" />
+                <div className="p-2 rounded-lg border" style={{ backgroundColor: `${accentColor}15`, borderColor: `${accentColor}30` }}>
+                  <Shield className="w-5 h-5" style={accentColorStyle} />
                 </div>
                 <CardTitle>Security</CardTitle>
               </div>

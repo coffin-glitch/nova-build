@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { useAccentColor } from "@/hooks/useAccentColor";
 
 interface PricingData {
   distance: number;
@@ -253,6 +254,7 @@ const US_CITIES = [
 ].sort((a, b) => a.fullName.localeCompare(b.fullName));
 
 export default function PricingCalculator() {
+  const { accentColor, accentColorStyle, accentBgStyle } = useAccentColor();
   const [origin, setOrigin] = useState("");
   const [destination, setDestination] = useState("");
   const [originOpen, setOriginOpen] = useState(false);
@@ -874,7 +876,7 @@ export default function PricingCalculator() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <MapPin className="h-5 w-5" />
+                  <MapPin className="h-5 w-5" style={accentColorStyle} />
                   Route Information
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -1037,7 +1039,7 @@ export default function PricingCalculator() {
                       onChange={(e) => setDistance(Number(e.target.value))}
                       disabled={loading}
                     />
-                    {loading && <RefreshCw className="h-4 w-4 animate-spin" />}
+                    {loading && <RefreshCw className="h-4 w-4 animate-spin" style={accentColorStyle} />}
                   </div>
                 </div>
 
@@ -1046,7 +1048,7 @@ export default function PricingCalculator() {
                 <div className="space-y-4">
                   <div className="flex items-center gap-2">
                     <h4 className="font-medium flex items-center gap-2">
-                      <Fuel className="h-4 w-4" />
+                      <Fuel className="h-4 w-4" style={accentColorStyle} />
                       Fuel & Operating Costs
                     </h4>
                     <Tooltip>
@@ -1188,6 +1190,7 @@ export default function PricingCalculator() {
                   onClick={calculatePricing} 
                   className="w-full"
                   disabled={!origin || !destination || !equipmentType}
+                  style={accentBgStyle}
                 >
                   <Calculator className="h-4 w-4 mr-2" />
                   Calculate Pricing
@@ -1199,7 +1202,7 @@ export default function PricingCalculator() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <DollarSign className="h-5 w-5" />
+                  <DollarSign className="h-5 w-5" style={accentColorStyle} />
                   Pricing Breakdown
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -1227,7 +1230,7 @@ export default function PricingCalculator() {
                       
                       <div className="flex justify-between items-center">
                         <span className="text-sm text-muted-foreground flex items-center gap-1">
-                          <Fuel className="h-3 w-3" />
+                          <Fuel className="h-3 w-3" style={accentColorStyle} />
                           Fuel Cost
                           <Tooltip>
                             <TooltipTrigger asChild>

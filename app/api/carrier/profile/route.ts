@@ -35,30 +35,70 @@ export async function GET(request: NextRequest) {
     }
     
     // Get carrier profile from database (Supabase-only)
-    const profiles = await sql`
-      SELECT 
-        cp.supabase_user_id as id,
-        cp.supabase_user_id,
-        cp.legal_name,
-        cp.mc_number,
-        cp.dot_number,
-        cp.contact_name,
-        cp.phone,
-        cp.profile_status,
-        cp.submitted_at,
-        cp.reviewed_at,
-        cp.reviewed_by,
-        cp.review_notes,
-        cp.decline_reason,
-        cp.is_first_login,
-        cp.profile_completed_at,
-        cp.edits_enabled,
-        cp.edits_enabled_by,
-        cp.edits_enabled_at,
-        cp.created_at
-      FROM carrier_profiles cp
-      WHERE cp.supabase_user_id = ${userId}
+    // Check if notification_tier column exists
+    const columnCheck = await sql`
+      SELECT EXISTS (
+        SELECT 1 
+        FROM information_schema.columns 
+        WHERE table_name = 'carrier_profiles' 
+        AND column_name = 'notification_tier'
+      ) as column_exists
     `;
+    const hasNotificationTier = columnCheck[0]?.column_exists === true;
+
+    const profiles = hasNotificationTier
+      ? await sql`
+          SELECT 
+            cp.supabase_user_id as id,
+            cp.supabase_user_id,
+            cp.legal_name,
+            cp.mc_number,
+            cp.dot_number,
+            cp.contact_name,
+            cp.phone,
+            cp.profile_status,
+            cp.submitted_at,
+            cp.reviewed_at,
+            cp.reviewed_by,
+            cp.review_notes,
+            cp.decline_reason,
+            cp.is_first_login,
+            cp.profile_completed_at,
+            cp.edits_enabled,
+            cp.edits_enabled_by,
+            cp.edits_enabled_at,
+            COALESCE(cp.notification_tier, 'new') as notification_tier,
+            COALESCE(cp.notifications_disabled, false) as notifications_disabled,
+            cp.created_at
+          FROM carrier_profiles cp
+          WHERE cp.supabase_user_id = ${userId}
+        `
+      : await sql`
+          SELECT 
+            cp.supabase_user_id as id,
+            cp.supabase_user_id,
+            cp.legal_name,
+            cp.mc_number,
+            cp.dot_number,
+            cp.contact_name,
+            cp.phone,
+            cp.profile_status,
+            cp.submitted_at,
+            cp.reviewed_at,
+            cp.reviewed_by,
+            cp.review_notes,
+            cp.decline_reason,
+            cp.is_first_login,
+            cp.profile_completed_at,
+            cp.edits_enabled,
+            cp.edits_enabled_by,
+            cp.edits_enabled_at,
+            'new'::text as notification_tier,
+            false::boolean as notifications_disabled,
+            cp.created_at
+          FROM carrier_profiles cp
+          WHERE cp.supabase_user_id = ${userId}
+        `;
 
     const profile = profiles[0] || null;
 

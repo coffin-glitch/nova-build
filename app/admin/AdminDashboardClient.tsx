@@ -1,0 +1,145 @@
+"use client";
+
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { useAccentColor } from "@/hooks/useAccentColor";
+import {
+  FileText,
+  TrendingUp,
+  Truck,
+  Users
+} from "lucide-react";
+import Link from "next/link";
+
+interface AdminDashboardClientProps {
+  stats: {
+    publishedLoads: number;
+    totalLoads: number;
+    todayBids: number;
+    activeBids: number;
+    activeCarriers: number;
+    totalCarriers: number;
+  };
+}
+
+export default function AdminDashboardClient({ stats }: AdminDashboardClientProps) {
+  const { accentColor, accentColorStyle, accentBgStyle } = useAccentColor();
+
+  return (
+    <div className="space-y-8">
+      <div className="space-y-4">
+        <h1 className="text-3xl font-bold text-foreground">Admin Dashboard</h1>
+        <p className="text-muted-foreground">
+          Monitor system performance and manage operations.
+        </p>
+      </div>
+
+      {/* KPI Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <Card className="card-premium p-6 hover-lift">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-muted-foreground">Published Loads</p>
+              <p className="text-2xl font-bold text-foreground">{stats.publishedLoads}</p>
+            </div>
+            <div className="w-12 h-12 rounded-lg flex items-center justify-center" style={accentBgStyle}>
+              <Truck className="w-6 h-6" style={{ color: 'white' }} />
+            </div>
+          </div>
+          <div className="mt-4">
+            <p className="text-xs text-muted-foreground">
+              {stats.totalLoads} total loads
+            </p>
+          </div>
+        </Card>
+
+        <Card className="card-premium p-6 hover-lift">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-muted-foreground">Today's Bids</p>
+              <p className="text-2xl font-bold text-foreground">{stats.todayBids}</p>
+            </div>
+            <div className="w-12 h-12 rounded-lg flex items-center justify-center" style={accentBgStyle}>
+              <TrendingUp className="w-6 h-6" style={{ color: 'white' }} />
+            </div>
+          </div>
+          <div className="mt-4">
+            <p className="text-xs text-muted-foreground">
+              {stats.activeBids} active bids
+            </p>
+          </div>
+        </Card>
+
+        <Card className="card-premium p-6 hover-lift">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-muted-foreground">Active Carriers</p>
+              <p className="text-2xl font-bold text-foreground">{stats.activeCarriers}</p>
+            </div>
+            <div className="w-12 h-12 rounded-lg flex items-center justify-center" style={accentBgStyle}>
+              <Users className="w-6 h-6" style={{ color: 'white' }} />
+            </div>
+          </div>
+          <div className="mt-4">
+            <p className="text-xs text-muted-foreground">
+              {stats.totalCarriers} total carriers
+            </p>
+          </div>
+        </Card>
+      </div>
+
+      {/* Quick Actions */}
+      <div className="space-y-6">
+        <h2 className="text-2xl font-bold text-foreground">Quick Actions</h2>
+        
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <Card className="card-premium p-6 hover-lift">
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <Truck className="w-5 h-5" style={accentColorStyle} />
+                <h3 className="text-lg font-semibold text-foreground">Manage Loads</h3>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Publish, unpublish, and edit load details and rates.
+              </p>
+              <Button asChild className="w-full" style={accentBgStyle}>
+                <Link href="/admin/loads">Manage Loads</Link>
+              </Button>
+            </div>
+          </Card>
+
+          <Card className="card-premium p-6 hover-lift">
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <FileText className="w-5 h-5" style={accentColorStyle} />
+                <h3 className="text-lg font-semibold text-foreground">Manage Bids</h3>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                View Telegram bids and carrier offers in real-time.
+              </p>
+              <Button asChild className="w-full" style={accentBgStyle}>
+                <Link href="/admin/bids">Manage Bids</Link>
+              </Button>
+            </div>
+          </Card>
+
+          <Card className="card-premium p-6 hover-lift">
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <Users className="w-5 h-5" style={accentColorStyle} />
+                <h3 className="text-lg font-semibold text-foreground">Manage Carriers</h3>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Manage carrier profiles, send messages, and lock/unlock accounts.
+              </p>
+              <Button asChild className="w-full" style={accentBgStyle}>
+                <Link href="/admin/users">Manage Carriers</Link>
+              </Button>
+            </div>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
+

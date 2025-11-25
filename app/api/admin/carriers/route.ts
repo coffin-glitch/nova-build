@@ -28,35 +28,88 @@ export async function GET(request: NextRequest) {
       return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
     }
 
-    // Fetch carrier profiles with approval workflow data (Supabase-only)
-    const carriers = await sql`
+    // Check if notification_tier and notifications_disabled columns exist
+    const columnCheck = await sql`
       SELECT 
-        cp.supabase_user_id as id,
-        cp.supabase_user_id as user_id,
-        cp.supabase_user_id,
-        cp.company_name,
-        cp.legal_name,
-        cp.mc_number,
-        cp.dot_number,
-        cp.contact_name,
-        cp.phone,
-        cp.profile_status,
-        cp.submitted_at,
-        cp.reviewed_at,
-        cp.reviewed_by,
-        cp.review_notes,
-        cp.decline_reason,
-        cp.is_first_login,
-        cp.profile_completed_at,
-        cp.edits_enabled,
-        cp.edits_enabled_by,
-        cp.edits_enabled_at,
-        cp.created_at,
-        cp.updated_at
-      FROM carrier_profiles cp
-      WHERE cp.supabase_user_id IS NOT NULL
-      ORDER BY cp.created_at DESC
+        EXISTS (
+          SELECT 1 
+          FROM information_schema.columns 
+          WHERE table_name = 'carrier_profiles' 
+          AND column_name = 'notification_tier'
+        ) as has_notification_tier,
+        EXISTS (
+          SELECT 1 
+          FROM information_schema.columns 
+          WHERE table_name = 'carrier_profiles' 
+          AND column_name = 'notifications_disabled'
+        ) as has_notifications_disabled
     `;
+    const hasNotificationTier = columnCheck[0]?.has_notification_tier === true;
+    const hasNotificationsDisabled = columnCheck[0]?.has_notifications_disabled === true;
+
+    // Fetch carrier profiles with approval workflow data (Supabase-only)
+    // Conditionally include notification_tier and notifications_disabled if columns exist
+    const carriers = (hasNotificationTier || hasNotificationsDisabled)
+      ? await sql`
+          SELECT 
+            cp.supabase_user_id as id,
+            cp.supabase_user_id as user_id,
+            cp.supabase_user_id,
+            cp.company_name,
+            cp.legal_name,
+            cp.mc_number,
+            cp.dot_number,
+            cp.contact_name,
+            cp.phone,
+            cp.profile_status,
+            cp.submitted_at,
+            cp.reviewed_at,
+            cp.reviewed_by,
+            cp.review_notes,
+            cp.decline_reason,
+            cp.is_first_login,
+            cp.profile_completed_at,
+            cp.edits_enabled,
+            cp.edits_enabled_by,
+            cp.edits_enabled_at,
+            COALESCE(cp.notification_tier, 'new') as notification_tier,
+            COALESCE(cp.notifications_disabled, false) as notifications_disabled,
+            cp.created_at,
+            cp.updated_at
+          FROM carrier_profiles cp
+          WHERE cp.supabase_user_id IS NOT NULL
+          ORDER BY cp.created_at DESC
+        `
+      : await sql`
+          SELECT 
+            cp.supabase_user_id as id,
+            cp.supabase_user_id as user_id,
+            cp.supabase_user_id,
+            cp.company_name,
+            cp.legal_name,
+            cp.mc_number,
+            cp.dot_number,
+            cp.contact_name,
+            cp.phone,
+            cp.profile_status,
+            cp.submitted_at,
+            cp.reviewed_at,
+            cp.reviewed_by,
+            cp.review_notes,
+            cp.decline_reason,
+            cp.is_first_login,
+            cp.profile_completed_at,
+            cp.edits_enabled,
+            cp.edits_enabled_by,
+            cp.edits_enabled_at,
+            'new'::text as notification_tier,
+            false::boolean as notifications_disabled,
+            cp.created_at,
+            cp.updated_at
+          FROM carrier_profiles cp
+          WHERE cp.supabase_user_id IS NOT NULL
+          ORDER BY cp.created_at DESC
+        `;
 
 
     // Fetch emails from Supabase for each carrier

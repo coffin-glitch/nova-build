@@ -10,7 +10,7 @@ BEGIN
         WHERE table_name = 'carrier_profiles' AND column_name = 'notification_tier'
     ) THEN
         ALTER TABLE carrier_profiles 
-        ADD COLUMN notification_tier TEXT DEFAULT 'standard' 
+        ADD COLUMN notification_tier TEXT DEFAULT 'new' 
         CHECK (notification_tier IN ('premium', 'standard', 'new'));
         
         -- Create index for tier lookups
@@ -19,7 +19,7 @@ BEGIN
         WHERE notification_tier IS NOT NULL;
         
         COMMENT ON COLUMN carrier_profiles.notification_tier IS 
-        'User tier for notification rate limiting: premium (200/hr), standard (50/hr), new (20/hr)';
+        'User tier for notification rate limiting: premium (200/hr), standard (50/hr), new (20/hr). Default is new for all carriers.';
         
         RAISE NOTICE 'Added notification_tier column to carrier_profiles';
     ELSE

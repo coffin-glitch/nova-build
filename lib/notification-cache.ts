@@ -77,33 +77,93 @@ export async function invalidateTriggersCache(userId: string) {
 
 // Rate limiting helper with tiered system for scalability
 // Supports 10,000+ subscribers with different limits based on user tier
+// Admins are unlimited and bypass tier system entirely
 export async function checkRateLimit(
   userId: string, 
   limit?: number, // Optional override limit
   windowSeconds: number = 3600,
   triggerType?: string // Optional trigger type for per-type limits
 ): Promise<boolean> {
-  // Get user tier from database (cache in Redis for performance)
-  const tierCacheKey = `user_tier:${userId}`;
-  let userTier = await redisConnection.get(tierCacheKey);
+  // CRITICAL: Check if user is an admin first - admins are unlimited
+  const adminCacheKey = `is_admin:${userId}`;
+  let isAdmin = await redisConnection.get(adminCacheKey);
   
-  if (!userTier) {
-    // Fetch from database and cache for 1 hour
+  if (isAdmin === null) {
+    // Check if user is an admin
     try {
-      const tierResult = await sql`
-        SELECT 
-          COALESCE(cp.notification_tier, 'standard') as tier
-        FROM carrier_profiles cp
-        WHERE cp.supabase_user_id = ${userId}
+      const adminCheck = await sql`
+        SELECT 1 
+        FROM user_roles_cache 
+        WHERE supabase_user_id = ${userId} 
+        AND role = 'admin'
         LIMIT 1
       `;
+      isAdmin = adminCheck.length > 0 ? 'true' : 'false';
+      await redisConnection.setex(adminCacheKey, 3600, isAdmin); // Cache for 1 hour
+    } catch (error) {
+      console.error(`[RateLimit] Error checking admin status for ${userId}:`, error);
+      isAdmin = 'false';
+    }
+  }
+
+  // Admins are unlimited - bypass tier system entirely
+  if (isAdmin === 'true') {
+    return true;
+  }
+
+  // Get user tier and notifications_disabled from database (cache in Redis for performance)
+  const tierCacheKey = `user_tier:${userId}`;
+  const notificationsDisabledKey = `notifications_disabled:${userId}`;
+  let userTier = await redisConnection.get(tierCacheKey);
+  let notificationsDisabled = await redisConnection.get(notificationsDisabledKey);
+  
+  if (!userTier || notificationsDisabled === null) {
+    // Fetch from database and cache for 1 hour
+    try {
+      // Check if notifications_disabled column exists
+      const columnCheck = await sql`
+        SELECT EXISTS (
+          SELECT 1 
+          FROM information_schema.columns 
+          WHERE table_name = 'carrier_profiles' 
+          AND column_name = 'notifications_disabled'
+        ) as column_exists
+      `;
+      const hasNotificationsDisabled = columnCheck[0]?.column_exists === true;
+
+      const tierResult = hasNotificationsDisabled
+        ? await sql`
+            SELECT 
+              COALESCE(cp.notification_tier, 'new') as tier,
+              COALESCE(cp.notifications_disabled, false) as notifications_disabled
+            FROM carrier_profiles cp
+            WHERE cp.supabase_user_id = ${userId}
+            LIMIT 1
+          `
+        : await sql`
+            SELECT 
+              COALESCE(cp.notification_tier, 'new') as tier,
+              false as notifications_disabled
+            FROM carrier_profiles cp
+            WHERE cp.supabase_user_id = ${userId}
+            LIMIT 1
+          `;
       
-      userTier = (tierResult[0]?.tier as string) || 'standard';
+      userTier = (tierResult[0]?.tier as string) || 'new';
+      notificationsDisabled = tierResult[0]?.notifications_disabled ? 'true' : 'false';
       await redisConnection.setex(tierCacheKey, 3600, userTier as string); // Cache for 1 hour
+      await redisConnection.setex(notificationsDisabledKey, 3600, notificationsDisabled); // Cache for 1 hour
     } catch (error) {
       console.error(`[RateLimit] Error fetching user tier for ${userId}:`, error);
-      userTier = 'standard'; // Default to standard on error
+      userTier = 'new'; // Default to new on error
+      notificationsDisabled = 'false';
     }
+  }
+
+  // Kill switch: If notifications are disabled, return false immediately
+  if (notificationsDisabled === 'true') {
+    console.log(`[RateLimit] Notifications disabled for user ${userId}, blocking notification`);
+    return false;
   }
   
   // Determine limit based on tier if not provided

@@ -127,7 +127,7 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
   // Local state to track string input values (allows empty strings during editing)
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
   
-  const { accentColor, accentBgStyle } = useAccentColor();
+  const { accentColor, accentBgStyle, accentColorStyle } = useAccentColor();
 
   // Fetch favorites data using SWR (following ManageBidsConsole pattern)
   const { data, mutate, isLoading } = useSWR(
@@ -164,7 +164,7 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
       keepPreviousData: true,
       revalidateOnFocus: false,
       revalidateOnReconnect: true,
-      dedupingInterval: 5000, // Prevent duplicate requests within 5 seconds
+      dedupingInterval: 1000, // Reduced to 1 second to allow faster manual refreshes
       onSuccess: (data) => {
         // Mark that we've successfully loaded data at least once
         if (data?.ok && Array.isArray(data?.data)) {
@@ -173,6 +173,19 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
       }
     }
   );
+
+  // Fetch carrier tier information
+  const { data: profileData } = useSWR(
+    isOpen ? `/api/carrier/profile` : null,
+    fetcher,
+    { 
+      refreshInterval: 60000, // Refresh every minute
+      fallbackData: { ok: true, data: null }
+    }
+  );
+  
+  const userTier = profileData?.data?.notification_tier || 'new';
+  const notificationsDisabled = profileData?.data?.notifications_disabled || false;
 
   const favorites: FavoriteBid[] = data?.data || [];
   
@@ -240,6 +253,19 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
   
   // Use stable triggers for rendering - this prevents flickering
   const notificationTriggers: NotificationTrigger[] = stableTriggers;
+  
+  // Helper function to check if a bid already has an exact match alert
+  const hasExactMatchAlert = (bidNumber: string): boolean => {
+    if (!notificationTriggers || !Array.isArray(notificationTriggers)) return false;
+    return notificationTriggers.some((trigger: NotificationTrigger) => {
+      if (trigger.trigger_type !== 'exact_match' || !trigger.is_active) return false;
+      const config = trigger.trigger_config || {};
+      // Check if this trigger is for the same bid number
+      return config.favoriteBidNumber === bidNumber || 
+             trigger.bid_number === bidNumber ||
+             (config.favoriteBidNumbers && config.favoriteBidNumbers.includes(bidNumber));
+    });
+  };
   
   // Debug logging
   useEffect(() => {
@@ -602,19 +628,24 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
   const handleCreateExactMatchTrigger = async (bidNumber: string) => {
     setIsCreatingTrigger(true);
     try {
-      // Get the favorite bid to extract distance information
+      // Check if there's already an exact match alert for this bid
+      if (hasExactMatchAlert(bidNumber)) {
+        toast.error(`You already have an exact match alert active for bid #${bidNumber}`);
+        setIsCreatingTrigger(false);
+        setShowMatchTypeDialog(null);
+        return;
+      }
+      
+      // Get the favorite bid
       const favorite = favorites.find(f => f.bid_number === bidNumber);
-      if (!favorite || favorite.distance === undefined) {
-        toast.error("Cannot create trigger: distance information missing");
+      if (!favorite || !favorite.stops || favorite.stops.length < 2) {
+        toast.error("Cannot create trigger: route information missing");
         setIsCreatingTrigger(false);
         return;
       }
 
-      // Use distance range from preferences, or default to favorite distance ± 50 miles
-      const minDistance = preferences.minDistance || Math.max(0, favorite.distance - 50);
-      const maxDistance = preferences.maxDistance || favorite.distance + 50;
-
       // Extract city/state from favorite stops for reference
+      // For exact matches, distance doesn't matter - only route matters
       const originStop = favorite.stops[0];
       const destinationStop = favorite.stops[favorite.stops.length - 1];
       const favoriteOriginCityState = extractCityStateForMatching(originStop);
@@ -626,10 +657,7 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
         body: JSON.stringify({
           triggerType: 'exact_match',
           triggerConfig: {
-            favoriteDistanceRange: {
-              minDistance,
-              maxDistance
-            },
+            // No distance range needed for exact matches - only route matters
             matchType: 'exact', // Exact city-to-city match
             favoriteBidNumber: bidNumber, // Store specific bid number
             favoriteStops: favorite.stops, // Store stops for reference
@@ -645,10 +673,31 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
         toast.success(`Exact match notifications enabled for ${bidNumber}!`);
         setShowMatchTypeDialog(null);
         setSelectedMatchType(null);
-        // Revalidate in background without causing flicker
-        mutateTriggers({ revalidate: false }).then(() => {
-          setTimeout(() => mutateTriggers(), 100);
-        });
+        
+        // Optimistically add the new trigger to local state immediately
+        const newTrigger: NotificationTrigger = {
+          id: result.data.id,
+          trigger_type: 'exact_match',
+          trigger_config: {
+            favoriteBidNumber: bidNumber,
+            favoriteStops: favorite.stops,
+            // No distance range for exact matches - only route matters
+            matchType: 'exact',
+            favoriteOriginCityState: favoriteOriginCityState,
+            favoriteDestCityState: favoriteDestCityState,
+          },
+          is_active: true,
+          created_at: result.data.createdAt || new Date().toISOString(),
+          bid_number: bidNumber,
+          route: favorite.stops,
+        };
+        
+        setStableTriggers(prev => [newTrigger, ...prev].sort((a, b) => 
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        ));
+        
+        // Force immediate revalidation to sync with server (bypass deduping)
+        await mutateTriggers(undefined, { revalidate: true });
       } else {
         // Check if it's a duplicate state match error
         if (result.error && result.error.includes('already have a state match')) {
@@ -698,8 +747,20 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
       const favoriteDestCityState = extractCityStateForMatching(destinationStop);
 
       // Use distance range from preferences, or default to favorite distance ± 50 miles
-      const minDistance = preferences.minDistance || Math.max(0, favorite.distance - 50);
-      const maxDistance = preferences.maxDistance || favorite.distance + 50;
+      // Ensure minDistance <= maxDistance
+      let minDistance = preferences.minDistance ?? Math.max(0, favorite.distance - 50);
+      let maxDistance = preferences.maxDistance ?? favorite.distance + 50;
+      
+      // Ensure minDistance <= maxDistance (fix invalid preferences)
+      if (minDistance > maxDistance) {
+        // If min is greater than max, use defaults
+        minDistance = Math.max(0, favorite.distance - 50);
+        maxDistance = favorite.distance + 50;
+      }
+      
+      // Ensure both are valid numbers
+      minDistance = Math.max(0, minDistance);
+      maxDistance = Math.max(minDistance, maxDistance);
 
       const response = await fetch('/api/carrier/notification-triggers', {
         method: 'POST',
@@ -728,10 +789,33 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
         toast.success(`State match notifications enabled for ${originState} → ${destinationState}!`);
         setShowMatchTypeDialog(null);
         setSelectedMatchType(null);
-        // Revalidate in background without causing flicker
-        mutateTriggers({ revalidate: false }).then(() => {
-          setTimeout(() => mutateTriggers(), 100);
-        });
+        
+        // Optimistically add the new trigger to local state immediately
+        const newTrigger: NotificationTrigger = {
+          id: result.data.id,
+          trigger_type: 'exact_match',
+          trigger_config: {
+            favoriteBidNumber: bidNumber,
+            favoriteStops: favorite.stops,
+            favoriteDistanceRange: { minDistance, maxDistance },
+            matchType: 'state',
+            originState,
+            destinationState,
+            favoriteOriginCityState: favoriteOriginCityState,
+            favoriteDestCityState: favoriteDestCityState,
+          },
+          is_active: true,
+          created_at: result.data.createdAt || new Date().toISOString(),
+          bid_number: bidNumber,
+          route: favorite.stops,
+        };
+        
+        setStableTriggers(prev => [newTrigger, ...prev].sort((a, b) => 
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        ));
+        
+        // Force immediate revalidation to sync with server (bypass deduping)
+        await mutateTriggers(undefined, { revalidate: true });
       } else {
         // Check if it's a duplicate state match error
         if (result.error && result.error.includes('already have a state match')) {
@@ -805,8 +889,8 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
       const result = await response.json();
       if (result.ok) {
         toast.success("Notification trigger deleted");
-        // Force immediate revalidation to sync with server
-        await mutateTriggers();
+        // Force immediate revalidation to sync with server (bypass deduping)
+        await mutateTriggers(undefined, { revalidate: true });
         // Ensure deleted trigger is removed from stableTriggers (in case merge didn't catch it)
         setStableTriggers(prev => prev.filter(t => t.id !== triggerId));
       } else {
@@ -900,6 +984,69 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
             Manage your favorited bids and configure smart notification alerts
           </DialogDescription>
         </DialogHeader>
+
+        {/* Notification Tier Badge */}
+        {!notificationsDisabled && (
+          <div className="mb-4 p-4 rounded-lg border bg-gradient-to-br from-background to-muted/20" style={{ borderColor: `${accentColor}30` }}>
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-2">
+                  <Zap className="h-4 w-4" style={accentColorStyle} />
+                  <span className="text-sm font-medium">Notification Tier</span>
+                  {userTier === 'new' && (
+                    <Badge className="bg-gray-100 text-gray-700 border-gray-300 text-xs">NEW</Badge>
+                  )}
+                  {userTier === 'standard' && (
+                    <Badge className="bg-blue-100 text-blue-700 border-blue-300 text-xs">STANDARD</Badge>
+                  )}
+                  {userTier === 'premium' && (
+                    <Badge className="bg-gradient-to-r from-purple-100 to-purple-200 text-purple-800 border-purple-300 text-xs font-semibold">PREMIUM</Badge>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground mb-3">
+                  {userTier === 'new' && (
+                    <>You're on the <strong>New</strong> tier: <strong>20 notifications/hour</strong>. Perfect for getting started with load alerts.</>
+                  )}
+                  {userTier === 'standard' && (
+                    <>You're on the <strong>Standard</strong> tier: <strong>50 notifications/hour</strong>. Great for regular operations.</>
+                  )}
+                  {userTier === 'premium' && (
+                    <>You're on the <strong>Premium</strong> tier: <strong>200 notifications/hour</strong>. Maximum coverage for high-volume operations.</>
+                  )}
+                </p>
+                {userTier === 'new' && (
+                  <div className="text-xs space-y-1 text-muted-foreground">
+                    <p className="flex items-center gap-1">
+                      <span style={accentColorStyle}>→</span> <strong style={accentColorStyle}>Standard</strong> gives you 50/hr for better coverage
+                    </p>
+                    <p className="flex items-center gap-1">
+                      <span className="text-purple-400">→</span> <strong className="text-purple-500">Premium</strong> gives you 200/hr for maximum alerts
+                    </p>
+                  </div>
+                )}
+                {userTier === 'standard' && (
+                  <div className="text-xs space-y-1 text-muted-foreground">
+                    <p className="flex items-center gap-1">
+                      <span className="text-purple-400">→</span> <strong className="text-purple-500">Premium</strong> gives you 200/hr (4x more) for high-volume operations
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {notificationsDisabled && (
+          <div className="mb-4 p-4 rounded-lg border bg-red-500/10 border-red-500/30">
+            <div className="flex items-center gap-2">
+              <BellOff className="h-4 w-4 text-red-400" />
+              <span className="text-sm font-medium text-red-400">Notifications Disabled</span>
+            </div>
+            <p className="text-xs text-red-300/80 mt-1">
+              All notifications are currently disabled. Contact support to re-enable.
+            </p>
+          </div>
+        )}
         
         <div className="overflow-y-auto max-h-[80vh] space-y-4">
           {/* Stats Dashboard */}
@@ -1635,21 +1782,46 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                           {exactMatchTriggers.map((trigger) => {
                           const config = trigger.trigger_config || {};
                           const matchType = config.matchType || 'exact';
-                          // Check if trigger uses distance range (new) or bid numbers (legacy)
-                          const favoriteDistanceRange = config.favoriteDistanceRange;
-                          const favoriteBidNumbers = config.favoriteBidNumbers || [];
                           
-                          // For new triggers, find favorites within the distance range
-                          // For legacy triggers, find by bid number
+                          // Priority 1: Use bid_number and route from API response (most accurate)
+                          // Priority 2: Use favoriteBidNumber from config to find favorite
+                          // Priority 3: Fall back to distance range matching (legacy)
                           let favorite = null;
-                          if (favoriteDistanceRange) {
+                          let displayBidNumber = trigger.bid_number || null;
+                          let displayRoute = trigger.route || null;
+                          
+                          if (displayBidNumber) {
+                            // Use the bid number from API response to find the favorite for additional info
+                            favorite = favorites.find(f => f.bid_number === displayBidNumber);
+                          } else if (config.favoriteBidNumber) {
+                            // Use favoriteBidNumber from config
+                            displayBidNumber = config.favoriteBidNumber;
+                            favorite = favorites.find(f => f.bid_number === config.favoriteBidNumber);
+                            if (favorite && favorite.stops) {
+                              displayRoute = favorite.stops;
+                            } else if (config.favoriteStops) {
+                              displayRoute = config.favoriteStops;
+                            }
+                          } else if (config.favoriteBidNumbers && config.favoriteBidNumbers.length > 0) {
+                            // Legacy: use first bid number from array
+                            displayBidNumber = config.favoriteBidNumbers[0];
+                            favorite = favorites.find(f => f.bid_number === displayBidNumber);
+                          } else if (config.favoriteDistanceRange) {
+                            // Fallback: find by distance range
                             favorite = favorites.find(f => 
                               f.distance !== undefined &&
-                              f.distance >= favoriteDistanceRange.minDistance &&
-                              f.distance <= favoriteDistanceRange.maxDistance
+                              f.distance >= config.favoriteDistanceRange.minDistance &&
+                              f.distance <= config.favoriteDistanceRange.maxDistance
                             );
-                          } else if (favoriteBidNumbers.length > 0) {
-                            favorite = favorites.find(f => favoriteBidNumbers.includes(f.bid_number));
+                            if (favorite) {
+                              displayBidNumber = favorite.bid_number;
+                              displayRoute = favorite.stops;
+                            }
+                          }
+                          
+                          // If we still don't have a route, try to get it from favoriteStops in config
+                          if (!displayRoute && config.favoriteStops) {
+                            displayRoute = config.favoriteStops;
                           }
                           
                           return (
@@ -1667,20 +1839,15 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                                     <Badge variant="outline" className={`text-xs ${matchType === 'exact' ? 'border-blue-400 text-blue-400' : 'border-purple-400 text-purple-400'}`}>
                                       {matchType === 'exact' ? 'Exact Match' : 'State Match'}
                                     </Badge>
-                                    {favorite && (
+                                    {displayBidNumber && (
                                       <span className="text-sm font-medium truncate">
-                                        #{favorite.bid_number}
+                                        #{displayBidNumber}
                                       </span>
                                     )}
                                   </div>
-                                  {favorite && favorite.stops && (
+                                  {displayRoute && (
                                     <p className="text-xs text-muted-foreground truncate mt-1">
-                                      {formatStops(favorite.stops)}
-                                    </p>
-                                  )}
-                                  {!favorite && trigger.route && (
-                                    <p className="text-xs text-muted-foreground truncate mt-1">
-                                      {Array.isArray(trigger.route) ? formatStops(trigger.route) : trigger.route}
+                                      {Array.isArray(displayRoute) ? formatStops(displayRoute) : typeof displayRoute === 'string' ? displayRoute : formatStops(displayRoute)}
                                     </p>
                                   )}
                                   {matchType === 'state' && config.originState && config.destinationState && (
@@ -2110,7 +2277,10 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                                             title={matchType === 'exact' 
                                               ? "Exact match notifications enabled - Click to change" 
                                               : "State match notifications enabled - Click to change"}
-                                            onClick={() => setShowMatchTypeDialog(favorite.bid_number)}
+                                            onClick={() => {
+                                              setShowMatchTypeDialog(favorite.bid_number);
+                                              setSelectedMatchType(null);
+                                            }}
                                           >
                                             <Bell className="h-3 w-3" />
                                           </Button>
@@ -2123,6 +2293,9 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                                   );
                                 }
                                 
+                                // Check if this bid already has an exact match alert
+                                const hasAlert = hasExactMatchAlert(favorite.bid_number);
+                                
                                 return (
                                   <TooltipProvider>
                                     <Tooltip>
@@ -2130,15 +2303,21 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                                         <Button
                                           variant="outline"
                                           size="sm"
-                                          onClick={() => setShowMatchTypeDialog(favorite.bid_number)}
-                                          disabled={isCreatingTrigger}
-                                          className="text-blue-400 hover:text-blue-300 hover:bg-blue-500/20 border-blue-500/30 p-1 h-7 w-7"
+                                          onClick={() => {
+                                            if (hasAlert) {
+                                              toast.error(`You already have an exact match alert active for bid #${favorite.bid_number}`);
+                                              return;
+                                            }
+                                            setShowMatchTypeDialog(favorite.bid_number);
+                                          }}
+                                          disabled={isCreatingTrigger || hasAlert}
+                                          className={`text-blue-400 hover:text-blue-300 hover:bg-blue-500/20 border-blue-500/30 p-1 h-7 w-7 ${hasAlert ? 'opacity-50 cursor-not-allowed' : ''}`}
                                         >
                                           <Bell className="h-3 w-3" />
                                         </Button>
                                       </TooltipTrigger>
                                       <TooltipContent>
-                                        <p>Enable smart alerts for this load</p>
+                                        <p>{hasAlert ? 'Exact match alert already active' : 'Enable smart alerts for this load'}</p>
                                       </TooltipContent>
                                     </Tooltip>
                                   </TooltipProvider>
@@ -2262,39 +2441,32 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                             <td className="p-3">
                               <div className="flex items-center gap-1">
                                 {(() => {
-                                  const existingTrigger = notificationTriggers.find(
-                                    (t: NotificationTrigger) => {
-                                      if (t.trigger_type !== 'exact_match') return false;
-                                      const config = t.trigger_config || {};
-                                      
-                                      // Check new distance range format
-                                      if (config.favoriteDistanceRange) {
-                                        return favorite.distance !== undefined &&
-                                          favorite.distance >= config.favoriteDistanceRange.minDistance &&
-                                          favorite.distance <= config.favoriteDistanceRange.maxDistance;
-                                      }
-                                      
-                                      // Check legacy bid number format
-                                      return config.favoriteBidNumbers?.includes(favorite.bid_number);
-                                    }
-                                  );
+                                  // Use the helper function to check for exact match alerts
+                                  const hasAlert = hasExactMatchAlert(favorite.bid_number);
                                   
                                   return (
                                     <TooltipProvider>
                                       <Tooltip>
                                         <TooltipTrigger asChild>
                                           <Button
-                                            variant={existingTrigger ? "default" : "ghost"}
+                                            variant={hasAlert ? "default" : "ghost"}
                                             size="sm"
-                                            onClick={() => setShowMatchTypeDialog(favorite.bid_number)}
-                                            disabled={isCreatingTrigger}
-                                            className={`h-7 w-7 p-0 ${existingTrigger ? 'text-blue-400 bg-blue-500/20' : 'text-blue-400 hover:text-blue-300 hover:bg-blue-500/20'}`}
+                                            onClick={() => {
+                                              if (hasAlert) {
+                                                toast.error(`You already have an exact match alert active for bid #${favorite.bid_number}`);
+                                                return;
+                                              }
+                                              setShowMatchTypeDialog(favorite.bid_number);
+                                              setSelectedMatchType(null);
+                                            }}
+                                            disabled={isCreatingTrigger || hasAlert}
+                                            className={`h-7 w-7 p-0 ${hasAlert ? 'text-blue-400 bg-blue-500/20 opacity-50 cursor-not-allowed' : 'text-blue-400 hover:text-blue-300 hover:bg-blue-500/20'}`}
                                           >
                                             <Bell className="h-3 w-3" />
                                           </Button>
                                         </TooltipTrigger>
                                         <TooltipContent>
-                                          <p>{existingTrigger ? 'Smart alerts enabled - Click to change' : 'Enable smart alerts'}</p>
+                                          <p>{hasAlert ? 'Exact match alert already active' : 'Enable smart alerts'}</p>
                                         </TooltipContent>
                                       </Tooltip>
                                     </TooltipProvider>
@@ -2446,7 +2618,15 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
         </Dialog>
 
         {/* Match Type Selection Dialog */}
-        <Dialog open={!!showMatchTypeDialog} onOpenChange={(open) => !open && setShowMatchTypeDialog(null)}>
+        <Dialog 
+          open={!!showMatchTypeDialog} 
+          onOpenChange={(open) => {
+            if (!open) {
+              setShowMatchTypeDialog(null);
+              setSelectedMatchType(null);
+            }
+          }}
+        >
           <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
@@ -2460,8 +2640,28 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
             
             {showMatchTypeDialog && (() => {
               const favorite = favorites.find(f => f.bid_number === showMatchTypeDialog);
-              const originState = favorite?.stops?.[0] ? extractStateFromStop(favorite.stops[0]) : null;
-              const destinationState = favorite?.stops?.[favorite.stops.length - 1] 
+              
+              // Safety check: if favorite not found, show error
+              if (!favorite) {
+                return (
+                  <div className="py-4 text-center">
+                    <p className="text-destructive">Favorite bid not found: {showMatchTypeDialog}</p>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setShowMatchTypeDialog(null);
+                        setSelectedMatchType(null);
+                      }}
+                      className="mt-4"
+                    >
+                      Close
+                    </Button>
+                  </div>
+                );
+              }
+              
+              const originState = favorite.stops?.[0] ? extractStateFromStop(favorite.stops[0]) : null;
+              const destinationState = favorite.stops?.[favorite.stops.length - 1] 
                 ? extractStateFromStop(favorite.stops[favorite.stops.length - 1]) 
                 : null;
               

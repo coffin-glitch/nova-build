@@ -544,78 +544,174 @@ export async function updateNotificationPreferences(
     `;
 
     if (existing.length > 0) {
-      // Update existing record
-      await sql`
-        UPDATE public.carrier_notification_preferences SET
-          email_notifications = ${preferences.emailNotifications ?? true},
-          similar_load_notifications = ${preferences.similarLoadNotifications ?? true},
-          distance_threshold_miles = ${preferences.distanceThresholdMiles ?? 50},
-          state_preferences = ${preferences.statePreferences ?? []},
-          equipment_preferences = ${preferences.equipmentPreferences ?? []},
-          min_distance = ${preferences.minDistance ?? 0},
-          max_distance = ${preferences.maxDistance ?? 2000},
-          min_match_score = ${preferences.minMatchScore ?? 70},
-          use_min_match_score_filter = ${preferences.useMinMatchScoreFilter !== false},
-          timing_relevance_days = ${preferences.timingRelevanceDays ?? 7},
-          use_timing_relevance = ${preferences.useTimingRelevance !== false},
-          prioritize_backhaul = ${preferences.prioritizeBackhaul ?? true},
-          avoid_high_competition = ${preferences.avoidHighCompetition ?? false},
-          max_competition_bids = ${preferences.maxCompetitionBids ?? 10},
-          toast_notifications = COALESCE(${preferences.toastNotifications ?? null}, toast_notifications),
-          text_notifications = COALESCE(${preferences.textNotifications ?? null}, text_notifications),
-          urgent_contact_preference = COALESCE(${preferences.urgentContactPreference ?? null}, urgent_contact_preference),
-          urgent_contact_email = COALESCE(${preferences.urgentContactEmail ?? null}, urgent_contact_email),
-          urgent_contact_phone = COALESCE(${preferences.urgentContactPhone ?? null}, urgent_contact_phone),
-          updated_at = NOW()
-        WHERE supabase_carrier_user_id = ${carrierUserId}
+      // Check if use_timing_relevance column exists
+      const columnCheck = await sql`
+        SELECT EXISTS (
+          SELECT 1 
+          FROM information_schema.columns 
+          WHERE table_name = 'carrier_notification_preferences' 
+          AND column_name = 'use_timing_relevance'
+        ) as column_exists
       `;
+      const hasUseTimingRelevance = columnCheck[0]?.column_exists === true;
+      
+      // Build update query conditionally
+      if (hasUseTimingRelevance) {
+        await sql`
+          UPDATE public.carrier_notification_preferences SET
+            email_notifications = ${preferences.emailNotifications ?? true},
+            similar_load_notifications = ${preferences.similarLoadNotifications ?? true},
+            distance_threshold_miles = ${preferences.distanceThresholdMiles ?? 50},
+            state_preferences = ${preferences.statePreferences ?? []},
+            equipment_preferences = ${preferences.equipmentPreferences ?? []},
+            min_distance = ${preferences.minDistance ?? 0},
+            max_distance = ${preferences.maxDistance ?? 2000},
+            min_match_score = ${preferences.minMatchScore ?? 70},
+            use_min_match_score_filter = ${preferences.useMinMatchScoreFilter !== false},
+            timing_relevance_days = ${preferences.timingRelevanceDays ?? 7},
+            use_timing_relevance = ${preferences.useTimingRelevance !== false},
+            prioritize_backhaul = ${preferences.prioritizeBackhaul ?? true},
+            avoid_high_competition = ${preferences.avoidHighCompetition ?? false},
+            max_competition_bids = ${preferences.maxCompetitionBids ?? 10},
+            toast_notifications = COALESCE(${preferences.toastNotifications ?? null}, toast_notifications),
+            text_notifications = COALESCE(${preferences.textNotifications ?? null}, text_notifications),
+            urgent_contact_preference = COALESCE(${preferences.urgentContactPreference ?? null}, urgent_contact_preference),
+            urgent_contact_email = COALESCE(${preferences.urgentContactEmail ?? null}, urgent_contact_email),
+            urgent_contact_phone = COALESCE(${preferences.urgentContactPhone ?? null}, urgent_contact_phone),
+            updated_at = NOW()
+          WHERE supabase_carrier_user_id = ${carrierUserId}
+        `;
+      } else {
+        // Update without use_timing_relevance column
+        await sql`
+          UPDATE public.carrier_notification_preferences SET
+            email_notifications = ${preferences.emailNotifications ?? true},
+            similar_load_notifications = ${preferences.similarLoadNotifications ?? true},
+            distance_threshold_miles = ${preferences.distanceThresholdMiles ?? 50},
+            state_preferences = ${preferences.statePreferences ?? []},
+            equipment_preferences = ${preferences.equipmentPreferences ?? []},
+            min_distance = ${preferences.minDistance ?? 0},
+            max_distance = ${preferences.maxDistance ?? 2000},
+            min_match_score = ${preferences.minMatchScore ?? 70},
+            use_min_match_score_filter = ${preferences.useMinMatchScoreFilter !== false},
+            timing_relevance_days = ${preferences.timingRelevanceDays ?? 7},
+            prioritize_backhaul = ${preferences.prioritizeBackhaul ?? true},
+            avoid_high_competition = ${preferences.avoidHighCompetition ?? false},
+            max_competition_bids = ${preferences.maxCompetitionBids ?? 10},
+            toast_notifications = COALESCE(${preferences.toastNotifications ?? null}, toast_notifications),
+            text_notifications = COALESCE(${preferences.textNotifications ?? null}, text_notifications),
+            urgent_contact_preference = COALESCE(${preferences.urgentContactPreference ?? null}, urgent_contact_preference),
+            urgent_contact_email = COALESCE(${preferences.urgentContactEmail ?? null}, urgent_contact_email),
+            urgent_contact_phone = COALESCE(${preferences.urgentContactPhone ?? null}, urgent_contact_phone),
+            updated_at = NOW()
+          WHERE supabase_carrier_user_id = ${carrierUserId}
+        `;
+      }
     } else {
-      // Insert new record
-      await sql`
-        INSERT INTO public.carrier_notification_preferences (
-          supabase_carrier_user_id,
-          email_notifications,
-          similar_load_notifications,
-          distance_threshold_miles,
-          state_preferences,
-          equipment_preferences,
-          min_distance,
-          max_distance,
-          min_match_score,
-          use_min_match_score_filter,
-          timing_relevance_days,
-          use_timing_relevance,
-          prioritize_backhaul,
-          avoid_high_competition,
-          max_competition_bids,
-          toast_notifications,
-          text_notifications,
-          urgent_contact_preference,
-          urgent_contact_email,
-          urgent_contact_phone
-        ) VALUES (
-          ${carrierUserId},
-          ${preferences.emailNotifications ?? true},
-          ${preferences.similarLoadNotifications ?? true},
-          ${preferences.distanceThresholdMiles ?? 50},
-          ${preferences.statePreferences ?? []},
-          ${preferences.equipmentPreferences ?? []},
-          ${preferences.minDistance ?? 0},
-          ${preferences.maxDistance ?? 2000},
-          ${preferences.minMatchScore ?? 70},
-          ${preferences.useMinMatchScoreFilter !== false},
-          ${preferences.timingRelevanceDays ?? 7},
-          ${preferences.useTimingRelevance !== false},
-          ${preferences.prioritizeBackhaul ?? true},
-          ${preferences.avoidHighCompetition ?? false},
-          ${preferences.maxCompetitionBids ?? 10},
-          ${preferences.toastNotifications ?? true},
-          ${preferences.textNotifications ?? false},
-          ${preferences.urgentContactPreference ?? 'email'},
-          ${preferences.urgentContactEmail ?? true},
-          ${preferences.urgentContactPhone ?? false}
-        )
+      // Check if use_timing_relevance column exists before insert
+      const columnCheck = await sql`
+        SELECT EXISTS (
+          SELECT 1 
+          FROM information_schema.columns 
+          WHERE table_name = 'carrier_notification_preferences' 
+          AND column_name = 'use_timing_relevance'
+        ) as column_exists
       `;
+      const hasUseTimingRelevance = columnCheck[0]?.column_exists === true;
+      
+      // Insert new record
+      if (hasUseTimingRelevance) {
+        await sql`
+          INSERT INTO public.carrier_notification_preferences (
+            supabase_carrier_user_id,
+            email_notifications,
+            similar_load_notifications,
+            distance_threshold_miles,
+            state_preferences,
+            equipment_preferences,
+            min_distance,
+            max_distance,
+            min_match_score,
+            use_min_match_score_filter,
+            timing_relevance_days,
+            use_timing_relevance,
+            prioritize_backhaul,
+            avoid_high_competition,
+            max_competition_bids,
+            toast_notifications,
+            text_notifications,
+            urgent_contact_preference,
+            urgent_contact_email,
+            urgent_contact_phone
+          ) VALUES (
+            ${carrierUserId},
+            ${preferences.emailNotifications ?? true},
+            ${preferences.similarLoadNotifications ?? true},
+            ${preferences.distanceThresholdMiles ?? 50},
+            ${preferences.statePreferences ?? []},
+            ${preferences.equipmentPreferences ?? []},
+            ${preferences.minDistance ?? 0},
+            ${preferences.maxDistance ?? 2000},
+            ${preferences.minMatchScore ?? 70},
+            ${preferences.useMinMatchScoreFilter !== false},
+            ${preferences.timingRelevanceDays ?? 7},
+            ${preferences.useTimingRelevance !== false},
+            ${preferences.prioritizeBackhaul ?? true},
+            ${preferences.avoidHighCompetition ?? false},
+            ${preferences.maxCompetitionBids ?? 10},
+            ${preferences.toastNotifications ?? true},
+            ${preferences.textNotifications ?? false},
+            ${preferences.urgentContactPreference ?? 'email'},
+            ${preferences.urgentContactEmail ?? true},
+            ${preferences.urgentContactPhone ?? false}
+          )
+        `;
+      } else {
+        // Insert without use_timing_relevance column
+        await sql`
+          INSERT INTO public.carrier_notification_preferences (
+            supabase_carrier_user_id,
+            email_notifications,
+            similar_load_notifications,
+            distance_threshold_miles,
+            state_preferences,
+            equipment_preferences,
+            min_distance,
+            max_distance,
+            min_match_score,
+            use_min_match_score_filter,
+            timing_relevance_days,
+            prioritize_backhaul,
+            avoid_high_competition,
+            max_competition_bids,
+            toast_notifications,
+            text_notifications,
+            urgent_contact_preference,
+            urgent_contact_email,
+            urgent_contact_phone
+          ) VALUES (
+            ${carrierUserId},
+            ${preferences.emailNotifications ?? true},
+            ${preferences.similarLoadNotifications ?? true},
+            ${preferences.distanceThresholdMiles ?? 50},
+            ${preferences.statePreferences ?? []},
+            ${preferences.equipmentPreferences ?? []},
+            ${preferences.minDistance ?? 0},
+            ${preferences.maxDistance ?? 2000},
+            ${preferences.minMatchScore ?? 70},
+            ${preferences.useMinMatchScoreFilter !== false},
+            ${preferences.timingRelevanceDays ?? 7},
+            ${preferences.prioritizeBackhaul ?? true},
+            ${preferences.avoidHighCompetition ?? false},
+            ${preferences.maxCompetitionBids ?? 10},
+            ${preferences.toastNotifications ?? true},
+            ${preferences.textNotifications ?? false},
+            ${preferences.urgentContactPreference ?? 'email'},
+            ${preferences.urgentContactEmail ?? true},
+            ${preferences.urgentContactPhone ?? false}
+          )
+        `;
+      }
     }
 
     return { success: true };

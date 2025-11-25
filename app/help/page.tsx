@@ -34,7 +34,7 @@ import { Input } from "@/components/ui/input";
 import Link from "next/link";
 
 export default function HelpPage() {
-  const { accentColor } = useAccentColor();
+  const { accentColor, accentColorStyle, accentBgStyle } = useAccentColor();
   const [searchQuery, setSearchQuery] = useState("");
   const [openFaq, setOpenFaq] = useState<number | null>(null);
 
@@ -245,8 +245,8 @@ export default function HelpPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <GlassCard className="hover:scale-105 transition-transform cursor-pointer group">
               <Link href="/contact" className="flex flex-col items-center text-center space-y-3">
-                <div className="w-12 h-12 rounded-full bg-primary/10 dark:bg-primary/20 flex items-center justify-center group-hover:bg-primary/20 dark:group-hover:bg-primary/30 transition-colors">
-                  <MessageSquare className="w-6 h-6 text-primary" />
+                <div className="w-12 h-12 rounded-full flex items-center justify-center transition-colors" style={{ backgroundColor: `${accentColor}15` }}>
+                  <MessageSquare className="w-6 h-6" style={accentColorStyle} />
                 </div>
                 <div>
                   <h3 className="font-semibold text-foreground">Contact Support</h3>
@@ -257,8 +257,8 @@ export default function HelpPage() {
 
             <GlassCard className="hover:scale-105 transition-transform cursor-pointer group">
               <Link href="/carrier/profile" className="flex flex-col items-center text-center space-y-3">
-                <div className="w-12 h-12 rounded-full bg-primary/10 dark:bg-primary/20 flex items-center justify-center group-hover:bg-primary/20 dark:group-hover:bg-primary/30 transition-colors">
-                  <Settings className="w-6 h-6 text-primary" />
+                <div className="w-12 h-12 rounded-full flex items-center justify-center transition-colors" style={{ backgroundColor: `${accentColor}15` }}>
+                  <Settings className="w-6 h-6" style={accentColorStyle} />
                 </div>
                 <div>
                   <h3 className="font-semibold text-foreground">Account Settings</h3>
@@ -269,8 +269,8 @@ export default function HelpPage() {
 
             <GlassCard className="hover:scale-105 transition-transform cursor-pointer group">
               <Link href="/privacy" className="flex flex-col items-center text-center space-y-3">
-                <div className="w-12 h-12 rounded-full bg-primary/10 dark:bg-primary/20 flex items-center justify-center group-hover:bg-primary/20 dark:group-hover:bg-primary/30 transition-colors">
-                  <Shield className="w-6 h-6 text-primary" />
+                <div className="w-12 h-12 rounded-full flex items-center justify-center transition-colors" style={{ backgroundColor: `${accentColor}15` }}>
+                  <Shield className="w-6 h-6" style={accentColorStyle} />
                 </div>
                 <div>
                   <h3 className="font-semibold text-foreground">Privacy Policy</h3>
@@ -281,8 +281,8 @@ export default function HelpPage() {
 
             <GlassCard className="hover:scale-105 transition-transform cursor-pointer group">
               <Link href="/terms" className="flex flex-col items-center text-center space-y-3">
-                <div className="w-12 h-12 rounded-full bg-primary/10 dark:bg-primary/20 flex items-center justify-center group-hover:bg-primary/20 dark:group-hover:bg-primary/30 transition-colors">
-                  <FileText className="w-6 h-6 text-primary" />
+                <div className="w-12 h-12 rounded-full flex items-center justify-center transition-colors" style={{ backgroundColor: `${accentColor}15` }}>
+                  <FileText className="w-6 h-6" style={accentColorStyle} />
                 </div>
                 <div>
                   <h3 className="font-semibold text-foreground">Terms of Service</h3>
@@ -301,7 +301,7 @@ export default function HelpPage() {
                   <GlassCard key={categoryIndex}>
                     <div className="space-y-4">
                       <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
-                        <Icon className="w-6 h-6 text-primary" />
+                        <Icon className="w-6 h-6" style={accentColorStyle} />
                         {category.title}
                       </h2>
                       <div className="space-y-3">
@@ -342,7 +342,7 @@ export default function HelpPage() {
             <GlassCard>
               <div className="space-y-4">
                 <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
-                  <Search className="w-6 h-6 text-primary" />
+                  <Search className="w-6 h-6" style={accentColorStyle} />
                   Search Results
                   <span className="text-lg font-normal text-muted-foreground">
                     ({filteredFaqs.length} {filteredFaqs.length === 1 ? 'result' : 'results'})
@@ -364,7 +364,7 @@ export default function HelpPage() {
                           className="border border-border/50 rounded-lg overflow-hidden bg-background/30"
                         >
                           <div className="p-3 bg-muted/20 border-b border-border/50">
-                            <span className="text-xs font-medium text-primary">{faq.category}</span>
+                            <span className="text-xs font-medium" style={accentColorStyle}>{faq.category}</span>
                           </div>
                           <button
                             onClick={() => toggleFaq(index)}
@@ -395,7 +395,7 @@ export default function HelpPage() {
           <GlassCard className="bg-primary/10 dark:bg-primary/5 border-primary/20 dark:border-primary/10">
             <div className="space-y-4">
               <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
-                <MessageSquare className="w-6 h-6 text-primary" />
+                <MessageSquare className="w-6 h-6" style={accentColorStyle} />
                 Still Need Help?
               </h2>
               <p className="text-muted-foreground leading-relaxed">
@@ -404,11 +404,11 @@ export default function HelpPage() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
                 <div className="bg-background/50 dark:bg-background/30 rounded-lg p-4 space-y-2">
                   <div className="flex items-center gap-2 mb-2">
-                    <Mail className="w-5 h-5 text-primary" />
+                    <Mail className="w-5 h-5" style={accentColorStyle} />
                     <h3 className="font-semibold text-foreground">Email Support</h3>
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    <a href="mailto:support@novafreight.io" className="text-primary hover:underline">
+                    <a href="mailto:support@novafreight.io" className="hover:underline" style={accentColorStyle}>
                       support@novafreight.io
                     </a>
                   </p>
@@ -418,11 +418,11 @@ export default function HelpPage() {
                 </div>
                 <div className="bg-background/50 dark:bg-background/30 rounded-lg p-4 space-y-2">
                   <div className="flex items-center gap-2 mb-2">
-                    <Phone className="w-5 h-5 text-primary" />
+                    <Phone className="w-5 h-5" style={accentColorStyle} />
                     <h3 className="font-semibold text-foreground">Phone Support</h3>
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    <a href="tel:+18005551234" className="text-primary hover:underline">
+                    <a href="tel:+18005551234" className="hover:underline" style={accentColorStyle}>
                       (800) 555-1234
                     </a>
                   </p>
@@ -432,7 +432,7 @@ export default function HelpPage() {
                 </div>
                 <div className="bg-background/50 dark:bg-background/30 rounded-lg p-4 space-y-2">
                   <div className="flex items-center gap-2 mb-2">
-                    <Calendar className="w-5 h-5 text-primary" />
+                    <Calendar className="w-5 h-5" style={accentColorStyle} />
                     <h3 className="font-semibold text-foreground">Live Chat</h3>
                   </div>
                   <p className="text-sm text-muted-foreground">
@@ -445,7 +445,7 @@ export default function HelpPage() {
               </div>
               <div className="mt-6">
                 <Link href="/contact">
-                  <Button className="w-full md:w-auto">
+                  <Button className="w-full md:w-auto" style={accentBgStyle}>
                     <MessageSquare className="w-4 h-4 mr-2" />
                     Contact Support
                   </Button>

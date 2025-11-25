@@ -54,7 +54,8 @@ export async function GET(
 
     const result = await sql`
       SELECT 
-        COALESCE(cp.notification_tier, 'standard') as tier
+        COALESCE(cp.notification_tier, 'new') as tier,
+        COALESCE(cp.notifications_disabled, false) as notifications_disabled
       FROM carrier_profiles cp
       WHERE cp.supabase_user_id = ${userId}
       LIMIT 1
@@ -73,7 +74,8 @@ export async function GET(
     
     const response = NextResponse.json({ 
       ok: true, 
-      tier: result[0].tier || 'standard' 
+      tier: result[0].tier || 'new',
+      notifications_disabled: result[0].notifications_disabled || false
     });
     
     return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
@@ -147,7 +149,7 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const { tier } = body;
+    const { tier, notifications_disabled } = body;
 
     // Input validation for tier
     const tierValidation = validateInput(
@@ -166,25 +168,54 @@ export async function PUT(
       return addSecurityHeaders(response, request);
     }
 
-    // Update tier
-    await sql`
-      UPDATE carrier_profiles 
-      SET notification_tier = ${tier}, updated_at = NOW()
-      WHERE supabase_user_id = ${userId}
+    // Check if notifications_disabled column exists
+    const columnCheck = await sql`
+      SELECT EXISTS (
+        SELECT 1 
+        FROM information_schema.columns 
+        WHERE table_name = 'carrier_profiles' 
+        AND column_name = 'notifications_disabled'
+      ) as column_exists
     `;
+    const hasNotificationsDisabled = columnCheck[0]?.column_exists === true;
+
+    // Update tier and optionally notifications_disabled
+    if (hasNotificationsDisabled && typeof notifications_disabled === 'boolean') {
+      await sql`
+        UPDATE carrier_profiles 
+        SET notification_tier = ${tier}, 
+            notifications_disabled = ${notifications_disabled},
+            updated_at = NOW()
+        WHERE supabase_user_id = ${userId}
+      `;
+    } else {
+      await sql`
+        UPDATE carrier_profiles 
+        SET notification_tier = ${tier}, updated_at = NOW()
+        WHERE supabase_user_id = ${userId}
+      `;
+    }
 
     // CRITICAL: Invalidate Redis cache so new tier takes effect immediately
     await redisConnection.del(`user_tier:${userId}`);
+    await redisConnection.del(`notifications_disabled:${userId}`);
     
     // Clear other related caches
     await clearCarrierRelatedCaches(userId);
 
-    logSecurityEvent('carrier_tier_updated', adminUserId, { carrierUserId: userId, newTier: tier });
+    logSecurityEvent('carrier_tier_updated', adminUserId, { 
+      carrierUserId: userId, 
+      newTier: tier,
+      notifications_disabled: typeof notifications_disabled === 'boolean' ? notifications_disabled : undefined
+    });
     
     const response = NextResponse.json({ 
       ok: true, 
       tier,
-      message: `Tier updated to ${tier}` 
+      notifications_disabled: typeof notifications_disabled === 'boolean' ? notifications_disabled : false,
+      message: notifications_disabled 
+        ? `Tier updated to ${tier} and notifications disabled`
+        : `Tier updated to ${tier}`
     });
     
     return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);

@@ -21,7 +21,7 @@ import React, { useState } from "react";
 import { toast } from "sonner";
 
 export default function ContactPageClient() {
-  const { accentColor } = useAccentColor();
+  const { accentColor, accentColorStyle, accentBgStyle } = useAccentColor();
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -103,8 +103,8 @@ export default function ContactPageClient() {
             <GlassCard>
               <div className="space-y-6">
                 <div className="flex items-center gap-3 mb-6">
-                  <div className="w-12 h-12 rounded-full bg-primary/10 dark:bg-primary/20 flex items-center justify-center">
-                    <MessageSquare className="w-6 h-6 text-primary" />
+                  <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ backgroundColor: `${accentColor}15` }}>
+                    <MessageSquare className="w-6 h-6" style={accentColorStyle} />
                   </div>
                   <div>
                     <h2 className="text-2xl font-bold text-foreground">Send us a Message</h2>
@@ -179,6 +179,7 @@ export default function ContactPageClient() {
                     disabled={isSubmitting}
                     className="w-full"
                     size="lg"
+                    style={accentBgStyle}
                   >
                     {isSubmitting ? (
                       <>
@@ -203,8 +204,8 @@ export default function ContactPageClient() {
             <GlassCard>
               <div className="space-y-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-primary/10 dark:bg-primary/20 flex items-center justify-center">
-                    <Clock className="w-5 h-5 text-primary" />
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: `${accentColor}15` }}>
+                    <Clock className="w-5 h-5" style={accentColorStyle} />
                   </div>
                   <h3 className="text-lg font-semibold text-foreground">Support Hours</h3>
                 </div>
@@ -229,37 +230,37 @@ export default function ContactPageClient() {
             <GlassCard>
               <div className="space-y-4">
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 rounded-full bg-primary/10 dark:bg-primary/20 flex items-center justify-center">
-                    <Users className="w-5 h-5 text-primary" />
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: `${accentColor}15` }}>
+                    <Users className="w-5 h-5" style={accentColorStyle} />
                   </div>
                   <h3 className="text-lg font-semibold text-foreground">Get in Touch</h3>
                 </div>
                 <div className="space-y-4">
                   <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors">
-                    <div className="w-10 h-10 rounded-full bg-primary/10 dark:bg-primary/20 flex items-center justify-center flex-shrink-0">
-                      <Phone className="w-5 h-5 text-primary" />
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${accentColor}15` }}>
+                      <Phone className="w-5 h-5" style={accentColorStyle} />
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-foreground">Phone Support</p>
-                      <a href="tel:+18005551234" className="text-sm text-primary hover:underline">
+                      <a href="tel:+18005551234" className="text-sm hover:underline" style={accentColorStyle}>
                         (800) 555-1234
                       </a>
                     </div>
                   </div>
                   <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors">
-                    <div className="w-10 h-10 rounded-full bg-primary/10 dark:bg-primary/20 flex items-center justify-center flex-shrink-0">
-                      <Mail className="w-5 h-5 text-primary" />
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${accentColor}15` }}>
+                      <Mail className="w-5 h-5" style={accentColorStyle} />
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-foreground">Email</p>
-                      <a href="mailto:support@novafreight.io" className="text-sm text-primary hover:underline break-all">
+                      <a href="mailto:support@novafreight.io" className="text-sm hover:underline break-all" style={accentColorStyle}>
                         support@novafreight.io
                       </a>
                     </div>
                   </div>
                   <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors">
-                    <div className="w-10 h-10 rounded-full bg-primary/10 dark:bg-primary/20 flex items-center justify-center flex-shrink-0">
-                      <MessageSquare className="w-5 h-5 text-primary" />
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${accentColor}15` }}>
+                      <MessageSquare className="w-5 h-5" style={accentColorStyle} />
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-foreground">Live Chat</p>
@@ -296,16 +297,16 @@ export default function ContactPageClient() {
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold text-foreground">Quick Links</h3>
                 <div className="space-y-2">
-                  <a href="/help" className="block text-sm text-primary hover:underline py-2">
+                  <a href="/help" className="block text-sm hover:underline py-2" style={accentColorStyle}>
                     Help Center & FAQs
                   </a>
-                  <a href="/privacy" className="block text-sm text-primary hover:underline py-2">
+                  <a href="/privacy" className="block text-sm hover:underline py-2" style={accentColorStyle}>
                     Privacy Policy
                   </a>
-                  <a href="/terms" className="block text-sm text-primary hover:underline py-2">
+                  <a href="/terms" className="block text-sm hover:underline py-2" style={accentColorStyle}>
                     Terms of Service
                   </a>
-                  <a href="/gdpr" className="block text-sm text-primary hover:underline py-2">
+                  <a href="/gdpr" className="block text-sm hover:underline py-2" style={accentColorStyle}>
                     GDPR Rights
                   </a>
                 </div>

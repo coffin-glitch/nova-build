@@ -13,8 +13,8 @@ function getOpenAIClient(): OpenAI {
     throw new Error("OpenAI API key not configured");
   }
   return new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-  });
+  apiKey: process.env.OPENAI_API_KEY,
+});
 }
 
 // Define available functions the AI can call

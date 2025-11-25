@@ -7,7 +7,7 @@ import { FileText, Scale, AlertTriangle, Gavel, Users, CreditCard, Shield, Mail,
 import { cn } from "@/lib/utils";
 
 export default function TermsOfServicePage() {
-  const { accentColor } = useAccentColor();
+  const { accentColor, accentColorStyle } = useAccentColor();
 
   const GlassCard = ({ children, className }: { children: React.ReactNode; className?: string }) => (
     <div
@@ -50,7 +50,7 @@ export default function TermsOfServicePage() {
           <GlassCard>
             <div className="space-y-4">
               <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
-                <FileText className="w-6 h-6 text-primary" />
+                <FileText className="w-6 h-6" style={accentColorStyle} />
                 1. Agreement to Terms
               </h2>
               <p className="text-muted-foreground leading-relaxed">
@@ -66,7 +66,7 @@ export default function TermsOfServicePage() {
           <GlassCard>
             <div className="space-y-4">
               <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
-                <Users className="w-6 h-6 text-primary" />
+                <Users className="w-6 h-6" style={accentColorStyle} />
                 2. Account Registration and Eligibility
               </h2>
               <div className="space-y-3">
@@ -109,7 +109,7 @@ export default function TermsOfServicePage() {
           <GlassCard>
             <div className="space-y-4">
               <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
-                <CheckCircle className="w-6 h-6 text-primary" />
+                <CheckCircle className="w-6 h-6" style={accentColorStyle} />
                 3. Use of Service
               </h2>
               <div className="space-y-3">
@@ -153,7 +153,7 @@ export default function TermsOfServicePage() {
           <GlassCard>
             <div className="space-y-4">
               <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
-                <CreditCard className="w-6 h-6 text-primary" />
+                <CreditCard className="w-6 h-6" style={accentColorStyle} />
                 4. Transactions, Payments, and Fees
               </h2>
               <div className="space-y-3">
@@ -195,7 +195,7 @@ export default function TermsOfServicePage() {
           <GlassCard>
             <div className="space-y-4">
               <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
-                <Scale className="w-6 h-6 text-primary" />
+                <Scale className="w-6 h-6" style={accentColorStyle} />
                 5. Intellectual Property
               </h2>
               <div className="space-y-3">
@@ -225,7 +225,7 @@ export default function TermsOfServicePage() {
           <GlassCard>
             <div className="space-y-4">
               <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
-                <AlertTriangle className="w-6 h-6 text-primary" />
+                <AlertTriangle className="w-6 h-6" style={accentColorStyle} />
                 6. Disclaimers and Limitations of Liability
               </h2>
               <div className="space-y-3">
@@ -273,7 +273,7 @@ export default function TermsOfServicePage() {
           <GlassCard>
             <div className="space-y-4">
               <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
-                <Shield className="w-6 h-6 text-primary" />
+                <Shield className="w-6 h-6" style={accentColorStyle} />
                 7. Indemnification
               </h2>
               <p className="text-muted-foreground leading-relaxed">
@@ -292,7 +292,7 @@ export default function TermsOfServicePage() {
           <GlassCard>
             <div className="space-y-4">
               <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
-                <Ban className="w-6 h-6 text-primary" />
+                <Ban className="w-6 h-6" style={accentColorStyle} />
                 8. Termination
               </h2>
               <div className="space-y-3">
@@ -322,7 +322,7 @@ export default function TermsOfServicePage() {
           <GlassCard>
             <div className="space-y-4">
               <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
-                <Gavel className="w-6 h-6 text-primary" />
+                <Gavel className="w-6 h-6" style={accentColorStyle} />
                 9. Governing Law and Dispute Resolution
               </h2>
               <div className="space-y-3">
@@ -346,7 +346,7 @@ export default function TermsOfServicePage() {
           <GlassCard>
             <div className="space-y-4">
               <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
-                <TrendingUp className="w-6 h-6 text-primary" />
+                <TrendingUp className="w-6 h-6" style={accentColorStyle} />
                 10. Changes to Terms
               </h2>
               <p className="text-muted-foreground leading-relaxed">
@@ -368,7 +368,7 @@ export default function TermsOfServicePage() {
           <GlassCard className="bg-primary/10 dark:bg-primary/5 border-primary/20 dark:border-primary/10">
             <div className="space-y-4">
               <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
-                <Mail className="w-6 h-6 text-primary" />
+                <Mail className="w-6 h-6" style={accentColorStyle} />
                 11. Contact Us
               </h2>
               <p className="text-muted-foreground leading-relaxed">
@@ -377,10 +377,10 @@ export default function TermsOfServicePage() {
               <div className="bg-background/50 dark:bg-background/30 rounded-lg p-4 space-y-2">
                 <p className="text-foreground font-medium">NOVA Build</p>
                 <p className="text-muted-foreground">
-                  Email: <a href="mailto:legal@novafreight.io" className="text-primary hover:underline">legal@novafreight.io</a>
+                  Email: <a href="mailto:legal@novafreight.io" className="hover:underline" style={accentColorStyle}>legal@novafreight.io</a>
                 </p>
                 <p className="text-muted-foreground">
-                  Website: <a href="https://novafreight.io" className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">novafreight.io</a>
+                  Website: <a href="https://novafreight.io" className="hover:underline" style={accentColorStyle} target="_blank" rel="noopener noreferrer">novafreight.io</a>
                 </p>
               </div>
             </div>

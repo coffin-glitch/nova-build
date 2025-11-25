@@ -20,7 +20,7 @@ export default function VerifyEmailPage() {
   const { supabase } = useSupabase();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { accentColor } = useAccentColor();
+  const { accentColor, accentColorStyle, accentBgStyle } = useAccentColor();
   const { theme } = useTheme();
   const [email, setEmail] = useState<string | null>(null);
   const [checkingStatus, setCheckingStatus] = useState(true);
@@ -169,8 +169,9 @@ export default function VerifyEmailPage() {
                     className="w-full"
                     variant="outline"
                     disabled={!email}
+                    style={{ borderColor: accentColor }}
                   >
-                    <Mail className="h-4 w-4 mr-2" />
+                    <Mail className="h-4 w-4 mr-2" style={accentColorStyle} />
                     Resend Verification Email
                   </Button>
 
