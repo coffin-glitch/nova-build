@@ -16,6 +16,24 @@ export async function GET(request: NextRequest) {
     }
     const userId = auth.userId;
     
+    // Check rate limit for authenticated read operation
+    const rateLimit = await checkApiRateLimit(request, {
+      userId,
+      routeType: 'readOnly'
+    });
+
+    if (!rateLimit.allowed) {
+      const response = NextResponse.json(
+        {
+          error: 'Rate limit exceeded',
+          message: `Too many requests. Please try again after ${rateLimit.retryAfter} seconds.`,
+          retryAfter: rateLimit.retryAfter
+        },
+        { status: 429 }
+      );
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
+    }
+    
     // Get carrier profile from database (Supabase-only)
     const profiles = await sql`
       SELECT 
