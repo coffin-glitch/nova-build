@@ -13,7 +13,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { Job } from 'bullmq';
 import 'dotenv/config';
-import { shouldTriggerNotification, type AdvancedNotificationPreferences } from '../lib/advanced-notification-preferences';
 import sql from '../lib/db';
 import {
   BackhaulNotificationTemplate,
@@ -585,8 +584,8 @@ async function processSimilarLoadTrigger(
     // Get load details for email
     const loadDetails = await getLoadDetails(load.bid_number);
     
-    // Use a valid trigger ID (0 for virtual triggers with id: -1)
-    const triggerId = trigger.id > 0 ? trigger.id : 0;
+    // Use NULL for virtual triggers (id: -1) since they don't exist in the database
+    const triggerId = trigger.id > 0 ? trigger.id : null;
     
     await sendNotification({
       carrierUserId: userId,
@@ -1175,7 +1174,7 @@ async function sendNotification({
   matchType,
 }: {
   carrierUserId: string;
-  triggerId: number;
+  triggerId: number | null; // Allow null for virtual triggers
   notificationType: string;
   bidNumber: string;
   message: string;
