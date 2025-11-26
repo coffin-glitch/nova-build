@@ -59,7 +59,8 @@ BEGIN
         -- If state preferences are provided (either from table or parameter), check if stops match
         (cp.states = ARRAY[]::TEXT[] AND (p_state_preferences IS NULL OR array_length(p_state_preferences, 1) = 0)) OR
         -- Check if any stop contains any of the preferred states
-        EXISTS (
+        -- Only process if stops is a JSONB array (not null, not scalar)
+        (tb.stops IS NOT NULL AND jsonb_typeof(tb.stops) = 'array' AND EXISTS (
             SELECT 1 
             FROM jsonb_array_elements_text(tb.stops) AS stop_text
             WHERE (
@@ -74,7 +75,7 @@ BEGIN
                     WHERE stop_text ILIKE '%' || param_state || '%'
                 ))
             )
-        )
+        ))
     )
     AND ABS(tb.distance_miles - fr.distance_miles) <= cp.dist_threshold
     ORDER BY similarity_score DESC
