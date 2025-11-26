@@ -479,9 +479,13 @@ async function processSimilarLoadTrigger(
     LIMIT 5
   `;
 
+  console.log(`[SimilarLoad] Found ${similarLoads.length} potential matches from find_similar_loads function`);
+
   let count = 0;
 
   for (const load of similarLoads) {
+    console.log(`[SimilarLoad] Processing load ${load.bid_number}, similarity_score: ${load.similarity_score}`);
+    
     // Check if bid is still active
     const loadBid = await sql`
       SELECT received_at
@@ -490,14 +494,20 @@ async function processSimilarLoadTrigger(
       LIMIT 1
     `;
     
-    if (loadBid.length === 0) continue;
+    if (loadBid.length === 0) {
+      console.log(`[SimilarLoad] Bid ${load.bid_number} not found in telegram_bids, skipping`);
+      continue;
+    }
     
     const bidReceivedAt = new Date(loadBid[0].received_at);
     const now = new Date();
     const minutesSinceReceived = Math.floor((now.getTime() - bidReceivedAt.getTime()) / (1000 * 60));
     const minutesRemaining = 25 - minutesSinceReceived;
     
-    if (minutesRemaining <= 0) continue;
+    if (minutesRemaining <= 0) {
+      console.log(`[SimilarLoad] Bid ${load.bid_number} expired (${minutesSinceReceived} minutes old), skipping`);
+      continue;
+    }
     
     // Check notification history
     const notificationHistory = await sql`
@@ -514,17 +524,26 @@ async function processSimilarLoadTrigger(
       (notificationHistory.length > 0 && 
        new Date(notificationHistory[0].sent_at).getTime() < now.getTime() - (8 * 60 * 1000));
     
-    if (!shouldNotify) continue;
+    if (!shouldNotify) {
+      console.log(`[SimilarLoad] Already notified for bid ${load.bid_number} recently, skipping`);
+      continue;
+    }
 
     // Check if should trigger based on advanced preferences
-    if (preferences) {
-      const shouldTrigger = shouldTriggerNotification(
-        load, // This is actually a bid from telegram_bids table
-        preferences as AdvancedNotificationPreferences,
-        favorites
-      );
+    if (!preferences) {
+      console.log(`[SimilarLoad] No preferences found for user ${userId}, skipping`);
+      continue;
+    }
+    
+    const shouldTrigger = shouldTriggerNotification(
+      load, // This is actually a bid from telegram_bids table
+      preferences as AdvancedNotificationPreferences,
+      favorites
+    );
 
-      if (shouldTrigger.shouldNotify) {
+    console.log(`[SimilarLoad] shouldTrigger check for ${load.bid_number}: shouldNotify=${shouldTrigger.shouldNotify}, matchScore=${shouldTrigger.matchScore || load.similarity_score}`);
+
+    if (shouldTrigger.shouldNotify) {
         // Build detailed message with score breakdown
         // Note: All bids use the same equipment, so equipment score is not shown
         let message = `High-match bid found! ${load.bid_number} - ${load.distance_miles}mi, ${load.tag}. Match: ${Math.round(shouldTrigger.matchScore || load.similarity_score)}%.`;
