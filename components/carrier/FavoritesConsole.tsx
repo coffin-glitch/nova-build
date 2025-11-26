@@ -2972,7 +2972,6 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
             )}
           </DialogContent>
         </Dialog>
-      </DialogContent>
       
       {/* State Preference Selection Dialog */}
       <Dialog open={showStatePrefDialog} onOpenChange={setShowStatePrefDialog}>
