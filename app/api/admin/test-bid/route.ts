@@ -131,15 +131,19 @@ export async function POST(request: NextRequest) {
       
       const queue = hasUrgent ? urgentNotificationQueue : notificationQueue;
       
+      const triggerData = triggers.map(t => ({
+        id: t.id,
+        triggerType: t.trigger_type,
+        triggerConfig: t.trigger_config,
+      }));
+      
+      console.log(`[Admin Test Bid] Enqueueing job for user ${userId} with ${triggers.length} triggers: ${triggers.map(t => t.trigger_type).join(', ')}`);
+      
       await queue.add(
         `process-user-${userId}`,
         {
           userId,
-          triggers: triggers.map(t => ({
-            id: t.id,
-            triggerType: t.trigger_type,
-            triggerConfig: t.trigger_config,
-          })),
+          triggers: triggerData,
         },
         {
           priority: hasUrgent ? 10 : 5,
