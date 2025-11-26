@@ -469,6 +469,7 @@ async function processSimilarLoadTrigger(
 
   // For state preference notifications, we simply check if any bid's origin state matches the user's state preferences
   // This doesn't require favorites - just match origin states
+  // IMPORTANT: Only check the state part (after comma), not the city part
   const statePrefBids = await sql`
     SELECT 
       tb.bid_number,
@@ -491,7 +492,15 @@ async function processSimilarLoadTrigger(
         WHERE EXISTS (
           SELECT 1 
           FROM unnest(${statePreferences}::TEXT[]) AS pref_state
-          WHERE stop_text ILIKE '%' || pref_state || '%'
+          -- Extract state from stop_text (after comma) and match only the state part
+          -- Pattern: "CITY, STATE" or "CITY, STATE ZIP" - extract STATE part
+          WHERE (
+            -- Match state after comma: ", STATE" or ", STATE "
+            stop_text ~* (',\s*' || pref_state || '(\s|$)')
+            OR
+            -- Match state at end if no comma: "CITY STATE" (less common)
+            stop_text ~* ('\s+' || pref_state || '$')
+          )
         )
         LIMIT 1
       )
@@ -574,8 +583,10 @@ async function processSimilarLoadTrigger(
     }
     
     // Build message for state preference match
+    // IMPORTANT: Only check if the state part (after comma) matches, not the city
+    const originStateFromStop = extractStateFromStop(origin);
     const matchedStates = statePreferences.filter(state => 
-      origin.toUpperCase().includes(state.toUpperCase())
+      originStateFromStop && originStateFromStop.toUpperCase() === state.toUpperCase()
     );
     const message = `State preference match! ${load.bid_number} - ${origin} → ${destination} (${matchedStates.join(', ')} match)`;
     

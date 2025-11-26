@@ -1,11 +1,11 @@
+import {
+  filterRelevantStatePreferenceUsers,
+  filterRelevantTriggers,
+  getBidInfoForFiltering
+} from '@/lib/bid-filtering';
 import sql from '@/lib/db';
 import { notificationQueue, urgentNotificationQueue } from '@/lib/notification-queue';
 import { NextRequest, NextResponse } from "next/server";
-import { 
-  getBidInfoForFiltering, 
-  filterRelevantTriggers, 
-  filterRelevantStatePreferenceUsers 
-} from '@/lib/bid-filtering';
 
 /**
  * Webhook endpoint to trigger notification processing when a new bid is inserted

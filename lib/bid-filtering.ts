@@ -141,6 +141,7 @@ export async function filterRelevantTriggers(
   const relevantTriggers: any[] = [];
   
   // 1. State preference triggers (similar_load): Check if origin state matches user preferences
+  // IMPORTANT: Only match the state part (after comma), not the city
   if (originState) {
     const statePrefTriggers = await sql`
       SELECT 
@@ -154,6 +155,7 @@ export async function filterRelevantTriggers(
         AND nt.trigger_type = 'similar_load'
         AND (
           -- Check if trigger config has state preferences that include origin state
+          -- This matches the state code exactly (e.g., "UT", "IL", "CA")
           nt.trigger_config->'statePreferences' @> ${JSON.stringify([originState])}::jsonb
           OR
           -- Also check for legacy format or string arrays
