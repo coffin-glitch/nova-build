@@ -16,6 +16,7 @@ import humanize
 import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Json  # <- ensure JSON parameters are sent as JSON
+import httpx  # For HTTP calls to trigger notifications
 
 from telegram import Update, Message
 from telegram.ext import (
@@ -41,6 +42,8 @@ BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("BOT_TOKEN")
 SRC_CHAT = os.getenv("TELEGRAM_SOURCE_CHAT_ID") or os.getenv("SOURCE_CHANNEL_ID")
 DST_CHAT = os.getenv("TELEGRAM_TARGET_GROUP_ID") or os.getenv("TARGET_GROUP_ID")
 DATABASE_URL = os.getenv("DATABASE_URL", "")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")  # URL to trigger notifications (e.g., https://your-app.railway.app/api/webhooks/new-bid)
+WEBHOOK_API_KEY = os.getenv("WEBHOOK_API_KEY", "")  # Optional API key for webhook security
 
 # ================== PREFLIGHT CHECKS ==================
 import sys
@@ -334,6 +337,28 @@ async def db_upsert_bid(d: Dict[str, Any]) -> None:
             await conn.commit()
         push_event(f"Upserted bid {d.get('bid_number')}", "green")
         log.info("Upserted bid %s", d.get("bid_number"))
+        
+        # Trigger notification processing after successful bid insertion
+        if WEBHOOK_URL:
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    headers = {"Content-Type": "application/json"}
+                    if WEBHOOK_API_KEY:
+                        headers["x-webhook-key"] = WEBHOOK_API_KEY
+                    
+                    payload = {"bidNumber": str(d.get("bid_number"))}
+                    response = await client.post(WEBHOOK_URL, json=payload, headers=headers)
+                    
+                    if response.status_code == 200:
+                        push_event(f"Triggered notifications for bid {d.get('bid_number')}", "cyan")
+                        log.info("Triggered notifications for bid %s", d.get("bid_number"))
+                    else:
+                        push_event(f"Notification trigger failed: {response.status_code}", "yellow")
+                        log.warning("Notification trigger failed for bid %s: %s", d.get("bid_number"), response.status_code)
+            except Exception as webhook_error:
+                # Don't fail bid insertion if webhook fails
+                push_event(f"Webhook error (non-fatal): {str(webhook_error)[:50]}", "yellow")
+                log.warning("Webhook error for bid %s (non-fatal): %s", d.get("bid_number"), webhook_error)
     except Exception as e:
         db_info = parse_database_url(DATABASE_URL)
         hostname = db_info.get('host', 'unknown')
