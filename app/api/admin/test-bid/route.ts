@@ -4,20 +4,27 @@ import { NextRequest, NextResponse } from "next/server";
 
 /**
  * Admin endpoint to create a test bid for notification testing
- * Route: SALT LAKE CITY, UT 84199 → AVONDALE, AZ 85323
+ * Can accept custom route via request body, or uses default route
  */
 export async function POST(request: NextRequest) {
   try {
-    const testBidNumber = `TEST${Date.now()}`;
+    const body = await request.json().catch(() => ({}));
+    
+    // Allow custom bid number and route via request body
+    const testBidNumber = body.bidNumber || `TEST${Date.now()}`;
+    const customRoute = body.route; // e.g., { origin: "LOS ANGELES, CA 90052", destination: "GROVEPORT, OH 43125", distance: 2200 }
+    
     const now = new Date();
     const pickupTime = new Date(now.getTime() + 2 * 60 * 60 * 1000); // 2 hours from now
     const deliveryTime = new Date(pickupTime.getTime() + 24 * 60 * 60 * 1000); // 24 hours after pickup
     const expiresAt = new Date(now.getTime() + 25 * 60 * 1000); // 25 minutes from now
     
-    // Exact route: SALT LAKE CITY, UT 84199 → AVONDALE, AZ 85323
-    const stopsArray = ['SALT LAKE CITY, UT 84199', 'AVONDALE, AZ 85323'];
+    // Use custom route if provided, otherwise default route
+    const stopsArray = customRoute 
+      ? [customRoute.origin, customRoute.destination]
+      : ['SALT LAKE CITY, UT 84199', 'AVONDALE, AZ 85323'];
     const stopsJson = JSON.stringify(stopsArray);
-    const distance = 650; // Approximate distance
+    const distance = customRoute?.distance || 650; // Use custom distance or default
     
     // Insert test bid
     await sql`

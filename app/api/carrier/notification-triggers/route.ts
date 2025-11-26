@@ -657,7 +657,16 @@ export async function DELETE(request: NextRequest) {
       return addSecurityHeaders(response, request);
     }
 
-    // Delete notification trigger
+    // First, set trigger_id to NULL in notification_logs to break foreign key constraint
+    // This preserves the notification history while allowing trigger deletion
+    await sql`
+      UPDATE notification_logs
+      SET trigger_id = NULL
+      WHERE trigger_id = ${id}
+        AND supabase_carrier_user_id = ${userId}
+    `;
+    
+    // Now delete the notification trigger
     const result = await sql`
       DELETE FROM notification_triggers 
       WHERE id = ${id} 

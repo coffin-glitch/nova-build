@@ -6,11 +6,12 @@ import { NextRequest, NextResponse } from "next/server";
  */
 export async function POST(request: NextRequest) {
   try {
-    // Delete all test bids
+    // Delete all test bids (including specific test bid numbers)
     const result = await sql`
       DELETE FROM public.telegram_bids
       WHERE bid_number LIKE 'TEST%'
          OR source_channel = 'test-script'
+         OR bid_number IN ('93513961', '93513733')
       RETURNING bid_number
     `;
     
