@@ -1,6 +1,11 @@
 import sql from '@/lib/db';
 import { notificationQueue, urgentNotificationQueue } from '@/lib/notification-queue';
 import { NextRequest, NextResponse } from "next/server";
+import { 
+  getBidInfoForFiltering, 
+  filterRelevantTriggers, 
+  filterRelevantStatePreferenceUsers 
+} from '@/lib/bid-filtering';
 
 /**
  * Admin endpoint to create a test bid for notification testing
