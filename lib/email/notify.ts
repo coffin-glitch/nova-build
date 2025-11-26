@@ -8,6 +8,22 @@
 import * as React from 'react';
 import { Resend } from 'resend';
 
+// Rate limiting for Resend (2 requests per second)
+let lastEmailSentAt = 0;
+const MIN_EMAIL_INTERVAL_MS = 500; // 500ms = 2 requests per second max
+
+async function rateLimitEmail(): Promise<void> {
+  const now = Date.now();
+  const timeSinceLastEmail = now - lastEmailSentAt;
+  
+  if (timeSinceLastEmail < MIN_EMAIL_INTERVAL_MS) {
+    const waitTime = MIN_EMAIL_INTERVAL_MS - timeSinceLastEmail;
+    await new Promise(resolve => setTimeout(resolve, waitTime));
+  }
+  
+  lastEmailSentAt = Date.now();
+}
+
 interface EmailOptions {
   to: string;
   subject: string;
@@ -63,8 +79,23 @@ class ResendEmailProvider implements EmailProvider {
       };
     }
 
+    // Rate limit to respect Resend's 2 requests/second limit
+    await rateLimitEmail();
+
     try {
-      const fromEmail = process.env.RESEND_FROM_EMAIL || 'NOVA Build <onboarding@resend.dev>';
+      // Validate and format from email
+      let fromEmail = process.env.RESEND_FROM_EMAIL || 'NOVA Build <onboarding@resend.dev>';
+      
+      // Ensure proper format: "Name <email@domain.com>" or "email@domain.com"
+      if (!fromEmail.includes('<') && !fromEmail.includes('>')) {
+        // If it's just an email, wrap it properly
+        if (fromEmail.includes('@')) {
+          fromEmail = `NOVA Build <${fromEmail}>`;
+        } else {
+          // Fallback to default
+          fromEmail = 'NOVA Build <onboarding@resend.dev>';
+        }
+      }
       
       // Use React Email template if provided (best practice for 2024-2025)
       if (options.react) {
