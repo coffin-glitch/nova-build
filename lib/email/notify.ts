@@ -9,7 +9,7 @@ import * as React from 'react';
 import { Resend } from 'resend';
 
 // Import global rate limiter for multi-worker coordination
-import { rateLimitEmailGlobal } from './email-rate-limiter';
+import { rateLimitEmailGlobal } from '../email-rate-limiter';
 
 // Fallback local rate limiting (for when Redis is unavailable)
 let lastEmailSentAt = 0;
