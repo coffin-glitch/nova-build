@@ -44,7 +44,7 @@ BEGIN
             WHEN ABS(tb.distance_miles - fr.distance_miles) <= cp.dist_threshold THEN 100 - ABS(tb.distance_miles - fr.distance_miles)
             ELSE 0
         END::INTEGER as similarity_score,
-        tb.distance_miles,
+        COALESCE(tb.distance_miles, 0)::INTEGER as distance_miles,
         tb.pickup_timestamp,
         tb.delivery_timestamp,
         tb.stops,
