@@ -8,20 +8,31 @@
 import * as React from 'react';
 import { Resend } from 'resend';
 
-// Rate limiting for Resend (2 requests per second)
+// Import global rate limiter for multi-worker coordination
+import { rateLimitEmailGlobal } from './email-rate-limiter';
+
+// Fallback local rate limiting (for when Redis is unavailable)
 let lastEmailSentAt = 0;
 const MIN_EMAIL_INTERVAL_MS = 500; // 500ms = 2 requests per second max
 
 async function rateLimitEmail(): Promise<void> {
-  const now = Date.now();
-  const timeSinceLastEmail = now - lastEmailSentAt;
-  
-  if (timeSinceLastEmail < MIN_EMAIL_INTERVAL_MS) {
-    const waitTime = MIN_EMAIL_INTERVAL_MS - timeSinceLastEmail;
-    await new Promise(resolve => setTimeout(resolve, waitTime));
+  // Use global Redis-based rate limiter for multi-worker coordination
+  // This ensures we never exceed 2 emails/second even with multiple workers
+  try {
+    await rateLimitEmailGlobal();
+  } catch (error) {
+    // Fallback to local rate limiting if Redis fails
+    console.warn('[Email] Global rate limiter failed, using local fallback:', error);
+    const now = Date.now();
+    const timeSinceLastEmail = now - lastEmailSentAt;
+    
+    if (timeSinceLastEmail < MIN_EMAIL_INTERVAL_MS) {
+      const waitTime = MIN_EMAIL_INTERVAL_MS - timeSinceLastEmail;
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+    
+    lastEmailSentAt = Date.now();
   }
-  
-  lastEmailSentAt = Date.now();
 }
 
 interface EmailOptions {
