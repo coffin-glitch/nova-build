@@ -468,23 +468,44 @@ async function processSimilarLoadTrigger(
 
   console.log(`[SimilarLoad] Processing state preference trigger for user ${userId}, states: ${statePreferences.join(', ')}, threshold: ${distanceThreshold}mi`);
 
-  // Find state preference bid matches
-  const similarLoads = await sql`
-    SELECT * FROM find_similar_loads(
-      ${userId},
-      ${distanceThreshold},
-      ${statePreferences}
-    )
-    WHERE similarity_score >= 70
-    LIMIT 5
+  // For state preference notifications, we simply check if any bid's origin state matches the user's state preferences
+  // This doesn't require favorites - just match origin states
+  const statePrefBids = await sql`
+    SELECT 
+      tb.bid_number,
+      tb.distance_miles,
+      tb.pickup_timestamp,
+      tb.delivery_timestamp,
+      tb.stops,
+      tb.tag,
+      tb.source_channel,
+      tb.received_at,
+      100 as similarity_score  -- State match = 100% match
+    FROM telegram_bids tb
+    WHERE tb.is_archived = false
+      AND NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes')
+      AND tb.stops IS NOT NULL
+      AND jsonb_typeof(tb.stops) = 'array'
+      AND EXISTS (
+        SELECT 1 
+        FROM jsonb_array_elements_text(tb.stops) AS stop_text
+        WHERE EXISTS (
+          SELECT 1 
+          FROM unnest(${statePreferences}::TEXT[]) AS pref_state
+          WHERE stop_text ILIKE '%' || pref_state || '%'
+        )
+        LIMIT 1
+      )
+    ORDER BY tb.received_at DESC
+    LIMIT 10
   `;
 
-  console.log(`[SimilarLoad] Found ${similarLoads.length} potential matches from find_similar_loads function`);
+  console.log(`[SimilarLoad] Found ${statePrefBids.length} bids matching state preferences: ${statePreferences.join(', ')}`);
 
   let count = 0;
 
-  for (const load of similarLoads) {
-    console.log(`[SimilarLoad] Processing load ${load.bid_number}, similarity_score: ${load.similarity_score}`);
+  for (const load of statePrefBids) {
+    console.log(`[SimilarLoad] Processing load ${load.bid_number}, origin state matches preferences`);
     
     // Check if bid is still active
     const loadBid = await sql`
