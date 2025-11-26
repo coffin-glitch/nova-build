@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
-import { notificationQueue, urgentNotificationQueue } from '@/lib/notification-queue';
 import sql from '@/lib/db';
+import { notificationQueue, urgentNotificationQueue } from '@/lib/notification-queue';
+import { NextRequest, NextResponse } from "next/server";
 
 /**
  * Webhook endpoint to trigger notification processing when a new bid is inserted
@@ -59,8 +59,11 @@ export async function POST(request: NextRequest) {
         )
     `;
 
+    console.log(`[Webhook] Found ${usersWithStatePrefs.length} users with state preferences but no similar_load trigger`);
+
     // Add virtual similar_load triggers for users with state preferences
     for (const userPref of usersWithStatePrefs) {
+      console.log(`[Webhook] Adding virtual similar_load trigger for user ${userPref.supabase_carrier_user_id}, states: ${userPref.state_preferences?.join(', ') || 'none'}`);
       allTriggers.push({
         id: -1, // Virtual trigger ID
         supabase_carrier_user_id: userPref.supabase_carrier_user_id,
@@ -95,15 +98,19 @@ export async function POST(request: NextRequest) {
 
       const queue = hasUrgent ? urgentNotificationQueue : notificationQueue;
       
+      const triggerData = triggers.map(t => ({
+        id: t.id,
+        triggerType: t.trigger_type,
+        triggerConfig: t.trigger_config,
+      }));
+      
+      console.log(`[Webhook] Enqueueing job for user ${userId} with ${triggers.length} triggers: ${triggers.map(t => t.trigger_type).join(', ')}`);
+      
       await queue.add(
         `process-user-${userId}`,
         {
           userId,
-          triggers: triggers.map(t => ({
-            id: t.id,
-            triggerType: t.trigger_type,
-            triggerConfig: t.trigger_config,
-          })),
+          triggers: triggerData,
         },
         {
           priority: hasUrgent ? 10 : 5,
