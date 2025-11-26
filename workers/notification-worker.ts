@@ -535,9 +535,12 @@ async function processSimilarLoadTrigger(
         // Get load details for email
         const loadDetails = await getLoadDetails(load.bid_number);
         
+        // Use a valid trigger ID (0 for virtual triggers with id: -1)
+        const triggerId = trigger.id > 0 ? trigger.id : 0;
+        
         await sendNotification({
           carrierUserId: userId,
-          triggerId: trigger.id,
+          triggerId: triggerId,
           notificationType: 'similar_load',
           bidNumber: load.bid_number,
           message,
