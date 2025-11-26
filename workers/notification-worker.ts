@@ -550,47 +550,56 @@ async function processSimilarLoadTrigger(
       continue;
     }
 
-    // Check if should trigger based on advanced preferences
-    if (!preferences) {
-      console.log(`[SimilarLoad] No preferences found for user ${userId}, skipping`);
+    // For state preference notifications, we send if email notifications are enabled
+    // No need for complex matching - just check if email notifications are enabled
+    if (!preferences || !preferences.email_notifications) {
+      console.log(`[SimilarLoad] Email notifications disabled for user ${userId}, skipping`);
       continue;
     }
     
-    const shouldTrigger = shouldTriggerNotification(
-      load, // This is actually a bid from telegram_bids table
-      preferences as AdvancedNotificationPreferences,
-      favorites
-    );
-
-    console.log(`[SimilarLoad] shouldTrigger check for ${load.bid_number}: shouldNotify=${shouldTrigger.shouldNotify}, matchScore=${shouldTrigger.matchScore || load.similarity_score}`);
-
-    if (shouldTrigger.shouldNotify) {
-        // Build detailed message with score breakdown
-        // Note: All bids use the same equipment, so equipment score is not shown
-        let message = `High-match bid found! ${load.bid_number} - ${load.distance_miles}mi, ${load.tag}. Match: ${Math.round(shouldTrigger.matchScore || load.similarity_score)}%.`;
-        if (shouldTrigger.scoreBreakdown) {
-          message += ` Breakdown: Route ${shouldTrigger.scoreBreakdown.routeScore}pts, Distance ${shouldTrigger.scoreBreakdown.distanceScore}pts.`;
+    // Extract origin and destination from stops for the message
+    let origin = 'Unknown';
+    let destination = 'Unknown';
+    try {
+      if (load.stops && typeof load.stops === 'object') {
+        const stopsArray = Array.isArray(load.stops) ? load.stops : JSON.parse(load.stops);
+        if (Array.isArray(stopsArray) && stopsArray.length > 0) {
+          origin = stopsArray[0] || 'Unknown';
+          if (stopsArray.length > 1) {
+            destination = stopsArray[stopsArray.length - 1] || 'Unknown';
+          }
         }
-        
-        // Get load details for email
-        const loadDetails = await getLoadDetails(load.bid_number);
-        
-        // Use a valid trigger ID (0 for virtual triggers with id: -1)
-        const triggerId = trigger.id > 0 ? trigger.id : 0;
-        
-        await sendNotification({
-          carrierUserId: userId,
-          triggerId: triggerId,
-          notificationType: 'similar_load',
-          bidNumber: load.bid_number,
-          message,
-          loadDetails: loadDetails || undefined,
-          matchScore: shouldTrigger.matchScore || load.similarity_score,
-          reasons: shouldTrigger.reason ? [shouldTrigger.reason] : [],
-        });
-        count++;
       }
+    } catch (e) {
+      console.warn(`[SimilarLoad] Could not parse stops for ${load.bid_number}:`, e);
     }
+    
+    // Build message for state preference match
+    const matchedStates = statePreferences.filter(state => 
+      origin.toUpperCase().includes(state.toUpperCase())
+    );
+    const message = `State preference match! ${load.bid_number} - ${origin} → ${destination} (${matchedStates.join(', ')} match)`;
+    
+    console.log(`[SimilarLoad] Sending state preference notification for ${load.bid_number}: ${origin} → ${destination}`);
+    
+    // Get load details for email
+    const loadDetails = await getLoadDetails(load.bid_number);
+    
+    // Use a valid trigger ID (0 for virtual triggers with id: -1)
+    const triggerId = trigger.id > 0 ? trigger.id : 0;
+    
+    await sendNotification({
+      carrierUserId: userId,
+      triggerId: triggerId,
+      notificationType: 'similar_load',
+      bidNumber: load.bid_number,
+      message,
+      loadDetails: loadDetails || undefined,
+      matchScore: 100, // State match = 100%
+      reasons: [`Origin state matches your preferences: ${matchedStates.join(', ')}`],
+    });
+    count++;
+  }
   }
 
   return count;
