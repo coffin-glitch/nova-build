@@ -225,6 +225,97 @@ class GoogleEnterpriseEmailProvider implements EmailProvider {
 }
 
 /**
+ * Send a batch of emails using Resend's batch API
+ * This is much more efficient than sending individual emails
+ */
+export async function sendEmailBatch(emails: EmailOptions[]): Promise<{ success: boolean; sent: number; failed: number; errors?: any[] }> {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    console.warn('[Email - Resend] RESEND_API_KEY not set, cannot send batch');
+    return { success: false, sent: 0, failed: emails.length };
+  }
+
+  const resend = new Resend(apiKey);
+
+  // Rate limit to respect Resend's 2 requests/second limit
+  await rateLimitEmail();
+
+  try {
+    // Validate and format from email
+    let fromEmail = process.env.RESEND_FROM_EMAIL || 'NOVA Build <onboarding@resend.dev>';
+    fromEmail = fromEmail.trim().replace(/^["']|["']$/g, '');
+    
+    if (fromEmail.includes('<') && fromEmail.includes('>')) {
+      const match = fromEmail.match(/^(.+?)\s*<(.+?)>$/);
+      if (match && match[2].includes('@')) {
+        fromEmail = `${match[1].trim()} <${match[2].trim()}>`;
+      } else {
+        fromEmail = 'NOVA Build <onboarding@resend.dev>';
+      }
+    } else if (fromEmail.includes('@')) {
+      fromEmail = `NOVA Build <${fromEmail}>`;
+    } else {
+      fromEmail = 'NOVA Build <onboarding@resend.dev>';
+    }
+
+    // Prepare batch payload
+    const batchPayload = emails.map(email => {
+      const payload: any = {
+        from: fromEmail,
+        to: email.to,
+        subject: email.subject,
+      };
+
+      if (email.react) {
+        payload.react = email.react;
+      } else if (email.html) {
+        payload.html = email.html;
+      } else if (email.text) {
+        payload.text = email.text;
+      }
+
+      return payload;
+    });
+
+    // Send batch (up to 100 emails per request)
+    const { data, error } = await resend.batch.send(batchPayload);
+
+    if (error) {
+      console.error('[Email - Resend Batch] Error:', error);
+      return {
+        success: false,
+        sent: 0,
+        failed: emails.length,
+        errors: [error],
+      };
+    }
+
+    // Count successful sends
+    const sent = data?.length || 0;
+    const failed = emails.length - sent;
+
+    if (sent > 0) {
+      console.log(`[Email - Resend Batch] Sent ${sent} emails in batch (${failed} failed)`);
+    }
+
+    return {
+      success: sent > 0,
+      sent,
+      failed,
+      errors: failed > 0 ? [] : undefined, // Resend batch doesn't return per-email errors in strict mode
+    };
+  } catch (error: any) {
+    console.error('[Email - Resend Batch] Exception:', error);
+    return {
+      success: false,
+      sent: 0,
+      failed: emails.length,
+      errors: [error.message || 'Unknown error'],
+    };
+  }
+}
+
+/**
  * Get the configured email provider based on environment variable
  */
 function getEmailProvider(): EmailProvider {
@@ -286,6 +377,7 @@ export async function initializeEmailBatching(): Promise<void> {
   try {
     const { emailBatchQueue } = await import('./batch-queue');
     emailBatchQueue.setSendCallback(async (emails) => {
+      // sendEmailBatch is defined in this file, so we can call it directly
       const result = await sendEmailBatch(emails);
       if (!result.success && result.errors) {
         console.error(`[Email Batch] Failed to send batch:`, result.errors);
