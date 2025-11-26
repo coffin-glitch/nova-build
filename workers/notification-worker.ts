@@ -600,7 +600,6 @@ async function processSimilarLoadTrigger(
     });
     count++;
   }
-  }
 
   return count;
 }
