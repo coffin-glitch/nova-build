@@ -29,6 +29,8 @@
     "test:redis": "tsx scripts/test-redis-connection.ts",
     "test:upstash": "tsx scripts/test-upstash-notification.ts",
     "test:notifications": "tsx scripts/test-notification-system.ts",
+    "test:trigger": "tsx scripts/test-notification-trigger.ts",
+    "test:bid": "tsx scripts/create-test-bid-direct.ts",
     "typecheck": "tsc --noEmit",
     "typecheck:fast": "tsc --noEmit --skipLibCheck",
     "worker:status": "tsx scripts/check-worker-status.ts",
