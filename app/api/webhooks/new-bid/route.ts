@@ -41,9 +41,10 @@ export async function POST(request: NextRequest) {
 
     // Also get users with state preferences enabled who don't have a similar_load trigger
     // This ensures state preference notifications work automatically
+    // Note: Check both possible column names (carrier_user_id and supabase_carrier_user_id)
     const usersWithStatePrefs = await sql`
       SELECT DISTINCT
-        cnp.supabase_carrier_user_id,
+        COALESCE(cnp.supabase_carrier_user_id, cnp.carrier_user_id) as user_id,
         cnp.state_preferences,
         cnp.distance_threshold_miles,
         cnp.similar_load_notifications
@@ -53,7 +54,7 @@ export async function POST(request: NextRequest) {
         AND array_length(cnp.state_preferences, 1) > 0
         AND NOT EXISTS (
           SELECT 1 FROM notification_triggers nt
-          WHERE nt.supabase_carrier_user_id = cnp.supabase_carrier_user_id
+          WHERE nt.supabase_carrier_user_id = COALESCE(cnp.supabase_carrier_user_id, cnp.carrier_user_id)
             AND nt.trigger_type = 'similar_load'
             AND nt.is_active = true
         )
@@ -63,10 +64,11 @@ export async function POST(request: NextRequest) {
 
     // Add virtual similar_load triggers for users with state preferences
     for (const userPref of usersWithStatePrefs) {
-      console.log(`[Webhook] Adding virtual similar_load trigger for user ${userPref.supabase_carrier_user_id}, states: ${userPref.state_preferences?.join(', ') || 'none'}`);
+      const userId = userPref.user_id;
+      console.log(`[Webhook] Adding virtual similar_load trigger for user ${userId}, states: ${userPref.state_preferences?.join(', ') || 'none'}`);
       allTriggers.push({
         id: -1, // Virtual trigger ID
-        supabase_carrier_user_id: userPref.supabase_carrier_user_id,
+        supabase_carrier_user_id: userId,
         trigger_type: 'similar_load',
         trigger_config: {
           statePreferences: userPref.state_preferences,
