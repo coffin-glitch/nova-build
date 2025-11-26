@@ -2537,6 +2537,7 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
             </TabsContent>
           </Tabs>
         </div>
+        </div>
 
         {/* Details Dialog */}
         <Dialog open={!!viewDetailsBid} onOpenChange={(open) => { if (!open) setViewDetailsBid(null); }}>
@@ -3048,6 +3049,7 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
           </div>
         </DialogContent>
       </Dialog>
+      </DialogContent>
     </Dialog>
   );
 }
