@@ -455,14 +455,25 @@ async function processSimilarLoadTrigger(
   favorites: any[]
 ): Promise<number> {
   const config = trigger.triggerConfig || {};
-  const distanceThreshold = config.distanceThreshold || 50;
+  
+  // Use state preferences from trigger config, or fall back to user preferences
+  const statePreferences = config.statePreferences || preferences?.state_preferences || [];
+  const distanceThreshold = config.distanceThreshold || preferences?.distance_threshold_miles || 50;
+
+  // Skip if no state preferences are set
+  if (!statePreferences || statePreferences.length === 0) {
+    console.log(`[SimilarLoad] No state preferences configured for user ${userId}, skipping`);
+    return 0;
+  }
+
+  console.log(`[SimilarLoad] Processing state preference trigger for user ${userId}, states: ${statePreferences.join(', ')}, threshold: ${distanceThreshold}mi`);
 
   // Find state preference bid matches
   const similarLoads = await sql`
     SELECT * FROM find_similar_loads(
       ${userId},
       ${distanceThreshold},
-      ${config.statePreferences || null}
+      ${statePreferences}
     )
     WHERE similarity_score >= 70
     LIMIT 5
