@@ -39,6 +39,40 @@ export async function POST(request: NextRequest) {
       ORDER BY nt.supabase_carrier_user_id, nt.trigger_type
     `;
 
+    // Also get users with state preferences enabled who don't have a similar_load trigger
+    // This ensures state preference notifications work automatically
+    const usersWithStatePrefs = await sql`
+      SELECT DISTINCT
+        cnp.supabase_carrier_user_id,
+        cnp.state_preferences,
+        cnp.distance_threshold_miles,
+        cnp.similar_load_notifications
+      FROM carrier_notification_preferences cnp
+      WHERE cnp.similar_load_notifications = true
+        AND cnp.state_preferences IS NOT NULL
+        AND array_length(cnp.state_preferences, 1) > 0
+        AND NOT EXISTS (
+          SELECT 1 FROM notification_triggers nt
+          WHERE nt.supabase_carrier_user_id = cnp.supabase_carrier_user_id
+            AND nt.trigger_type = 'similar_load'
+            AND nt.is_active = true
+        )
+    `;
+
+    // Add virtual similar_load triggers for users with state preferences
+    for (const userPref of usersWithStatePrefs) {
+      allTriggers.push({
+        id: -1, // Virtual trigger ID
+        supabase_carrier_user_id: userPref.supabase_carrier_user_id,
+        trigger_type: 'similar_load',
+        trigger_config: {
+          statePreferences: userPref.state_preferences,
+          distanceThreshold: userPref.distance_threshold_miles || 50,
+        },
+        is_active: true,
+      });
+    }
+
     // Group triggers by user to batch process
     const userTriggers = new Map<string, any[]>();
     for (const trigger of allTriggers) {
