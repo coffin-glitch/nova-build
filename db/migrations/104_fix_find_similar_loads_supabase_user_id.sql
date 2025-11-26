@@ -39,7 +39,7 @@ BEGIN
         WHERE cf.supabase_carrier_user_id = p_carrier_user_id
     )
     SELECT 
-        tb.bid_number,
+        tb.bid_number::VARCHAR(50),
         CASE 
             WHEN ABS(tb.distance_miles - fr.distance_miles) <= cp.dist_threshold THEN 100 - ABS(tb.distance_miles - fr.distance_miles)
             ELSE 0
@@ -48,8 +48,8 @@ BEGIN
         tb.pickup_timestamp,
         tb.delivery_timestamp,
         tb.stops,
-        tb.tag,
-        tb.source_channel
+        COALESCE(tb.tag, '')::VARCHAR(20),
+        COALESCE(tb.source_channel, '')::VARCHAR(50)
     FROM telegram_bids tb
     CROSS JOIN carrier_preferences cp
     CROSS JOIN favorite_routes fr

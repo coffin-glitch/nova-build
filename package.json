@@ -33,6 +33,7 @@
     "test:bid": "tsx scripts/create-test-bid-direct.ts",
     "cleanup:test-bids": "tsx scripts/cleanup-test-bids.ts",
     "migrate:104": "tsx scripts/run-migration-104.ts",
+    "migrate:104:check": "tsx scripts/check-and-run-migration-104.ts",
     "typecheck": "tsc --noEmit",
     "typecheck:fast": "tsc --noEmit --skipLibCheck",
     "worker:status": "tsx scripts/check-worker-status.ts",
