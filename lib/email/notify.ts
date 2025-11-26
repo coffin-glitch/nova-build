@@ -86,15 +86,34 @@ class ResendEmailProvider implements EmailProvider {
       // Validate and format from email
       let fromEmail = process.env.RESEND_FROM_EMAIL || 'NOVA Build <onboarding@resend.dev>';
       
+      // Clean up the email string (remove quotes, trim whitespace)
+      fromEmail = fromEmail.trim().replace(/^["']|["']$/g, '');
+      
       // Ensure proper format: "Name <email@domain.com>" or "email@domain.com"
-      if (!fromEmail.includes('<') && !fromEmail.includes('>')) {
-        // If it's just an email, wrap it properly
-        if (fromEmail.includes('@')) {
-          fromEmail = `NOVA Build <${fromEmail}>`;
+      if (fromEmail.includes('<') && fromEmail.includes('>')) {
+        // Already in "Name <email>" format, validate it
+        const match = fromEmail.match(/^(.+?)\s*<(.+?)>$/);
+        if (match && match[2].includes('@')) {
+          // Valid format, use as-is
+          fromEmail = `${match[1].trim()} <${match[2].trim()}>`;
         } else {
-          // Fallback to default
+          // Invalid format, use default
+          console.warn(`[Email] Invalid RESEND_FROM_EMAIL format: ${fromEmail}, using default`);
           fromEmail = 'NOVA Build <onboarding@resend.dev>';
         }
+      } else if (fromEmail.includes('@')) {
+        // Just an email address, wrap it properly
+        fromEmail = `NOVA Build <${fromEmail}>`;
+      } else {
+        // Invalid, use default
+        console.warn(`[Email] Invalid RESEND_FROM_EMAIL: ${fromEmail}, using default`);
+        fromEmail = 'NOVA Build <onboarding@resend.dev>';
+      }
+      
+      // Final validation: ensure it matches Resend's required format
+      if (!/^.+?\s*<.+@.+\..+>$/.test(fromEmail) && !/^.+@.+\..+$/.test(fromEmail)) {
+        console.warn(`[Email] RESEND_FROM_EMAIL validation failed: ${fromEmail}, using default`);
+        fromEmail = 'NOVA Build <onboarding@resend.dev>';
       }
       
       // Use React Email template if provided (best practice for 2024-2025)
