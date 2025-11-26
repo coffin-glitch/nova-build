@@ -975,8 +975,8 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-7xl max-h-[95vh] overflow-hidden">
-        <DialogHeader>
+      <DialogContent className="max-w-7xl max-h-[95vh] flex flex-col overflow-hidden">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <Star className="h-5 w-5" />
             Your Favorites
@@ -986,87 +986,89 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
           </DialogDescription>
         </DialogHeader>
 
-        {/* Notification Tier Badge */}
-        {!notificationsDisabled && (
-          <div className="mb-4 p-4 rounded-lg border bg-gradient-to-br from-background to-muted/20" style={{ borderColor: `${accentColor}30` }}>
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-2">
-                  <Zap className="h-4 w-4" style={accentColorStyle} />
-                  <span className="text-sm font-medium">Notification Tier</span>
-                  {userTier === 'new' && (
-                    <Badge className="bg-gray-100 text-gray-700 border-gray-300 text-xs">NEW</Badge>
-                  )}
-                  {userTier === 'standard' && (
-                    <Badge className="bg-blue-100 text-blue-700 border-blue-300 text-xs">STANDARD</Badge>
-                  )}
-                  {userTier === 'premium' && (
-                    <Badge className="bg-gradient-to-r from-purple-100 to-purple-200 text-purple-800 border-purple-300 text-xs font-semibold">PREMIUM</Badge>
-                  )}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 w-6 p-0 ml-auto"
-                    onClick={() => setShowTierExplanation(!showTierExplanation)}
-                    title={showTierExplanation ? "Hide explanation" : "Show explanation"}
-                  >
-                    {showTierExplanation ? (
-                      <Eye className="h-4 w-4 text-muted-foreground" />
-                    ) : (
-                      <EyeOff className="h-4 w-4 text-muted-foreground" />
-                    )}
-                  </Button>
-                </div>
-                {showTierExplanation && (
-                  <>
-                    <p className="text-xs text-muted-foreground mb-3">
-                      {userTier === 'new' && (
-                        <>You're on the <strong>New</strong> tier: <strong>20 notifications/hour</strong>. Perfect for getting started with load alerts.</>
-                      )}
-                      {userTier === 'standard' && (
-                        <>You're on the <strong>Standard</strong> tier: <strong>50 notifications/hour</strong>. Great for regular operations.</>
-                      )}
-                      {userTier === 'premium' && (
-                        <>You're on the <strong>Premium</strong> tier: <strong>200 notifications/hour</strong>. Maximum coverage for high-volume operations.</>
-                      )}
-                    </p>
+        {/* Scrollable content area */}
+        <div className="flex-1 overflow-y-auto min-h-0">
+          {/* Notification Tier Badge */}
+          {!notificationsDisabled && (
+            <div className="mb-4 p-4 rounded-lg border bg-gradient-to-br from-background to-muted/20" style={{ borderColor: `${accentColor}30` }}>
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Zap className="h-4 w-4" style={accentColorStyle} />
+                    <span className="text-sm font-medium">Notification Tier</span>
                     {userTier === 'new' && (
-                      <div className="text-xs space-y-1 text-muted-foreground">
-                        <p className="flex items-center gap-1">
-                          <span style={accentColorStyle}>→</span> <strong style={accentColorStyle}>Standard</strong> gives you 50/hr for better coverage
-                        </p>
-                        <p className="flex items-center gap-1">
-                          <span className="text-purple-400">→</span> <strong className="text-purple-500">Premium</strong> gives you 200/hr for maximum alerts
-                        </p>
-                      </div>
+                      <Badge className="bg-gray-100 text-gray-700 border-gray-300 text-xs">NEW</Badge>
                     )}
                     {userTier === 'standard' && (
-                      <div className="text-xs space-y-1 text-muted-foreground">
-                        <p className="flex items-center gap-1">
-                          <span className="text-purple-400">→</span> <strong className="text-purple-500">Premium</strong> gives you 200/hr (4x more) for high-volume operations
-                        </p>
-                      </div>
+                      <Badge className="bg-blue-100 text-blue-700 border-blue-300 text-xs">STANDARD</Badge>
                     )}
-                  </>
-                )}
+                    {userTier === 'premium' && (
+                      <Badge className="bg-gradient-to-r from-purple-100 to-purple-200 text-purple-800 border-purple-300 text-xs font-semibold">PREMIUM</Badge>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0 ml-auto"
+                      onClick={() => setShowTierExplanation(!showTierExplanation)}
+                      title={showTierExplanation ? "Hide explanation" : "Show explanation"}
+                    >
+                      {showTierExplanation ? (
+                        <Eye className="h-4 w-4 text-muted-foreground" />
+                      ) : (
+                        <EyeOff className="h-4 w-4 text-muted-foreground" />
+                      )}
+                    </Button>
+                  </div>
+                  {showTierExplanation && (
+                    <>
+                      <p className="text-xs text-muted-foreground mb-3">
+                        {userTier === 'new' && (
+                          <>You're on the <strong>New</strong> tier: <strong>20 notifications/hour</strong>. Perfect for getting started with load alerts.</>
+                        )}
+                        {userTier === 'standard' && (
+                          <>You're on the <strong>Standard</strong> tier: <strong>50 notifications/hour</strong>. Great for regular operations.</>
+                        )}
+                        {userTier === 'premium' && (
+                          <>You're on the <strong>Premium</strong> tier: <strong>200 notifications/hour</strong>. Maximum coverage for high-volume operations.</>
+                        )}
+                      </p>
+                      {userTier === 'new' && (
+                        <div className="text-xs space-y-1 text-muted-foreground">
+                          <p className="flex items-center gap-1">
+                            <span style={accentColorStyle}>→</span> <strong style={accentColorStyle}>Standard</strong> gives you 50/hr for better coverage
+                          </p>
+                          <p className="flex items-center gap-1">
+                            <span className="text-purple-400">→</span> <strong className="text-purple-500">Premium</strong> gives you 200/hr for maximum alerts
+                          </p>
+                        </div>
+                      )}
+                      {userTier === 'standard' && (
+                        <div className="text-xs space-y-1 text-muted-foreground">
+                          <p className="flex items-center gap-1">
+                            <span className="text-purple-400">→</span> <strong className="text-purple-500">Premium</strong> gives you 200/hr (4x more) for high-volume operations
+                          </p>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {notificationsDisabled && (
-          <div className="mb-4 p-4 rounded-lg border bg-red-500/10 border-red-500/30">
-            <div className="flex items-center gap-2">
-              <BellOff className="h-4 w-4 text-red-400" />
-              <span className="text-sm font-medium text-red-400">Notifications Disabled</span>
+            {notificationsDisabled && (
+            <div className="mb-4 p-4 rounded-lg border bg-red-500/10 border-red-500/30">
+              <div className="flex items-center gap-2">
+                <BellOff className="h-4 w-4 text-red-400" />
+                <span className="text-sm font-medium text-red-400">Notifications Disabled</span>
+              </div>
+              <p className="text-xs text-red-300/80 mt-1">
+                All notifications are currently disabled. Contact support to re-enable.
+              </p>
             </div>
-            <p className="text-xs text-red-300/80 mt-1">
-              All notifications are currently disabled. Contact support to re-enable.
-            </p>
-          </div>
-        )}
-        
-        <div className="overflow-y-auto max-h-[80vh] space-y-4">
+          )}
+          
+          <div className="space-y-4">
           {/* Stats Dashboard */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <Glass className="p-4">
