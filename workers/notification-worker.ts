@@ -21,7 +21,7 @@ import {
   FavoriteAvailableNotificationTemplate,
   SimilarLoadNotificationTemplate
 } from '../lib/email-templates/notification-templates';
-import { sendEmail, initializeEmailBatching } from '../lib/email/notify';
+import { initializeEmailBatching, sendEmail } from '../lib/email/notify';
 import {
   checkRateLimit,
   getCachedFavorites,
