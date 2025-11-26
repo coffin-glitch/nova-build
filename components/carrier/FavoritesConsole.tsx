@@ -123,6 +123,7 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
   const [selectedMatchType, setSelectedMatchType] = useState<'exact' | 'state' | null>(null);
   const [editingTrigger, setEditingTrigger] = useState<NotificationTrigger | null>(null);
   const [showEditTriggerDialog, setShowEditTriggerDialog] = useState(false);
+  const [showTierExplanation, setShowTierExplanation] = useState(true); // Toggle for tier explanation
   
   // Local state to track string input values (allows empty strings during editing)
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
@@ -1002,34 +1003,51 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
                   {userTier === 'premium' && (
                     <Badge className="bg-gradient-to-r from-purple-100 to-purple-200 text-purple-800 border-purple-300 text-xs font-semibold">PREMIUM</Badge>
                   )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 w-6 p-0 ml-auto"
+                    onClick={() => setShowTierExplanation(!showTierExplanation)}
+                    title={showTierExplanation ? "Hide explanation" : "Show explanation"}
+                  >
+                    {showTierExplanation ? (
+                      <Eye className="h-4 w-4 text-muted-foreground" />
+                    ) : (
+                      <EyeOff className="h-4 w-4 text-muted-foreground" />
+                    )}
+                  </Button>
                 </div>
-                <p className="text-xs text-muted-foreground mb-3">
-                  {userTier === 'new' && (
-                    <>You're on the <strong>New</strong> tier: <strong>20 notifications/hour</strong>. Perfect for getting started with load alerts.</>
-                  )}
-                  {userTier === 'standard' && (
-                    <>You're on the <strong>Standard</strong> tier: <strong>50 notifications/hour</strong>. Great for regular operations.</>
-                  )}
-                  {userTier === 'premium' && (
-                    <>You're on the <strong>Premium</strong> tier: <strong>200 notifications/hour</strong>. Maximum coverage for high-volume operations.</>
-                  )}
-                </p>
-                {userTier === 'new' && (
-                  <div className="text-xs space-y-1 text-muted-foreground">
-                    <p className="flex items-center gap-1">
-                      <span style={accentColorStyle}>→</span> <strong style={accentColorStyle}>Standard</strong> gives you 50/hr for better coverage
+                {showTierExplanation && (
+                  <>
+                    <p className="text-xs text-muted-foreground mb-3">
+                      {userTier === 'new' && (
+                        <>You're on the <strong>New</strong> tier: <strong>20 notifications/hour</strong>. Perfect for getting started with load alerts.</>
+                      )}
+                      {userTier === 'standard' && (
+                        <>You're on the <strong>Standard</strong> tier: <strong>50 notifications/hour</strong>. Great for regular operations.</>
+                      )}
+                      {userTier === 'premium' && (
+                        <>You're on the <strong>Premium</strong> tier: <strong>200 notifications/hour</strong>. Maximum coverage for high-volume operations.</>
+                      )}
                     </p>
-                    <p className="flex items-center gap-1">
-                      <span className="text-purple-400">→</span> <strong className="text-purple-500">Premium</strong> gives you 200/hr for maximum alerts
-                    </p>
-                  </div>
-                )}
-                {userTier === 'standard' && (
-                  <div className="text-xs space-y-1 text-muted-foreground">
-                    <p className="flex items-center gap-1">
-                      <span className="text-purple-400">→</span> <strong className="text-purple-500">Premium</strong> gives you 200/hr (4x more) for high-volume operations
-                    </p>
-                  </div>
+                    {userTier === 'new' && (
+                      <div className="text-xs space-y-1 text-muted-foreground">
+                        <p className="flex items-center gap-1">
+                          <span style={accentColorStyle}>→</span> <strong style={accentColorStyle}>Standard</strong> gives you 50/hr for better coverage
+                        </p>
+                        <p className="flex items-center gap-1">
+                          <span className="text-purple-400">→</span> <strong className="text-purple-500">Premium</strong> gives you 200/hr for maximum alerts
+                        </p>
+                      </div>
+                    )}
+                    {userTier === 'standard' && (
+                      <div className="text-xs space-y-1 text-muted-foreground">
+                        <p className="flex items-center gap-1">
+                          <span className="text-purple-400">→</span> <strong className="text-purple-500">Premium</strong> gives you 200/hr (4x more) for high-volume operations
+                        </p>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>
