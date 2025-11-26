@@ -21,7 +21,7 @@ import {
   FavoriteAvailableNotificationTemplate,
   SimilarLoadNotificationTemplate
 } from '../lib/email-templates/notification-templates';
-import { sendEmail } from '../lib/email/notify';
+import { sendEmail, initializeEmailBatching } from '../lib/email/notify';
 import {
   checkRateLimit,
   getCachedFavorites,
@@ -1425,6 +1425,11 @@ urgentWorker.on('completed', (job) => {
 
 urgentWorker.on('failed', (job, err) => {
   console.error(`❌ Urgent notification job ${job?.id} failed:`, err);
+});
+
+// Initialize email batching for improved throughput
+initializeEmailBatching().catch((error) => {
+  console.error('[Email] Failed to initialize batching:', error);
 });
 
 console.log('🚀 Notification workers started and listening for jobs...');

@@ -68,9 +68,11 @@ class NoOpEmailProvider implements EmailProvider {
 /**
  * Resend Email Provider
  * Uses Resend API with React Email templates (2024-2025 best practice)
+ * Supports batch sending for improved throughput (up to 100 emails per request)
  */
 class ResendEmailProvider implements EmailProvider {
   private resend: Resend | null = null;
+  private batchEnabled: boolean;
 
   constructor() {
     const apiKey = process.env.RESEND_API_KEY;
@@ -79,6 +81,9 @@ class ResendEmailProvider implements EmailProvider {
     } else {
       console.warn('[Email - Resend] RESEND_API_KEY not set, emails will not be sent');
     }
+    
+    // Enable batch sending by default (can be disabled via env var)
+    this.batchEnabled = process.env.ENABLE_EMAIL_BATCHING !== 'false';
   }
 
   async sendEmail(options: EmailOptions): Promise<{ success: boolean; messageId?: string; error?: string }> {
@@ -90,7 +95,19 @@ class ResendEmailProvider implements EmailProvider {
       };
     }
 
-    // Rate limit to respect Resend's 2 requests/second limit
+    // If batch sending is enabled, add to batch queue instead of sending immediately
+    if (this.batchEnabled) {
+      const { emailBatchQueue } = await import('./batch-queue');
+      emailBatchQueue.add(options);
+      
+      // Return success immediately (actual sending happens in batch)
+      return {
+        success: true,
+        messageId: `batched-${Date.now()}`,
+      };
+    }
+
+    // Rate limit to respect Resend's 2 requests/second limit (for non-batched sends)
     await rateLimitEmail();
 
     try {
@@ -231,6 +248,9 @@ function getEmailProvider(): EmailProvider {
 /**
  * Send an email notification
  * Respects EMAIL_PROVIDER environment variable and feature flags
+ * 
+ * If batch sending is enabled, emails are queued and sent in batches of up to 100.
+ * This dramatically improves throughput for high-volume notifications.
  */
 export async function sendEmail(options: EmailOptions): Promise<{ success: boolean; messageId?: string; error?: string }> {
   try {
@@ -249,6 +269,35 @@ export async function sendEmail(options: EmailOptions): Promise<{ success: boole
       success: false,
       error: error instanceof Error ? error.message : 'Unknown email error',
     };
+  }
+}
+
+/**
+ * Initialize the email batch queue with the send callback
+ * Call this once at application startup (e.g., in notification worker)
+ */
+export async function initializeEmailBatching(): Promise<void> {
+  const batchEnabled = process.env.ENABLE_EMAIL_BATCHING !== 'false';
+  if (!batchEnabled) {
+    console.log('[Email] Batch sending is disabled (set ENABLE_EMAIL_BATCHING=false to disable)');
+    return;
+  }
+
+  try {
+    const { emailBatchQueue } = await import('./batch-queue');
+    emailBatchQueue.setSendCallback(async (emails) => {
+      const result = await sendEmailBatch(emails);
+      if (!result.success && result.errors) {
+        console.error(`[Email Batch] Failed to send batch:`, result.errors);
+      } else {
+        console.log(`[Email Batch] Successfully sent ${result.sent} emails (${result.failed} failed)`);
+      }
+    });
+
+    console.log('[Email] ✅ Batch sending initialized - emails will be batched (up to 100 per request)');
+  } catch (error) {
+    console.error('[Email] Failed to initialize batch queue:', error);
+    // Don't throw - allow system to continue without batching
   }
 }
 
