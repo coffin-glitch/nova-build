@@ -27,6 +27,10 @@ export async function POST(request: NextRequest) {
     console.log(`[Webhook] New bid notification trigger for bid ${bidNumber || 'all'}`);
 
     // Get all active triggers grouped by user
+    // This includes:
+    // 1. Exact match triggers (matchType: 'exact')
+    // 2. State match triggers (matchType: 'state') 
+    // 3. Similar load triggers (state preference)
     const allTriggers = await sql`
       SELECT 
         nt.id,
@@ -38,6 +42,8 @@ export async function POST(request: NextRequest) {
       WHERE nt.is_active = true
       ORDER BY nt.supabase_carrier_user_id, nt.trigger_type
     `;
+    
+    console.log(`[Webhook] Found ${allTriggers.length} active triggers from notification_triggers table`);
 
     // Also get users with state preferences enabled who don't have a similar_load trigger
     // This ensures state preference notifications work automatically
@@ -64,9 +70,10 @@ export async function POST(request: NextRequest) {
     console.log(`[Webhook] Found ${usersWithStatePrefs.length} users with state preferences but no similar_load trigger`);
 
     // Add virtual similar_load triggers for users with state preferences
+    // This enables automatic state preference notifications (type 3)
     for (const userPref of usersWithStatePrefs) {
       const userId = userPref.user_id;
-      console.log(`[Webhook] Adding virtual similar_load trigger for user ${userId}, states: ${userPref.state_preferences?.join(', ') || 'none'}`);
+      console.log(`[Webhook] Adding virtual similar_load trigger (state preference) for user ${userId}, states: ${userPref.state_preferences?.join(', ') || 'none'}`);
       allTriggers.push({
         id: -1, // Virtual trigger ID
         supabase_carrier_user_id: userId,
@@ -78,6 +85,8 @@ export async function POST(request: NextRequest) {
         is_active: true,
       });
     }
+    
+    console.log(`[Webhook] Total triggers after adding virtual state preference triggers: ${allTriggers.length}`);
 
     // Group triggers by user to batch process
     const userTriggers = new Map<string, any[]>();
