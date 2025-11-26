@@ -41,20 +41,21 @@ export async function POST(request: NextRequest) {
 
     // Also get users with state preferences enabled who don't have a similar_load trigger
     // This ensures state preference notifications work automatically
-    // Note: Check both possible column names (carrier_user_id and supabase_carrier_user_id)
+    // Note: Uses supabase_carrier_user_id (Supabase-only)
     const usersWithStatePrefs = await sql`
       SELECT DISTINCT
-        COALESCE(cnp.supabase_carrier_user_id, cnp.carrier_user_id) as user_id,
+        cnp.supabase_carrier_user_id as user_id,
         cnp.state_preferences,
         cnp.distance_threshold_miles,
         cnp.similar_load_notifications
       FROM carrier_notification_preferences cnp
-      WHERE cnp.similar_load_notifications = true
+      WHERE cnp.supabase_carrier_user_id IS NOT NULL
+        AND cnp.similar_load_notifications = true
         AND cnp.state_preferences IS NOT NULL
         AND array_length(cnp.state_preferences, 1) > 0
         AND NOT EXISTS (
           SELECT 1 FROM notification_triggers nt
-          WHERE nt.supabase_carrier_user_id = COALESCE(cnp.supabase_carrier_user_id, cnp.carrier_user_id)
+          WHERE nt.supabase_carrier_user_id = cnp.supabase_carrier_user_id
             AND nt.trigger_type = 'similar_load'
             AND nt.is_active = true
         )
