@@ -149,7 +149,46 @@ export async function POST(request: NextRequest) {
       });
     }
     
-    console.log(`[Webhook] Total triggers after adding virtual state preference triggers: ${allTriggers.length}`);
+    // CRITICAL: Check ALL carriers who have this bid in their favorites
+    // This ensures every carrier is notified when their favorite bid becomes available
+    if (bidNumber) {
+      const carriersWithFavorite = await sql`
+        SELECT DISTINCT
+          cf.supabase_carrier_user_id as user_id,
+          cf.bid_number
+        FROM carrier_favorites cf
+        WHERE cf.bid_number = ${bidNumber}
+          AND cf.supabase_carrier_user_id IS NOT NULL
+      `;
+      
+      console.log(`[Webhook] Found ${carriersWithFavorite.length} carrier(s) with bid ${bidNumber} in favorites`);
+      
+      // Add virtual favorite_available triggers for all carriers who have this bid favorited
+      for (const favorite of carriersWithFavorite) {
+        const userId = favorite.user_id;
+        
+        // Check if user already has a trigger in the list (avoid duplicates)
+        const alreadyHasTrigger = allTriggers.some(t => 
+          t.supabase_carrier_user_id === userId && 
+          (t.trigger_type === 'favorite_available' || t.trigger_type === 'exact_match')
+        );
+        
+        if (!alreadyHasTrigger) {
+          console.log(`[Webhook] Adding virtual favorite_available trigger for user ${userId} (bid ${bidNumber} is favorited)`);
+          allTriggers.push({
+            id: -2, // Virtual trigger ID (different from state pref triggers)
+            supabase_carrier_user_id: userId,
+            trigger_type: 'favorite_available',
+            trigger_config: {
+              favoriteBidNumbers: [bidNumber],
+            },
+            is_active: true,
+          });
+        }
+      }
+    }
+    
+    console.log(`[Webhook] Total triggers after adding virtual triggers: ${allTriggers.length}`);
 
     // Group triggers by user to batch process
     const userTriggers = new Map<string, any[]>();
@@ -166,9 +205,11 @@ export async function POST(request: NextRequest) {
     // Enqueue jobs for each user
     for (const [userId, triggers] of userTriggers.entries()) {
       // Determine priority based on trigger types
+      // favorite_available is also urgent since it's a direct favorite match
       const hasUrgent = triggers.some(t => 
         t.trigger_type === 'exact_match' || 
-        t.trigger_type === 'deadline_approaching'
+        t.trigger_type === 'deadline_approaching' ||
+        t.trigger_type === 'favorite_available'
       );
 
       const queue = hasUrgent ? urgentNotificationQueue : notificationQueue;

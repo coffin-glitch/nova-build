@@ -1072,18 +1072,36 @@ async function processFavoriteAvailableTrigger(
     const bid = activeBid[0];
 
     // Check if we've already notified about this bid recently
-    const recentNotification = await sql`
-      SELECT id
-      FROM notification_logs
-      WHERE supabase_carrier_user_id = ${userId}
-        AND trigger_id = ${trigger.id}
-        AND bid_number = ${bidNumber}
-        AND sent_at > NOW() - INTERVAL '6 hours'
-      LIMIT 1
-    `;
+    // For virtual triggers (id < 0), check by bid_number and user only
+    // For real triggers, check by trigger_id as well
+    let recentNotification;
+    if (trigger.id < 0) {
+      // Virtual trigger - check by user and bid_number only
+      recentNotification = await sql`
+        SELECT id
+        FROM notification_logs
+        WHERE supabase_carrier_user_id = ${userId}
+          AND bid_number = ${bidNumber}
+          AND notification_type = 'favorite_available'
+          AND sent_at > NOW() - INTERVAL '6 hours'
+        LIMIT 1
+      `;
+    } else {
+      // Real trigger - check by trigger_id
+      recentNotification = await sql`
+        SELECT id
+        FROM notification_logs
+        WHERE supabase_carrier_user_id = ${userId}
+          AND trigger_id = ${trigger.id}
+          AND bid_number = ${bidNumber}
+          AND sent_at > NOW() - INTERVAL '6 hours'
+        LIMIT 1
+      `;
+    }
 
     if (recentNotification.length > 0) {
       // Already notified recently
+      console.log(`[FavoriteAvailable] Already notified user ${userId} about bid ${bidNumber} recently, skipping`);
       continue;
     }
 
