@@ -107,20 +107,27 @@ function parseStops(stops: any): string[] {
 }
 
 // Helper function to count stops
+// Matches bid-board logic: pickup doesn't count as a stop, so subtract 1
 function countStops(stops: any): number | undefined {
   if (!stops) return undefined;
+  let stopCount = 0;
+  
   if (Array.isArray(stops)) {
-    return stops.length;
-  }
-  if (typeof stops === 'string') {
+    stopCount = stops.length;
+  } else if (typeof stops === 'string') {
     try {
       const parsed = JSON.parse(stops);
-      return Array.isArray(parsed) ? parsed.length : 1;
+      stopCount = Array.isArray(parsed) ? parsed.length : 1;
     } catch {
-      return 1; // Single stop as string
+      stopCount = 1; // Single stop as string
     }
+  } else {
+    stopCount = 1; // Single stop as object
   }
-  return 1; // Single stop as object
+  
+  // Subtract 1 because pickup location doesn't count as a stop (matching bid-board formatStopCount logic)
+  // Ensure we don't return negative numbers
+  return Math.max(0, stopCount - 1);
 }
 
 // Helper function to extract state from stop string

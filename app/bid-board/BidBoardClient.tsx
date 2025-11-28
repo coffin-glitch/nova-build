@@ -174,8 +174,15 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
   }, [data, activeData, expiredData, bids.length, activeBidsAll.length, expiredBidsAll.length, today]);
 
   // Fetch favorites status for all bids
+  // Filter out bids with invalid bid_numbers before creating the URL
+  const validBidNumbers = bids
+    .map((b: TelegramBid) => b.bid_number)
+    .filter((bn: string | null | undefined): bn is string => 
+      bn != null && bn.trim().length > 0 && /^[A-Z0-9\-_]+$/.test(bn.trim()) && bn.trim().length <= 100
+    );
+  
   const { data: favoritesData, mutate: mutateFavorites } = useSWR(
-    bids.length > 0 ? `/api/carrier/favorites/check?bid_numbers=${bids.map((b: TelegramBid) => b.bid_number).join(',')}` : null,
+    validBidNumbers.length > 0 ? `/api/carrier/favorites/check?bid_numbers=${validBidNumbers.join(',')}` : null,
     swrFetcher,
     { 
       refreshInterval: 30000,

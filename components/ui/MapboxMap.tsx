@@ -227,7 +227,7 @@ export function MapboxMap({
 
       // Wait for container to have dimensions (important for dialogs/modals)
       const container = mapContainerRef.current;
-      if (container.offsetWidth === 0 || container.offsetHeight === 0) {
+      if (!container || container.offsetWidth === 0 || container.offsetHeight === 0) {
         // Retry after a short delay if container has no dimensions
         console.log('MapboxMap: Container has no dimensions yet, will retry');
         setIsLoading(false);
@@ -241,9 +241,18 @@ export function MapboxMap({
         return;
       }
 
+      // Final check: ensure container is still in the DOM and has a parent
+      if (!container.parentElement) {
+        console.warn('MapboxMap: Container is not in the DOM, aborting initialization');
+        setIsLoading(false);
+        return;
+      }
+
       // Configure map with proper options per Mapbox GL JS docs
-      const map = new mapboxgl.Map({
-        container: container,
+      let map: mapboxgl.Map;
+      try {
+        map = new mapboxgl.Map({
+          container: container,
         style: mapStyle,
         center: initialCenter,
         zoom: initialZoom,
@@ -281,6 +290,15 @@ export function MapboxMap({
           return { url };
         }
       });
+      } catch (error: any) {
+        console.error('MapboxMap: Error creating map:', error);
+        // If container is invalid, it might have been unmounted
+        if (error?.message?.includes('appendChild') || error?.message?.includes('container')) {
+          console.warn('MapboxMap: Container issue detected, component may have unmounted');
+        }
+        setIsLoading(false);
+        return;
+      }
 
       // Handle style loading errors with retry and better logging
       let retryCount = 0;

@@ -80,11 +80,14 @@ export async function GET(request: NextRequest) {
       .filter(bn => bn.length > 0 && /^[A-Z0-9\-_]+$/.test(bn) && bn.length <= 100)
       .slice(0, 100); // Limit to 100 bid numbers
 
+    // If no valid bid numbers after filtering, return empty result (not an error)
+    // This can happen when bids are removed/expired and frontend hasn't updated yet
     if (bidNumbersArray.length === 0) {
-      const response = NextResponse.json(
-        { error: "No valid bid numbers provided" },
-        { status: 400 }
-      );
+      console.log('[favorites/check] No valid bid numbers after filtering, returning empty result');
+      const response = NextResponse.json({ 
+        ok: true, 
+        data: {} 
+      });
       return addSecurityHeaders(response, request);
     }
 

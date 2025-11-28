@@ -131,11 +131,22 @@ async function geocodeWithAPI(
     }
   } else {
     // If we don't have parsed components, normalize by removing commas
+    // This handles cases like "BELL GARDENS, CA 90201" -> "BELL GARDENS CA 90201"
     normalizedLocation = normalizedLocation.replace(/,\s*/g, ' ').replace(/\s+/g, ' ').trim();
   }
   
   console.log(`Geocoding API: Using text search strategy for "${normalizedLocation}"${parsed.state ? ` (expected state: ${parsed.state})` : ''}`);
-  return await geocodeByText(normalizedLocation, token, parsed.state);
+  const textResult = await geocodeByText(normalizedLocation, token, parsed.state);
+  
+  // If text search with full address fails but we have a ZIP code, try without ZIP
+  // Sometimes Mapbox works better with just "City State" for certain locations
+  if (!textResult && parsed.zipcode && parsed.city && parsed.state) {
+    const cityStateOnly = `${parsed.city} ${parsed.state}`;
+    console.log(`Geocoding API: Text search with ZIP failed, trying city+state only: "${cityStateOnly}"`);
+    return await geocodeByText(cityStateOnly, token, parsed.state);
+  }
+  
+  return textResult;
 }
 
 /**
@@ -302,21 +313,12 @@ async function geocodeByCityState(
     const data = await response.json();
     
     if (data.features && data.features.length > 0) {
-      // CRITICAL: Find a feature that matches the expected state
-      // This ensures "AVONDALE, AZ" doesn't return "Avondale, OH"
-      const matchingFeature = data.features.find((f: any) => {
-        const featureState = extractStateFromFeature(f);
-        return featureState === stateUpper;
-      });
-      
-      // Use matching feature if found, otherwise use first result
-      const feature = matchingFeature || data.features[0];
-      const featureState = extractStateFromFeature(feature);
-      
       // CRITICAL: We always use the region parameter in city+state queries, so Mapbox already filters by state
       // Trust ANY result that comes back - no need for additional state validation
       // This prevents false rejections when Mapbox doesn't include state in response properties
       // No validation needed - Mapbox handles it via the region parameter
+      // Simply use the first result as it's already filtered by Mapbox
+      const feature = data.features[0];
       
       const coords = feature.properties?.coordinates;
       
@@ -436,7 +438,35 @@ function extractLocationComponents(location: string): {
   city?: string;
   state?: string;
 } {
-  const trimmed = location.trim();
+  // Clean up the input: remove duplicate commas and normalize spacing
+  // Handle cases like "INDIANAPOLIS IN 46241, IN" -> "INDIANAPOLIS IN 46241"
+  let trimmed = location.trim();
+  
+  // First, normalize multiple commas and spaces to make pattern matching easier
+  trimmed = trimmed.replace(/,\s*,+/g, ',').replace(/\s+/g, ' ').trim();
+  
+  // Remove trailing ", STATE" patterns that might be duplicates
+  // Strategy: Extract state from the main part first, then check if trailing state matches
+  // This handles "INDIANAPOLIS IN 46241, IN" -> "INDIANAPOLIS IN 46241"
+  const trailingStateMatch = trimmed.match(/,\s*([A-Z]{2})\s*$/i);
+  if (trailingStateMatch) {
+    const trailingState = trailingStateMatch[1].toUpperCase();
+    const beforeTrailing = trimmed.substring(0, trimmed.length - trailingStateMatch[0].length).trim();
+    
+    // Check if this state code appears as a standalone word in the main part
+    // Use word boundaries to ensure we match "IN" as a word, not inside "INDIANAPOLIS"
+    // Pattern: space before and after, or comma before and space/end after
+    const stateInMainPart = beforeTrailing.match(new RegExp(`(?:^|\\s|,)\\s*${trailingState}\\s*(?:\\s|\\d|$)`, 'i'));
+    
+    if (stateInMainPart) {
+      // State already appears in the main part, remove the trailing duplicate
+      trimmed = beforeTrailing;
+      console.log(`Geocoding: Removed trailing duplicate state "${trailingState}" from "${location}" -> "${trimmed}"`);
+    }
+  }
+  
+  // Final normalization after duplicate removal
+  trimmed = trimmed.replace(/,\s*,+/g, ',').replace(/\s+/g, ' ').trim();
   
   // Use parseAddress to properly separate street from city
   // This is critical for addresses like "PALMA AVE ANAHEIM, CA 92899"
