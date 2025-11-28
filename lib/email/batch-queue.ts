@@ -62,23 +62,33 @@ class EmailBatchQueue {
     // Process in batches of batchSize
     const batches: BatchedEmail[][] = [];
     for (let i = 0; i < this.queue.length; i += this.batchSize) {
-      batches.push(this.queue.slice(i, i + this.batchSize));
+      const batch = this.queue.slice(i, i + this.batchSize);
+      if (batch.length > 0) {
+        batches.push(batch);
+      }
     }
 
     // Clear the queue
+    const queueLength = this.queue.length;
     this.queue = [];
 
     // Send each batch
-    if (this.sendCallback) {
+    if (this.sendCallback && batches.length > 0) {
       for (const batch of batches) {
+        if (batch.length === 0) {
+          continue; // Skip empty batches
+        }
+        
         try {
           await this.sendCallback(batch);
         } catch (error) {
-          console.error('[Email Batch] Error sending batch:', error);
+          console.error(`[Email Batch] Error in sendCallback for batch of ${batch.length} emails:`, error);
           // Re-queue failed emails? Or log and continue?
           // For now, we'll log and continue - failed emails can be retried by the job system
         }
       }
+    } else if (batches.length === 0 && queueLength > 0) {
+      console.warn(`[Email Batch] Queue had ${queueLength} emails but no batches were created`);
     }
 
     // Restart auto-flush

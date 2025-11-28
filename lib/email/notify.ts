@@ -281,7 +281,7 @@ export async function sendEmailBatch(emails: EmailOptions[]): Promise<{ success:
     const { data, error } = await resend.batch.send(batchPayload);
 
     if (error) {
-      console.error('[Email - Resend Batch] Error:', error);
+      console.error('[Email - Resend Batch] API Error:', error);
       return {
         success: false,
         sent: 0,
@@ -291,18 +291,31 @@ export async function sendEmailBatch(emails: EmailOptions[]): Promise<{ success:
     }
 
     // Count successful sends
+    // Resend batch API returns an array of results, one per email
     const sent = data?.length || 0;
     const failed = emails.length - sent;
 
+    // Check if any emails in the batch failed
+    const failedEmails = data?.filter((result: any) => result.error) || [];
+    
     if (sent > 0) {
-      console.log(`[Email - Resend Batch] Sent ${sent} emails in batch (${failed} failed)`);
+      console.log(`[Email - Resend Batch] Sent ${sent} emails in batch${failed > 0 ? ` (${failed} failed)` : ''}`);
+    } else {
+      console.error(`[Email - Resend Batch] No emails were sent from batch of ${emails.length}`);
+    }
+
+    // If there are failed emails, log them
+    if (failedEmails.length > 0) {
+      console.warn(`[Email - Resend Batch] ${failedEmails.length} email(s) failed in batch:`, 
+        failedEmails.map((f: any) => f.error).slice(0, 3) // Log first 3 errors
+      );
     }
 
     return {
       success: sent > 0,
       sent,
       failed,
-      errors: failed > 0 ? [] : undefined, // Resend batch doesn't return per-email errors in strict mode
+      errors: failedEmails.length > 0 ? failedEmails.map((f: any) => f.error) : undefined,
     };
   } catch (error: any) {
     console.error('[Email - Resend Batch] Exception:', error);
@@ -377,12 +390,28 @@ export async function initializeEmailBatching(): Promise<void> {
   try {
     const { emailBatchQueue } = await import('./batch-queue');
     emailBatchQueue.setSendCallback(async (emails) => {
+      // Don't try to send empty batches
+      if (!emails || emails.length === 0) {
+        console.log('[Email Batch] Skipping empty batch');
+        return;
+      }
+
       // sendEmailBatch is defined in this file, so we can call it directly
       const result = await sendEmailBatch(emails);
-      if (!result.success && result.errors) {
-        console.error(`[Email Batch] Failed to send batch:`, result.errors);
+      
+      if (!result.success) {
+        // Log detailed error information
+        if (result.errors && result.errors.length > 0) {
+          console.error(`[Email Batch] Failed to send batch of ${emails.length} emails:`, result.errors);
+        } else {
+          console.error(`[Email Batch] Failed to send batch of ${emails.length} emails (no error details available)`);
+        }
       } else {
-        console.log(`[Email Batch] Successfully sent ${result.sent} emails (${result.failed} failed)`);
+        if (result.sent > 0) {
+          console.log(`[Email Batch] ✅ Successfully sent ${result.sent} emails in batch${result.failed > 0 ? ` (${result.failed} failed)` : ''}`);
+        } else {
+          console.warn(`[Email Batch] ⚠️ Batch processed but no emails were sent (${result.failed} failed)`);
+        }
       }
     });
 
