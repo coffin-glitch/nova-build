@@ -109,8 +109,9 @@ async function geocodeWithAPI(
   }
   
   // Strategy 2: If we have city and state, use structured query
+  // Mapbox best practice: Use structured parameters (place, region) for city+state
   if (parsed.city && parsed.state) {
-    console.log(`Geocoding API: Using city+state strategy for "${parsed.city}, ${parsed.state}"`);
+    console.log(`Geocoding API: Using city+state strategy for "${parsed.city} ${parsed.state}"${parsed.zipcode ? ` ${parsed.zipcode}` : ''}`);
     const cityStateResult = await geocodeByCityState(parsed.city, parsed.state, token);
     if (cityStateResult) {
       return cityStateResult;
@@ -118,10 +119,23 @@ async function geocodeWithAPI(
     console.log(`Geocoding API: City+state geocoding failed, trying text search`);
   }
   
-  // Strategy 3: Fallback to text search
-  // CRITICAL: Only use text search if we don't have state info, or validate state if we do
-  console.log(`Geocoding API: Using text search strategy for "${location}"${parsed.state ? ` (expected state: ${parsed.state})` : ''}`);
-  return await geocodeByText(location, token, parsed.state);
+  // Strategy 3: Fallback to text search with normalized format
+  // Mapbox best practice: Use space-separated format (no comma) for text queries
+  // Format: "City State ZIP" instead of "City, State ZIP"
+  let normalizedLocation = location.trim();
+  if (parsed.city && parsed.state) {
+    // Build normalized format: "City State ZIP" (no comma)
+    normalizedLocation = `${parsed.city} ${parsed.state}`;
+    if (parsed.zipcode) {
+      normalizedLocation += ` ${parsed.zipcode}`;
+    }
+  } else {
+    // If we don't have parsed components, normalize by removing commas
+    normalizedLocation = normalizedLocation.replace(/,\s*/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+  
+  console.log(`Geocoding API: Using text search strategy for "${normalizedLocation}"${parsed.state ? ` (expected state: ${parsed.state})` : ''}`);
+  return await geocodeByText(normalizedLocation, token, parsed.state);
 }
 
 /**
@@ -209,6 +223,7 @@ async function geocodeByZipCode(
 /**
  * Geocode by city and state
  * CRITICAL: Validates that result is in the correct state
+ * Uses Mapbox best practices: structured parameters (place, region) for accuracy
  */
 async function geocodeByCityState(
   city: string,
@@ -217,11 +232,14 @@ async function geocodeByCityState(
 ): Promise<GeocodeResult | null> {
   try {
     const stateUpper = state.trim().toUpperCase();
+    const cityTrimmed = city.trim();
     
+    // Mapbox best practice: Use structured parameters (place, region) instead of text query
+    // This is more accurate than "City, State" text format
     const params = new URLSearchParams({
       access_token: token,
       country: 'us',
-      place: city.trim(),
+      place: cityTrimmed,
       region: stateUpper,
       types: 'place,locality',
       limit: '3', // Get multiple results to find one in correct state
@@ -285,6 +303,7 @@ async function geocodeByCityState(
 /**
  * Geocode by text search (fallback)
  * CRITICAL: If expectedState is provided, validates result is in correct state
+ * Uses Mapbox best practices: space-separated format (no comma), proper URL encoding
  */
 async function geocodeByText(
   location: string,
@@ -292,9 +311,20 @@ async function geocodeByText(
   expectedState?: string
 ): Promise<GeocodeResult | null> {
   try {
+    // Mapbox best practice: Remove commas and normalize to space-separated format
+    // "City, State ZIP" -> "City State ZIP" (Mapbox prefers no comma)
+    let normalizedLocation = location.trim();
+    
+    // Remove commas but preserve structure
+    // "FAYETTEVILLE, AR 72701" -> "FAYETTEVILLE AR 72701"
+    normalizedLocation = normalizedLocation.replace(/,\s*/g, ' ');
+    
+    // Clean up multiple spaces
+    normalizedLocation = normalizedLocation.replace(/\s+/g, ' ').trim();
+    
     const params = new URLSearchParams({
       access_token: token,
-      q: location,
+      q: normalizedLocation, // URL encoding happens automatically via URLSearchParams
       country: 'us',
       types: 'place,locality,address',
       limit: '3', // Get multiple results to find one in correct state if expectedState is provided

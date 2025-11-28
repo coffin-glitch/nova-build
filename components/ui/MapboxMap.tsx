@@ -91,42 +91,48 @@ export function MapboxMap({
       const { geocodeLocation } = await import('@/lib/mapbox-geocode');
       const { formatAddressForCard, extractCityStateForMatching, parseAddress } = await import('@/lib/format');
       
-      // STANDARD FORMAT: Normalize to "City, ST ZIPCODE" format first
-      // This is the standard format for bid routes, so prioritize it
-      const standardizedFormat = formatAddressForCard(stop);
-      console.log(`MapboxMap: Standardizing "${stop}" -> "${standardizedFormat}" for geocoding`);
+      // Mapbox best practice: Use space-separated format (no comma)
+      // The geocodeLocation function will handle normalization internally
+      // We pass the original stop and let the geocoding utility handle format conversion
+      console.log(`MapboxMap: Geocoding "${stop}" (will normalize to Mapbox format internally)`);
       
-      // Primary geocoding attempt with standardized "City, ST ZIPCODE" format
-      let result = await geocodeLocation(standardizedFormat, true); // true = use API for accurate coordinates
+      // Primary geocoding attempt - geocodeLocation will normalize format internally
+      let result = await geocodeLocation(stop, true); // true = use API for accurate coordinates
       
       // If API fails, try alternative formats before giving up
       if (!result) {
-        console.warn(`MapboxMap: Geocoding failed for standardized format "${standardizedFormat}", trying alternative formats...`);
+        console.warn(`MapboxMap: Geocoding failed for "${stop}", trying alternative formats...`);
         
-        // Strategy 1: Try with just city and state (remove ZIP if present)
+        // Strategy 1: Try with parsed components in space-separated format (no comma)
         const parsed = parseAddress(stop);
         if (parsed.city && parsed.state) {
-          const cityStateFormat = `${parsed.city}, ${parsed.state}`;
-          if (cityStateFormat !== standardizedFormat) {
-            console.log(`MapboxMap: Trying city/state only: "${cityStateFormat}"`);
-            result = await geocodeLocation(cityStateFormat, true);
+          // Mapbox format: "City State ZIP" (no comma)
+          let cityStateFormat = `${parsed.city} ${parsed.state}`;
+          if (parsed.zipcode) {
+            cityStateFormat += ` ${parsed.zipcode}`;
           }
+          console.log(`MapboxMap: Trying space-separated format: "${cityStateFormat}"`);
+          result = await geocodeLocation(cityStateFormat, true);
         }
         
         // Strategy 2: Try using extractCityStateForMatching (more robust)
         if (!result) {
           const cityState = extractCityStateForMatching(stop);
           if (cityState) {
-            const cityStateFormat = `${cityState.city}, ${cityState.state}`;
-            console.log(`MapboxMap: Trying extracted city/state: "${cityStateFormat}"`);
+            // Mapbox format: "City State" (no comma)
+            const cityStateFormat = `${cityState.city} ${cityState.state}`;
+            console.log(`MapboxMap: Trying extracted city/state (space-separated): "${cityStateFormat}"`);
             result = await geocodeLocation(cityStateFormat, true);
           }
         }
         
-        // Strategy 3: Try original format as fallback (in case it's already in correct format)
-        if (!result && stop !== standardizedFormat) {
-          console.log(`MapboxMap: Trying original format: "${stop}"`);
-          result = await geocodeLocation(stop, true);
+        // Strategy 3: Try removing commas from original format
+        if (!result) {
+          const normalizedStop = stop.replace(/,\s*/g, ' ').replace(/\s+/g, ' ').trim();
+          if (normalizedStop !== stop) {
+            console.log(`MapboxMap: Trying normalized format (commas removed): "${normalizedStop}"`);
+            result = await geocodeLocation(normalizedStop, true);
+          }
         }
         
         // If all strategies failed, throw error
