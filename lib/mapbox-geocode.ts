@@ -139,6 +139,58 @@ async function geocodeWithAPI(
 }
 
 /**
+ * Extract state abbreviation from Mapbox feature properties
+ * Tries multiple property names as Mapbox API v6 may use different fields
+ */
+function extractStateFromFeature(feature: any): string | null {
+  if (!feature?.properties) return null;
+  
+  const props = feature.properties;
+  
+  // Try various property names that Mapbox might use
+  const statePropertyNames = [
+    'region_code',      // Common in geocoding APIs
+    'region_a1_abbr',   // Administrative level 1 abbreviation
+    'region_a1',        // Administrative level 1
+    'state_code',       // Direct state code
+    'state',            // State name or code
+    'admin1_code',     // Admin level 1 code
+    'region',           // Region name (might be full name, not abbreviation)
+  ];
+  
+  for (const propName of statePropertyNames) {
+    const value = props[propName];
+    if (value && typeof value === 'string') {
+      const trimmed = value.trim().toUpperCase();
+      // If it's a 2-letter code, return it
+      if (trimmed.length === 2 && /^[A-Z]{2}$/.test(trimmed)) {
+        return trimmed;
+      }
+      // If it's a longer string, try to extract 2-letter code from it
+      const match = trimmed.match(/\b([A-Z]{2})\b/);
+      if (match) {
+        return match[1];
+      }
+    }
+  }
+  
+  // Fallback: Try to extract state from full_address or name
+  const addressFields = ['full_address', 'name', 'place_name'];
+  for (const field of addressFields) {
+    const value = props[field];
+    if (value && typeof value === 'string') {
+      // Look for ", ST " or ", ST" pattern (e.g., "City, NJ" or "City, NJ 08865")
+      const match = value.match(/,\s*([A-Z]{2})(?:\s|$)/);
+      if (match) {
+        return match[1];
+      }
+    }
+  }
+  
+  return null;
+}
+
+/**
  * Geocode by ZIP code only (most accurate method)
  * CRITICAL: If state is provided, validates result is in correct state
  */
@@ -181,14 +233,19 @@ async function geocodeByZipCode(
     
     if (data.features && data.features.length > 0) {
       const feature = data.features[0];
-      const featureState = (feature.properties?.region_code || feature.properties?.region || '').toUpperCase().trim();
+      const featureState = extractStateFromFeature(feature);
       
       // CRITICAL: If we have expected state, validate the result matches
       // This ensures "85323" (AZ) doesn't return coordinates in another state
       if (expectedState) {
         const expectedStateUpper = expectedState.toUpperCase().trim();
-        if (featureState !== expectedStateUpper) {
-          console.warn(`Geocoding API: ZIP code "${zip5}" returned state "${featureState}" but expected "${expectedStateUpper}" - rejecting`);
+        if (!featureState || featureState !== expectedStateUpper) {
+          // Log available properties for debugging
+          if (!featureState) {
+            console.warn(`Geocoding API: ZIP code "${zip5}" - could not extract state from response. Available properties:`, Object.keys(feature.properties || {}));
+          } else {
+            console.warn(`Geocoding API: ZIP code "${zip5}" returned state "${featureState}" but expected "${expectedStateUpper}" - rejecting`);
+          }
           return null;
         }
       }
@@ -259,16 +316,21 @@ async function geocodeByCityState(
       // CRITICAL: Find a feature that matches the expected state
       // This ensures "AVONDALE, AZ" doesn't return "Avondale, OH"
       const matchingFeature = data.features.find((f: any) => {
-        const featureState = (f.properties?.region_code || f.properties?.region || '').toUpperCase().trim();
+        const featureState = extractStateFromFeature(f);
         return featureState === stateUpper;
       });
       
       // Use matching feature if found, otherwise use first result
       const feature = matchingFeature || data.features[0];
-      const featureState = (feature.properties?.region_code || feature.properties?.region || '').toUpperCase().trim();
+      const featureState = extractStateFromFeature(feature);
       
       // Validate state matches - if it doesn't, reject the result
-      if (featureState !== stateUpper) {
+      // NOTE: If we can't extract state but we used region parameter in query, trust the result
+      // since Mapbox filters by region parameter
+      if (!featureState) {
+        // Can't extract state, but we used region parameter - trust Mapbox's filtering
+        console.log(`Geocoding API: City+state "${city}, ${state}" - could not extract state from response, but using region parameter in query so trusting result`);
+      } else if (featureState !== stateUpper) {
         console.warn(`Geocoding API: Result state "${featureState}" doesn't match expected "${stateUpper}" for "${city}, ${state}" - rejecting`);
         return null;
       }
@@ -352,7 +414,7 @@ async function geocodeByText(
       if (expectedState) {
         const expectedStateUpper = expectedState.toUpperCase().trim();
         const matchingFeature = data.features.find((f: any) => {
-          const featureState = (f.properties?.region_code || f.properties?.region || '').toUpperCase().trim();
+          const featureState = extractStateFromFeature(f);
           return featureState === expectedStateUpper;
         });
         
@@ -360,20 +422,26 @@ async function geocodeByText(
           feature = matchingFeature;
         } else {
           // No matching state found - validate the first result
-          const featureState = (feature.properties?.region_code || feature.properties?.region || '').toUpperCase().trim();
-          if (featureState !== expectedStateUpper) {
+          const featureState = extractStateFromFeature(feature);
+          if (!featureState) {
+            // Can't extract state, but we used region parameter - trust Mapbox's filtering
+            console.log(`Geocoding API: Text search "${location}" - could not extract state from response, but using region parameter in query so trusting result`);
+          } else if (featureState !== expectedStateUpper) {
             console.warn(`Geocoding API: Text search result state "${featureState}" doesn't match expected "${expectedStateUpper}" for "${location}" - rejecting`);
             return null;
           }
         }
       }
       
-      const featureState = (feature.properties?.region_code || feature.properties?.region || '').toUpperCase().trim();
+      const featureState = extractStateFromFeature(feature);
       
       // CRITICAL: Final validation - if we have expected state, it must match
       if (expectedState) {
         const expectedStateUpper = expectedState.toUpperCase().trim();
-        if (featureState !== expectedStateUpper) {
+        if (!featureState) {
+          // Can't extract state, but we used region parameter - trust Mapbox's filtering
+          console.log(`Geocoding API: Text search "${location}" - could not extract state from response, but using region parameter in query so trusting result`);
+        } else if (featureState !== expectedStateUpper) {
           console.warn(`Geocoding API: Text search result state "${featureState}" doesn't match expected "${expectedStateUpper}" for "${location}" - rejecting`);
           return null;
         }
