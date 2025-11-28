@@ -237,15 +237,17 @@ async function geocodeByZipCode(
       
       // CRITICAL: If we have expected state, validate the result matches
       // This ensures "85323" (AZ) doesn't return coordinates in another state
+      // NOTE: If we can't extract state but we used region parameter in query, trust the result
+      // since Mapbox filters by region parameter, and ZIP codes are generally unique enough
       if (expectedState) {
         const expectedStateUpper = expectedState.toUpperCase().trim();
-        if (!featureState || featureState !== expectedStateUpper) {
-          // Log available properties for debugging
-          if (!featureState) {
-            console.warn(`Geocoding API: ZIP code "${zip5}" - could not extract state from response. Available properties:`, Object.keys(feature.properties || {}));
-          } else {
-            console.warn(`Geocoding API: ZIP code "${zip5}" returned state "${featureState}" but expected "${expectedStateUpper}" - rejecting`);
-          }
+        // If we can't extract state (null or empty string), trust Mapbox's filtering since we used region parameter
+        if (!featureState || featureState.trim() === '') {
+          // Can't extract state, but we used region parameter - trust Mapbox's filtering
+          // ZIP codes are also generally unique enough to trust
+          console.log(`Geocoding API: ZIP code "${zip5}" - could not extract state from response, but using region parameter in query so trusting result`);
+        } else if (featureState !== expectedStateUpper) {
+          console.warn(`Geocoding API: ZIP code "${zip5}" returned state "${featureState}" but expected "${expectedStateUpper}" - rejecting`);
           return null;
         }
       }
@@ -423,7 +425,8 @@ async function geocodeByText(
         } else {
           // No matching state found - validate the first result
           const featureState = extractStateFromFeature(feature);
-          if (!featureState) {
+          // If we can't extract state (null or empty string), trust Mapbox's filtering since we used region parameter
+          if (!featureState || featureState.trim() === '') {
             // Can't extract state, but we used region parameter - trust Mapbox's filtering
             console.log(`Geocoding API: Text search "${location}" - could not extract state from response, but using region parameter in query so trusting result`);
           } else if (featureState !== expectedStateUpper) {
@@ -436,9 +439,10 @@ async function geocodeByText(
       const featureState = extractStateFromFeature(feature);
       
       // CRITICAL: Final validation - if we have expected state, it must match
+      // If we can't extract state (null or empty string), trust Mapbox's filtering since we used region parameter
       if (expectedState) {
         const expectedStateUpper = expectedState.toUpperCase().trim();
-        if (!featureState) {
+        if (!featureState || featureState.trim() === '') {
           // Can't extract state, but we used region parameter - trust Mapbox's filtering
           console.log(`Geocoding API: Text search "${location}" - could not extract state from response, but using region parameter in query so trusting result`);
         } else if (featureState !== expectedStateUpper) {
