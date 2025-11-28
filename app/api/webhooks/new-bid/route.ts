@@ -3,6 +3,11 @@ import {
   filterRelevantTriggers,
   getBidInfoForFiltering
 } from '@/lib/bid-filtering';
+import {
+  findCarriersWithMatchingFavorites,
+  findCarriersWithStatePreferences,
+  type BidInfo
+} from '@/lib/comprehensive-carrier-matching';
 import sql from '@/lib/db';
 import { notificationQueue, urgentNotificationQueue } from '@/lib/notification-queue';
 import { NextRequest, NextResponse } from "next/server";
@@ -149,10 +154,51 @@ export async function POST(request: NextRequest) {
       });
     }
     
-    // CRITICAL: Check ALL carriers who have this bid in their favorites
-    // This ensures every carrier is notified when their favorite bid becomes available
-    if (bidNumber) {
-      const carriersWithFavorite = await sql`
+    // CRITICAL: Comprehensive matching - Check ALL carriers' preferences
+    // This ensures every carrier is notified if the bid matches their preferences
+    if (bidNumber && bidInfo) {
+      console.log(`[Webhook] Starting comprehensive carrier matching for bid ${bidNumber}...`);
+      
+      // 1. Check ALL carriers with favorites that match (exact, state, backhaul)
+      const favoriteMatches = await findCarriersWithMatchingFavorites({
+        bidNumber,
+        origin: bidInfo.origin || '',
+        destination: bidInfo.destination || '',
+        originState: bidInfo.originState,
+        destinationState: bidInfo.destinationState,
+        distance: bidInfo.distance,
+        tag: bidInfo.tag,
+      });
+      
+      console.log(`[Webhook] Found ${favoriteMatches.length} carriers with matching favorites`);
+      
+      // Add virtual triggers for all favorite matches
+      for (const match of favoriteMatches) {
+        const userId = match.userId;
+        
+        // Check if user already has this type of trigger (avoid duplicates)
+        const alreadyHasTrigger = allTriggers.some(t => 
+          t.supabase_carrier_user_id === userId && 
+          t.trigger_type === match.matchType &&
+          t.trigger_config?.favoriteBidNumber === match.favoriteBidNumber
+        );
+        
+        if (!alreadyHasTrigger) {
+          console.log(`[Webhook] Adding virtual ${match.triggerType} trigger for user ${userId} (favorite: ${match.favoriteBidNumber}, match: ${match.matchType})`);
+          allTriggers.push({
+            id: match.matchType === 'exact_match' ? -3 : 
+                match.matchType === 'state_match' ? -4 : 
+                match.matchType === 'backhaul' ? -5 : -2,
+            supabase_carrier_user_id: userId,
+            trigger_type: match.triggerType, // Use the triggerType from the match (exact_match or similar_load)
+            trigger_config: match.triggerConfig,
+            is_active: true,
+          });
+        }
+      }
+      
+      // 2. Check ALL carriers who have this exact bid in favorites (favorite_available)
+      const carriersWithExactFavorite = await sql`
         SELECT DISTINCT
           cf.supabase_carrier_user_id as user_id,
           cf.bid_number
@@ -161,22 +207,22 @@ export async function POST(request: NextRequest) {
           AND cf.supabase_carrier_user_id IS NOT NULL
       `;
       
-      console.log(`[Webhook] Found ${carriersWithFavorite.length} carrier(s) with bid ${bidNumber} in favorites`);
+      console.log(`[Webhook] Found ${carriersWithExactFavorite.length} carrier(s) with bid ${bidNumber} as exact favorite`);
       
-      // Add virtual favorite_available triggers for all carriers who have this bid favorited
-      for (const favorite of carriersWithFavorite) {
+      // Add virtual favorite_available triggers
+      for (const favorite of carriersWithExactFavorite) {
         const userId = favorite.user_id;
         
-        // Check if user already has a trigger in the list (avoid duplicates)
+        // Check if user already has a favorite_available trigger
         const alreadyHasTrigger = allTriggers.some(t => 
           t.supabase_carrier_user_id === userId && 
-          (t.trigger_type === 'favorite_available' || t.trigger_type === 'exact_match')
+          t.trigger_type === 'favorite_available'
         );
         
         if (!alreadyHasTrigger) {
           console.log(`[Webhook] Adding virtual favorite_available trigger for user ${userId} (bid ${bidNumber} is favorited)`);
           allTriggers.push({
-            id: -2, // Virtual trigger ID (different from state pref triggers)
+            id: -2, // Virtual trigger ID
             supabase_carrier_user_id: userId,
             trigger_type: 'favorite_available',
             trigger_config: {
