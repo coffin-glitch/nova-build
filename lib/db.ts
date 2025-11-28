@@ -1,4 +1,14 @@
-import 'dotenv/config';
+// Load environment variables - check .env.local first, then .env
+import { config } from 'dotenv';
+import { resolve } from 'path';
+
+// Try .env.local first (common for local development)
+config({ path: resolve(process.cwd(), '.env.local') });
+// Fall back to .env
+config({ path: resolve(process.cwd(), '.env') });
+// Also try default dotenv/config behavior
+config();
+
 import postgres from 'postgres';
 
 // Check if DATABASE_URL is set

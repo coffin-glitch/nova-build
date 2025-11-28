@@ -476,7 +476,7 @@ async function processSimilarLoadTrigger(
 
   // For state preference notifications, we simply check if any bid's origin state matches the user's state preferences
   // This doesn't require favorites - just match origin states
-  // IMPORTANT: Only check the state part (after comma), not the city part
+  // IMPORTANT: Only check the FIRST stop (origin), not all stops
   const statePrefBids = await sql`
     SELECT 
       tb.bid_number,
@@ -493,23 +493,20 @@ async function processSimilarLoadTrigger(
       AND NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes')
       AND tb.stops IS NOT NULL
       AND jsonb_typeof(tb.stops) = 'array'
+      AND jsonb_array_length(tb.stops) > 0
       AND EXISTS (
         SELECT 1 
-        FROM jsonb_array_elements_text(tb.stops) AS stop_text
-        WHERE EXISTS (
-          SELECT 1 
-          FROM unnest(${statePreferences}::TEXT[]) AS pref_state
-          -- Extract state from stop_text (after comma) and match only the state part
-          -- Pattern: "CITY, STATE" or "CITY, STATE ZIP" - extract STATE part
-          WHERE (
-            -- Match state after comma: ", STATE" or ", STATE "
-            stop_text ~* (',\s*' || pref_state || '(\s|$)')
-            OR
-            -- Match state at end if no comma: "CITY STATE" (less common)
-            stop_text ~* ('\s+' || pref_state || '$')
-          )
+        FROM unnest(${statePreferences}::TEXT[]) AS pref_state
+        -- Only check the FIRST stop (origin) - use stops->0 to get first element
+        -- Extract state from first stop (after comma) and match only the state part
+        -- Pattern: "CITY, STATE" or "CITY, STATE ZIP" - extract STATE part
+        WHERE (
+          -- Match state after comma: ", STATE" or ", STATE "
+          (tb.stops->>0) ~* (',\s*' || pref_state || '(\s|$)')
+          OR
+          -- Match state at end if no comma: "CITY STATE" (less common)
+          (tb.stops->>0) ~* ('\s+' || pref_state || '$')
         )
-        LIMIT 1
       )
     ORDER BY tb.received_at DESC
     LIMIT 10
@@ -994,14 +991,25 @@ async function processExactMatchTrigger(
 
         console.log(`[${matchType === 'exact' ? 'ExactMatch' : 'StateMatch'}] ${finalMatchType.toUpperCase()} match: ${match.bid_number} (backhaul enabled: ${backhaulEnabled})`);
 
+        // For state matches, include match score and reasons for the similar_load template
+        const notificationType = isBackhaulMatch || isBackhaulStateMatch 
+          ? 'backhaul' 
+          : (matchType === 'state' ? 'similar_load' : 'exact_match');
+        
+        const reasons = matchType === 'state' 
+          ? [`Origin state matches your preferences: ${matchOriginState}`]
+          : undefined;
+
         await sendNotification({
           carrierUserId: userId,
           triggerId: trigger.id,
-          notificationType: isBackhaulMatch || isBackhaulStateMatch ? 'backhaul' : 'exact_match',
+          notificationType,
           bidNumber: match.bid_number,
           message,
           loadDetails: loadDetails || undefined,
           matchType: matchType, // Pass matchType for backhaul template
+          matchScore: matchType === 'state' ? 100 : undefined, // State matches = 100%
+          reasons, // Include reasons for state matches
         });
 
         count++;
