@@ -793,17 +793,25 @@ async function processExactMatchTrigger(
             tb.pickup_timestamp,
             tb.delivery_timestamp,
             tb.received_at,
-            tb.stops->>0 as origin_stop,
-            (SELECT stop_text 
-             FROM jsonb_array_elements_text(tb.stops) WITH ORDINALITY AS t(stop_text, idx)
-             ORDER BY idx DESC
-             LIMIT 1) as dest_stop
+            CASE 
+              WHEN jsonb_typeof(tb.stops) = 'array' THEN tb.stops->>0
+              ELSE NULL
+            END as origin_stop,
+            CASE 
+              WHEN jsonb_typeof(tb.stops) = 'array' AND jsonb_array_length(tb.stops) >= 2 THEN
+                (SELECT stop_text 
+                 FROM jsonb_array_elements_text(tb.stops) WITH ORDINALITY AS t(stop_text, idx)
+                 ORDER BY idx DESC
+                 LIMIT 1)
+              ELSE NULL
+            END as dest_stop
           FROM telegram_bids tb
           WHERE tb.is_archived = false
             AND NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes')
             AND tb.bid_number != ${favorite.favorite_bid}
             AND tb.distance_miles >= ${favoriteDistanceRange.minDistance}
             AND tb.distance_miles <= ${favoriteDistanceRange.maxDistance}
+            AND tb.stops IS NOT NULL
             AND jsonb_typeof(tb.stops) = 'array'
             AND jsonb_array_length(tb.stops) >= 2
         )
@@ -856,15 +864,23 @@ async function processExactMatchTrigger(
             tb.pickup_timestamp,
             tb.delivery_timestamp,
             tb.received_at,
-            tb.stops->>0 as origin_stop,
-            (SELECT stop_text 
-             FROM jsonb_array_elements_text(tb.stops) WITH ORDINALITY AS t(stop_text, idx)
-             ORDER BY idx DESC
-             LIMIT 1) as dest_stop
+            CASE 
+              WHEN jsonb_typeof(tb.stops) = 'array' THEN tb.stops->>0
+              ELSE NULL
+            END as origin_stop,
+            CASE 
+              WHEN jsonb_typeof(tb.stops) = 'array' AND jsonb_array_length(tb.stops) >= 2 THEN
+                (SELECT stop_text 
+                 FROM jsonb_array_elements_text(tb.stops) WITH ORDINALITY AS t(stop_text, idx)
+                 ORDER BY idx DESC
+                 LIMIT 1)
+              ELSE NULL
+            END as dest_stop
           FROM telegram_bids tb
           WHERE tb.is_archived = false
             AND NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes')
             AND tb.bid_number != ${favorite.favorite_bid}
+            AND tb.stops IS NOT NULL
             AND jsonb_typeof(tb.stops) = 'array'
             AND jsonb_array_length(tb.stops) >= 2
         )
