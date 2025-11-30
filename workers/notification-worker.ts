@@ -1047,6 +1047,7 @@ async function processExactMatchTrigger(
           matchType: matchType, // Pass matchType for backhaul template
           matchScore: matchType === 'state' ? 100 : undefined, // State matches = 100%
           reasons, // Include reasons for state matches
+          isStateMatch: matchType === 'state', // Mark as state match when matchType is 'state'
         });
 
         count++;
@@ -1253,6 +1254,7 @@ async function sendNotification({
   reasons,
   minutesRemaining,
   matchType,
+  isStateMatch,
 }: {
   carrierUserId: string;
   triggerId: number | null; // Allow null for virtual triggers
@@ -1271,6 +1273,7 @@ async function sendNotification({
   reasons?: string[];
   minutesRemaining?: number;
   matchType?: 'exact' | 'state'; // For backhaul notifications
+  isStateMatch?: boolean; // true for state match (from exact_match trigger), false/undefined for state preference
 }) {
   try {
     // Insert into notification_logs
@@ -1393,9 +1396,15 @@ async function sendNotification({
           break;
 
         case 'similar_load':
+          // Use isStateMatch parameter to determine if this is a state match or state preference
+          // State matches come from exact_match triggers, state preferences come from similar_load triggers
+          const subject = isStateMatch
+            ? `🚚 State Match Found: ${bidNumber} (${matchScore || 0}% match)`
+            : `🚚 State Preference Bid Found: ${bidNumber} (${matchScore || 0}% match)`;
+          
           emailResult = await sendEmail({
             to: carrierEmail,
-            subject: `🚚 State Preference Bid Found: ${bidNumber} (${matchScore || 0}% match)`,
+            subject,
             react: SimilarLoadNotificationTemplate({
               bidNumber,
               origin: loadInfo.origin,
@@ -1408,6 +1417,7 @@ async function sendNotification({
               deliveryTime: loadInfo.deliveryTime,
               viewUrl,
               carrierName: carrierName || undefined,
+              isStateMatch: isStateMatch || false,
             }),
           });
           break;

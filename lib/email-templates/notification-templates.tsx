@@ -390,6 +390,7 @@ interface SimilarLoadNotificationProps {
   deliveryTime?: string;
   viewUrl: string;
   carrierName?: string;
+  isStateMatch?: boolean; // true for state match, false/undefined for state preference
 }
 
 export const SimilarLoadNotificationTemplate = ({
@@ -404,64 +405,79 @@ export const SimilarLoadNotificationTemplate = ({
   deliveryTime,
   viewUrl,
   carrierName,
-}: SimilarLoadNotificationProps) => (
-  <Html>
-    <Head />
-    <Preview>🚚 State preference bid found: {origin} → {destination} ({String(matchScore)}% match)</Preview>
-    <Body style={main}>
-      <Container style={gradientContainer}>
-        <Container style={container}>
-          <Section style={logoSection}>
-            <div style={logoIcon}>
-              <div style={logoIconGlow}></div>
-              <svg 
-                width="32" 
-                height="32" 
-                viewBox="0 0 24 24" 
-                fill="none" 
-                xmlns="http://www.w3.org/2000/svg"
-                style={{ position: 'relative', zIndex: 1 }}
-              >
-                <defs>
-                  <linearGradient id="bellGradient2" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="#3b82f6" />
-                    <stop offset="50%" stopColor="#9333ea" />
-                    <stop offset="100%" stopColor="#6366f1" />
-                  </linearGradient>
-                </defs>
-                <path 
-                  d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" 
-                  stroke="url(#bellGradient2)" 
-                  strokeWidth="2" 
-                  strokeLinecap="round" 
-                  strokeLinejoin="round"
-                  fill="none"
-                />
-                <path 
-                  d="M13.73 21a2 2 0 0 1-3.46 0" 
-                  stroke="url(#bellGradient2)" 
-                  strokeWidth="2" 
-                  strokeLinecap="round" 
-                  strokeLinejoin="round"
-                  fill="none"
-                />
-              </svg>
-            </div>
-            <Heading style={brandHeading}>
-              <span style={brandGradient}>NOVA</span>
-            </Heading>
-          </Section>
+  isStateMatch = false,
+}: SimilarLoadNotificationProps) => {
+  const title = isStateMatch ? "State Match Found!" : "State Preference Bid Found!";
+  const previewText = isStateMatch 
+    ? `🚚 State match found: ${origin} → ${destination} (${String(matchScore)}% match)`
+    : `🚚 State preference bid found: ${origin} → ${destination} (${String(matchScore)}% match)`;
 
-          <Section style={contentCard}>
-            <Heading style={h1}>State Preference Bid Found!</Heading>
-            
-            <Text style={text}>
-              {carrierName ? `Hi ${carrierName},` : 'Hi there,'}
-            </Text>
+  return (
+    <Html>
+      <Head />
+      <Preview>{previewText}</Preview>
+      <Body style={main}>
+        <Container style={gradientContainer}>
+          <Container style={container}>
+            <Section style={logoSection}>
+              <div style={logoIcon}>
+                <div style={logoIconGlow}></div>
+                <svg 
+                  width="32" 
+                  height="32" 
+                  viewBox="0 0 24 24" 
+                  fill="none" 
+                  xmlns="http://www.w3.org/2000/svg"
+                  style={{ position: 'relative', zIndex: 1 }}
+                >
+                  <defs>
+                    <linearGradient id="bellGradient2" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#3b82f6" />
+                      <stop offset="50%" stopColor="#9333ea" />
+                      <stop offset="100%" stopColor="#6366f1" />
+                    </linearGradient>
+                  </defs>
+                  <path 
+                    d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" 
+                    stroke="url(#bellGradient2)" 
+                    strokeWidth="2" 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round"
+                    fill="none"
+                  />
+                  <path 
+                    d="M13.73 21a2 2 0 0 1-3.46 0" 
+                    stroke="url(#bellGradient2)" 
+                    strokeWidth="2" 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round"
+                    fill="none"
+                  />
+                </svg>
+              </div>
+              <Heading style={brandHeading}>
+                <span style={brandGradient}>NOVA</span>
+              </Heading>
+            </Section>
 
-            <Text style={text}>
-              We found a load that matches your <strong>state preferences</strong> with a <strong>{matchScore}% match score</strong>!
-            </Text>
+            <Section style={contentCard}>
+              <Heading style={h1}>{title}</Heading>
+              
+              <Text style={text}>
+                {carrierName ? `Hi ${carrierName},` : 'Hi there,'}
+              </Text>
+
+              <Text style={text}>
+                {isStateMatch ? (
+                  <>
+                    We found a load that matches your <strong>saved route preferences</strong> with a <strong>state match</strong> and a <strong>{matchScore}% match score</strong>!
+                  </>
+                ) : (
+                  <>
+                    We found a load that matches your <strong>state preferences</strong> with a <strong>{matchScore}% match score</strong>!
+                  </>
+                )}
+              </Text>
 
             <Section style={infoBox}>
               <Text style={infoText}>
@@ -509,7 +525,8 @@ export const SimilarLoadNotificationTemplate = ({
       </Container>
     </Body>
   </Html>
-);
+  );
+};
 
 /**
  * Favorite Available Notification - Favorite load is now available

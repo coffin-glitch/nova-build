@@ -99,6 +99,43 @@ This approach:
 3. Add them to the triggers array
 4. Process them along with existing triggers
 
+## ✅ SOLUTION IMPLEMENTED
+
+### Fix: Enhanced Direct Enqueue Script
+**Updated**: `scripts/direct-enqueue-notifications.ts`
+
+**Changes**:
+1. Query `carrier_notification_preferences` for user's state preferences
+2. Create virtual `similar_load` triggers (id: -1) like webhook does
+3. Add them to triggers array before processing
+4. Process them along with existing database triggers
+
+**Code Added**:
+```typescript
+// Get state preferences for this user
+const statePrefs = await sql`
+  SELECT state_preferences, distance_threshold_miles
+  FROM carrier_notification_preferences
+  WHERE supabase_carrier_user_id = ${userId}
+    AND similar_load_notifications = true
+    AND state_preferences IS NOT NULL
+    AND array_length(state_preferences, 1) > 0
+`;
+
+// Add virtual similar_load triggers (like webhook does)
+if (statePrefs.length > 0) {
+  triggers.push({
+    id: -1, // Virtual trigger ID
+    trigger_type: 'similar_load',
+    trigger_config: {
+      statePreferences: statePrefs[0].state_preferences,
+      distanceThreshold: statePrefs[0].distance_threshold_miles || 50,
+    },
+    is_active: true,
+  });
+}
+```
+
 ## Expected Outcome
 
 After fix:
@@ -106,4 +143,41 @@ After fix:
 - ✅ Exact Match: 1/1 working (already working)
 - ✅ State Preference: 3/3 working (will work after fix)
 - ✅ Total: 6/6 notifications (100% success)
+
+## Status
+
+✅ **Fix Applied**: Direct-enqueue script enhanced to include virtual state preference triggers
+✅ **Committed**: Changes pushed to main
+✅ **Verified**: Script now finds state preferences and creates virtual trigger
+   - Found state preferences: IL, CT, KY, UT
+   - Created virtual similar_load trigger
+   - Now processing 4 triggers (3 exact_match + 1 similar_load)
+
+## Test Results Analysis
+
+### What Worked (3/6):
+- ✅ **State Match (IL → MN)**: Perfect - found and sent
+- ✅ **Exact Match (PA → KS)**: Perfect - found and sent
+- ✅ **State Match (OH → TX)**: Perfect - found and sent
+- ✅ **Batch Emails**: Perfect - 3 emails in 1 batch
+
+### What Didn't Work (3/6):
+- ❌ **State Preference (CT)**: Not triggered (virtual trigger not created)
+- ❌ **State Preference (IL)**: Not triggered (virtual trigger not created)
+- ❌ **State Preference (UT)**: Not triggered (virtual trigger not created)
+
+### Root Cause:
+- Direct-enqueue script only processed database triggers
+- State preference triggers are virtual (created in webhook)
+- Virtual triggers were never created when bypassing webhook
+
+### Fix Applied:
+- Enhanced direct-enqueue script to query state preferences
+- Creates virtual `similar_load` triggers (id: -1) like webhook does
+- Now processes 4 triggers instead of 3
+
+### Expected After Fix:
+- ✅ All 6 test bids should trigger notifications
+- ✅ State preference notifications will work
+- ✅ 100% success rate expected
 

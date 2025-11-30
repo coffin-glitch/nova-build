@@ -84,20 +84,20 @@ async function main() {
     console.log('🚀 Starting notification test bid injection...\n');
     
     // Generate unique test bid numbers (using different base for each test run)
-    // Format: 44556XXXX where XXXX is sequential
-    // Change the base number (445560000) for each new test to ensure uniqueness
+    // Format: 77889XXXX where XXXX is sequential
+    // Change the base number (778890000) for each new test to ensure uniqueness
     const timestamp = Date.now();
-    const baseNumber = 445560000; // Changed from 112230000 for this test - using 44556 prefix
+    const baseNumber = 778890000; // Changed from 445560000 for this test - using 77889 prefix
     
     // Original 3 test bids (State Match and Exact Match)
-    const bid1 = String(baseNumber + 1); // 445560001 - State Match IL → MN
-    const bid2 = String(baseNumber + 2); // 445560002 - Exact Match PA → KS
-    const bid3 = String(baseNumber + 3); // 445560003 - State Match OH → TX
+    const bid1 = String(baseNumber + 1); // 778890001 - State Match IL → MN
+    const bid2 = String(baseNumber + 2); // 778890002 - Exact Match PA → KS
+    const bid3 = String(baseNumber + 3); // 778890003 - State Match OH → TX
     
     // State Preference test bids (3 out of 4 states: CT, IL, UT - leaving out KY)
-    const bid4 = String(baseNumber + 4); // 445560004 - State Preference CT
-    const bid5 = String(baseNumber + 5); // 445560005 - State Preference IL
-    const bid6 = String(baseNumber + 6); // 445560006 - State Preference UT
+    const bid4 = String(baseNumber + 4); // 778890004 - State Preference CT
+    const bid5 = String(baseNumber + 5); // 778890005 - State Preference IL
+    const bid6 = String(baseNumber + 6); // 778890006 - State Preference UT
     
     // Test Bid 1: State Match - IL → MN
     // Matches: FOREST PARK, IL 60130 → MINNEAPOLIS, MN 55401
