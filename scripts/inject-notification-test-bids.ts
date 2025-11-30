@@ -82,10 +82,10 @@ async function main() {
     console.log('🚀 Starting notification test bid injection...\n');
     
     // Generate unique test bid numbers (using different base for each test run)
-    // Format: 33333XXXX where XXXX is sequential
-    // Change the base number (333330000) for each new test to ensure uniqueness
+    // Format: 22222XXXX where XXXX is sequential
+    // Change the base number (222220000) for each new test to ensure uniqueness
     const timestamp = Date.now();
-    const baseNumber = 333330000; // Changed from 444440000 for this test
+    const baseNumber = 222220000; // Changed from 333330000 for this test
     const bid1 = String(baseNumber + 1);
     const bid2 = String(baseNumber + 2);
     const bid3 = String(baseNumber + 3);

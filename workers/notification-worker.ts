@@ -808,7 +808,8 @@ async function processExactMatchTrigger(
             AND jsonb_typeof(tb.stops) = 'array'
         ),
         bid_stops AS (
-          -- Stage 2: Now safe to perform array operations (we know all are arrays)
+          -- Stage 2: Use LATERAL join for safe last stop extraction
+          -- LATERAL ensures explicit evaluation order and prevents scalar errors
           SELECT 
             ab.bid_number,
             ab.stops,
@@ -818,13 +819,21 @@ async function processExactMatchTrigger(
             ab.delivery_timestamp,
             ab.received_at,
             ab.stops->>0 as origin_stop,
-            (SELECT stop_text 
-             FROM jsonb_array_elements_text(ab.stops) WITH ORDINALITY AS t(stop_text, idx)
-             ORDER BY idx DESC
-             LIMIT 1) as dest_stop
+            last_stop.stop_text as dest_stop
           FROM array_bids ab
+          CROSS JOIN LATERAL (
+            SELECT stop_text
+            FROM jsonb_array_elements_text(ab.stops) WITH ORDINALITY AS t(stop_text, idx)
+            WHERE jsonb_typeof(ab.stops) = 'array'  -- Safety check inside LATERAL
+            ORDER BY idx DESC
+            LIMIT 1
+          ) last_stop
           WHERE jsonb_typeof(ab.stops) = 'array'  -- Double-check type (defensive)
-            AND jsonb_array_length(ab.stops) >= 2  -- Safe: we know it's an array from Stage 1
+            AND CASE 
+              WHEN jsonb_typeof(ab.stops) = 'array' 
+              THEN jsonb_array_length(ab.stops) >= 2
+              ELSE false
+            END
         )
         SELECT 
           bid_number,
@@ -884,7 +893,8 @@ async function processExactMatchTrigger(
             AND jsonb_typeof(tb.stops) = 'array'
         ),
         bid_stops AS (
-          -- Stage 2: Now safe to perform array operations (we know all are arrays)
+          -- Stage 2: Use LATERAL join for safe last stop extraction
+          -- LATERAL ensures explicit evaluation order and prevents scalar errors
           SELECT 
             ab.bid_number,
             ab.stops,
@@ -894,13 +904,21 @@ async function processExactMatchTrigger(
             ab.delivery_timestamp,
             ab.received_at,
             ab.stops->>0 as origin_stop,
-            (SELECT stop_text 
-             FROM jsonb_array_elements_text(ab.stops) WITH ORDINALITY AS t(stop_text, idx)
-             ORDER BY idx DESC
-             LIMIT 1) as dest_stop
+            last_stop.stop_text as dest_stop
           FROM array_bids ab
+          CROSS JOIN LATERAL (
+            SELECT stop_text
+            FROM jsonb_array_elements_text(ab.stops) WITH ORDINALITY AS t(stop_text, idx)
+            WHERE jsonb_typeof(ab.stops) = 'array'  -- Safety check inside LATERAL
+            ORDER BY idx DESC
+            LIMIT 1
+          ) last_stop
           WHERE jsonb_typeof(ab.stops) = 'array'  -- Double-check type (defensive)
-            AND jsonb_array_length(ab.stops) >= 2  -- Safe: we know it's an array from Stage 1
+            AND CASE 
+              WHEN jsonb_typeof(ab.stops) = 'array' 
+              THEN jsonb_array_length(ab.stops) >= 2
+              ELSE false
+            END
         )
         SELECT 
           bid_number,
