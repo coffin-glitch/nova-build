@@ -32,7 +32,9 @@ async function createTestBid(
   const deliveryTime = new Date(pickupTime.getTime() + 24 * 60 * 60 * 1000); // 24 hours after pickup
   const expiresAt = new Date(now.getTime() + 25 * 60 * 1000); // 25 minutes from now
   
-  const stopsJson = JSON.stringify(stops);
+  // Pass stops array directly as JSONB - DO NOT stringify!
+  // Stringifying creates a JSONB string, not a JSONB array
+  // The postgres library will automatically convert JavaScript arrays to JSONB
   
   // Insert test bid
   await sql`
@@ -53,7 +55,7 @@ async function createTestBid(
       ${distance},
       ${pickupTime.toISOString()},
       ${deliveryTime.toISOString()},
-      ${stopsJson}::jsonb,
+      ${stops}::jsonb,
       'TEST-NOTIF',
       'test-notification-script',
       ${now.toISOString()},
@@ -82,13 +84,13 @@ async function main() {
     console.log('🚀 Starting notification test bid injection...\n');
     
     // Generate unique test bid numbers (using different base for each test run)
-    // Format: 00000XXXX where XXXX is sequential
-    // Change the base number (000000000) for each new test to ensure uniqueness
+    // Format: 12345XXXX where XXXX is sequential
+    // Change the base number (123450000) for each new test to ensure uniqueness
     const timestamp = Date.now();
-    const baseNumber = 0; // Changed from 111110000 for this test - using 00000 prefix
-    const bid1 = String(baseNumber).padStart(8, '0') + '1'; // 00000001
-    const bid2 = String(baseNumber).padStart(8, '0') + '2'; // 00000002
-    const bid3 = String(baseNumber).padStart(8, '0') + '3'; // 00000003
+    const baseNumber = 123450000; // Changed from 000000000 for this test - using 12345 prefix
+    const bid1 = String(baseNumber + 1); // 123450001
+    const bid2 = String(baseNumber + 2); // 123450002
+    const bid3 = String(baseNumber + 3); // 123450003
     
     // Test Bid 1: State Match - IL → MN
     // Matches: FOREST PARK, IL 60130 → MINNEAPOLIS, MN 55401
