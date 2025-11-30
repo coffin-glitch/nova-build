@@ -794,13 +794,18 @@ async function processExactMatchTrigger(
             tb.delivery_timestamp,
             tb.received_at,
             tb.stops->>0 as origin_stop,
-            tb.stops->>(jsonb_array_length(tb.stops)::int - 1) as dest_stop
+            (SELECT stop_text 
+             FROM jsonb_array_elements_text(tb.stops) WITH ORDINALITY AS t(stop_text, idx)
+             ORDER BY idx DESC
+             LIMIT 1) as dest_stop
           FROM telegram_bids tb
           WHERE tb.is_archived = false
             AND NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes')
             AND tb.bid_number != ${favorite.favorite_bid}
             AND tb.distance_miles >= ${favoriteDistanceRange.minDistance}
             AND tb.distance_miles <= ${favoriteDistanceRange.maxDistance}
+            AND jsonb_typeof(tb.stops) = 'array'
+            AND jsonb_array_length(tb.stops) >= 2
         )
         SELECT 
           bid_number,
@@ -811,22 +816,24 @@ async function processExactMatchTrigger(
           delivery_timestamp,
           received_at
         FROM bid_stops
-        WHERE (
-          -- State match: origin state and destination state match
-          (
-            -- Match origin state from first stop
-            (origin_stop ~* (',\s*' || ${favoriteOriginState} || '(\s|$)'))
-            OR
-            (origin_stop ~* ('\s+' || ${favoriteOriginState} || '$'))
+        WHERE origin_stop IS NOT NULL
+          AND dest_stop IS NOT NULL
+          AND (
+            -- State match: origin state and destination state match
+            (
+              -- Match origin state from first stop
+              (origin_stop ~* (',\s*' || ${favoriteOriginState} || '(\s|$)'))
+              OR
+              (origin_stop ~* ('\s+' || ${favoriteOriginState} || '$'))
+            )
+            AND
+            (
+              -- Match destination state from last stop
+              (dest_stop ~* (',\s*' || ${favoriteDestState} || '(\s|$)'))
+              OR
+              (dest_stop ~* ('\s+' || ${favoriteDestState} || '$'))
+            )
           )
-          AND
-          (
-            -- Match destination state from last stop
-            (dest_stop ~* (',\s*' || ${favoriteDestState} || '(\s|$)'))
-            OR
-            (dest_stop ~* ('\s+' || ${favoriteDestState} || '$'))
-          )
-        )
         ORDER BY received_at DESC
         LIMIT 10
       `;
@@ -850,11 +857,16 @@ async function processExactMatchTrigger(
             tb.delivery_timestamp,
             tb.received_at,
             tb.stops->>0 as origin_stop,
-            tb.stops->>(jsonb_array_length(tb.stops)::int - 1) as dest_stop
+            (SELECT stop_text 
+             FROM jsonb_array_elements_text(tb.stops) WITH ORDINALITY AS t(stop_text, idx)
+             ORDER BY idx DESC
+             LIMIT 1) as dest_stop
           FROM telegram_bids tb
           WHERE tb.is_archived = false
             AND NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes')
             AND tb.bid_number != ${favorite.favorite_bid}
+            AND jsonb_typeof(tb.stops) = 'array'
+            AND jsonb_array_length(tb.stops) >= 2
         )
         SELECT 
           bid_number,
@@ -865,22 +877,24 @@ async function processExactMatchTrigger(
           delivery_timestamp,
           received_at
         FROM bid_stops
-        WHERE (
-          -- State match: origin state and destination state match
-          (
-            -- Match origin state from first stop
-            (origin_stop ~* (',\s*' || ${favoriteOriginState} || '(\s|$)'))
-            OR
-            (origin_stop ~* ('\s+' || ${favoriteOriginState} || '$'))
+        WHERE origin_stop IS NOT NULL
+          AND dest_stop IS NOT NULL
+          AND (
+            -- State match: origin state and destination state match
+            (
+              -- Match origin state from first stop
+              (origin_stop ~* (',\s*' || ${favoriteOriginState} || '(\s|$)'))
+              OR
+              (origin_stop ~* ('\s+' || ${favoriteOriginState} || '$'))
+            )
+            AND
+            (
+              -- Match destination state from last stop
+              (dest_stop ~* (',\s*' || ${favoriteDestState} || '(\s|$)'))
+              OR
+              (dest_stop ~* ('\s+' || ${favoriteDestState} || '$'))
+            )
           )
-          AND
-          (
-            -- Match destination state from last stop
-            (dest_stop ~* (',\s*' || ${favoriteDestState} || '(\s|$)'))
-            OR
-            (dest_stop ~* ('\s+' || ${favoriteDestState} || '$'))
-          )
-        )
         ORDER BY received_at DESC
         LIMIT 10
       `;
