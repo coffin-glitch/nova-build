@@ -50,12 +50,59 @@ The query is calling `jsonb_array_length(tb.stops)` but `tb.stops` is not always
 - Batch email system: 100% success rate
 - Email delivery: Working correctly
 
-## Research Needed
+## Research Findings
 
-Before implementing a fix, I need to research:
-1. **PostgreSQL JSONB best practices** for handling mixed data types
-2. **Safe JSONB array operations** - how to check type before operations
-3. **PostgreSQL jsonb_typeof() function** - proper usage
-4. **Error handling in SQL queries** - how to gracefully handle type mismatches
-5. **Performance implications** of type checking in WHERE clauses
+Based on PostgreSQL documentation and best practices:
+
+1. **PostgreSQL JSONB Type Checking**: Use `jsonb_typeof()` to check type before array operations
+2. **CASE Statements**: Use CASE to conditionally execute array operations only when type is confirmed
+3. **Defensive Programming**: Always check type before calling `jsonb_array_length()` or `jsonb_array_elements_text()`
+4. **WHERE Clause Ordering**: PostgreSQL evaluates WHERE clauses left-to-right, but SELECT expressions can still be evaluated
+5. **Best Practice**: Wrap array operations in CASE statements to prevent errors on non-array values
+
+## Fix Applied
+
+### Solution: Use CASE Statements for Safe Array Operations
+
+**Problem**: Even with `jsonb_typeof()` check in WHERE clause, the subquery in SELECT can still fail if it encounters a non-array value.
+
+**Solution**: Wrap all array operations in CASE statements that check the type first.
+
+**Before**:
+```sql
+tb.stops->>0 as origin_stop,
+(SELECT stop_text 
+ FROM jsonb_array_elements_text(tb.stops) WITH ORDINALITY AS t(stop_text, idx)
+ ORDER BY idx DESC
+ LIMIT 1) as dest_stop
+```
+
+**After**:
+```sql
+CASE 
+  WHEN jsonb_typeof(tb.stops) = 'array' THEN tb.stops->>0
+  ELSE NULL
+END as origin_stop,
+CASE 
+  WHEN jsonb_typeof(tb.stops) = 'array' AND jsonb_array_length(tb.stops) >= 2 THEN
+    (SELECT stop_text 
+     FROM jsonb_array_elements_text(tb.stops) WITH ORDINALITY AS t(stop_text, idx)
+     ORDER BY idx DESC
+     LIMIT 1)
+  ELSE NULL
+END as dest_stop
+```
+
+**Benefits**:
+- Prevents errors when `stops` is not an array
+- Returns NULL safely instead of crashing
+- Works even if WHERE clause filtering has edge cases
+- Defensive programming approach
+
+## Expected Behavior After Fix
+
+1. **State match queries will not crash** on non-array `stops` values
+2. **Queries will return 0 results** instead of throwing errors
+3. **System will continue processing** other triggers even if one fails
+4. **Better error resilience** for mixed data types
 

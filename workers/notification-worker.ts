@@ -784,7 +784,8 @@ async function processExactMatchTrigger(
       console.log(`[StateMatch] Searching for state match: ${favoriteOriginState} → ${favoriteDestState}`);
       
       routeMatches = await sql`
-        WITH bid_stops AS (
+        WITH array_bids AS (
+          -- Stage 1: Filter to only array types (no array operations yet)
           SELECT 
             tb.bid_number,
             tb.stops,
@@ -792,19 +793,7 @@ async function processExactMatchTrigger(
             tb.tag,
             tb.pickup_timestamp,
             tb.delivery_timestamp,
-            tb.received_at,
-            CASE 
-              WHEN jsonb_typeof(tb.stops) = 'array' THEN tb.stops->>0
-              ELSE NULL
-            END as origin_stop,
-            CASE 
-              WHEN jsonb_typeof(tb.stops) = 'array' AND jsonb_array_length(tb.stops) >= 2 THEN
-                (SELECT stop_text 
-                 FROM jsonb_array_elements_text(tb.stops) WITH ORDINALITY AS t(stop_text, idx)
-                 ORDER BY idx DESC
-                 LIMIT 1)
-              ELSE NULL
-            END as dest_stop
+            tb.received_at
           FROM telegram_bids tb
           WHERE tb.is_archived = false
             AND NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes')
@@ -813,7 +802,24 @@ async function processExactMatchTrigger(
             AND tb.distance_miles <= ${favoriteDistanceRange.maxDistance}
             AND tb.stops IS NOT NULL
             AND jsonb_typeof(tb.stops) = 'array'
-            AND jsonb_array_length(tb.stops) >= 2
+        ),
+        bid_stops AS (
+          -- Stage 2: Now safe to perform array operations (we know all are arrays)
+          SELECT 
+            ab.bid_number,
+            ab.stops,
+            ab.distance_miles,
+            ab.tag,
+            ab.pickup_timestamp,
+            ab.delivery_timestamp,
+            ab.received_at,
+            ab.stops->>0 as origin_stop,
+            (SELECT stop_text 
+             FROM jsonb_array_elements_text(ab.stops) WITH ORDINALITY AS t(stop_text, idx)
+             ORDER BY idx DESC
+             LIMIT 1) as dest_stop
+          FROM array_bids ab
+          WHERE jsonb_array_length(ab.stops) >= 2  -- Safe: we know it's an array from Stage 1
         )
         SELECT 
           bid_number,
@@ -855,7 +861,8 @@ async function processExactMatchTrigger(
       console.log(`[StateMatch] Searching for state match (no distance range): ${favoriteOriginState} → ${favoriteDestState}`);
       
       routeMatches = await sql`
-        WITH bid_stops AS (
+        WITH array_bids AS (
+          -- Stage 1: Filter to only array types (no array operations yet)
           SELECT 
             tb.bid_number,
             tb.stops,
@@ -863,26 +870,31 @@ async function processExactMatchTrigger(
             tb.tag,
             tb.pickup_timestamp,
             tb.delivery_timestamp,
-            tb.received_at,
-            CASE 
-              WHEN jsonb_typeof(tb.stops) = 'array' THEN tb.stops->>0
-              ELSE NULL
-            END as origin_stop,
-            CASE 
-              WHEN jsonb_typeof(tb.stops) = 'array' AND jsonb_array_length(tb.stops) >= 2 THEN
-                (SELECT stop_text 
-                 FROM jsonb_array_elements_text(tb.stops) WITH ORDINALITY AS t(stop_text, idx)
-                 ORDER BY idx DESC
-                 LIMIT 1)
-              ELSE NULL
-            END as dest_stop
+            tb.received_at
           FROM telegram_bids tb
           WHERE tb.is_archived = false
             AND NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes')
             AND tb.bid_number != ${favorite.favorite_bid}
             AND tb.stops IS NOT NULL
             AND jsonb_typeof(tb.stops) = 'array'
-            AND jsonb_array_length(tb.stops) >= 2
+        ),
+        bid_stops AS (
+          -- Stage 2: Now safe to perform array operations (we know all are arrays)
+          SELECT 
+            ab.bid_number,
+            ab.stops,
+            ab.distance_miles,
+            ab.tag,
+            ab.pickup_timestamp,
+            ab.delivery_timestamp,
+            ab.received_at,
+            ab.stops->>0 as origin_stop,
+            (SELECT stop_text 
+             FROM jsonb_array_elements_text(ab.stops) WITH ORDINALITY AS t(stop_text, idx)
+             ORDER BY idx DESC
+             LIMIT 1) as dest_stop
+          FROM array_bids ab
+          WHERE jsonb_array_length(ab.stops) >= 2  -- Safe: we know it's an array from Stage 1
         )
         SELECT 
           bid_number,
