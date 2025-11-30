@@ -494,19 +494,12 @@ async function processSimilarLoadTrigger(
       AND tb.stops IS NOT NULL
       AND jsonb_typeof(tb.stops) = 'array'
       AND tb.stops->>0 IS NOT NULL  -- Ensure at least one stop exists (simpler than jsonb_array_length)
-      AND EXISTS (
-        SELECT 1 
+      -- Simple text matching like state match (proven to work!)
+      -- Match state anywhere in stops text (handles any format)
+      -- Only check origin state (first stop) for state preferences
+      AND tb.stops::text LIKE ANY(
+        SELECT '%' || pref_state || '%'
         FROM unnest(${statePreferences}::TEXT[]) AS pref_state
-        -- Only check the FIRST stop (origin) - use stops->0 to get first element
-        -- Extract state from first stop (after comma) and match only the state part
-        -- Pattern: "CITY, STATE" or "CITY, STATE ZIP" - extract STATE part
-        WHERE (
-          -- Match state after comma: ", STATE" or ", STATE "
-          (tb.stops->>0) ~* (',\s*' || pref_state || '(\s|$)')
-          OR
-          -- Match state at end if no comma: "CITY STATE" (less common)
-          (tb.stops->>0) ~* ('\s+' || pref_state || '$')
-        )
       )
     ORDER BY tb.received_at DESC
     LIMIT 10
