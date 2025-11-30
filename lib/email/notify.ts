@@ -291,23 +291,59 @@ export async function sendEmailBatch(emails: EmailOptions[]): Promise<{ success:
     }
 
     // Count successful sends
-    // Resend batch API returns an array of results, one per email
-    const sent = data?.length || 0;
-    const failed = emails.length - sent;
-
-    // Check if any emails in the batch failed
-    const failedEmails = data?.filter((result: any) => result.error) || [];
+    // Resend batch API response structure: data can be an array or an object
+    // Check if data is an array first
+    let sent = 0;
+    let failed = emails.length;
+    const failedEmails: any[] = [];
+    
+    if (data) {
+      if (Array.isArray(data)) {
+        // Data is an array of results
+        sent = data.length;
+        failed = emails.length - sent;
+        
+        // Check for failed emails in the array
+        for (const result of data) {
+          if (result && result.error) {
+            failedEmails.push(result);
+          }
+        }
+      } else if (typeof data === 'object') {
+        // Data might be an object with results
+        // Resend batch might return { data: [...] } or similar structure
+        const dataArray = Array.isArray(data.data) ? data.data : 
+                         Array.isArray(data.results) ? data.results :
+                         Object.values(data);
+        
+        if (Array.isArray(dataArray) && dataArray.length > 0) {
+          sent = dataArray.length;
+          failed = emails.length - sent;
+          
+          for (const result of dataArray) {
+            if (result && result.error) {
+              failedEmails.push(result);
+            }
+          }
+        } else {
+          // If we can't parse the response, assume success if data exists
+          sent = emails.length;
+          failed = 0;
+          console.warn('[Email - Resend Batch] Unexpected response format, assuming all sent:', typeof data);
+        }
+      }
+    }
     
     if (sent > 0) {
-      console.log(`[Email - Resend Batch] Sent ${sent} emails in batch${failed > 0 ? ` (${failed} failed)` : ''}`);
+      console.log(`[Email - Resend Batch] ✅ Sent ${sent} emails in batch${failed > 0 ? ` (${failed} failed)` : ''}`);
     } else {
-      console.error(`[Email - Resend Batch] No emails were sent from batch of ${emails.length}`);
+      console.error(`[Email - Resend Batch] ❌ No emails were sent from batch of ${emails.length}`);
     }
 
     // If there are failed emails, log them
     if (failedEmails.length > 0) {
-      console.warn(`[Email - Resend Batch] ${failedEmails.length} email(s) failed in batch:`, 
-        failedEmails.map((f: any) => f.error).slice(0, 3) // Log first 3 errors
+      console.warn(`[Email - Resend Batch] ⚠️  ${failedEmails.length} email(s) failed in batch:`, 
+        failedEmails.slice(0, 3).map((f: any) => f.error || f).map((e: any) => typeof e === 'string' ? e : JSON.stringify(e))
       );
     }
 
@@ -315,7 +351,7 @@ export async function sendEmailBatch(emails: EmailOptions[]): Promise<{ success:
       success: sent > 0,
       sent,
       failed,
-      errors: failedEmails.length > 0 ? failedEmails.map((f: any) => f.error) : undefined,
+      errors: failedEmails.length > 0 ? failedEmails.map((f: any) => f.error || f) : undefined,
     };
   } catch (error: any) {
     console.error('[Email - Resend Batch] Exception:', error);

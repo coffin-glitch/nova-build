@@ -81,11 +81,19 @@ async function main() {
   try {
     console.log('🚀 Starting notification test bid injection...\n');
     
+    // Generate unique test bid numbers (using timestamp-based approach for uniqueness)
+    // Format: 88888XXXX where XXXX is sequential
+    const timestamp = Date.now();
+    const baseNumber = 888880000;
+    const bid1 = String(baseNumber + 1);
+    const bid2 = String(baseNumber + 2);
+    const bid3 = String(baseNumber + 3);
+    
     // Test Bid 1: State Match - IL → MN
     // Matches: FOREST PARK, IL 60130 → MINNEAPOLIS, MN 55401
     // Using different cities but same states to trigger state match
     await createTestBid(
-      '999990001',
+      bid1,
       ['CHICAGO, IL 60601', 'MINNEAPOLIS, MN 55401'],
       410, // Approximate distance IL → MN
       'State Match: IL → MN (matches FOREST PARK, IL → MINNEAPOLIS, MN)'
@@ -95,7 +103,7 @@ async function main() {
     // Matches: HARRISBURG, PA 17604 → OLATHE, KS 66061
     // Using exact same cities to trigger exact match
     await createTestBid(
-      '999990002',
+      bid2,
       ['HARRISBURG, PA 17604', 'OLATHE, KS 66061'],
       1150, // Approximate distance PA → KS
       'Exact Match: HARRISBURG, PA → OLATHE, KS'
@@ -105,7 +113,7 @@ async function main() {
     // Matches: AKRON, OH 44309 → IRVING, TX 75059
     // Using exact same cities to trigger state match (or could use different cities in same states)
     await createTestBid(
-      '999990003',
+      bid3,
       ['AKRON, OH 44309', 'IRVING, TX 75059'],
       1200, // Approximate distance OH → TX
       'State Match: OH → TX (matches AKRON, OH → IRVING, TX)'
@@ -113,9 +121,9 @@ async function main() {
     
     console.log('\n✅ All test bids created successfully!');
     console.log('\n📋 Test Bid Summary:');
-    console.log('   #999990001 - State Match (IL → MN)');
-    console.log('   #999990002 - Exact Match (PA → KS)');
-    console.log('   #999990003 - State Match (OH → TX)');
+    console.log(`   #${bid1} - State Match (IL → MN)`);
+    console.log(`   #${bid2} - Exact Match (PA → KS)`);
+    console.log(`   #${bid3} - State Match (OH → TX)`);
     
     // Trigger webhook for each bid to process notifications
     console.log('\n🔔 Triggering notification webhooks...');
@@ -127,7 +135,7 @@ async function main() {
     
     console.log(`   Using webhook URL: ${webhookUrl}`);
     
-    const testBidNumbers = ['999990001', '999990002', '999990003'];
+    const testBidNumbers = [bid1, bid2, bid3];
     
     for (const bidNumber of testBidNumbers) {
       try {

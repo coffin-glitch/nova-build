@@ -779,7 +779,10 @@ async function processExactMatchTrigger(
         console.log(`[ExactMatch] Potential matches:`, routeMatches.map(m => ({ bid: m.bid_number, stops: m.stops })));
       }
     } else if (matchType === 'state' && favoriteDistanceRange) {
-      // State match: Apply distance range filtering to the load's distance
+      // State match: Match by states, not exact cities
+      // Extract states from favorite route for matching
+      console.log(`[StateMatch] Searching for state match: ${favoriteOriginState} → ${favoriteDestState}`);
+      
       routeMatches = await sql`
         SELECT 
           tb.bid_number,
@@ -792,20 +795,77 @@ async function processExactMatchTrigger(
         FROM telegram_bids tb
         WHERE tb.is_archived = false
           AND NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes')
+          AND tb.bid_number != ${favorite.favorite_bid}
           AND tb.distance_miles >= ${favoriteDistanceRange.minDistance}
           AND tb.distance_miles <= ${favoriteDistanceRange.maxDistance}
           AND (
-            -- Exact route match: same origin and destination (for state matching, we'll verify states later)
-            (tb.stops::text LIKE ${`%${origin}%`} AND tb.stops::text LIKE ${`%${destination}%`})
-            OR
-            -- Tag match (state-based)
-            (tb.tag = ${favorite.favorite_tag})
+            -- State match: origin state and destination state match
+            (
+              -- Match origin state from first stop
+              (tb.stops->>0 ~* (',\s*' || ${favoriteOriginState} || '(\s|$)'))
+              OR
+              (tb.stops->>0 ~* ('\s+' || ${favoriteOriginState} || '$'))
+            )
+            AND
+            (
+              -- Match destination state from last stop
+              (tb.stops->>jsonb_array_length(tb.stops)-1 ~* (',\s*' || ${favoriteDestState} || '(\s|$)'))
+              OR
+              (tb.stops->>jsonb_array_length(tb.stops)-1 ~* ('\s+' || ${favoriteDestState} || '$'))
+            )
           )
         ORDER BY tb.received_at DESC
         LIMIT 10
       `;
+      
+      console.log(`[StateMatch] Found ${routeMatches.length} potential state matches`);
+      if (routeMatches.length > 0) {
+        console.log(`[StateMatch] Potential matches:`, routeMatches.map(m => ({ bid: m.bid_number, stops: m.stops })));
+      }
+    } else if (matchType === 'state') {
+      // State match without distance range: Match by states
+      console.log(`[StateMatch] Searching for state match (no distance range): ${favoriteOriginState} → ${favoriteDestState}`);
+      
+      routeMatches = await sql`
+        SELECT 
+          tb.bid_number,
+          tb.stops,
+          tb.distance_miles,
+          tb.tag,
+          tb.pickup_timestamp,
+          tb.delivery_timestamp,
+          tb.received_at
+        FROM telegram_bids tb
+        WHERE tb.is_archived = false
+          AND NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes')
+          AND tb.bid_number != ${favorite.favorite_bid}
+          AND (
+            -- State match: origin state and destination state match
+            (
+              -- Match origin state from first stop
+              (tb.stops->>0 ~* (',\s*' || ${favoriteOriginState} || '(\s|$)'))
+              OR
+              (tb.stops->>0 ~* ('\s+' || ${favoriteOriginState} || '$'))
+            )
+            AND
+            (
+              -- Match destination state from last stop
+              (tb.stops->>jsonb_array_length(tb.stops)-1 ~* (',\s*' || ${favoriteDestState} || '(\s|$)'))
+              OR
+              (tb.stops->>jsonb_array_length(tb.stops)-1 ~* ('\s+' || ${favoriteDestState} || '$'))
+            )
+          )
+        ORDER BY tb.received_at DESC
+        LIMIT 10
+      `;
+      
+      console.log(`[StateMatch] Found ${routeMatches.length} potential state matches (no distance range)`);
+      if (routeMatches.length > 0) {
+        console.log(`[StateMatch] Potential matches:`, routeMatches.map(m => ({ bid: m.bid_number, stops: m.stops })));
+      }
     } else {
-      // State match without distance range (legacy) or fallback
+      // Fallback: exact route match only
+      console.log(`[ExactMatch] Fallback: searching for exact route match`);
       routeMatches = await sql`
         SELECT 
           tb.bid_number,
@@ -824,7 +884,7 @@ async function processExactMatchTrigger(
             (tb.stops::text LIKE ${`%${origin}%`} AND tb.stops::text LIKE ${`%${destination}%`})
             OR
             -- Tag match (state-based)
-            (tb.tag = ${favorite.favorite_tag})
+            ${favorite.favorite_tag ? sql`(tb.tag = ${favorite.favorite_tag})` : sql`false`}
           )
         ORDER BY tb.received_at DESC
         LIMIT 10

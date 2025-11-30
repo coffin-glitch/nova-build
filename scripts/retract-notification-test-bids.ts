@@ -1,6 +1,6 @@
 /**
  * Script to retract (delete) all notification test bids
- * Removes test bids: #999990001, #999990002, #999990003
+ * Removes test bids that start with 88888 or 99999 (all numeric test bid numbers)
  * 
  * Usage: npx tsx scripts/retract-notification-test-bids.ts
  */
@@ -25,11 +25,11 @@ async function main() {
   try {
     console.log('🗑️  Starting test bid retraction...\n');
     
-    // Find all test bids (999990001, 999990002, 999990003)
+    // Find all test bids (any bid number starting with 88888 or 99999)
     const testBids = await sql`
       SELECT bid_number, stops, distance_miles
       FROM public.telegram_bids
-      WHERE bid_number IN ('999990001', '999990002', '999990003')
+      WHERE bid_number LIKE '88888%' OR bid_number LIKE '99999%'
       ORDER BY bid_number
     `;
     
@@ -50,11 +50,12 @@ async function main() {
     // Delete all test bids
     const result = await sql`
       DELETE FROM public.telegram_bids
-      WHERE bid_number IN ('999990001', '999990002', '999990003')
+      WHERE bid_number LIKE '88888%' OR bid_number LIKE '99999%'
     `;
     
+    const bidNumbers = testBids.map((b: any) => `#${b.bid_number}`).join(', ');
     console.log(`\n✅ Successfully retracted ${testBids.length} test bid(s).`);
-    console.log('   All test bids (#999990001, #999990002, #999990003) have been removed from the system.');
+    console.log(`   All test bids (${bidNumbers}) have been removed from the system.`);
     
     process.exit(0);
   } catch (error) {
