@@ -784,37 +784,50 @@ async function processExactMatchTrigger(
       console.log(`[StateMatch] Searching for state match: ${favoriteOriginState} → ${favoriteDestState}`);
       
       routeMatches = await sql`
+        WITH bid_stops AS (
+          SELECT 
+            tb.bid_number,
+            tb.stops,
+            tb.distance_miles,
+            tb.tag,
+            tb.pickup_timestamp,
+            tb.delivery_timestamp,
+            tb.received_at,
+            tb.stops->>0 as origin_stop,
+            tb.stops->>(jsonb_array_length(tb.stops)::int - 1) as dest_stop
+          FROM telegram_bids tb
+          WHERE tb.is_archived = false
+            AND NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes')
+            AND tb.bid_number != ${favorite.favorite_bid}
+            AND tb.distance_miles >= ${favoriteDistanceRange.minDistance}
+            AND tb.distance_miles <= ${favoriteDistanceRange.maxDistance}
+        )
         SELECT 
-          tb.bid_number,
-          tb.stops,
-          tb.distance_miles,
-          tb.tag,
-          tb.pickup_timestamp,
-          tb.delivery_timestamp,
-          tb.received_at
-        FROM telegram_bids tb
-        WHERE tb.is_archived = false
-          AND NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes')
-          AND tb.bid_number != ${favorite.favorite_bid}
-          AND tb.distance_miles >= ${favoriteDistanceRange.minDistance}
-          AND tb.distance_miles <= ${favoriteDistanceRange.maxDistance}
-          AND (
-            -- State match: origin state and destination state match
-            (
-              -- Match origin state from first stop
-              (tb.stops->>0 ~* (',\s*' || ${favoriteOriginState} || '(\s|$)'))
-              OR
-              (tb.stops->>0 ~* ('\s+' || ${favoriteOriginState} || '$'))
-            )
-            AND
-            (
-              -- Match destination state from last stop
-              (tb.stops->>jsonb_array_length(tb.stops)-1 ~* (',\s*' || ${favoriteDestState} || '(\s|$)'))
-              OR
-              (tb.stops->>jsonb_array_length(tb.stops)-1 ~* ('\s+' || ${favoriteDestState} || '$'))
-            )
+          bid_number,
+          stops,
+          distance_miles,
+          tag,
+          pickup_timestamp,
+          delivery_timestamp,
+          received_at
+        FROM bid_stops
+        WHERE (
+          -- State match: origin state and destination state match
+          (
+            -- Match origin state from first stop
+            (origin_stop ~* (',\s*' || ${favoriteOriginState} || '(\s|$)'))
+            OR
+            (origin_stop ~* ('\s+' || ${favoriteOriginState} || '$'))
           )
-        ORDER BY tb.received_at DESC
+          AND
+          (
+            -- Match destination state from last stop
+            (dest_stop ~* (',\s*' || ${favoriteDestState} || '(\s|$)'))
+            OR
+            (dest_stop ~* ('\s+' || ${favoriteDestState} || '$'))
+          )
+        )
+        ORDER BY received_at DESC
         LIMIT 10
       `;
       
@@ -827,35 +840,48 @@ async function processExactMatchTrigger(
       console.log(`[StateMatch] Searching for state match (no distance range): ${favoriteOriginState} → ${favoriteDestState}`);
       
       routeMatches = await sql`
+        WITH bid_stops AS (
+          SELECT 
+            tb.bid_number,
+            tb.stops,
+            tb.distance_miles,
+            tb.tag,
+            tb.pickup_timestamp,
+            tb.delivery_timestamp,
+            tb.received_at,
+            tb.stops->>0 as origin_stop,
+            tb.stops->>(jsonb_array_length(tb.stops)::int - 1) as dest_stop
+          FROM telegram_bids tb
+          WHERE tb.is_archived = false
+            AND NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes')
+            AND tb.bid_number != ${favorite.favorite_bid}
+        )
         SELECT 
-          tb.bid_number,
-          tb.stops,
-          tb.distance_miles,
-          tb.tag,
-          tb.pickup_timestamp,
-          tb.delivery_timestamp,
-          tb.received_at
-        FROM telegram_bids tb
-        WHERE tb.is_archived = false
-          AND NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes')
-          AND tb.bid_number != ${favorite.favorite_bid}
-          AND (
-            -- State match: origin state and destination state match
-            (
-              -- Match origin state from first stop
-              (tb.stops->>0 ~* (',\s*' || ${favoriteOriginState} || '(\s|$)'))
-              OR
-              (tb.stops->>0 ~* ('\s+' || ${favoriteOriginState} || '$'))
-            )
-            AND
-            (
-              -- Match destination state from last stop
-              (tb.stops->>jsonb_array_length(tb.stops)-1 ~* (',\s*' || ${favoriteDestState} || '(\s|$)'))
-              OR
-              (tb.stops->>jsonb_array_length(tb.stops)-1 ~* ('\s+' || ${favoriteDestState} || '$'))
-            )
+          bid_number,
+          stops,
+          distance_miles,
+          tag,
+          pickup_timestamp,
+          delivery_timestamp,
+          received_at
+        FROM bid_stops
+        WHERE (
+          -- State match: origin state and destination state match
+          (
+            -- Match origin state from first stop
+            (origin_stop ~* (',\s*' || ${favoriteOriginState} || '(\s|$)'))
+            OR
+            (origin_stop ~* ('\s+' || ${favoriteOriginState} || '$'))
           )
-        ORDER BY tb.received_at DESC
+          AND
+          (
+            -- Match destination state from last stop
+            (dest_stop ~* (',\s*' || ${favoriteDestState} || '(\s|$)'))
+            OR
+            (dest_stop ~* ('\s+' || ${favoriteDestState} || '$'))
+          )
+        )
+        ORDER BY received_at DESC
         LIMIT 10
       `;
       

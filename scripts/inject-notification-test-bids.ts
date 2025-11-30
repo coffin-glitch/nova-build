@@ -81,10 +81,11 @@ async function main() {
   try {
     console.log('🚀 Starting notification test bid injection...\n');
     
-    // Generate unique test bid numbers (using timestamp-based approach for uniqueness)
-    // Format: 88888XXXX where XXXX is sequential
+    // Generate unique test bid numbers (using different base for each test run)
+    // Format: 77777XXXX where XXXX is sequential
+    // Change the base number (777770000) for each new test to ensure uniqueness
     const timestamp = Date.now();
-    const baseNumber = 888880000;
+    const baseNumber = 777770000; // Changed from 888880000 for this test
     const bid1 = String(baseNumber + 1);
     const bid2 = String(baseNumber + 2);
     const bid3 = String(baseNumber + 3);
