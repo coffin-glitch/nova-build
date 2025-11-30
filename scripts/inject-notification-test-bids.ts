@@ -82,13 +82,13 @@ async function main() {
     console.log('🚀 Starting notification test bid injection...\n');
     
     // Generate unique test bid numbers (using different base for each test run)
-    // Format: 11111XXXX where XXXX is sequential
-    // Change the base number (111110000) for each new test to ensure uniqueness
+    // Format: 00000XXXX where XXXX is sequential
+    // Change the base number (000000000) for each new test to ensure uniqueness
     const timestamp = Date.now();
-    const baseNumber = 111110000; // Changed from 222220000 for this test
-    const bid1 = String(baseNumber + 1);
-    const bid2 = String(baseNumber + 2);
-    const bid3 = String(baseNumber + 3);
+    const baseNumber = 0; // Changed from 111110000 for this test - using 00000 prefix
+    const bid1 = String(baseNumber).padStart(8, '0') + '1'; // 00000001
+    const bid2 = String(baseNumber).padStart(8, '0') + '2'; // 00000002
+    const bid3 = String(baseNumber).padStart(8, '0') + '3'; // 00000003
     
     // Test Bid 1: State Match - IL → MN
     // Matches: FOREST PARK, IL 60130 → MINNEAPOLIS, MN 55401

@@ -782,6 +782,8 @@ async function processExactMatchTrigger(
       // State match: Match by states, not exact cities
       // Extract states from favorite route for matching
       console.log(`[StateMatch] Searching for state match: ${favoriteOriginState} → ${favoriteDestState}`);
+      console.log(`[StateMatch] Distance range: ${favoriteDistanceRange.minDistance} - ${favoriteDistanceRange.maxDistance} miles`);
+      console.log(`[StateMatch] Favorite bid: ${favorite.favorite_bid}, Favorite distance: ${favorite.favorite_distance} miles`);
       
       routeMatches = await sql`
         WITH array_bids AS (
@@ -860,11 +862,26 @@ async function processExactMatchTrigger(
       
       console.log(`[StateMatch] Found ${routeMatches.length} potential state matches`);
       if (routeMatches.length > 0) {
-        console.log(`[StateMatch] Potential matches:`, routeMatches.map(m => ({ bid: m.bid_number, stops: m.stops })));
+        console.log(`[StateMatch] Potential matches:`, routeMatches.map(m => ({ bid: m.bid_number, stops: m.stops, distance: m.distance_miles })));
+      } else {
+        // Debug: Check if any bids passed the initial filters
+        const debugBids = await sql`
+          SELECT COUNT(*) as count
+          FROM telegram_bids tb
+          WHERE tb.is_archived = false
+            AND NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes')
+            AND tb.bid_number != ${favorite.favorite_bid}
+            AND tb.distance_miles >= ${favoriteDistanceRange.minDistance}
+            AND tb.distance_miles <= ${favoriteDistanceRange.maxDistance}
+            AND tb.stops IS NOT NULL
+            AND jsonb_typeof(tb.stops) = 'array'
+        `;
+        console.log(`[StateMatch] Debug: ${debugBids[0].count} bids passed initial filters (distance + array type)`);
       }
     } else if (matchType === 'state') {
       // State match without distance range: Match by states
       console.log(`[StateMatch] Searching for state match (no distance range): ${favoriteOriginState} → ${favoriteDestState}`);
+      console.log(`[StateMatch] Favorite bid: ${favorite.favorite_bid}, Favorite distance: ${favorite.favorite_distance} miles`);
       
       routeMatches = await sql`
         WITH array_bids AS (
@@ -941,7 +958,19 @@ async function processExactMatchTrigger(
       
       console.log(`[StateMatch] Found ${routeMatches.length} potential state matches (no distance range)`);
       if (routeMatches.length > 0) {
-        console.log(`[StateMatch] Potential matches:`, routeMatches.map(m => ({ bid: m.bid_number, stops: m.stops })));
+        console.log(`[StateMatch] Potential matches:`, routeMatches.map(m => ({ bid: m.bid_number, stops: m.stops, distance: m.distance_miles })));
+      } else {
+        // Debug: Check if any bids passed the initial filters
+        const debugBids = await sql`
+          SELECT COUNT(*) as count
+          FROM telegram_bids tb
+          WHERE tb.is_archived = false
+            AND NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes')
+            AND tb.bid_number != ${favorite.favorite_bid}
+            AND tb.stops IS NOT NULL
+            AND jsonb_typeof(tb.stops) = 'array'
+        `;
+        console.log(`[StateMatch] Debug: ${debugBids[0].count} bids passed initial filters (array type only)`);
       }
     } else {
       // Fallback: exact route match only
