@@ -121,14 +121,53 @@ Once we identify the exact issue:
 **Medium Priority**: Test state matching regex patterns
 **Low Priority**: Optimize query if needed
 
-## Expected Fix
+## ✅ ROOT CAUSE IDENTIFIED AND FIXED!
 
-Most likely the issue is:
-1. **LATERAL join filtering too aggressively** - The `idx >= 2` filter might not work as expected
-2. **State matching regex not matching** - The regex patterns might need adjustment
+### The Problem:
+**Test bids were storing stops as JSONB STRINGS, not JSONB ARRAYS!**
 
-The fix will likely involve:
-- Adjusting the LATERAL join filter (maybe `idx > 1` or different logic)
-- Fixing state matching regex patterns
-- Adding more defensive checks in the query
+```
+jsonb_typeof: string  ❌ (should be 'array')
+pg_typeof: jsonb
+stops value: "[\"CHICAGO, IL 60601\",\"MINNEAPOLIS, MN 55401\"]"
+```
+
+### Why This Caused 0 Matches:
+1. State match queries filter: `jsonb_typeof(tb.stops) = 'array'`
+2. Test bids had `jsonb_typeof(stops) = 'string'` ❌
+3. Test bids were filtered out before LATERAL join
+4. Real bids (with arrays) passed the filter (12 bids)
+5. But test bids didn't match, so 0 results
+
+### The Fix:
+**Changed test bid creation script:**
+- **Before**: `JSON.stringify(stops)` → Created JSONB string
+- **After**: Pass array directly → Creates JSONB array
+
+```typescript
+// OLD (WRONG):
+const stopsJson = JSON.stringify(stops);
+${stopsJson}::jsonb  // Creates JSONB string
+
+// NEW (CORRECT):
+${stops}::jsonb  // Creates JSONB array
+```
+
+### Why Debug Logs Showed 12 Bids:
+- Real bids in database have stops as JSONB arrays ✓
+- They passed `jsonb_typeof(stops) = 'array'` check
+- But test bids had strings, so they were filtered out
+- The 12 bids were real bids, not test bids
+
+### Expected Outcome After Fix:
+- ✅ Test bids will have stops as JSONB arrays
+- ✅ State match queries will find test bids
+- ✅ LATERAL join will work correctly
+- ✅ All 3 test bids should trigger notifications
+
+## Implementation Status
+
+✅ **Fix Applied**: Test bid creation script updated
+✅ **Committed**: Changes pushed to main
+⏳ **Next Step**: Retract old test bids and inject new ones with correct format
 

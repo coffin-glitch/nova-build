@@ -877,6 +877,39 @@ async function processExactMatchTrigger(
             AND jsonb_typeof(tb.stops) = 'array'
         `;
         console.log(`[StateMatch] Debug: ${debugBids[0].count} bids passed initial filters (distance + array type)`);
+        
+        // Debug: Check if LATERAL join works
+        const debugLateral = await sql`
+          WITH array_bids AS (
+            SELECT 
+              tb.bid_number,
+              tb.stops,
+              tb.distance_miles
+            FROM telegram_bids tb
+            WHERE tb.is_archived = false
+              AND NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes')
+              AND tb.bid_number != ${favorite.favorite_bid}
+              AND tb.distance_miles >= ${favoriteDistanceRange.minDistance}
+              AND tb.distance_miles <= ${favoriteDistanceRange.maxDistance}
+              AND tb.stops IS NOT NULL
+              AND jsonb_typeof(tb.stops) = 'array'
+            LIMIT 5
+          )
+          SELECT COUNT(*) as count
+          FROM array_bids ab
+          CROSS JOIN LATERAL (
+            SELECT stop_text
+            FROM jsonb_array_elements_text(ab.stops) WITH ORDINALITY AS t(stop_text, idx)
+            WHERE idx >= 2
+            ORDER BY idx DESC
+            LIMIT 1
+          ) last_stop
+          WHERE last_stop.stop_text IS NOT NULL
+        `;
+        console.log(`[StateMatch] Debug: ${debugLateral[0].count} bids passed LATERAL join (have at least 2 stops)`);
+        
+        // Debug: Check state matching
+        console.log(`[StateMatch] Debug: Looking for states: ${favoriteOriginState} → ${favoriteDestState}`);
       }
     } else if (matchType === 'state') {
       // State match without distance range: Match by states
@@ -971,6 +1004,37 @@ async function processExactMatchTrigger(
             AND jsonb_typeof(tb.stops) = 'array'
         `;
         console.log(`[StateMatch] Debug: ${debugBids[0].count} bids passed initial filters (array type only)`);
+        
+        // Debug: Check if LATERAL join works
+        const debugLateral = await sql`
+          WITH array_bids AS (
+            SELECT 
+              tb.bid_number,
+              tb.stops,
+              tb.distance_miles
+            FROM telegram_bids tb
+            WHERE tb.is_archived = false
+              AND NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes')
+              AND tb.bid_number != ${favorite.favorite_bid}
+              AND tb.stops IS NOT NULL
+              AND jsonb_typeof(tb.stops) = 'array'
+            LIMIT 5
+          )
+          SELECT COUNT(*) as count
+          FROM array_bids ab
+          CROSS JOIN LATERAL (
+            SELECT stop_text
+            FROM jsonb_array_elements_text(ab.stops) WITH ORDINALITY AS t(stop_text, idx)
+            WHERE idx >= 2
+            ORDER BY idx DESC
+            LIMIT 1
+          ) last_stop
+          WHERE last_stop.stop_text IS NOT NULL
+        `;
+        console.log(`[StateMatch] Debug: ${debugLateral[0].count} bids passed LATERAL join (have at least 2 stops)`);
+        
+        // Debug: Check state matching
+        console.log(`[StateMatch] Debug: Looking for states: ${favoriteOriginState} → ${favoriteDestState}`);
       }
     } else {
       // Fallback: exact route match only
