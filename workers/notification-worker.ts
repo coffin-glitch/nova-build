@@ -493,7 +493,11 @@ async function processSimilarLoadTrigger(
       AND NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes')
       AND tb.stops IS NOT NULL
       AND jsonb_typeof(tb.stops) = 'array'
-      AND jsonb_array_length(tb.stops) > 0
+      AND CASE 
+        WHEN jsonb_typeof(tb.stops) = 'array' 
+        THEN jsonb_array_length(tb.stops) > 0
+        ELSE false
+      END
       AND EXISTS (
         SELECT 1 
         FROM unnest(${statePreferences}::TEXT[]) AS pref_state
@@ -819,7 +823,8 @@ async function processExactMatchTrigger(
              ORDER BY idx DESC
              LIMIT 1) as dest_stop
           FROM array_bids ab
-          WHERE jsonb_array_length(ab.stops) >= 2  -- Safe: we know it's an array from Stage 1
+          WHERE jsonb_typeof(ab.stops) = 'array'  -- Double-check type (defensive)
+            AND jsonb_array_length(ab.stops) >= 2  -- Safe: we know it's an array from Stage 1
         )
         SELECT 
           bid_number,
@@ -894,7 +899,8 @@ async function processExactMatchTrigger(
              ORDER BY idx DESC
              LIMIT 1) as dest_stop
           FROM array_bids ab
-          WHERE jsonb_array_length(ab.stops) >= 2  -- Safe: we know it's an array from Stage 1
+          WHERE jsonb_typeof(ab.stops) = 'array'  -- Double-check type (defensive)
+            AND jsonb_array_length(ab.stops) >= 2  -- Safe: we know it's an array from Stage 1
         )
         SELECT 
           bid_number,

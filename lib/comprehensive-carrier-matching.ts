@@ -73,7 +73,11 @@ export async function findCarriersWithMatchingFavorites(bidInfo: BidInfo): Promi
       WHERE cf.supabase_carrier_user_id IS NOT NULL
         AND tb.stops IS NOT NULL
         AND jsonb_typeof(tb.stops) = 'array'
-        AND jsonb_array_length(tb.stops) >= 2
+        AND CASE 
+          WHEN jsonb_typeof(tb.stops) = 'array' 
+          THEN jsonb_array_length(tb.stops) >= 2
+          ELSE false
+        END
         -- Exclude carriers who already have explicit triggers for this favorite
         AND NOT EXISTS (
           SELECT 1 FROM notification_triggers nt
