@@ -40,8 +40,8 @@ async function main() {
     const userId = user[0].id;
     console.log(`✅ Found user: ${user[0].email} (ID: ${userId})\n`);
     
-    // Get all active triggers for this user
-    const triggers = await sql`
+    // Get all active triggers for this user (from database)
+    const dbTriggers = await sql`
       SELECT 
         nt.id,
         nt.trigger_type,
@@ -53,6 +53,45 @@ async function main() {
       ORDER BY nt.trigger_type
     `;
     
+    // Get state preferences for this user (to create virtual triggers)
+    const statePrefs = await sql`
+      SELECT 
+        cnp.state_preferences,
+        cnp.distance_threshold_miles,
+        cnp.similar_load_notifications
+      FROM carrier_notification_preferences cnp
+      WHERE cnp.supabase_carrier_user_id = ${userId}
+        AND cnp.similar_load_notifications = true
+        AND cnp.state_preferences IS NOT NULL
+        AND array_length(cnp.state_preferences, 1) > 0
+        AND NOT EXISTS (
+          SELECT 1 FROM notification_triggers nt
+          WHERE nt.supabase_carrier_user_id = ${userId}
+            AND nt.trigger_type = 'similar_load'
+            AND nt.is_active = true
+        )
+      LIMIT 1
+    `;
+    
+    // Combine database triggers with virtual state preference triggers
+    const triggers: any[] = [...dbTriggers];
+    
+    // Add virtual similar_load triggers for state preferences (like webhook does)
+    if (statePrefs.length > 0) {
+      const userPref = statePrefs[0];
+      console.log(`✅ Found state preferences: ${userPref.state_preferences?.join(', ') || 'none'}`);
+      triggers.push({
+        id: -1, // Virtual trigger ID (same as webhook)
+        trigger_type: 'similar_load',
+        trigger_config: {
+          statePreferences: userPref.state_preferences,
+          distanceThreshold: userPref.distance_threshold_miles || 50,
+        },
+        is_active: true,
+      });
+      console.log(`   - similar_load (virtual, state preferences)`);
+    }
+    
     if (triggers.length === 0) {
       console.log('⚠️  No active triggers found for this user');
       process.exit(1);
@@ -60,7 +99,8 @@ async function main() {
     
     console.log(`✅ Found ${triggers.length} active trigger(s):`);
     triggers.forEach((trigger: any) => {
-      console.log(`   - ${trigger.trigger_type} (ID: ${trigger.id})`);
+      const triggerId = trigger.id === -1 ? 'virtual' : trigger.id;
+      console.log(`   - ${trigger.trigger_type} (ID: ${triggerId})`);
     });
     
     // Determine priority based on trigger types

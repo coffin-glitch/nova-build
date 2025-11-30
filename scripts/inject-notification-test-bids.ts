@@ -84,13 +84,20 @@ async function main() {
     console.log('🚀 Starting notification test bid injection...\n');
     
     // Generate unique test bid numbers (using different base for each test run)
-    // Format: 11223XXXX where XXXX is sequential
-    // Change the base number (112230000) for each new test to ensure uniqueness
+    // Format: 44556XXXX where XXXX is sequential
+    // Change the base number (445560000) for each new test to ensure uniqueness
     const timestamp = Date.now();
-    const baseNumber = 112230000; // Changed from 987650000 for this test - using 11223 prefix
-    const bid1 = String(baseNumber + 1); // 112230001
-    const bid2 = String(baseNumber + 2); // 112230002
-    const bid3 = String(baseNumber + 3); // 112230003
+    const baseNumber = 445560000; // Changed from 112230000 for this test - using 44556 prefix
+    
+    // Original 3 test bids (State Match and Exact Match)
+    const bid1 = String(baseNumber + 1); // 445560001 - State Match IL → MN
+    const bid2 = String(baseNumber + 2); // 445560002 - Exact Match PA → KS
+    const bid3 = String(baseNumber + 3); // 445560003 - State Match OH → TX
+    
+    // State Preference test bids (3 out of 4 states: CT, IL, UT - leaving out KY)
+    const bid4 = String(baseNumber + 4); // 445560004 - State Preference CT
+    const bid5 = String(baseNumber + 5); // 445560005 - State Preference IL
+    const bid6 = String(baseNumber + 6); // 445560006 - State Preference UT
     
     // Test Bid 1: State Match - IL → MN
     // Matches: FOREST PARK, IL 60130 → MINNEAPOLIS, MN 55401
@@ -122,11 +129,41 @@ async function main() {
       'State Match: OH → TX (matches AKRON, OH → IRVING, TX)'
     );
     
+    // Test Bid 4: State Preference - CT (Connecticut)
+    // Should trigger state preference notification (CT is in user's state preferences)
+    await createTestBid(
+      bid4,
+      ['HARTFORD, CT 06103', 'BOSTON, MA 02101'],
+      100, // Short distance test
+      'State Preference: CT (matches user state preference)'
+    );
+    
+    // Test Bid 5: State Preference - IL (Illinois)
+    // Should trigger state preference notification (IL is in user's state preferences)
+    await createTestBid(
+      bid5,
+      ['SPRINGFIELD, IL 62701', 'INDIANAPOLIS, IN 46201'],
+      200, // Medium distance test
+      'State Preference: IL (matches user state preference)'
+    );
+    
+    // Test Bid 6: State Preference - UT (Utah)
+    // Should trigger state preference notification (UT is in user's state preferences)
+    await createTestBid(
+      bid6,
+      ['SALT LAKE CITY, UT 84101', 'DENVER, CO 80201'],
+      500, // Medium distance test
+      'State Preference: UT (matches user state preference)'
+    );
+    
     console.log('\n✅ All test bids created successfully!');
     console.log('\n📋 Test Bid Summary:');
     console.log(`   #${bid1} - State Match (IL → MN)`);
     console.log(`   #${bid2} - Exact Match (PA → KS)`);
     console.log(`   #${bid3} - State Match (OH → TX)`);
+    console.log(`   #${bid4} - State Preference (CT)`);
+    console.log(`   #${bid5} - State Preference (IL)`);
+    console.log(`   #${bid6} - State Preference (UT)`);
     
     // Trigger webhook for each bid to process notifications
     console.log('\n🔔 Triggering notification webhooks...');
@@ -138,7 +175,7 @@ async function main() {
     
     console.log(`   Using webhook URL: ${webhookUrl}`);
     
-    const testBidNumbers = [bid1, bid2, bid3];
+    const testBidNumbers = [bid1, bid2, bid3, bid4, bid5, bid6];
     
     for (const bidNumber of testBidNumbers) {
       try {
