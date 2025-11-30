@@ -493,11 +493,7 @@ async function processSimilarLoadTrigger(
       AND NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes')
       AND tb.stops IS NOT NULL
       AND jsonb_typeof(tb.stops) = 'array'
-      AND CASE 
-        WHEN jsonb_typeof(tb.stops) = 'array' 
-        THEN jsonb_array_length(tb.stops) > 0
-        ELSE false
-      END
+      AND tb.stops->>0 IS NOT NULL  -- Ensure at least one stop exists (simpler than jsonb_array_length)
       AND EXISTS (
         SELECT 1 
         FROM unnest(${statePreferences}::TEXT[]) AS pref_state
@@ -810,6 +806,7 @@ async function processExactMatchTrigger(
         bid_stops AS (
           -- Stage 2: Use LATERAL join for safe last stop extraction
           -- LATERAL ensures explicit evaluation order and prevents scalar errors
+          -- Filter for idx >= 2 to ensure at least 2 stops (WITH ORDINALITY starts at 1)
           SELECT 
             ab.bid_number,
             ab.stops,
@@ -824,16 +821,11 @@ async function processExactMatchTrigger(
           CROSS JOIN LATERAL (
             SELECT stop_text
             FROM jsonb_array_elements_text(ab.stops) WITH ORDINALITY AS t(stop_text, idx)
-            WHERE jsonb_typeof(ab.stops) = 'array'  -- Safety check inside LATERAL
+            WHERE idx >= 2  -- Ensure at least 2 stops exist (idx 1 = first stop, idx 2+ = additional stops)
             ORDER BY idx DESC
             LIMIT 1
           ) last_stop
-          WHERE jsonb_typeof(ab.stops) = 'array'  -- Double-check type (defensive)
-            AND CASE 
-              WHEN jsonb_typeof(ab.stops) = 'array' 
-              THEN jsonb_array_length(ab.stops) >= 2
-              ELSE false
-            END
+          WHERE last_stop.stop_text IS NOT NULL  -- Ensure LATERAL join succeeded (at least 2 stops exist)
         )
         SELECT 
           bid_number,
@@ -895,6 +887,7 @@ async function processExactMatchTrigger(
         bid_stops AS (
           -- Stage 2: Use LATERAL join for safe last stop extraction
           -- LATERAL ensures explicit evaluation order and prevents scalar errors
+          -- Filter for idx >= 2 to ensure at least 2 stops (WITH ORDINALITY starts at 1)
           SELECT 
             ab.bid_number,
             ab.stops,
@@ -909,16 +902,11 @@ async function processExactMatchTrigger(
           CROSS JOIN LATERAL (
             SELECT stop_text
             FROM jsonb_array_elements_text(ab.stops) WITH ORDINALITY AS t(stop_text, idx)
-            WHERE jsonb_typeof(ab.stops) = 'array'  -- Safety check inside LATERAL
+            WHERE idx >= 2  -- Ensure at least 2 stops exist (idx 1 = first stop, idx 2+ = additional stops)
             ORDER BY idx DESC
             LIMIT 1
           ) last_stop
-          WHERE jsonb_typeof(ab.stops) = 'array'  -- Double-check type (defensive)
-            AND CASE 
-              WHEN jsonb_typeof(ab.stops) = 'array' 
-              THEN jsonb_array_length(ab.stops) >= 2
-              ELSE false
-            END
+          WHERE last_stop.stop_text IS NOT NULL  -- Ensure LATERAL join succeeded (at least 2 stops exist)
         )
         SELECT 
           bid_number,
