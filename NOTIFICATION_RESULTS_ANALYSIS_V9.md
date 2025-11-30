@@ -131,14 +131,54 @@ Once we identify the exact issue:
 **Medium Priority**: Test LATERAL join with test bids
 **Low Priority**: Optimize query if needed
 
-## Expected Fix
+## ✅ Progress Made
 
-Most likely the issue is:
-1. **LATERAL join not returning results** - The `idx >= 2` filter might not work as expected
-2. **State matching regex not matching** - The regex patterns might need adjustment
+### Test Results:
+- ✅ **LATERAL join works**: Direct test confirmed it extracts stops correctly
+- ✅ **Test bids are arrays**: Fixed and verified
+- ✅ **Initial filters pass**: 13 bids pass (includes test bids)
+- ❌ **But 0 matches after LATERAL join + state matching**
 
-The fix will likely involve:
-- Adjusting the LATERAL join filter (maybe `idx > 1` or different logic)
-- Fixing state matching regex patterns
-- Adding more defensive checks in the query
+### Key Insight:
+The LATERAL join test showed it works correctly:
+- Origin: "CHICAGO, IL 60601" ✓
+- Destination: "MINNEAPOLIS, MN 55401" ✓
+- Index: 2 ✓
+
+So the issue is likely in the **state matching regex** or **state extraction from favorites**.
+
+## Next Steps
+
+### Enhanced Debug Logging Added:
+1. **LATERAL join stage**: Count bids that pass LATERAL join
+2. **State extraction**: Log the states being searched for
+3. **This will show**: Where exactly bids are being filtered out
+
+### Expected Debug Output:
+After Railway deploys, we'll see:
+```
+[StateMatch] Debug: 13 bids passed initial filters
+[StateMatch] Debug: X bids passed LATERAL join
+[StateMatch] Debug: Looking for states: IL → MN
+```
+
+This will tell us:
+- If LATERAL join is filtering out bids (X < 13)
+- If state matching regex is the issue (X = 13 but 0 matches)
+- If state extraction is wrong (wrong states being searched)
+
+## Implementation Status
+
+✅ **Enhanced Debug Logging**: Added to both state match query variants
+✅ **Committed**: Changes pushed to main
+⏳ **Next Step**: Wait for Railway to deploy, then retest to see debug output
+
+## Expected Outcome
+
+After seeing the debug output, we'll know:
+1. **If LATERAL join is the issue**: Debug will show fewer bids pass LATERAL join
+2. **If state matching is the issue**: Debug will show bids pass LATERAL join but fail state matching
+3. **If state extraction is the issue**: Debug will show wrong states being searched
+
+Then we can apply a targeted fix based on the actual problem.
 

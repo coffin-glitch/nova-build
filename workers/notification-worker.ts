@@ -780,261 +780,72 @@ async function processExactMatchTrigger(
       }
     } else if (matchType === 'state' && favoriteDistanceRange) {
       // State match: Match by states, not exact cities
-      // Extract states from favorite route for matching
+      // Use SIMPLE text matching like exact match (proven to work!)
+      // This avoids complex regex patterns that are failing
       console.log(`[StateMatch] Searching for state match: ${favoriteOriginState} → ${favoriteDestState}`);
       console.log(`[StateMatch] Distance range: ${favoriteDistanceRange.minDistance} - ${favoriteDistanceRange.maxDistance} miles`);
       console.log(`[StateMatch] Favorite bid: ${favorite.favorite_bid}, Favorite distance: ${favorite.favorite_distance} miles`);
       
       routeMatches = await sql`
-        WITH array_bids AS (
-          -- Stage 1: Filter to only array types (no array operations yet)
-          SELECT 
-            tb.bid_number,
-            tb.stops,
-            tb.distance_miles,
-            tb.tag,
-            tb.pickup_timestamp,
-            tb.delivery_timestamp,
-            tb.received_at
-          FROM telegram_bids tb
-          WHERE tb.is_archived = false
-            AND NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes')
-            AND tb.bid_number != ${favorite.favorite_bid}
-            AND tb.distance_miles >= ${favoriteDistanceRange.minDistance}
-            AND tb.distance_miles <= ${favoriteDistanceRange.maxDistance}
-            AND tb.stops IS NOT NULL
-            AND jsonb_typeof(tb.stops) = 'array'
-        ),
-        bid_stops AS (
-          -- Stage 2: Use LATERAL join for safe last stop extraction
-          -- LATERAL ensures explicit evaluation order and prevents scalar errors
-          -- Filter for idx >= 2 to ensure at least 2 stops (WITH ORDINALITY starts at 1)
-          SELECT 
-            ab.bid_number,
-            ab.stops,
-            ab.distance_miles,
-            ab.tag,
-            ab.pickup_timestamp,
-            ab.delivery_timestamp,
-            ab.received_at,
-            ab.stops->>0 as origin_stop,
-            last_stop.stop_text as dest_stop
-          FROM array_bids ab
-          CROSS JOIN LATERAL (
-            SELECT stop_text
-            FROM jsonb_array_elements_text(ab.stops) WITH ORDINALITY AS t(stop_text, idx)
-            WHERE idx >= 2  -- Ensure at least 2 stops exist (idx 1 = first stop, idx 2+ = additional stops)
-            ORDER BY idx DESC
-            LIMIT 1
-          ) last_stop
-          WHERE last_stop.stop_text IS NOT NULL  -- Ensure LATERAL join succeeded (at least 2 stops exist)
-        )
         SELECT 
-          bid_number,
-          stops,
-          distance_miles,
-          tag,
-          pickup_timestamp,
-          delivery_timestamp,
-          received_at
-        FROM bid_stops
-        WHERE origin_stop IS NOT NULL
-          AND dest_stop IS NOT NULL
-          AND (
-            -- State match: origin state and destination state match
-            (
-              -- Match origin state from first stop
-              (origin_stop ~* (',\s*' || ${favoriteOriginState} || '(\s|$)'))
-              OR
-              (origin_stop ~* ('\s+' || ${favoriteOriginState} || '$'))
-            )
-            AND
-            (
-              -- Match destination state from last stop
-              (dest_stop ~* (',\s*' || ${favoriteDestState} || '(\s|$)'))
-              OR
-              (dest_stop ~* ('\s+' || ${favoriteDestState} || '$'))
-            )
-          )
-        ORDER BY received_at DESC
+          tb.bid_number,
+          tb.stops,
+          tb.distance_miles,
+          tb.tag,
+          tb.pickup_timestamp,
+          tb.delivery_timestamp,
+          tb.received_at
+        FROM telegram_bids tb
+        WHERE tb.is_archived = false
+          AND NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes')
+          AND tb.bid_number != ${favorite.favorite_bid}
+          AND tb.distance_miles >= ${favoriteDistanceRange.minDistance}
+          AND tb.distance_miles <= ${favoriteDistanceRange.maxDistance}
+          AND tb.stops IS NOT NULL
+          -- Simple text matching like exact match (proven to work!)
+          -- Match state anywhere in stops text (handles any format)
+          AND tb.stops::text LIKE ${`%${favoriteOriginState}%`}
+          AND tb.stops::text LIKE ${`%${favoriteDestState}%`}
+        ORDER BY tb.received_at DESC
         LIMIT 10
       `;
       
       console.log(`[StateMatch] Found ${routeMatches.length} potential state matches`);
       if (routeMatches.length > 0) {
         console.log(`[StateMatch] Potential matches:`, routeMatches.map(m => ({ bid: m.bid_number, stops: m.stops, distance: m.distance_miles })));
-      } else {
-        // Debug: Check if any bids passed the initial filters
-        const debugBids = await sql`
-          SELECT COUNT(*) as count
-          FROM telegram_bids tb
-          WHERE tb.is_archived = false
-            AND NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes')
-            AND tb.bid_number != ${favorite.favorite_bid}
-            AND tb.distance_miles >= ${favoriteDistanceRange.minDistance}
-            AND tb.distance_miles <= ${favoriteDistanceRange.maxDistance}
-            AND tb.stops IS NOT NULL
-            AND jsonb_typeof(tb.stops) = 'array'
-        `;
-        console.log(`[StateMatch] Debug: ${debugBids[0].count} bids passed initial filters (distance + array type)`);
-        
-        // Debug: Check if LATERAL join works
-        const debugLateral = await sql`
-          WITH array_bids AS (
-            SELECT 
-              tb.bid_number,
-              tb.stops,
-              tb.distance_miles
-            FROM telegram_bids tb
-            WHERE tb.is_archived = false
-              AND NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes')
-              AND tb.bid_number != ${favorite.favorite_bid}
-              AND tb.distance_miles >= ${favoriteDistanceRange.minDistance}
-              AND tb.distance_miles <= ${favoriteDistanceRange.maxDistance}
-              AND tb.stops IS NOT NULL
-              AND jsonb_typeof(tb.stops) = 'array'
-            LIMIT 5
-          )
-          SELECT COUNT(*) as count
-          FROM array_bids ab
-          CROSS JOIN LATERAL (
-            SELECT stop_text
-            FROM jsonb_array_elements_text(ab.stops) WITH ORDINALITY AS t(stop_text, idx)
-            WHERE idx >= 2
-            ORDER BY idx DESC
-            LIMIT 1
-          ) last_stop
-          WHERE last_stop.stop_text IS NOT NULL
-        `;
-        console.log(`[StateMatch] Debug: ${debugLateral[0].count} bids passed LATERAL join (have at least 2 stops)`);
-        
-        // Debug: Check state matching
-        console.log(`[StateMatch] Debug: Looking for states: ${favoriteOriginState} → ${favoriteDestState}`);
       }
     } else if (matchType === 'state') {
       // State match without distance range: Match by states
+      // Use SIMPLE text matching like exact match (proven to work!)
+      // This avoids complex regex patterns that are failing
       console.log(`[StateMatch] Searching for state match (no distance range): ${favoriteOriginState} → ${favoriteDestState}`);
       console.log(`[StateMatch] Favorite bid: ${favorite.favorite_bid}, Favorite distance: ${favorite.favorite_distance} miles`);
       
       routeMatches = await sql`
-        WITH array_bids AS (
-          -- Stage 1: Filter to only array types (no array operations yet)
-          SELECT 
-            tb.bid_number,
-            tb.stops,
-            tb.distance_miles,
-            tb.tag,
-            tb.pickup_timestamp,
-            tb.delivery_timestamp,
-            tb.received_at
-          FROM telegram_bids tb
-          WHERE tb.is_archived = false
-            AND NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes')
-            AND tb.bid_number != ${favorite.favorite_bid}
-            AND tb.stops IS NOT NULL
-            AND jsonb_typeof(tb.stops) = 'array'
-        ),
-        bid_stops AS (
-          -- Stage 2: Use LATERAL join for safe last stop extraction
-          -- LATERAL ensures explicit evaluation order and prevents scalar errors
-          -- Filter for idx >= 2 to ensure at least 2 stops (WITH ORDINALITY starts at 1)
-          SELECT 
-            ab.bid_number,
-            ab.stops,
-            ab.distance_miles,
-            ab.tag,
-            ab.pickup_timestamp,
-            ab.delivery_timestamp,
-            ab.received_at,
-            ab.stops->>0 as origin_stop,
-            last_stop.stop_text as dest_stop
-          FROM array_bids ab
-          CROSS JOIN LATERAL (
-            SELECT stop_text
-            FROM jsonb_array_elements_text(ab.stops) WITH ORDINALITY AS t(stop_text, idx)
-            WHERE idx >= 2  -- Ensure at least 2 stops exist (idx 1 = first stop, idx 2+ = additional stops)
-            ORDER BY idx DESC
-            LIMIT 1
-          ) last_stop
-          WHERE last_stop.stop_text IS NOT NULL  -- Ensure LATERAL join succeeded (at least 2 stops exist)
-        )
         SELECT 
-          bid_number,
-          stops,
-          distance_miles,
-          tag,
-          pickup_timestamp,
-          delivery_timestamp,
-          received_at
-        FROM bid_stops
-        WHERE origin_stop IS NOT NULL
-          AND dest_stop IS NOT NULL
-          AND (
-            -- State match: origin state and destination state match
-            (
-              -- Match origin state from first stop
-              (origin_stop ~* (',\s*' || ${favoriteOriginState} || '(\s|$)'))
-              OR
-              (origin_stop ~* ('\s+' || ${favoriteOriginState} || '$'))
-            )
-            AND
-            (
-              -- Match destination state from last stop
-              (dest_stop ~* (',\s*' || ${favoriteDestState} || '(\s|$)'))
-              OR
-              (dest_stop ~* ('\s+' || ${favoriteDestState} || '$'))
-            )
-          )
-        ORDER BY received_at DESC
+          tb.bid_number,
+          tb.stops,
+          tb.distance_miles,
+          tb.tag,
+          tb.pickup_timestamp,
+          tb.delivery_timestamp,
+          tb.received_at
+        FROM telegram_bids tb
+        WHERE tb.is_archived = false
+          AND NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes')
+          AND tb.bid_number != ${favorite.favorite_bid}
+          AND tb.stops IS NOT NULL
+          -- Simple text matching like exact match (proven to work!)
+          -- Match state anywhere in stops text (handles any format)
+          AND tb.stops::text LIKE ${`%${favoriteOriginState}%`}
+          AND tb.stops::text LIKE ${`%${favoriteDestState}%`}
+        ORDER BY tb.received_at DESC
         LIMIT 10
       `;
       
       console.log(`[StateMatch] Found ${routeMatches.length} potential state matches (no distance range)`);
       if (routeMatches.length > 0) {
         console.log(`[StateMatch] Potential matches:`, routeMatches.map(m => ({ bid: m.bid_number, stops: m.stops, distance: m.distance_miles })));
-      } else {
-        // Debug: Check if any bids passed the initial filters
-        const debugBids = await sql`
-          SELECT COUNT(*) as count
-          FROM telegram_bids tb
-          WHERE tb.is_archived = false
-            AND NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes')
-            AND tb.bid_number != ${favorite.favorite_bid}
-            AND tb.stops IS NOT NULL
-            AND jsonb_typeof(tb.stops) = 'array'
-        `;
-        console.log(`[StateMatch] Debug: ${debugBids[0].count} bids passed initial filters (array type only)`);
-        
-        // Debug: Check if LATERAL join works
-        const debugLateral = await sql`
-          WITH array_bids AS (
-            SELECT 
-              tb.bid_number,
-              tb.stops,
-              tb.distance_miles
-            FROM telegram_bids tb
-            WHERE tb.is_archived = false
-              AND NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes')
-              AND tb.bid_number != ${favorite.favorite_bid}
-              AND tb.stops IS NOT NULL
-              AND jsonb_typeof(tb.stops) = 'array'
-            LIMIT 5
-          )
-          SELECT COUNT(*) as count
-          FROM array_bids ab
-          CROSS JOIN LATERAL (
-            SELECT stop_text
-            FROM jsonb_array_elements_text(ab.stops) WITH ORDINALITY AS t(stop_text, idx)
-            WHERE idx >= 2
-            ORDER BY idx DESC
-            LIMIT 1
-          ) last_stop
-          WHERE last_stop.stop_text IS NOT NULL
-        `;
-        console.log(`[StateMatch] Debug: ${debugLateral[0].count} bids passed LATERAL join (have at least 2 stops)`);
-        
-        // Debug: Check state matching
-        console.log(`[StateMatch] Debug: Looking for states: ${favoriteOriginState} → ${favoriteDestState}`);
       }
     } else {
       // Fallback: exact route match only
