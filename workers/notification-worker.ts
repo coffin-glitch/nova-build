@@ -472,13 +472,28 @@ async function processSimilarLoadTrigger(
     return 0;
   }
 
-  console.log(`[SimilarLoad] Processing state preference trigger for user ${userId}, states: ${statePreferences.join(', ')}, threshold: ${distanceThreshold}mi`);
+
+  // Ensure statePreferences is a valid array of strings
+  // Normalize to uppercase strings and filter out any invalid values
+  const validStatePreferences = Array.isArray(statePreferences)
+    ? statePreferences
+        .map(s => String(s).trim().toUpperCase())
+        .filter(s => s.length === 2 && /^[A-Z]{2}$/.test(s))
+    : [];
+  
+  if (validStatePreferences.length === 0) {
+    console.log(`[SimilarLoad] No valid state preferences found, skipping`);
+    return 0;
+  }
+  
+  console.log(`[SimilarLoad] Valid state preferences: ${validStatePreferences.join(', ')}`);
 
   // For state preference notifications, we simply check if any bid's origin state matches the user's state preferences
   // This doesn't require favorites - just match origin states
   // IMPORTANT: Only check the FIRST stop (origin), not all stops
   // CRITICAL: Only match the state part (after comma), not city names that might contain state abbreviations
   // Example: "HOPE MILLS, NC" should only match if NC is in preferences, not if IL is in preferences (MILLS contains IL)
+  // Use IN clause with unnest for better compatibility with postgres library
   const statePrefBids = await sql`
     WITH first_stop_extracted AS (
       SELECT 
@@ -527,13 +542,13 @@ async function processSimilarLoadTrigger(
     FROM states_extracted
     WHERE origin_state IS NOT NULL
       -- Only match if extracted state is in user's preferences (exact match, not substring)
-      -- Use sql.array() helper to properly format array for PostgreSQL ANY() operator
-      AND origin_state = ANY(${sql.array(statePreferences, 'text')})
+      -- Pass array directly - postgres library handles array parameters automatically
+      AND origin_state = ANY(${validStatePreferences})
     ORDER BY received_at DESC
     LIMIT 10
   `;
 
-  console.log(`[SimilarLoad] Found ${statePrefBids.length} bids matching state preferences: ${statePreferences.join(', ')}`);
+  console.log(`[SimilarLoad] Found ${statePrefBids.length} bids matching state preferences: ${validStatePreferences.join(', ')}`);
 
   let count = 0;
 
