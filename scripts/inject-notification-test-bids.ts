@@ -84,20 +84,27 @@ async function main() {
     console.log('🚀 Starting notification test bid injection...\n');
     
     // Generate unique test bid numbers (using different base for each test run)
-    // Format: 77889XXXX where XXXX is sequential
-    // Change the base number (778890000) for each new test to ensure uniqueness
+    // Format: 33445XXXX where XXXX is sequential
+    // Change the base number (334450000) for each new test to ensure uniqueness
     const timestamp = Date.now();
-    const baseNumber = 778890000; // Changed from 445560000 for this test - using 77889 prefix
+    const baseNumber = 334450000; // Changed from 778890000 for this test - using 33445 prefix
     
     // Original 3 test bids (State Match and Exact Match)
-    const bid1 = String(baseNumber + 1); // 778890001 - State Match IL → MN
-    const bid2 = String(baseNumber + 2); // 778890002 - Exact Match PA → KS
-    const bid3 = String(baseNumber + 3); // 778890003 - State Match OH → TX
+    const bid1 = String(baseNumber + 1); // 334450001 - State Match IL → MN
+    const bid2 = String(baseNumber + 2); // 334450002 - Exact Match PA → KS
+    const bid3 = String(baseNumber + 3); // 334450003 - State Match OH → TX
     
     // State Preference test bids (3 out of 4 states: CT, IL, UT - leaving out KY)
-    const bid4 = String(baseNumber + 4); // 778890004 - State Preference CT
-    const bid5 = String(baseNumber + 5); // 778890005 - State Preference IL
-    const bid6 = String(baseNumber + 6); // 778890006 - State Preference UT
+    const bid4 = String(baseNumber + 4); // 334450004 - State Preference CT
+    const bid5 = String(baseNumber + 5); // 334450005 - State Preference IL
+    const bid6 = String(baseNumber + 6); // 334450006 - State Preference UT
+    
+    // Backhaul test bids (reverse routes for backhaul matching)
+    const bid7 = String(baseNumber + 7); // 334450007 - Backhaul Exact Match (KS → PA, reverse of PA → KS)
+    const bid8 = String(baseNumber + 8); // 334450008 - Backhaul State Match (MN → IL, reverse of IL → MN)
+    
+    // Test bid to verify state preference fix (should NOT match IL preference)
+    const bid9 = String(baseNumber + 9); // 334450009 - False positive test (HOPE MILLS, NC - contains "IL" in city name but state is NC)
     
     // Test Bid 1: State Match - IL → MN
     // Matches: FOREST PARK, IL 60130 → MINNEAPOLIS, MN 55401
@@ -156,6 +163,37 @@ async function main() {
       'State Preference: UT (matches user state preference)'
     );
     
+    // Test Bid 7: Backhaul Exact Match - KS → PA
+    // Reverse route of exact match (PA → KS) to test backhaul matching
+    // Should trigger backhaul exact match notification
+    await createTestBid(
+      bid7,
+      ['OLATHE, KS 66061', 'HARRISBURG, PA 17604'],
+      1150, // Same distance (reverse route)
+      'Backhaul Exact Match: KS → PA (reverse of PA → KS)'
+    );
+    
+    // Test Bid 8: Backhaul State Match - MN → IL
+    // Reverse route of state match (IL → MN) to test backhaul state matching
+    // Should trigger backhaul state match notification
+    await createTestBid(
+      bid8,
+      ['MINNEAPOLIS, MN 55401', 'CHICAGO, IL 60601'],
+      410, // Same distance (reverse route)
+      'Backhaul State Match: MN → IL (reverse of IL → MN)'
+    );
+    
+    // Test Bid 9: False Positive Test - HOPE MILLS, NC
+    // City name contains "IL" (MILLS) but state is NC
+    // Should NOT trigger state preference notification for IL
+    // This tests the fix for state preference matching (only match state part, not city names)
+    await createTestBid(
+      bid9,
+      ['HOPE MILLS, NC 28348', 'RALEIGH, NC 27601'],
+      50, // Short distance
+      'False Positive Test: HOPE MILLS, NC (contains IL in city name but state is NC - should NOT match IL preference)'
+    );
+    
     console.log('\n✅ All test bids created successfully!');
     console.log('\n📋 Test Bid Summary:');
     console.log(`   #${bid1} - State Match (IL → MN)`);
@@ -164,6 +202,9 @@ async function main() {
     console.log(`   #${bid4} - State Preference (CT)`);
     console.log(`   #${bid5} - State Preference (IL)`);
     console.log(`   #${bid6} - State Preference (UT)`);
+    console.log(`   #${bid7} - Backhaul Exact Match (KS → PA)`);
+    console.log(`   #${bid8} - Backhaul State Match (MN → IL)`);
+    console.log(`   #${bid9} - False Positive Test (HOPE MILLS, NC - should NOT match IL)`);
     
     // Trigger webhook for each bid to process notifications
     console.log('\n🔔 Triggering notification webhooks...');

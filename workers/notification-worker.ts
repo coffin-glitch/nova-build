@@ -477,31 +477,55 @@ async function processSimilarLoadTrigger(
   // For state preference notifications, we simply check if any bid's origin state matches the user's state preferences
   // This doesn't require favorites - just match origin states
   // IMPORTANT: Only check the FIRST stop (origin), not all stops
+  // CRITICAL: Only match the state part (after comma), not city names that might contain state abbreviations
+  // Example: "HOPE MILLS, NC" should only match if NC is in preferences, not if IL is in preferences (MILLS contains IL)
   const statePrefBids = await sql`
+    WITH first_stop_extracted AS (
+      SELECT 
+        tb.bid_number,
+        tb.distance_miles,
+        tb.pickup_timestamp,
+        tb.delivery_timestamp,
+        tb.stops,
+        tb.tag,
+        tb.source_channel,
+        tb.received_at,
+        tb.stops->>0 as first_stop_text
+      FROM telegram_bids tb
+      WHERE tb.is_archived = false
+        AND NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes')
+        AND tb.stops IS NOT NULL
+        AND jsonb_typeof(tb.stops) = 'array'
+        AND tb.stops->>0 IS NOT NULL
+    ),
+    states_extracted AS (
+      SELECT 
+        *,
+        -- Extract state from first stop: look for state code after comma
+        -- Pattern: "CITY, ST" or "CITY, ST ZIP" - extract the ST part (exactly 2 uppercase letters after comma)
+        -- Use regex to extract: comma, optional whitespace, then exactly 2 uppercase letters
+        CASE 
+          WHEN first_stop_text ~* ',\s*[A-Z]{2}(\s|$|[0-9])' THEN
+            UPPER(SUBSTRING(first_stop_text FROM ',\s*([A-Z]{2})(\s|$|[0-9])'))
+          ELSE NULL
+        END as origin_state
+      FROM first_stop_extracted
+    )
     SELECT 
-      tb.bid_number,
-      tb.distance_miles,
-      tb.pickup_timestamp,
-      tb.delivery_timestamp,
-      tb.stops,
-      tb.tag,
-      tb.source_channel,
-      tb.received_at,
+      bid_number,
+      distance_miles,
+      pickup_timestamp,
+      delivery_timestamp,
+      stops,
+      tag,
+      source_channel,
+      received_at,
       100 as similarity_score  -- State match = 100% match
-    FROM telegram_bids tb
-    WHERE tb.is_archived = false
-      AND NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes')
-      AND tb.stops IS NOT NULL
-      AND jsonb_typeof(tb.stops) = 'array'
-      AND tb.stops->>0 IS NOT NULL  -- Ensure at least one stop exists (simpler than jsonb_array_length)
-      -- Simple text matching like state match (proven to work!)
-      -- Match state anywhere in stops text (handles any format)
-      -- Only check origin state (first stop) for state preferences
-      AND tb.stops::text LIKE ANY(
-        SELECT '%' || pref_state || '%'
-        FROM unnest(${statePreferences}::TEXT[]) AS pref_state
-      )
-    ORDER BY tb.received_at DESC
+    FROM states_extracted
+    WHERE origin_state IS NOT NULL
+      -- Only match if extracted state is in user's preferences (exact match, not substring)
+      AND origin_state = ANY(${statePreferences}::TEXT[])
+    ORDER BY received_at DESC
     LIMIT 10
   `;
 
@@ -1034,7 +1058,7 @@ async function processExactMatchTrigger(
           : (matchType === 'state' ? 'similar_load' : 'exact_match');
         
         const reasons = matchType === 'state' 
-          ? [`Origin state matches your preferences: ${matchOriginState}`]
+          ? [`${matchOriginState} → ${matchDestState} match`]
           : undefined;
 
         await sendNotification({
