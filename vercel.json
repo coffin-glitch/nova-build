@@ -1,6 +1,6 @@
 {
   "installCommand": "npm install --legacy-peer-deps",
-  "buildCommand": "npm run build || true",
+  "buildCommand": "npm run build",
   "env": {
     "ESLINT_NO_DEV_ERRORS": "true"
   },
