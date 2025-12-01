@@ -527,7 +527,8 @@ async function processSimilarLoadTrigger(
     FROM states_extracted
     WHERE origin_state IS NOT NULL
       -- Only match if extracted state is in user's preferences (exact match, not substring)
-      AND origin_state = ANY(${statePreferences}::TEXT[])
+      -- Use sql.array() helper to properly format array for PostgreSQL ANY() operator
+      AND origin_state = ANY(${sql.array(statePreferences, 'text')})
     ORDER BY received_at DESC
     LIMIT 10
   `;
