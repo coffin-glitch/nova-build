@@ -505,8 +505,11 @@ async function processSimilarLoadTrigger(
         -- Pattern: "CITY, ST" or "CITY, ST ZIP" - extract the ST part (exactly 2 uppercase letters after comma)
         -- Use regex to extract: comma, optional whitespace, then exactly 2 uppercase letters
         CASE 
-          WHEN first_stop_text ~* ',\s*[A-Z]{2}(\s|$|[0-9])' THEN
-            UPPER(SUBSTRING(first_stop_text FROM ',\s*([A-Z]{2})(\s|$|[0-9])'))
+          WHEN first_stop_text ~* ',\s*[A-Z]{2}' THEN
+            -- Extract exactly 2 uppercase letters after comma and optional whitespace
+            -- Pattern: "CITY, ST" or "CITY, ST ZIP" - extract the ST part
+            -- Use REGEXP_REPLACE to extract the captured group (more reliable than SUBSTRING)
+            UPPER(REGEXP_REPLACE(first_stop_text, '.*,\s*([A-Z]{2}).*', '\1'))
           ELSE NULL
         END as origin_state
       FROM first_stop_extracted
