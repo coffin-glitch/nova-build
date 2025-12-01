@@ -493,8 +493,9 @@ async function processSimilarLoadTrigger(
   // IMPORTANT: Only check the FIRST stop (origin), not all stops
   // CRITICAL: Only match the state part (after comma), not city names that might contain state abbreviations
   // Example: "HOPE MILLS, NC" should only match if NC is in preferences, not if IL is in preferences (MILLS contains IL)
-  // Use IN clause with unnest for better compatibility with postgres library
-  const statePrefBids = await sql`
+  // Use sql.unsafe() with properly formatted IN clause to avoid array parameter issues
+  const placeholders = validStatePreferences.map((_, i) => `$${i + 1}`).join(', ');
+  const statePrefBids = await sql.unsafe(`
     WITH first_stop_extracted AS (
       SELECT 
         tb.bid_number,
@@ -542,11 +543,11 @@ async function processSimilarLoadTrigger(
     FROM states_extracted
     WHERE origin_state IS NOT NULL
       -- Only match if extracted state is in user's preferences (exact match, not substring)
-      -- Pass array directly - postgres library handles array parameters automatically
-      AND origin_state = ANY(${validStatePreferences})
+      -- Use IN clause with individual placeholders for each state
+      AND origin_state IN (${placeholders})
     ORDER BY received_at DESC
     LIMIT 10
-  `;
+  `, validStatePreferences);
 
   console.log(`[SimilarLoad] Found ${statePrefBids.length} bids matching state preferences: ${validStatePreferences.join(', ')}`);
 
