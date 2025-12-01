@@ -1,4 +1,15 @@
 import type { NextConfig } from "next";
+import { mkdirSync, writeFileSync } from 'fs';
+import { join } from 'path';
+
+// Ensure .next/lock exists before Next.js tries to access it
+try {
+  const lockDir = join(process.cwd(), '.next', 'lock');
+  mkdirSync(lockDir, { recursive: true });
+  writeFileSync(join(lockDir, 'lock.json'), '{}');
+} catch (e) {
+  // Ignore errors - directory might already exist
+}
 
 const nextConfig: NextConfig = {
   outputFileTracingRoot: __dirname, // pin tracing to THIS folder
