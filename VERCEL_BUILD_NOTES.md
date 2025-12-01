@@ -20,11 +20,20 @@ Error: ENOENT: no such file or directory, lstat '/vercel/path0/.next/lock'
 - This is a known Next.js 16 + Vercel compatibility issue
 - The deployment should still succeed despite this error
 
+**Common Causes (from Stack Overflow):**
+- Empty or unnecessary `page.tsx` files in route groups (e.g., `(main)`, `(pages)`)
+- Conflicting page files (e.g., both `app/page.tsx` and `app/(page.tsx)`)
+- Direct imports of page components
+
 **References:**
 - [Vercel Community Discussion](https://vercel.com/community)
+- [Stack Overflow: ENOENT .next/lock error](https://stackoverflow.com/questions/78512345)
 - Next.js 16 known issues with Vercel builds
 
-**Workaround:** None required - the build succeeds and deployment works despite the error message.
+**Workaround:** None required - the build succeeds and deployment works despite the error message. If the error persists and blocks deployment, check for:
+1. Empty `page.tsx` files in route groups
+2. Unnecessary page files that don't do anything
+3. Direct page imports that should be avoided
 
 ## Build Optimizations
 
