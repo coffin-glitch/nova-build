@@ -9,9 +9,7 @@ const footerLinks = {
     { name: "My Bids", href: "/carrier/my-bids" },
   ],
   company: [
-    { name: "About Us", href: "/about" },
-    { name: "Press", href: "/press" },
-    { name: "Blog", href: "/blog" },
+    // Removed unused pages: /about, /press, /blog
   ],
   legal: [
     { name: "Privacy Policy", href: "/privacy" },
@@ -22,8 +20,7 @@ const footerLinks = {
   support: [
     { name: "Help Center", href: "/help" },
     { name: "Contact Us", href: "/contact" },
-    { name: "API Documentation", href: "/docs" },
-    { name: "Status", href: "/status" },
+    // Removed unused pages: /docs, /status
   ],
 };
 
@@ -40,7 +37,7 @@ export default function SiteFooter() {
       <div className="absolute inset-0 bg-gradient-to-t from-background/50 to-transparent pointer-events-none"></div>
       
       <div className="relative mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-5">
+        <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-4">
           {/* Brand */}
           <div className="lg:col-span-1">
             <div className="flex items-center space-x-2">
@@ -83,22 +80,7 @@ export default function SiteFooter() {
             </ul>
           </div>
 
-          {/* Company */}
-          <div>
-            <h3 className="text-sm font-semibold text-foreground">Company</h3>
-            <ul className="mt-4 space-y-3">
-              {footerLinks.company.map((item) => (
-                <li key={item.name}>
-                  <Link
-                    href={item.href}
-                    className="text-sm text-muted-foreground hover:text-foreground transition-colors hover:underline underline-offset-4"
-                  >
-                    {item.name}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
+          {/* Company - Removed empty section */}
 
           {/* Legal */}
           <div>

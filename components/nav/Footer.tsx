@@ -48,16 +48,7 @@ export default function Footer() {
                   Help Center
                 </Link>
               </li>
-              <li>
-                <Link href="/faq" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                  FAQs
-                </Link>
-              </li>
-              <li>
-                <Link href="/docs" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                  Documentation
-                </Link>
-              </li>
+              {/* Removed unused pages: /faq, /docs */}
             </ul>
           </div>
 

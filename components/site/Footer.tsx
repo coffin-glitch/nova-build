@@ -14,7 +14,7 @@ export default function Footer() {
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li><a href="/carrier/my-bids" className="hover:text-foreground transition-colors">My Bids</a></li>
               <li><a href="/my-loads" className="hover:text-foreground transition-colors">My Loads</a></li>
-              <li><a href="/payments" className="hover:text-foreground transition-colors">Payments</a></li>
+              {/* Removed unused page: /payments */}
               <li><a href="/profile" className="hover:text-foreground transition-colors">Account</a></li>
             </ul>
           </div>
@@ -23,7 +23,7 @@ export default function Footer() {
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li><a href="/help" className="hover:text-foreground transition-colors">Help Center</a></li>
               <li><a href="/contact" className="hover:text-foreground transition-colors">Contact Us</a></li>
-              <li><a href="/faq" className="hover:text-foreground transition-colors">FAQs</a></li>
+              {/* Removed unused page: /faq */}
             </ul>
           </div>
           <div>
