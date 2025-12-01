@@ -495,7 +495,9 @@ async function processSimilarLoadTrigger(
   // Example: "HOPE MILLS, NC" should only match if NC is in preferences, not if IL is in preferences (MILLS contains IL)
   // Use sql.unsafe() with properly formatted IN clause to avoid array parameter issues
   const placeholders = validStatePreferences.map((_, i) => `$${i + 1}`).join(', ');
-  const statePrefBids = await sql.unsafe(`
+  // Build query string with String.raw to avoid octal escape sequence issues with \1 in regex replacement
+  // Then interpolate placeholders manually
+  const queryString = String.raw`
     WITH first_stop_extracted AS (
       SELECT 
         tb.bid_number,
@@ -525,6 +527,7 @@ async function processSimilarLoadTrigger(
             -- Extract exactly 2 uppercase letters after comma and optional whitespace
             -- Pattern: "CITY, ST" or "CITY, ST ZIP" - extract the ST part
             -- Use REGEXP_REPLACE to extract the captured group (more reliable than SUBSTRING)
+            -- String.raw allows \1 to be used literally without octal escape interpretation
             UPPER(REGEXP_REPLACE(first_stop_text, '.*,\s*([A-Z]{2}).*', '\1'))
           ELSE NULL
         END as origin_state
@@ -544,10 +547,12 @@ async function processSimilarLoadTrigger(
     WHERE origin_state IS NOT NULL
       -- Only match if extracted state is in user's preferences (exact match, not substring)
       -- Use IN clause with individual placeholders for each state
-      AND origin_state IN (${placeholders})
+      AND origin_state IN (PLACEHOLDERS_HERE)
     ORDER BY received_at DESC
     LIMIT 10
-  `, validStatePreferences);
+  `.replace('PLACEHOLDERS_HERE', placeholders);
+  
+  const statePrefBids = await sql.unsafe(queryString, validStatePreferences);
 
   console.log(`[SimilarLoad] Found ${statePrefBids.length} bids matching state preferences: ${validStatePreferences.join(', ')}`);
 
