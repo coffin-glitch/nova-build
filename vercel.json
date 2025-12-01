@@ -1,13 +1,10 @@
 {
   "installCommand": "npm install --legacy-peer-deps",
+  "buildCommand": "npm run build",
   "env": {
     "ESLINT_NO_DEV_ERRORS": "true"
   },
-  "crons": [
-    {
-      "path": "/api/notifications/process",
-      "schedule": "*/2 * * * *"
-  }
-  ]
+  "framework": "nextjs",
+  "ignoreCommand": "git diff --quiet HEAD^ HEAD ./"
 }
 

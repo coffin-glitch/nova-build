@@ -321,7 +321,12 @@ export default function ProfileClient() {
                 <div className="space-y-2">
                   <Label className="text-sm font-medium text-muted-foreground">Full Name</Label>
                   <p className="text-base font-medium">
-                    {`${unifiedUser?.firstName || ''} ${unifiedUser?.lastName || ''}`.trim() || 'Not set'}
+                    {unifiedUser?.fullName || 
+                     (unifiedUser?.firstName && unifiedUser?.lastName 
+                       ? `${unifiedUser.firstName} ${unifiedUser.lastName}`.trim()
+                       : unifiedUser?.firstName || 
+                         carrierProfile?.contact_name || 
+                         'Not set')}
                   </p>
                 </div>
                 <div className="space-y-2">

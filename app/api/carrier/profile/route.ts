@@ -5,6 +5,71 @@ import { clearCarrierRelatedCaches } from "@/lib/cache-invalidation";
 import sql from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
+// Helper function to parse contact name and extract firstName/lastName
+function parseContactNameToFullName(contactName: string): { firstName: string; lastName: string } {
+  if (!contactName || !contactName.trim()) {
+    return { firstName: '', lastName: '' };
+  }
+  
+  // If contact_name is an email, extract the part before @
+  let nameToUse = contactName.trim();
+  if (contactName.includes('@')) {
+    nameToUse = contactName.split('@')[0].trim();
+  }
+  
+  // Split into firstName and lastName
+  const nameParts = nameToUse.split(/\s+/);
+  const firstName = nameParts[0] || '';
+  const lastName = nameParts.slice(1).join(' ') || '';
+  
+  return { firstName, lastName };
+}
+
+// Helper function to sync contact_name to Supabase user metadata
+async function syncContactNameToUserMetadata(userId: string, contactName: string): Promise<void> {
+  try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    
+    if (!supabaseUrl || !supabaseKey) {
+      console.warn('[Carrier Profile] Supabase credentials not configured, skipping user metadata update');
+      return;
+    }
+    
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    
+    const { firstName, lastName } = parseContactNameToFullName(contactName);
+    
+    // Get existing user metadata to preserve other fields
+    const { data: { user }, error: getUserError } = await supabase.auth.admin.getUserById(userId);
+    
+    if (getUserError || !user) {
+      console.warn(`[Carrier Profile] Could not get user ${userId} for metadata update:`, getUserError);
+      return;
+    }
+    
+    // Update user metadata with firstName and lastName
+    const { error: updateError } = await supabase.auth.admin.updateUserById(userId, {
+      user_metadata: {
+        ...user.user_metadata,
+        first_name: firstName || null,
+        last_name: lastName || null,
+        full_name: contactName || null,
+      }
+    });
+    
+    if (updateError) {
+      console.warn(`[Carrier Profile] Could not update user metadata for ${userId}:`, updateError);
+    } else {
+      console.log(`[Carrier Profile] Successfully synced contact_name to user metadata for ${userId}`);
+    }
+  } catch (error: any) {
+    console.error(`[Carrier Profile] Error syncing contact_name to user metadata:`, error?.message);
+    // Don't throw - this is a best-effort sync
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     let auth;
@@ -285,6 +350,11 @@ export async function POST(request: NextRequest) {
           WHERE supabase_user_id = ${userId}
         `;
         
+        // Sync contact_name to Supabase user metadata (firstName/lastName)
+        if (contactName) {
+          await syncContactNameToUserMetadata(userId, contactName);
+        }
+        
         // Clear caches to ensure updated data appears immediately
         clearCarrierRelatedCaches(userId);
       } else {
@@ -300,6 +370,11 @@ export async function POST(request: NextRequest) {
             updated_at = NOW()
           WHERE supabase_user_id = ${userId} AND edits_enabled = true
         `;
+        
+        // Sync contact_name to Supabase user metadata (firstName/lastName)
+        if (contactName) {
+          await syncContactNameToUserMetadata(userId, contactName);
+        }
         
         // Clear caches to ensure updated data appears immediately
         clearCarrierRelatedCaches(userId);
@@ -335,6 +410,11 @@ export async function POST(request: NextRequest) {
           ${submit_for_approval ? false : true}
         )
       `;
+      
+      // Sync contact_name to Supabase user metadata (firstName/lastName)
+      if (contactName) {
+        await syncContactNameToUserMetadata(userId, contactName);
+      }
     }
 
     const message = submit_for_approval

@@ -13,7 +13,7 @@ import {
 
 const footerLinks = {
   quickLinks: [
-    { name: "Find Loads", href: "/bid-board" },
+    { name: "My Bids", href: "/carrier/my-bids" },
     { name: "My Loads", href: "/my-loads" },
     { name: "My Offers", href: "/current-offers" },
     { name: "Profile", href: "/profile" },
@@ -68,10 +68,10 @@ export default function Footer() {
             <h4 className="text-lg font-semibold mb-4 text-foreground">Contact</h4>
             <ul className="space-y-2">
               <li className="flex items-center text-muted-foreground text-sm">
-                <Phone className="w-4 h-4 mr-2" /> (800) 555-1234
+                <Phone className="w-4 h-4 mr-2" /> 832-529-5871
               </li>
               <li className="flex items-center text-muted-foreground text-sm">
-                <Mail className="w-4 h-4 mr-2" /> support@novabuild.com
+                <Mail className="w-4 h-4 mr-2" /> support@novafreight.io
               </li>
             </ul>
           </div>

@@ -12,7 +12,7 @@ export default function Footer() {
           <div>
             <h4 className="text-lg font-semibold mb-3 text-foreground">Quick Links</h4>
             <ul className="space-y-2 text-sm text-muted-foreground">
-              <li><a href="/book-loads" className="hover:text-foreground transition-colors">Find Loads</a></li>
+              <li><a href="/carrier/my-bids" className="hover:text-foreground transition-colors">My Bids</a></li>
               <li><a href="/my-loads" className="hover:text-foreground transition-colors">My Loads</a></li>
               <li><a href="/payments" className="hover:text-foreground transition-colors">Payments</a></li>
               <li><a href="/profile" className="hover:text-foreground transition-colors">Account</a></li>
@@ -29,8 +29,8 @@ export default function Footer() {
           <div>
             <h4 className="text-lg font-semibold mb-3 text-foreground">Contact</h4>
             <ul className="space-y-2 text-sm text-muted-foreground">
-              <li className="flex items-center"><Phone className="h-4 w-4 mr-2" /> (800) 555-1234</li>
-              <li className="flex items-center"><Mail className="h-4 w-4 mr-2" /> support@novaloads.com</li>
+              <li className="flex items-center"><Phone className="h-4 w-4 mr-2" /> 832-529-5871</li>
+              <li className="flex items-center"><Mail className="h-4 w-4 mr-2" /> support@novafreight.io</li>
             </ul>
           </div>
         </div>

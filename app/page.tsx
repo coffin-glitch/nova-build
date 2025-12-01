@@ -40,16 +40,20 @@ export default function HomePage() {
     return getTextColor(accentColor, 'light');
   };
 
-  // 🐛 DEBUG: Log auth state
-  console.log('🐛 [HOME PAGE DEBUG] Auth state:');
-  console.log('🐛 - isLoaded:', isLoaded);
-  console.log('🐛 - Has user:', !!user);
-  console.log('🐛 - User email:', user?.emailAddresses?.[0]?.emailAddress || user?.email || 'None');
-  console.log('🐛 - User ID:', user?.id || 'None');
+  // 🐛 DEBUG: Log auth state (only in development)
+  if (process.env.NODE_ENV === 'development') {
+    console.log('🐛 [HOME PAGE DEBUG] Auth state:');
+    console.log('🐛 - isLoaded:', isLoaded);
+    console.log('🐛 - Has user:', !!user);
+    console.log('🐛 - User email:', user?.emailAddresses?.[0]?.emailAddress || user?.email || 'None');
+    console.log('🐛 - User ID:', user?.id || 'None');
+  }
 
   // Show landing page for unauthenticated users
   if (!isLoaded || !user) {
-    console.log('🐛 [HOME PAGE DEBUG] Showing landing page (not authenticated)');
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🐛 [HOME PAGE DEBUG] Showing landing page (not authenticated)');
+    }
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="max-w-4xl mx-auto text-center px-4">
@@ -103,7 +107,9 @@ export default function HomePage() {
   }
   
   // Show full homepage for authenticated users
-  console.log('🐛 [HOME PAGE DEBUG] Showing authenticated homepage');
+  if (process.env.NODE_ENV === 'development') {
+    console.log('🐛 [HOME PAGE DEBUG] Showing authenticated homepage');
+  }
   return (
     <div className="min-h-screen">
       {/* Hero Section */}

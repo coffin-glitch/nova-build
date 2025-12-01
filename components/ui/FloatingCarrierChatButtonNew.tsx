@@ -255,8 +255,10 @@ export default function FloatingCarrierChatButton() {
     });
   }, [adminsData, conversations]);
 
-  // Debug logging
+  // Debug logging (only in development)
   useEffect(() => {
+    if (process.env.NODE_ENV !== 'development') return;
+    
     if (conversationsData !== undefined) {
       console.log('[FloatingCarrierChat] Conversations data:', {
         raw: conversationsData,

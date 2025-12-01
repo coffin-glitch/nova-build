@@ -153,8 +153,11 @@ async function getSupabaseAuth(): Promise<UnifiedAuthResult> {
       email: user.email || null,
       provider: "supabase",
     };
-  } catch (error) {
-    console.error("[auth-unified] Supabase auth error:", error);
+  } catch (error: any) {
+    // Only log non-build-time errors (Dynamic server usage is expected during build)
+    if (process.env.NODE_ENV !== 'production' || !error?.digest || error.digest !== 'DYNAMIC_SERVER_USAGE') {
+      console.error("[auth-unified] Supabase auth error:", error);
+    }
     return {
       userId: null,
       userRole: "none",

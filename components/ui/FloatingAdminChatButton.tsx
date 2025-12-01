@@ -291,8 +291,10 @@ export default function FloatingAdminChatButton() {
       }
     });
     const adminIdsArray = Array.from(adminIds);
-    // Debug logging
-    console.log('[FloatingAdminChat] Final collected admin user IDs:', adminIdsArray, 'from', conversations.length, 'conversations');
+    // Debug logging (only in development)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[FloatingAdminChat] Final collected admin user IDs:', adminIdsArray, 'from', conversations.length, 'conversations');
+    }
     return adminIdsArray;
   }, [messages, conversations, user?.id]);
 
@@ -392,8 +394,10 @@ export default function FloatingAdminChatButton() {
     }
   }, [user?.id, isAdmin, mutateConversations]);
 
-  // Debug logging
+  // Debug logging (only in development)
   useEffect(() => {
+    if (process.env.NODE_ENV !== 'development') return;
+    
     if (conversationsData !== undefined) {
       console.log('[FloatingAdminChat] Conversations data:', {
         raw: conversationsData,

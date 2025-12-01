@@ -422,8 +422,8 @@ export default function HelpPage() {
                     <h3 className="font-semibold text-foreground">Phone Support</h3>
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    <a href="tel:+18005551234" className="hover:underline" style={accentColorStyle}>
-                      (800) 555-1234
+                    <a href="tel:+18325295871" className="hover:underline" style={accentColorStyle}>
+                      832-529-5871
                     </a>
                   </p>
                   <p className="text-xs text-muted-foreground mt-2">

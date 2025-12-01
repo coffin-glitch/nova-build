@@ -172,13 +172,13 @@ This message was sent from the NOVA Build contact form.
                   <p style="margin: 0; color: #6b7280; font-size: 14px;"><strong>Your Message:</strong></p>
                   <p style="margin: 10px 0 0 0; color: #4b5563; white-space: pre-wrap; font-size: 14px;">${message.substring(0, 200)}${message.length > 200 ? '...' : ''}</p>
                 </div>
-                <p style="color: #4b5563;">If you have any urgent questions, please call us at <a href="tel:+18005551234" style="color: #667eea;">(800) 555-1234</a>.</p>
+                <p style="color: #4b5563;">If you have any urgent questions, please call us at <a href="tel:+18325295871" style="color: #667eea;">832-529-5871</a>.</p>
                 <p style="color: #6b7280; font-size: 14px; margin-top: 30px;">Best regards,<br>The NOVA Build Team</p>
               </div>
             </body>
           </html>
         `,
-        text: `Hi ${name},\n\nWe've received your message and our support team will get back to you as soon as possible, typically within 24 hours.\n\nYour Message:\n${message.substring(0, 200)}${message.length > 200 ? '...' : ''}\n\nIf you have any urgent questions, please call us at (800) 555-1234.\n\nBest regards,\nThe NOVA Build Team`,
+        text: `Hi ${name},\n\nWe've received your message and our support team will get back to you as soon as possible, typically within 24 hours.\n\nYour Message:\n${message.substring(0, 200)}${message.length > 200 ? '...' : ''}\n\nIf you have any urgent questions, please call us at 832-529-5871.\n\nBest regards,\nThe NOVA Build Team`,
       });
     } catch (confirmationError) {
       // Log but don't fail the request if confirmation email fails

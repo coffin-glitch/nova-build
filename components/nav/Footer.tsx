@@ -22,13 +22,13 @@ export default function Footer() {
             <h3 className="text-sm font-semibold text-foreground">Quick Links</h3>
             <ul className="space-y-2">
               <li>
-                <Link href="/find-loads" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                  Find Loads
+                <Link href="/bid-board" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                  Live Auctions
                 </Link>
               </li>
               <li>
-                <Link href="/bid-board" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                  Live Auctions
+                <Link href="/carrier/my-bids" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                  My Bids
                 </Link>
               </li>
               <li>
@@ -67,11 +67,11 @@ export default function Footer() {
             <ul className="space-y-2">
               <li className="flex items-center space-x-2 text-sm text-muted-foreground">
                 <Phone className="h-4 w-4" />
-                <span>(800) 555-1234</span>
+                <span>832-529-5871</span>
               </li>
               <li className="flex items-center space-x-2 text-sm text-muted-foreground">
                 <Mail className="h-4 w-4" />
-                <span>support@novabuild.com</span>
+                <span>support@novafreight.io</span>
               </li>
               <li className="flex items-center space-x-2 text-sm text-muted-foreground">
                 <MapPin className="h-4 w-4" />

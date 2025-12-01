@@ -5,14 +5,11 @@ const currentYear = new Date().getFullYear();
 
 const footerLinks = {
   product: [
-    { name: "Find Loads", href: "/find-loads" },
     { name: "Live Auctions", href: "/bid-board" },
-    { name: "Booked Loads", href: "/booked-loads" },
-    { name: "Pricing", href: "/pricing" },
+    { name: "My Bids", href: "/carrier/my-bids" },
   ],
   company: [
     { name: "About Us", href: "/about" },
-    { name: "Careers", href: "/careers" },
     { name: "Press", href: "/press" },
     { name: "Blog", href: "/blog" },
   ],
@@ -138,11 +135,11 @@ export default function SiteFooter() {
             <div className="mt-6 space-y-2">
               <div className="flex items-center space-x-2 text-sm text-muted-foreground">
                 <Mail className="h-4 w-4" />
-                <span>support@novabuild.com</span>
+                <span>support@novafreight.io</span>
               </div>
               <div className="flex items-center space-x-2 text-sm text-muted-foreground">
                 <Phone className="h-4 w-4" />
-                <span>(800) 555-1234</span>
+                <span>832-529-5871</span>
               </div>
               <div className="flex items-center space-x-2 text-sm text-muted-foreground">
                 <MapPin className="h-4 w-4" />

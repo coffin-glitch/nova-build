@@ -333,15 +333,47 @@ async function getLoadDetails(bidNumber: string): Promise<{
 // Helper function to get carrier name
 async function getCarrierName(userId: string): Promise<string | null> {
   try {
+    // First, try to get firstName/lastName from Supabase user metadata
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    
+    if (supabaseUrl && supabaseKey) {
+      try {
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabase = createClient(supabaseUrl, supabaseKey);
+        const { data: { user }, error } = await supabase.auth.admin.getUserById(userId);
+        
+        if (!error && user) {
+          const firstName = user.user_metadata?.first_name;
+          const lastName = user.user_metadata?.last_name;
+          const fullName = user.user_metadata?.full_name;
+          
+          if (fullName) {
+            return fullName;
+          }
+          if (firstName && lastName) {
+            return `${firstName} ${lastName}`;
+          }
+          if (firstName) {
+            return firstName;
+          }
+        }
+      } catch (supabaseError) {
+        console.warn(`[Email] Could not get user metadata for ${userId}, falling back to profile:`, supabaseError);
+      }
+    }
+    
+    // Fallback: Get from carrier_profiles
     const profile = await sql`
-      SELECT legal_name, company_name
+      SELECT contact_name, legal_name, company_name
       FROM carrier_profiles
       WHERE supabase_user_id = ${userId}
       LIMIT 1
     `;
     
     if (profile.length > 0) {
-      return profile[0].legal_name || profile[0].company_name || null;
+      // Prefer contact_name, then legal_name, then company_name
+      return profile[0].contact_name || profile[0].legal_name || profile[0].company_name || null;
     }
     
     return null;

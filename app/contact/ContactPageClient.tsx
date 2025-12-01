@@ -9,7 +9,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAccentColor } from "@/hooks/useAccentColor";
 import { cn } from "@/lib/utils";
 import {
-  AlertTriangle,
   Clock,
   Mail,
   MessageSquare,
@@ -242,8 +241,8 @@ export default function ContactPageClient() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-foreground">Phone Support</p>
-                      <a href="tel:+18005551234" className="text-sm hover:underline" style={accentColorStyle}>
-                        (800) 555-1234
+                      <a href="tel:+18325295871" className="text-sm hover:underline" style={accentColorStyle}>
+                        832-529-5871
                       </a>
                     </div>
                   </div>
@@ -267,27 +266,6 @@ export default function ContactPageClient() {
                       <p className="text-sm text-muted-foreground">Available during support hours</p>
                     </div>
                   </div>
-                </div>
-              </div>
-            </GlassCard>
-
-            {/* Emergency Contact */}
-            <GlassCard className="bg-orange-500/10 dark:bg-orange-500/5 border-orange-500/20 dark:border-orange-500/10">
-              <div className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-orange-500/20 dark:bg-orange-500/10 flex items-center justify-center">
-                    <AlertTriangle className="w-5 h-5 text-orange-600 dark:text-orange-400" />
-                  </div>
-                  <h3 className="text-lg font-semibold text-foreground">Emergency Support</h3>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  For urgent load issues outside regular hours
-                </p>
-                <div className="flex items-center gap-3 p-3 rounded-lg bg-background/50 dark:bg-background/30">
-                  <Phone className="w-5 h-5 text-orange-600 dark:text-orange-400" />
-                  <a href="tel:+18005553637" className="text-lg font-bold text-orange-600 dark:text-orange-400 hover:underline">
-                    (800) 555-EMER
-                  </a>
                 </div>
               </div>
             </GlassCard>

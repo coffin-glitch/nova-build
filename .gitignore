@@ -46,3 +46,4 @@ storage/telethon_session.session-journal
 .env
 backups/*.sql
 backup_*.sql
+.env*.local

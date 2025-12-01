@@ -6,6 +6,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -22,6 +28,7 @@ import {
   Clock,
   Edit3,
   History,
+  Info,
   Lock,
   MessageSquare,
   Phone,
@@ -951,7 +958,22 @@ function CarrierProfileClientInner() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="contact_name">Contact Name *</Label>
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="contact_name">Contact Name *</Label>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-4 w-4 text-muted-foreground cursor-help hover:text-foreground transition-colors" />
+                      </TooltipTrigger>
+                      <TooltipContent side="right" className="max-w-xs">
+                        <p className="text-sm">
+                          Your contact name will be used as your account full name throughout the platform. 
+                          If you enter an email address, only the part before @ will be used.
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
                 <Input
                   id="contact_name"
                   value={formData.contact_name || ""}

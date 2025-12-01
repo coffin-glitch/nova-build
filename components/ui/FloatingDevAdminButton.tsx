@@ -262,14 +262,20 @@ export default function FloatingDevAdminButton() {
 
   // Don't render if not admin
   if (!isAdmin) {
-    console.log("🚫 FloatingDevAdminButton: Not rendering - not admin");
-    console.log("📊 Current state - isAdmin:", isAdmin);
+    // Debug logging (only in development)
+    if (process.env.NODE_ENV === 'development') {
+      console.log("🚫 FloatingDevAdminButton: Not rendering - not admin");
+      console.log("📊 Current state - isAdmin:", isAdmin);
+    }
     return null;
   }
 
-  console.log("✅ FloatingDevAdminButton: Rendering button");
-  console.log("📊 Current state - isAdmin:", isAdmin);
-  console.log("📍 Button position:", position);
+  // Debug logging (only in development)
+  if (process.env.NODE_ENV === 'development') {
+    console.log("✅ FloatingDevAdminButton: Rendering button");
+    console.log("📊 Current state - isAdmin:", isAdmin);
+    console.log("📍 Button position:", position);
+  }
 
   return (
     <>
