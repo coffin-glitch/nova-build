@@ -7,11 +7,7 @@
   "framework": "nextjs",
   "functions": {
     "app/api/**/*.ts": {
-      "includeFiles": [
-        "db/migrations/**",
-        "lib/**",
-        "scripts/**"
-      ]
+      "includeFiles": "db/migrations/**"
     }
   }
 }
