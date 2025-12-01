@@ -1,4 +1,4 @@
-import { Phone, Mail } from "lucide-react";
+import { Mail, Phone } from "lucide-react";
 
 export default function Footer() {
   return (

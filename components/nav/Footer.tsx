@@ -1,5 +1,5 @@
+import { Mail, MapPin, Phone, Truck } from "lucide-react";
 import Link from "next/link";
-import { Truck, Mail, Phone, MapPin } from "lucide-react";
 
 export default function Footer() {
   return (
