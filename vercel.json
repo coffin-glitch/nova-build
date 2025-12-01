@@ -4,6 +4,15 @@
   "env": {
     "ESLINT_NO_DEV_ERRORS": "true"
   },
-  "framework": "nextjs"
+  "framework": "nextjs",
+  "functions": {
+    "app/api/**/*.ts": {
+      "includeFiles": [
+        "db/migrations/**",
+        "lib/**",
+        "scripts/**"
+      ]
+    }
+  }
 }
 
