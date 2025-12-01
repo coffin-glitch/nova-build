@@ -11,6 +11,14 @@ const nextConfig: NextConfig = {
     serverActions: {
       bodySizeLimit: '2mb',
     },
+    // Include files that are read at runtime to ensure they're available in the build
+    outputFileTracingIncludes: {
+      '/**': [
+        './db/migrations/**/*.sql',
+        './lib/**/*',
+        './scripts/**/*',
+      ],
+    },
   },
   // Suppress dynamic route warnings during build (these are expected for authenticated pages)
   logging: {
