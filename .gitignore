@@ -15,6 +15,10 @@
 
 # next.js
 /.next/
+# Exception: Include .next/lock directory for URL imports (if used)
+# Note: We're not using URL imports, but this ensures lock is included if it appears
+!/.next/lock
+!/.next/lock/**
 /out/
 
 # production
