@@ -17,6 +17,7 @@ import {
   AlertCircle,
   Archive,
   Calendar,
+  CheckCircle2,
   Clock,
   DollarSign,
   Gavel,
@@ -91,6 +92,16 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
   
   const { accentColor, accentColorStyle, accentBgStyle } = useAccentColor();
   const { theme } = useTheme();
+  
+  // Fetch shop status
+  const { data: shopStatusData } = useSWR(
+    '/api/shop-status',
+    swrFetcher,
+    { refreshInterval: 30000 } // Refresh every 30 seconds
+  );
+  
+  const shopStatus = shopStatusData?.status || 'open';
+  const isShopOpen = shopStatus === 'open';
   
   // Check profile status for access restriction - use swrFetcher with credentials
   const { data: profileData, isLoading: profileLoading, mutate: mutateProfile } = useSWR(
@@ -533,6 +544,30 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
     <div className="space-y-6">
       {/* Access Restriction Banner */}
       {renderAccessBanner()}
+      
+      {/* Shop Status Banner */}
+      {isApproved && (
+        <div 
+          className="rounded-xl border-2 p-4 backdrop-blur-sm transition-all duration-300"
+          style={{
+            borderColor: isShopOpen ? `${accentColor}30` : '#ef444430',
+            backgroundColor: isShopOpen ? `${accentColor}08` : '#ef444408',
+          }}
+        >
+          <div className="flex items-center gap-3">
+            {isShopOpen ? (
+              <CheckCircle2 className="w-5 h-5 flex-shrink-0" style={{ color: accentColor }} />
+            ) : (
+              <AlertCircle className="w-5 h-5 flex-shrink-0 text-red-500" />
+            )}
+            <p className="text-sm font-medium text-foreground">
+              {isShopOpen 
+                ? 'We are accepting bids' 
+                : 'We are currently not accepting bids'}
+            </p>
+          </div>
+        </div>
+      )}
       
       {/* Header Actions - Matching admin page */}
       {isApproved && (

@@ -84,10 +84,10 @@ async function main() {
     console.log('🚀 Starting notification test bid injection...\n');
     
     // Generate unique test bid numbers (using different base for each test run)
-    // Format: 33445XXXX where XXXX is sequential
-    // Change the base number (334450000) for each new test to ensure uniqueness
+    // Format: 55667XXXX where XXXX is sequential
+    // Change the base number (556670000) for each new test to ensure uniqueness
     const timestamp = Date.now();
-    const baseNumber = 334450000; // Changed from 778890000 for this test - using 33445 prefix
+    const baseNumber = 556670000; // Changed from 334450000 for stress test - using 55667 prefix
     
     // Original 3 test bids (State Match and Exact Match)
     const bid1 = String(baseNumber + 1); // 334450001 - State Match IL → MN

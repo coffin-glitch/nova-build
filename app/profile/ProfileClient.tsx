@@ -45,7 +45,7 @@ interface NotificationPreferences {
 export default function ProfileClient() {
   const { user, supabase, loading: supabaseLoading } = useSupabase();
   const { user: unifiedUser, isLoading: userLoading } = useUnifiedUser();
-  const { accentColor } = useAccentColor();
+  const { accentColor, accentColorStyle } = useAccentColor();
   
   // Password change state
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
