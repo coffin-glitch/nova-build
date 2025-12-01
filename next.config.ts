@@ -2,13 +2,23 @@ import type { NextConfig } from "next";
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 
-// Ensure .next/lock exists before Next.js tries to access it
+// Ensure .next/lock FILE exists before Next.js tries to access it
+// Next.js expects .next/lock to be a FILE, not a directory
 try {
-  const lockDir = join(process.cwd(), '.next', 'lock');
-  mkdirSync(lockDir, { recursive: true });
-  writeFileSync(join(lockDir, 'lock.json'), '{}');
+  const nextDir = join(process.cwd(), '.next');
+  mkdirSync(nextDir, { recursive: true });
+  const lockFile = join(nextDir, 'lock');
+  // Create empty lock file if it doesn't exist
+  try {
+    writeFileSync(lockFile, '', { flag: 'wx' });
+  } catch (e: any) {
+    // Ignore if file already exists (EEXIST) or is a directory (EISDIR)
+    if (e.code !== 'EEXIST' && e.code !== 'EISDIR') {
+      throw e;
+    }
+  }
 } catch (e) {
-  // Ignore errors - directory might already exist
+  // Ignore errors - file might already exist or .next might not be writable yet
 }
 
 const nextConfig: NextConfig = {
