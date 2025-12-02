@@ -82,28 +82,52 @@ export default function NotificationsMenu() {
   const unreadCount = notifications.filter((n: Notification) => !n.read).length;
 
   const handleMarkAllRead = async () => {
+    // Optimistic update: Mark all as read immediately in UI
+    mutate((current: any) => {
+      if (!current?.data) return current;
+      return {
+        ...current,
+        data: current.data.map((n: Notification) => ({ ...n, read: true }))
+      };
+    }, false); // false = don't revalidate yet, let Realtime handle it
+
     try {
       await fetch("/api/notifications", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mark_all_read: true }),
       });
-      mutate(); // Refresh the data
+      // Realtime will sync the actual state, so we don't need to mutate again
     } catch (error) {
       console.error("Failed to mark notifications as read:", error);
+      // Revert on error - Realtime will sync the correct state
+      mutate();
     }
   };
 
   const handleMarkRead = async (notificationId: string) => {
+    // Optimistic update: Mark as read immediately in UI
+    mutate((current: any) => {
+      if (!current?.data) return current;
+      return {
+        ...current,
+        data: current.data.map((n: Notification) => 
+          n.id === notificationId ? { ...n, read: true } : n
+        )
+      };
+    }, false); // false = don't revalidate yet, let Realtime handle it
+
     try {
       await fetch("/api/notifications", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ notification_id: notificationId }),
       });
-      mutate(); // Refresh the data
+      // Realtime will sync the actual state, so we don't need to mutate again
     } catch (error) {
       console.error("Failed to mark notification as read:", error);
+      // Revert on error - Realtime will sync the correct state
+      mutate();
     }
   };
 

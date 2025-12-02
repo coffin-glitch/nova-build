@@ -267,26 +267,56 @@ export default function NotificationsPage() {
   }, [notifications, desktopNotificationsEnabled]);
 
   const markAsRead = async (notificationId: string) => {
+    // Optimistic update: Mark as read immediately in UI
+    mutate((current: any) => {
+      if (!current?.data?.notifications) return current;
+      return {
+        ...current,
+        data: {
+          ...current.data,
+          notifications: current.data.notifications.map((n: any) => 
+            n.id === notificationId ? { ...n, read: true } : n
+          )
+        }
+      };
+    }, false); // false = don't revalidate yet, let Realtime handle it
+
     try {
       await fetch(`/api/carrier/notifications/${notificationId}/read`, {
         method: 'POST',
       });
-      mutate();
+      // Realtime will sync the actual state, so we don't need to mutate again
     } catch (error) {
       console.error('Failed to mark notification as read:', error);
+      // Revert on error - Realtime will sync the correct state
+      mutate();
       toast.error('Failed to mark notification as read');
     }
   };
 
   const markAllAsRead = async () => {
+    // Optimistic update: Mark all as read immediately in UI
+    mutate((current: any) => {
+      if (!current?.data?.notifications) return current;
+      return {
+        ...current,
+        data: {
+          ...current.data,
+          notifications: current.data.notifications.map((n: any) => ({ ...n, read: true }))
+        }
+      };
+    }, false); // false = don't revalidate yet, let Realtime handle it
+
     try {
       await fetch('/api/carrier/notifications/read-all', {
         method: 'POST',
       });
-      mutate();
+      // Realtime will sync the actual state, so we don't need to mutate again
       toast.success('All notifications marked as read');
     } catch (error) {
       console.error('Failed to mark all as read:', error);
+      // Revert on error - Realtime will sync the correct state
+      mutate();
       toast.error('Failed to mark all as read');
     }
   };

@@ -267,6 +267,17 @@ export function NotificationBell() {
   };
 
   const markAsRead = async (notificationId: string) => {
+    // Optimistic update: Mark as read immediately in UI
+    mutate((current: any) => {
+      if (!current?.notifications) return current;
+      return {
+        ...current,
+        notifications: current.notifications.map((n: Notification) => 
+          n.id === notificationId ? { ...n, read: true } : n
+        )
+      };
+    }, false); // false = don't revalidate yet, let Realtime handle it
+
     try {
       const endpoint = isAdmin 
         ? `/api/notifications` 
@@ -285,26 +296,60 @@ export function NotificationBell() {
       
       if (!response.ok) {
         console.error('Failed to mark notification as read:', await response.text());
+        // Revert on error - Realtime will sync the correct state
+        mutate();
         return;
       }
       
-      mutate(); // Refresh the data
+      // Realtime will sync the actual state, so we don't need to mutate again
     } catch (error) {
       console.error('Error marking notification as read:', error);
+      // Revert on error - Realtime will sync the correct state
+      mutate();
     }
   };
 
   const markAllAsRead = async () => {
+    // Optimistic update: Mark all as read immediately in UI
+    mutate((current: any) => {
+      if (!current?.notifications) return current;
+      return {
+        ...current,
+        notifications: current.notifications.map((n: Notification) => ({ ...n, read: true }))
+      };
+    }, false); // false = don't revalidate yet, let Realtime handle it
+
     try {
-      // For now, mark each unread notification individually
-      // TODO: Add bulk mark-as-read endpoint if needed
-      const unreadNotifications = notifications.filter((n: Notification) => !n.read);
-      for (const notification of unreadNotifications) {
-        await markAsRead(notification.id);
+      // Use bulk endpoint if available, otherwise mark individually
+      const endpoint = isAdmin 
+        ? '/api/notifications'
+        : '/api/carrier/notifications/read-all';
+      
+      const method = isAdmin ? 'PATCH' : 'POST';
+      const body = isAdmin 
+        ? JSON.stringify({ mark_all_read: true })
+        : undefined;
+      
+      const response = await fetch(endpoint, {
+        method,
+        headers: isAdmin ? { 'Content-Type': 'application/json' } : undefined,
+        body
+      });
+      
+      if (!response.ok) {
+        console.error('Failed to mark all notifications as read:', await response.text());
+        // Revert on error - Realtime will sync the correct state
+        mutate();
+        return;
       }
-      mutate(); // Refresh the data
+      
+      // Realtime will sync the actual state, so we don't need to mutate again
+      toast.success('All notifications marked as read');
     } catch (error) {
       console.error('Error marking all notifications as read:', error);
+      // Revert on error - Realtime will sync the correct state
+      mutate();
+      toast.error('Failed to mark all as read');
     }
   };
 
@@ -312,6 +357,15 @@ export function NotificationBell() {
     if (!confirm('Are you sure you want to delete all notifications? This cannot be undone.')) {
       return;
     }
+
+    // Optimistic update: Clear all immediately in UI
+    mutate((current: any) => {
+      if (!current?.notifications) return current;
+      return {
+        ...current,
+        notifications: []
+      };
+    }, false); // false = don't revalidate yet, let Realtime handle it
 
     try {
       const endpoint = isAdmin 
@@ -324,13 +378,18 @@ export function NotificationBell() {
       
       if (!response.ok) {
         console.error('Failed to clear all notifications:', await response.text());
+        // Revert on error - Realtime will sync the correct state
+        mutate();
+        toast.error('Failed to clear notifications');
         return;
       }
       
-      mutate(); // Refresh the data
+      // Realtime will sync the actual state, so we don't need to mutate again
       toast.success('All notifications cleared');
     } catch (error) {
       console.error('Error clearing all notifications:', error);
+      // Revert on error - Realtime will sync the correct state
+      mutate();
       toast.error('Failed to clear notifications');
     }
   };

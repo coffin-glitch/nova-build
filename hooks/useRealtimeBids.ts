@@ -1,6 +1,6 @@
-import { useEffect, useRef } from 'react';
 import { getSupabaseBrowser } from '@/lib/supabase';
 import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
+import { useEffect, useRef } from 'react';
 
 interface UseRealtimeBidsOptions {
   onInsert?: (payload: RealtimePostgresChangesPayload<any>) => void;
