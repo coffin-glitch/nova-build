@@ -13,6 +13,22 @@ const nextConfig: NextConfig = {
       './scripts/**/*',
     ],
   },
+  // Exclude large directories from serverless functions
+  outputFileTracingExcludes: {
+    '*': [
+      '.next/cache/**',
+      '.venv/**',
+      '.git/**',
+      'storage/**',
+      'logs/**',
+      'migration_backup/**',
+      'debug/**',
+      '*.log',
+      '*.sql',
+      '*.csv',
+      'node_modules/**',
+    ],
+  },
   experimental: {
     serverActions: {
       bodySizeLimit: '2mb',

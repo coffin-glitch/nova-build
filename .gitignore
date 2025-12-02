@@ -15,6 +15,7 @@
 
 # next.js
 /.next/
+/.next/cache/
 /out/
 
 # production
@@ -47,3 +48,34 @@ storage/telethon_session.session-journal
 backups/*.sql
 backup_*.sql
 .env*.local
+
+# Python virtual environment (shouldn't be in Node.js project)
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Git files (shouldn't be deployed)
+.git/
+.gitignore
+
+# Log files
+*.log
+logs/
+telegram_forwarder.log
+telegram_bot.log
+
+# Storage and cache directories
+storage/eax-profile/
+migration_backup/
+debug/
+telegram_bids_data.sql
+telegram_bids.csv
+remaining_data.sql
+
+# Build artifacts
+.next/cache/
+.next/server/chunks/
