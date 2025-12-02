@@ -62,7 +62,9 @@ export async function GET(
       return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
     }
 
-    // Get messages for this conversation
+    // SECURITY: Get messages for this conversation
+    // Only fetch messages from conversations the user has access to (already verified above)
+    // This ensures complete isolation - users can only see messages from their own conversations
     const messages = await sql`
       SELECT 
         cm.id,
@@ -78,8 +80,25 @@ export async function GET(
         cm.updated_at,
         CASE WHEN mr.id IS NOT NULL THEN true ELSE false END as is_read
       FROM conversation_messages cm
+      INNER JOIN conversations c ON cm.conversation_id = c.id
       LEFT JOIN message_reads mr ON mr.message_id = cm.id AND mr.supabase_user_id = ${userId}
       WHERE cm.conversation_id = ${conversationId}
+        -- DOUBLE-CHECK: Ensure user has access to this conversation (defense in depth)
+        AND (
+          c.supabase_admin_user_id = ${userId}
+          OR (
+            c.supabase_carrier_user_id = ${userId} 
+            AND EXISTS (
+              SELECT 1 FROM user_roles_cache ur1 
+              WHERE ur1.supabase_user_id = ${userId} AND ur1.role = 'admin'
+            )
+            AND EXISTS (
+              SELECT 1 FROM user_roles_cache ur2 
+              WHERE ur2.supabase_user_id = c.supabase_admin_user_id 
+              AND ur2.role = 'admin'
+            )
+          )
+        )
       ORDER BY cm.created_at ASC
     `;
 

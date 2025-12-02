@@ -85,7 +85,7 @@ interface UserInfo {
 
 export default function FloatingCarrierChatButton() {
   const { user, isLoaded } = useUnifiedUser();
-  const { isCarrier, isLoading: roleLoading } = useUnifiedRole();
+  const { isCarrier, isAdmin, role, isLoading: roleLoading } = useUnifiedRole();
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [position, setPosition] = useState({ x: 100, y: 100 });
@@ -623,8 +623,10 @@ export default function FloatingCarrierChatButton() {
     };
   }, []);
 
+  // CRITICAL: Only show for carriers, not admins
+  // isCarrier is true for both carriers AND admins, so we need to check role explicitly
   // Don't render until user and role are loaded - prevents both buttons from showing
-  if (!isLoaded || !user || roleLoading || !isCarrier) return null;
+  if (!isLoaded || !user || roleLoading || !isCarrier || isAdmin || role !== "carrier") return null;
 
   return (
     <>
