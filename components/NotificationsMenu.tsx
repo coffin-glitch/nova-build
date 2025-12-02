@@ -69,12 +69,18 @@ export default function NotificationsMenu() {
     mutate();
   }, [mutate]);
 
+  const handleNotificationDelete = useCallback(() => {
+    console.log('[NotificationsMenu] Notification deleted, refreshing...');
+    mutate();
+  }, [mutate]);
+
   // Subscribe to real-time notification updates
   useRealtimeNotifications({
     enabled: !!user?.id,
     userId: user?.id,
     onInsert: handleNotificationInsert,
     onUpdate: handleNotificationUpdate,
+    onDelete: handleNotificationDelete,
   });
 
   // Handle both response formats: { data: [...] } or { data: { notifications: [...] } }

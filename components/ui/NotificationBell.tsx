@@ -107,6 +107,10 @@ export function NotificationBell() {
       console.log('[NotificationBell] Notification updated, refreshing...');
       mutate(); // Refresh when notification is updated (e.g., marked as read)
     },
+    onDelete: () => {
+      console.log('[NotificationBell] Notification deleted, refreshing...');
+      mutate(); // Refresh when notification is deleted (e.g., clear all)
+    },
   });
 
   // Get notifications - handle both API response formats

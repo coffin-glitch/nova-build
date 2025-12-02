@@ -33,7 +33,7 @@ const USE_SUPABASE_AUTH = process.env.NEXT_PUBLIC_USE_SUPABASE_AUTH === 'true';
 export default function SiteHeader() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const { role, isAdmin, isCarrier } = useUnifiedRole();
+  const { role, isAdmin, isCarrier, isLoading: roleLoading } = useUnifiedRole();
   const pathname = usePathname();
   const { user, isLoaded } = useUnifiedUser();
   const { preferences, updateAccentColor } = useUserPreferences();
@@ -199,8 +199,8 @@ export default function SiteHeader() {
             <NotificationBell />
 
             {/* Messages - Show correct link based on role */}
-            {/* CRITICAL: Only show carrier messages for actual carriers, not admins */}
-            {isCarrier && !isAdmin && role === "carrier" && (
+            {/* CRITICAL: Wait for role to load before showing admin UI to prevent carriers seeing admin view */}
+            {!roleLoading && isCarrier && !isAdmin && role === "carrier" && (
               <Button variant="ghost" size="icon" asChild>
                 <Link href="/carrier/messages">
                   <Mail className="h-5 w-5" />
@@ -208,8 +208,8 @@ export default function SiteHeader() {
               </Button>
             )}
 
-            {/* Messages for Admins */}
-            {isAdmin && role === "admin" && (
+            {/* Messages for Admins - Only show after role is confirmed */}
+            {!roleLoading && isAdmin && role === "admin" && (
               <Button variant="ghost" size="icon" asChild>
                 <Link href="/admin/messages">
                   <Mail className="h-5 w-5" />

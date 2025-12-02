@@ -603,6 +603,19 @@ export function AdminUsersConsole() {
   const handleApproveProfile = async () => {
     if (!selectedCarrier) return;
     
+    // Optimistic update: Update UI immediately
+    mutateCarriers((current: any) => {
+      if (!current?.data) return current;
+      return {
+        ...current,
+        data: current.data.map((c: CarrierProfile) => 
+          c.user_id === selectedCarrier.user_id 
+            ? { ...c, profile_status: 'approved' as const, edits_enabled: false }
+            : c
+        )
+      };
+    }, false); // Don't revalidate yet - let Realtime handle it
+    
     setIsApproving(true);
     try {
       const response = await fetch(`/api/admin/carriers/${selectedCarrier.user_id}/approve`, {
@@ -616,14 +629,18 @@ export function AdminUsersConsole() {
         toast.success(data.message || "Carrier profile approved successfully");
         setShowApproveDialog(false);
         setReviewNotes("");
-        mutateCarriers();
+        // Realtime will sync the actual state, so we don't need to mutate again
       } else {
         const errorData = await response.json();
+        // Revert on error - Realtime will sync the correct state
+        mutateCarriers();
         throw new Error(errorData.error || 'Failed to approve profile');
       }
     } catch (error) {
       toast.error("Failed to approve profile");
       console.error(error);
+      // Revert on error - Realtime will sync the correct state
+      mutateCarriers();
     } finally {
       setIsApproving(false);
     }
@@ -634,6 +651,19 @@ export function AdminUsersConsole() {
       toast.error("Please provide a decline reason");
       return;
     }
+
+    // Optimistic update: Update UI immediately
+    mutateCarriers((current: any) => {
+      if (!current?.data) return current;
+      return {
+        ...current,
+        data: current.data.map((c: CarrierProfile) => 
+          c.user_id === selectedCarrier.user_id 
+            ? { ...c, profile_status: 'declined' as const, edits_enabled: false }
+            : c
+        )
+      };
+    }, false); // Don't revalidate yet - let Realtime handle it
 
     setIsDeclining(true);
     try {
@@ -652,14 +682,18 @@ export function AdminUsersConsole() {
         setShowDeclineDialog(false);
         setDeclineReason("");
         setReviewNotes("");
-        mutateCarriers();
+        // Realtime will sync the actual state, so we don't need to mutate again
       } else {
         const errorData = await response.json();
+        // Revert on error - Realtime will sync the correct state
+        mutateCarriers();
         throw new Error(errorData.error || 'Failed to decline profile');
       }
     } catch (error) {
       toast.error("Failed to decline profile");
       console.error(error);
+      // Revert on error - Realtime will sync the correct state
+      mutateCarriers();
     } finally {
       setIsDeclining(false);
     }

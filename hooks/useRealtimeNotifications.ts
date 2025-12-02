@@ -6,6 +6,7 @@ interface UseRealtimeNotificationsOptions {
   userId?: string; // Filter by user ID
   onInsert?: (payload: RealtimePostgresChangesPayload<any>) => void;
   onUpdate?: (payload: RealtimePostgresChangesPayload<any>) => void;
+  onDelete?: (payload: RealtimePostgresChangesPayload<any>) => void;
   enabled?: boolean;
 }
 
@@ -22,12 +23,12 @@ export function useRealtimeNotifications(options: UseRealtimeNotificationsOption
   } = options;
 
   const channelRef = useRef<ReturnType<typeof getSupabaseBrowser>['channel'] | null>(null);
-  const callbacksRef = useRef({ onInsert, onUpdate });
+  const callbacksRef = useRef({ onInsert, onUpdate, onDelete });
   
   // Update callbacks ref when they change (without triggering re-subscription)
   useEffect(() => {
-    callbacksRef.current = { onInsert, onUpdate };
-  }, [onInsert, onUpdate]);
+    callbacksRef.current = { onInsert, onUpdate, onDelete };
+  }, [onInsert, onUpdate, onDelete]);
 
   useEffect(() => {
     if (!enabled || !userId) return;
@@ -56,6 +57,9 @@ export function useRealtimeNotifications(options: UseRealtimeNotificationsOption
             break;
           case 'UPDATE':
             callbacks.onUpdate?.(payload);
+            break;
+          case 'DELETE':
+            callbacks.onDelete?.(payload);
             break;
         }
       })

@@ -125,12 +125,18 @@ export default function NotificationsPage() {
     mutate();
   }, [mutate]);
 
+  const handleNotificationDelete = useCallback(() => {
+    console.log('[NotificationsPage] Notification deleted, refreshing...');
+    mutate();
+  }, [mutate]);
+
   // Subscribe to real-time notification updates
   useRealtimeNotifications({
     enabled: !!user?.id && isCarrier,
     userId: user?.id,
     onInsert: handleNotificationInsert,
     onUpdate: handleNotificationUpdate,
+    onDelete: handleNotificationDelete,
   });
 
   const notifications: Notification[] = data?.notifications || [];
