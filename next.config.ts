@@ -1,44 +1,21 @@
 import type { NextConfig } from "next";
-import { mkdirSync, writeFileSync } from 'fs';
-import { join } from 'path';
-
-// Ensure .next/lock FILE exists before Next.js tries to access it
-// Next.js expects .next/lock to be a FILE, not a directory
-try {
-  const nextDir = join(process.cwd(), '.next');
-  mkdirSync(nextDir, { recursive: true });
-  const lockFile = join(nextDir, 'lock');
-  // Create empty lock file if it doesn't exist
-  try {
-    writeFileSync(lockFile, '', { flag: 'wx' });
-  } catch (e: any) {
-    // Ignore if file already exists (EEXIST) or is a directory (EISDIR)
-    if (e.code !== 'EEXIST' && e.code !== 'EISDIR') {
-      throw e;
-    }
-  }
-} catch (e) {
-  // Ignore errors - file might already exist or .next might not be writable yet
-}
 
 const nextConfig: NextConfig = {
   outputFileTracingRoot: __dirname, // pin tracing to THIS folder
   typescript: {
     ignoreBuildErrors: true,
   },
-  // Workaround for Vercel .next/lock error
+  // Include files that are read at runtime to ensure they're available in the build
+  outputFileTracingIncludes: {
+    '/**': [
+      './db/migrations/**/*.sql',
+      './lib/**/*',
+      './scripts/**/*',
+    ],
+  },
   experimental: {
-    // Disable build lock file to prevent ENOENT errors on Vercel
     serverActions: {
       bodySizeLimit: '2mb',
-    },
-    // Include files that are read at runtime to ensure they're available in the build
-    outputFileTracingIncludes: {
-      '/**': [
-        './db/migrations/**/*.sql',
-        './lib/**/*',
-        './scripts/**/*',
-      ],
     },
   },
   // Suppress dynamic route warnings during build (these are expected for authenticated pages)
