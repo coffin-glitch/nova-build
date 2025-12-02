@@ -7,8 +7,7 @@
   "framework": "nextjs",
   "functions": {
     "app/api/**/*.ts": {
-      "includeFiles": "db/migrations/**",
-      "excludeFiles": ".next/cache/**,.venv/**,.git/**,storage/**,logs/**,migration_backup/**,debug/**,*.log,*.sql,*.csv"
+      "includeFiles": "db/migrations/**"
     }
   }
 }
