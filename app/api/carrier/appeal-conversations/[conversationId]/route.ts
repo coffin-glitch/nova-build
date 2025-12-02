@@ -59,19 +59,25 @@ export async function GET(
       return NextResponse.json({ error: "Appeal conversation not found" }, { status: 404 });
     }
 
-    // Get messages for this appeal conversation
+    // SECURITY: Get messages for this appeal conversation
+    // Only fetch messages from conversations the carrier has access to (already verified above)
+    // This ensures complete isolation - carriers can only see messages from their own conversations
     const messages = await sql`
       SELECT 
         cm.id,
-        cm.sender_id,
+        cm.supabase_sender_id as sender_id,
         cm.sender_type,
         cm.message,
         cm.created_at,
         cm.updated_at,
         CASE WHEN mr.id IS NOT NULL THEN true ELSE false END as is_read
       FROM conversation_messages cm
+      INNER JOIN conversations c ON cm.conversation_id = c.id
       LEFT JOIN message_reads mr ON mr.message_id = cm.id AND mr.supabase_user_id = ${userId}
       WHERE cm.conversation_id = ${conversationId}
+        -- DOUBLE-CHECK: Ensure carrier has access to this appeal conversation (defense in depth)
+        AND c.supabase_carrier_user_id = ${userId}
+        AND c.conversation_type = 'appeal'
       ORDER BY cm.created_at ASC
     `;
 

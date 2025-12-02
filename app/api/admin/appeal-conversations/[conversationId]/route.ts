@@ -65,7 +65,9 @@ export async function GET(
       return addSecurityHeaders(response, request);
     }
 
-    // Get messages for this appeal conversation
+    // SECURITY: Get messages for this appeal conversation
+    // Only fetch messages from conversations the admin has access to (already verified above)
+    // This ensures complete isolation - admins can only see messages from their own conversations
     const messages = await sql`
       SELECT 
         cm.id,
@@ -76,8 +78,12 @@ export async function GET(
         cm.updated_at,
         CASE WHEN mr.id IS NOT NULL THEN true ELSE false END as is_read
       FROM conversation_messages cm
+      INNER JOIN conversations c ON cm.conversation_id = c.id
       LEFT JOIN message_reads mr ON mr.message_id = cm.id AND mr.supabase_user_id = ${userId}
       WHERE cm.conversation_id = ${conversationId}
+        -- DOUBLE-CHECK: Ensure admin has access to this appeal conversation (defense in depth)
+        AND (c.supabase_admin_user_id = ${userId} OR c.supabase_admin_user_id IS NULL)
+        AND c.conversation_type = 'appeal'
       ORDER BY cm.created_at ASC
     `;
 
