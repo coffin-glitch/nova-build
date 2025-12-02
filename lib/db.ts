@@ -48,6 +48,9 @@ if (!g.__pg_sql_client) {
     onnotice: () => {},
     debug: false,
     prepare: false, // Disable prepared statements to avoid "prepared statement does not exist" errors with connection pooling
+    transform: {
+      undefined: null, // Transform undefined to null for SQL parameters
+    },
   });
 }
 

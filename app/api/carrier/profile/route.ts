@@ -1,5 +1,5 @@
+import { addRateLimitHeaders, checkApiRateLimit } from "@/lib/api-rate-limiting";
 import { addSecurityHeaders, logSecurityEvent, validateInput } from "@/lib/api-security";
-import { checkApiRateLimit, addRateLimitHeaders } from "@/lib/api-rate-limiting";
 import { requireApiCarrier, unauthorizedResponse } from "@/lib/auth-api-helper";
 import { clearCarrierRelatedCaches } from "@/lib/cache-invalidation";
 import sql from "@/lib/db";
@@ -247,12 +247,13 @@ export async function POST(request: NextRequest) {
       submit_for_approval = false
     } = body;
     
-    // Ensure all values are properly typed (convert undefined to null for SQL)
-    const safeCompanyName = companyName || null;
-    const safeMcNumber = mcNumber || null;
-    const safeDotNumber = (dotNumber && dotNumber.trim()) ? dotNumber.trim() : null;
-    const safeContactName = contactName || null;
-    const safePhone = phone || null;
+    // Ensure all values are properly typed (convert undefined/empty to null for SQL)
+    // Required fields must be strings, optional fields can be null
+    const safeCompanyName = (companyName && typeof companyName === 'string' && companyName.trim()) ? companyName.trim() : null;
+    const safeMcNumber = (mcNumber && typeof mcNumber === 'string' && mcNumber.trim()) ? mcNumber.trim() : null;
+    const safeDotNumber = (dotNumber && typeof dotNumber === 'string' && dotNumber.trim()) ? dotNumber.trim() : null;
+    const safeContactName = (contactName && typeof contactName === 'string' && contactName.trim()) ? contactName.trim() : null;
+    const safePhone = (phone && typeof phone === 'string' && phone.trim()) ? phone.trim() : null;
 
     // Format phone number - remove all non-numeric characters and ensure it's a valid US phone number
     const formattedPhone = safePhone ? safePhone.replace(/\D/g, '') : null;
