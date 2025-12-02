@@ -17,6 +17,8 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
+import { useRealtimeCarrierChatMessages } from "@/hooks/useRealtimeCarrierChatMessages";
+import { useRealtimeAdminMessages } from "@/hooks/useRealtimeAdminMessages";
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
@@ -65,13 +67,13 @@ export function AdminMessagesClient() {
   const { data: chatMessagesData, mutate: mutateChatMessages } = useSWR(
     "/api/admin/all-chat-messages",
     fetcher,
-    { refreshInterval: 30000 } // Increased to prevent rate limiting // Increased from 2000 to reduce re-renders
+    { refreshInterval: 0 } // Disable polling - using Realtime instead
   );
 
   const { data: adminMessagesData, mutate: mutateAdminMessages } = useSWR(
     "/api/admin/all-messages",
     fetcher,
-    { refreshInterval: 30000 } // Increased to prevent rate limiting // Increased from 2000 to reduce re-renders
+    { refreshInterval: 0 } // Disable polling - using Realtime instead
   );
 
   const chatMessages = chatMessagesData?.data || [];

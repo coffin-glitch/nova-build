@@ -16,6 +16,9 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
+import { useRealtimeConversations } from "@/hooks/useRealtimeConversations";
+import { useRealtimeAdminMessages } from "@/hooks/useRealtimeAdminMessages";
+import { useRealtimeCarrierChatMessages } from "@/hooks/useRealtimeCarrierChatMessages";
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
@@ -29,31 +32,31 @@ export default function CarrierMessagesPage() {
   const [showNewChat, setShowNewChat] = useState(false);
 
   // Fetch admin messages
-  const { data: messagesData } = useSWR(
+  const { data: messagesData, mutate: mutateMessages } = useSWR(
     user ? "/api/carrier/messages" : null,
     fetcher,
-    { refreshInterval: 10000 }
+    { refreshInterval: 0 } // Disable polling - using Realtime instead
   );
 
   // Fetch carrier responses
-  const { data: responsesData } = useSWR(
+  const { data: responsesData, mutate: mutateResponses } = useSWR(
     user ? "/api/carrier/messages/responses" : null,
     fetcher,
-    { refreshInterval: 10000 }
+    { refreshInterval: 0 } // Disable polling - using Realtime instead
   );
 
   // Fetch admin users for new chat
   const { data: adminsData } = useSWR(
     user ? "/api/carrier/admins" : null,
     fetcher,
-    { refreshInterval: 30000 }
+    { refreshInterval: 60000 } // Keep polling for admin list (less critical, 60s)
   );
 
   // Fetch carrier conversations to check for existing chats and get unread counts
-  const { data: conversationsData } = useSWR(
+  const { data: conversationsData, mutate: mutateConversations } = useSWR(
     user ? "/api/carrier/conversations" : null,
     fetcher,
-    { refreshInterval: 10000 }
+    { refreshInterval: 0 } // Disable polling - using Realtime instead
   );
 
   const messages = messagesData?.data || [];

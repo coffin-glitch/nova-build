@@ -13,6 +13,8 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
+import { useRealtimeAdminMessages } from "@/hooks/useRealtimeAdminMessages";
+import { useRealtimeCarrierChatMessages } from "@/hooks/useRealtimeCarrierChatMessages";
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
@@ -64,14 +66,14 @@ export function CarrierFloatingChatConsole() {
   const { data: messagesData, mutate: mutateMessages } = useSWR(
     user ? "/api/carrier/messages" : null,
     fetcher,
-    { refreshInterval: 5000 }
+    { refreshInterval: 0 } // Disable polling - using Realtime instead
   );
 
   // Fetch carrier responses
   const { data: responsesData, mutate: mutateResponses } = useSWR(
     user ? "/api/carrier/messages/responses" : null,
     fetcher,
-    { refreshInterval: 5000 }
+    { refreshInterval: 0 } // Disable polling - using Realtime instead
   );
 
   const messages = messagesData?.data || [];

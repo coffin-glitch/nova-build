@@ -29,6 +29,10 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
+import { useRealtimeConversations } from "@/hooks/useRealtimeConversations";
+import { useRealtimeConversationMessages } from "@/hooks/useRealtimeConversationMessages";
+import { useRealtimeConversations } from "@/hooks/useRealtimeConversations";
+import { useRealtimeConversationMessages } from "@/hooks/useRealtimeConversationMessages";
 
 const fetcher = async (url: string) => {
   const response = await fetch(url);
@@ -116,18 +120,46 @@ export default function FloatingCarrierChatButton() {
   const { data: conversationsData, mutate: mutateConversations } = useSWR(
     user ? "/api/carrier/conversations" : null,
     fetcher,
-    { refreshInterval: 5000 }
+    { refreshInterval: 0 } // Disable polling - using Realtime instead
   );
 
   // Fetch messages for selected conversation
   const { data: messagesData, mutate: mutateMessages } = useSWR(
     selectedConversation ? `/api/carrier/conversations/${selectedConversation.conversation_id}` : null,
     fetcher,
-    { refreshInterval: 2000 }
+    { refreshInterval: 0 } // Disable polling - using Realtime instead
   );
 
   // Fetcher already unwraps the data, so use directly
   const conversations = Array.isArray(conversationsData) ? conversationsData : (conversationsData?.data || []);
+
+  // Subscribe to real-time conversation updates
+  useRealtimeConversations({
+    enabled: !!user?.id,
+    userId: user?.id,
+    onInsert: () => {
+      console.log('[FloatingCarrierChat] New conversation created, refreshing...');
+      mutateConversations();
+    },
+    onUpdate: () => {
+      console.log('[FloatingCarrierChat] Conversation updated, refreshing...');
+      mutateConversations();
+    },
+  });
+
+  // Subscribe to real-time message updates for selected conversation
+  useRealtimeConversationMessages({
+    enabled: !!selectedConversation?.conversation_id,
+    conversationId: selectedConversation?.conversation_id,
+    onInsert: () => {
+      console.log('[FloatingCarrierChat] New message received, refreshing...');
+      mutateMessages();
+    },
+    onUpdate: () => {
+      console.log('[FloatingCarrierChat] Message updated, refreshing...');
+      mutateMessages();
+    },
+  });
   const messages = Array.isArray(messagesData) ? messagesData : (messagesData?.data || []);
 
   // Get unique admin user IDs from conversations, plus the selected conversation's admin if any
