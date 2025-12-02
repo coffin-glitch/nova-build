@@ -2,26 +2,22 @@ import { useEffect, useRef } from 'react';
 import { getSupabaseBrowser } from '@/lib/supabase';
 import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 
-interface UseRealtimeCarrierBidsOptions {
+interface UseRealtimeAnnouncementsOptions {
   onInsert?: (payload: RealtimePostgresChangesPayload<any>) => void;
   onUpdate?: (payload: RealtimePostgresChangesPayload<any>) => void;
   onDelete?: (payload: RealtimePostgresChangesPayload<any>) => void;
-  userId?: string; // Filter by carrier user ID
-  bidNumber?: string; // Filter by specific bid number
   enabled?: boolean;
 }
 
 /**
- * Hook to subscribe to real-time changes on carrier_bids table
- * Provides instant updates for bid submissions and status changes
+ * Hook to subscribe to real-time changes on announcements table
+ * Provides instant updates when new announcements are created or updated
  */
-export function useRealtimeCarrierBids(options: UseRealtimeCarrierBidsOptions = {}) {
+export function useRealtimeAnnouncements(options: UseRealtimeAnnouncementsOptions = {}) {
   const {
     onInsert,
     onUpdate,
     onDelete,
-    userId,
-    bidNumber,
     enabled = true,
   } = options;
 
@@ -32,29 +28,18 @@ export function useRealtimeCarrierBids(options: UseRealtimeCarrierBidsOptions = 
 
     const supabase = getSupabaseBrowser();
     
-    const channelName = `carrier_bids_${Date.now()}`;
+    const channelName = `announcements_${Date.now()}`;
     const channel = supabase.channel(channelName);
-
-    // Build filter based on provided options
-    let filter: string | undefined;
-    if (userId && bidNumber) {
-      filter = `supabase_user_id=eq.${userId}&bid_number=eq.${bidNumber}`;
-    } else if (userId) {
-      filter = `supabase_user_id=eq.${userId}`;
-    } else if (bidNumber) {
-      filter = `bid_number=eq.${bidNumber}`;
-    }
 
     const postgresChanges = {
       event: '*' as const,
       schema: 'public',
-      table: 'carrier_bids',
-      ...(filter && { filter }),
+      table: 'announcements',
     };
 
     channel
       .on('postgres_changes', postgresChanges, (payload) => {
-        console.log('[Realtime] carrier_bids change:', payload.eventType, payload);
+        console.log('[Realtime] announcements change:', payload.eventType, payload);
         
         switch (payload.eventType) {
           case 'INSERT':
@@ -70,9 +55,9 @@ export function useRealtimeCarrierBids(options: UseRealtimeCarrierBidsOptions = 
       })
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
-          console.log('[Realtime] Subscribed to carrier_bids');
+          console.log('[Realtime] Subscribed to announcements');
         } else if (status === 'CHANNEL_ERROR') {
-          console.error('[Realtime] Channel error subscribing to carrier_bids');
+          console.error('[Realtime] Channel error subscribing to announcements');
         }
       });
 
@@ -84,5 +69,6 @@ export function useRealtimeCarrierBids(options: UseRealtimeCarrierBidsOptions = 
         channelRef.current = null;
       }
     };
-  }, [enabled, userId, bidNumber, onInsert, onUpdate, onDelete]);
+  }, [enabled, onInsert, onUpdate, onDelete]);
 }
+
