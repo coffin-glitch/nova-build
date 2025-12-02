@@ -32,6 +32,10 @@ export async function GET(request: NextRequest) {
     console.log('[Notifications API] Fetching notifications for userId:', userId);
     console.log('[Notifications API] Auth result:', { userId, userRole: auth.userRole, fromHeader: auth.fromHeader });
 
+    // Check if we should filter by unread only
+    const { searchParams } = new URL(request.url);
+    const unreadOnly = searchParams.get('unread') === '1' || searchParams.get('unread') === 'true';
+
     // Get notifications for the current user (Supabase-only)
     const notifications = await sql`
       SELECT 
@@ -44,6 +48,7 @@ export async function GET(request: NextRequest) {
         n.data
       FROM notifications n
       WHERE n.user_id = ${userId}
+        ${unreadOnly ? sql`AND n.read = false` : sql``}
       ORDER BY n.created_at DESC
       LIMIT 50
     `;
