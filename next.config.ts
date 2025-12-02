@@ -13,6 +13,29 @@ const nextConfig: NextConfig = {
       './scripts/**/*',
     ],
   },
+  // Exclude heavy files from AI assistant serverless function
+  outputFileTracingExcludes: {
+    '/api/admin/ai-assistant': [
+      './.next/cache/**/*',
+      './.git/**/*',
+      './logs/**/*',
+      './migration_backup/**/*',
+      './storage/eax-profile/**/*',
+      './telegram_forwarder.log',
+      './telegram_bids.csv',
+      './telegram_bids_data.sql',
+      './remaining_data.sql',
+      './debug/**/*',
+      './*.log',
+      './*.sql',
+      './*.csv',
+      './*.png',
+      './*.jpg',
+      './*.jpeg',
+      './*.gif',
+      './*.webp',
+    ],
+  },
   experimental: {
     serverActions: {
       bodySizeLimit: '2mb',

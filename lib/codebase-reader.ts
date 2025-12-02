@@ -36,7 +36,44 @@ const BLOCKED_PATTERNS = [
   'logs/',
   'backups/',
   'migration_backup/',
+  'storage/eax-profile',
+  'debug/',
 ];
+
+// Blocked file extensions (heavy files that shouldn't be read)
+const BLOCKED_EXTENSIONS = [
+  '.log',
+  '.sql',
+  '.csv',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.webp',
+  '.ico',
+  '.svg', // Can be large
+  '.pdf',
+  '.zip',
+  '.tar',
+  '.gz',
+];
+
+/**
+ * Check if a directory should be skipped during traversal
+ */
+function shouldSkipDir(dirName: string): boolean {
+  return BLOCKED_PATTERNS.some(pattern => 
+    dirName.includes(pattern) || dirName === pattern.replace('/', '')
+  );
+}
+
+/**
+ * Check if a file should be skipped based on extension
+ */
+function shouldSkipFile(filePath: string): boolean {
+  const ext = filePath.toLowerCase();
+  return BLOCKED_EXTENSIONS.some(blockedExt => ext.endsWith(blockedExt));
+}
 
 // Maximum file size to read (50KB)
 const MAX_FILE_SIZE = 50 * 1024;
@@ -175,7 +212,15 @@ export function listDirectory(dirPath: string = '.'): {
     
     const items = readdirSync(normalizedPath, { withFileTypes: true })
       .filter(item => {
-        // Filter out blocked items
+        // Filter out blocked directories
+        if (item.isDirectory() && shouldSkipDir(item.name)) {
+          return false;
+        }
+        // Filter out blocked files by extension
+        if (item.isFile() && shouldSkipFile(item.name)) {
+          return false;
+        }
+        // Filter out blocked patterns
         return !BLOCKED_PATTERNS.some(pattern => item.name.includes(pattern));
       })
       .map(item => {
@@ -328,7 +373,7 @@ export function searchCode(
           if (match) {
             const [, file, lineNum, content] = match;
             // Filter out blocked files
-            if (!BLOCKED_PATTERNS.some(pattern => file.includes(pattern))) {
+            if (!BLOCKED_PATTERNS.some(pattern => file.includes(pattern)) && !shouldSkipFile(file)) {
               matches.push({
                 file: file.replace(PROJECT_ROOT + '/', ''),
                 line: parseInt(lineNum, 10),
@@ -379,7 +424,19 @@ function fallbackFileSearch(
       const fullPath = resolve(PROJECT_ROOT, dirPath);
       if (!existsSync(fullPath)) return;
       
-      const items = readdirSync(fullPath, { withFileTypes: true });
+      const items = readdirSync(fullPath, { withFileTypes: true })
+        .filter(item => {
+          // Skip blocked directories
+          if (item.isDirectory() && shouldSkipDir(item.name)) {
+            return false;
+          }
+          // Skip blocked files by extension
+          if (item.isFile() && shouldSkipFile(item.name)) {
+            return false;
+          }
+          // Skip blocked patterns
+          return !BLOCKED_PATTERNS.some(pattern => item.name.includes(pattern));
+        });
       
       for (const item of items) {
         const itemPath = join(dirPath, item.name);

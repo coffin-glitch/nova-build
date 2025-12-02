@@ -79,3 +79,18 @@ remaining_data.sql
 # Build artifacts
 .next/cache/
 .next/server/chunks/
+
+# Data dumps and backups (should never be committed)
+*.sql
+*.csv
+!db/migrations/**/*.sql
+backups/
+migration_backup/
+
+# Debug and test artifacts
+debug/
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
