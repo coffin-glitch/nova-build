@@ -34,17 +34,27 @@ export async function GET(
 
     const { conversationId } = await params;
 
-    // Verify the user has access to this conversation
-    // Allow access if user is admin_user_id OR if user is carrier_user_id (for admin-to-admin chats)
+    // SECURITY FIX: Verify the user has access to this conversation
+    // Only allow access if:
+    // 1. User is admin_user_id (they created/own the conversation), OR
+    // 2. User is carrier_user_id AND it's an admin-to-admin chat (both users are admins)
     const conversation = await sql`
       SELECT id, supabase_admin_user_id, supabase_carrier_user_id FROM conversations 
       WHERE id = ${conversationId} 
         AND (
           supabase_admin_user_id = ${userId}
-          OR (supabase_carrier_user_id = ${userId} AND EXISTS (
-            SELECT 1 FROM user_roles_cache ur 
-            WHERE ur.supabase_user_id = ${userId} AND ur.role = 'admin'
-          ))
+          OR (
+            supabase_carrier_user_id = ${userId} 
+            AND EXISTS (
+              SELECT 1 FROM user_roles_cache ur1 
+              WHERE ur1.supabase_user_id = ${userId} AND ur1.role = 'admin'
+            )
+            AND EXISTS (
+              SELECT 1 FROM user_roles_cache ur2 
+              WHERE ur2.supabase_user_id = supabase_admin_user_id 
+              AND ur2.role = 'admin'
+            )
+          )
         )
     `;
 
@@ -157,17 +167,27 @@ export async function POST(
       return addSecurityHeaders(response, request);
     }
 
-    // Verify the user has access to this conversation
-    // Allow access if user is admin_user_id OR if user is carrier_user_id (for admin-to-admin chats)
+    // SECURITY FIX: Verify the user has access to this conversation
+    // Only allow access if:
+    // 1. User is admin_user_id (they created/own the conversation), OR
+    // 2. User is carrier_user_id AND it's an admin-to-admin chat (both users are admins)
     const conversation = await sql`
       SELECT id, supabase_admin_user_id, supabase_carrier_user_id FROM conversations 
       WHERE id = ${conversationId} 
         AND (
           supabase_admin_user_id = ${userId}
-          OR (supabase_carrier_user_id = ${userId} AND EXISTS (
-            SELECT 1 FROM user_roles_cache ur 
-            WHERE ur.supabase_user_id = ${userId} AND ur.role = 'admin'
-          ))
+          OR (
+            supabase_carrier_user_id = ${userId} 
+            AND EXISTS (
+              SELECT 1 FROM user_roles_cache ur1 
+              WHERE ur1.supabase_user_id = ${userId} AND ur1.role = 'admin'
+            )
+            AND EXISTS (
+              SELECT 1 FROM user_roles_cache ur2 
+              WHERE ur2.supabase_user_id = supabase_admin_user_id 
+              AND ur2.role = 'admin'
+            )
+          )
         )
     `;
 

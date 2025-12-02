@@ -29,8 +29,9 @@ export async function GET(request: NextRequest) {
     }
 
     // Get conversations for the current admin with unread counts
-    // Includes both admin-to-carrier and admin-to-admin conversations
-    // For admin-to-admin: current user can be in supabase_admin_user_id OR supabase_carrier_user_id
+    // SECURITY FIX: Only show conversations where current user is explicitly involved
+    // For admin-to-admin chats: both admins can see the conversation
+    // For admin-to-carrier chats: only the admin can see it
     const conversations = await sql`
       SELECT 
         c.id as conversation_id,
@@ -94,14 +95,22 @@ export async function GET(request: NextRequest) {
       FROM conversations c
       LEFT JOIN conversation_messages cm ON cm.conversation_id = c.id
       LEFT JOIN message_reads mr ON mr.message_id = cm.id AND mr.supabase_user_id = ${userId}
-      WHERE (c.supabase_admin_user_id = ${userId}
-         OR (c.supabase_carrier_user_id = ${userId} AND EXISTS (
-           SELECT 1 FROM user_roles_cache ur 
-           WHERE ur.supabase_user_id = c.supabase_admin_user_id 
-           AND ur.role = 'admin'
-         )))
-         -- CRITICAL: Filter out self-conversations (where admin and carrier are the same)
-         AND c.supabase_admin_user_id != c.supabase_carrier_user_id
+      WHERE (
+        -- Current user is the admin in the conversation
+        c.supabase_admin_user_id = ${userId}
+        OR
+        -- Current user is the carrier_user_id AND it's an admin-to-admin chat (both are admins)
+        (c.supabase_carrier_user_id = ${userId} AND EXISTS (
+          SELECT 1 FROM user_roles_cache ur1 
+          WHERE ur1.supabase_user_id = ${userId} AND ur1.role = 'admin'
+        ) AND EXISTS (
+          SELECT 1 FROM user_roles_cache ur2 
+          WHERE ur2.supabase_user_id = c.supabase_admin_user_id 
+          AND ur2.role = 'admin'
+        ))
+      )
+      -- CRITICAL: Filter out self-conversations (where admin and carrier are the same)
+      AND c.supabase_admin_user_id != c.supabase_carrier_user_id
       GROUP BY c.id, c.supabase_carrier_user_id, c.supabase_admin_user_id, c.last_message_at, c.created_at, c.updated_at
       ORDER BY c.last_message_at DESC NULLS LAST, c.created_at DESC
     `;

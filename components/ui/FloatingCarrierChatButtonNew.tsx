@@ -334,22 +334,52 @@ export default function FloatingCarrierChatButton() {
     }
   }, [messages, isOpen, selectedConversation, scrollToBottom]);
 
-  // Handle send message
+  // Handle send message with optimistic updates
   const handleSendMessage = useCallback(async () => {
     if (!selectedConversation || (!newMessage.trim() && !selectedFile) || isSendingMessage) return;
 
+    const messageText = newMessage.trim();
+    const tempMessageId = `temp-${Date.now()}`;
+    
+    // Optimistic update: Add message to UI immediately
+    const optimisticMessage = {
+      id: tempMessageId,
+      conversation_id: selectedConversation.conversation_id,
+      sender_id: user?.id || '',
+      sender_type: 'carrier',
+      message: messageText,
+      created_at: new Date().toISOString(),
+      attachment_url: null,
+      attachment_type: selectedFile?.type || null,
+      attachment_name: selectedFile?.name || null,
+      attachment_size: selectedFile?.size || null,
+      is_read: false,
+    };
+
+    // Optimistically update messages
+    mutateMessages((current: any[] = []) => {
+      return [...current, optimisticMessage];
+    }, false); // false = don't revalidate yet
+
     setIsSendingMessage(true);
+    setNewMessage("");
+    const fileToSend = selectedFile;
+    setSelectedFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+    setTimeout(scrollToBottom, 100);
 
     try {
       let response;
       
-      if (selectedFile) {
+      if (fileToSend) {
         // Send file with optional message
         const formData = new FormData();
-        if (newMessage.trim()) {
-          formData.append('message', newMessage.trim());
+        if (messageText) {
+          formData.append('message', messageText);
         }
-        formData.append('file', selectedFile);
+        formData.append('file', fileToSend);
 
         response = await fetch(`/api/carrier/conversations/${selectedConversation.conversation_id}`, {
           method: 'POST',
@@ -360,21 +390,22 @@ export default function FloatingCarrierChatButton() {
         response = await fetch(`/api/carrier/conversations/${selectedConversation.conversation_id}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: newMessage.trim() })
+          body: JSON.stringify({ message: messageText })
         });
       }
 
       if (response.ok) {
-        setNewMessage("");
-        setSelectedFile(null);
-        if (fileInputRef.current) {
-          fileInputRef.current.value = '';
-        }
+        // Revalidate to get the real message from server (replaces optimistic one)
         mutateMessages();
         mutateConversations();
         setTimeout(scrollToBottom, 100);
         toast.success("Message sent successfully!");
       } else {
+        // Revert optimistic update on error
+        mutateMessages((current: any[] = []) => {
+          return current.filter((msg: any) => msg.id !== tempMessageId);
+        }, false);
+        
         const errorData = await response.json().catch(() => ({ error: 'Failed to send message' }));
         throw new Error(errorData.error || 'Failed to send message');
       }
@@ -384,7 +415,7 @@ export default function FloatingCarrierChatButton() {
     } finally {
       setIsSendingMessage(false);
     }
-  }, [selectedConversation, newMessage, selectedFile, isSendingMessage, mutateMessages, mutateConversations, scrollToBottom]);
+  }, [selectedConversation, newMessage, selectedFile, isSendingMessage, user?.id, mutateMessages, mutateConversations, scrollToBottom]);
 
   // Handle start new chat
   const handleStartNewChat = useCallback(async (adminId: string, adminDisplayName: string) => {
