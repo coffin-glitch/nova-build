@@ -14,7 +14,7 @@
     "cache:enhanced": "node scripts/enhanced-cache-manager.js clean",
     "health:check": "node scripts/enhanced-cache-manager.js health",
     "prebuild": "if [ \"$VERCEL\" != \"1\" ]; then rm -rf .next; fi",
-    "build": "next build --webpack",
+    "build": "next build --webpack && mkdir -p .next && touch .next/lock",
     "start": "next start",
     "lint": "eslint",
     "clean": "rm -rf .next node_modules/.cache",
