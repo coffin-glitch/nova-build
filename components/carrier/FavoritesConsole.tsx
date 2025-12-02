@@ -42,7 +42,7 @@ import {
   Zap
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
 import { US_STATES } from "./US_STATES";
@@ -145,18 +145,25 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
     }
   );
 
+  // Memoize callbacks to prevent unnecessary re-subscriptions
+  const handleFavoriteInsert = useCallback(() => {
+    mutate();
+  }, [mutate]);
+
+  const handleFavoriteUpdate = useCallback(() => {
+    mutate();
+  }, [mutate]);
+
+  const handleFavoriteDelete = useCallback(() => {
+    mutate();
+  }, [mutate]);
+
   // Realtime updates for carrier_favorites
   useRealtimeFavorites({
     userId: user?.id,
-    onInsert: () => {
-      mutate();
-    },
-    onUpdate: () => {
-      mutate();
-    },
-    onDelete: () => {
-      mutate();
-    },
+    onInsert: handleFavoriteInsert,
+    onUpdate: handleFavoriteUpdate,
+    onDelete: handleFavoriteDelete,
     enabled: isOpen && !!user,
   });
 

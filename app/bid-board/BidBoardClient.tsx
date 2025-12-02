@@ -35,7 +35,7 @@ import {
 import { useTheme } from "next-themes";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import useSWR, { mutate as globalMutate } from "swr";
 
@@ -167,24 +167,6 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
     }
   );
 
-  // Subscribe to real-time updates for telegram_bids
-  useRealtimeBids({
-    enabled: true,
-    filter: 'published=eq.true', // Only published bids
-    onInsert: () => {
-      console.log('[BidBoard] New bid inserted, refreshing...');
-      mutate(); // Refresh data when new bid is inserted
-    },
-    onUpdate: () => {
-      console.log('[BidBoard] Bid updated, refreshing...');
-      mutate(); // Refresh data when bid is updated (e.g., expires)
-    },
-    onDelete: () => {
-      console.log('[BidBoard] Bid deleted, refreshing...');
-      mutate(); // Refresh data when bid is deleted
-    },
-  });
-
   // Fetch data for analytics regardless of showExpired filter - matching admin page exactly
   // Using longer intervals for analytics since they're less critical
   const { data: activeData, mutate: mutateActive } = useSWR(
@@ -199,18 +181,36 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
     { refreshInterval: 60000 } // Increased to 60s for analytics (less critical)
   );
 
-  // Realtime updates will also refresh analytics when main data changes
+  // Memoize callbacks to prevent unnecessary re-subscriptions
+  const handleBidInsert = useCallback(() => {
+    console.log('[BidBoard] New bid inserted, refreshing...');
+    mutate(); // Refresh main data
+    mutateActive(); // Refresh analytics
+    mutateExpired(); // Refresh analytics
+  }, [mutate, mutateActive, mutateExpired]);
+
+  const handleBidUpdate = useCallback(() => {
+    console.log('[BidBoard] Bid updated, refreshing...');
+    mutate(); // Refresh main data
+    mutateActive(); // Refresh analytics
+    mutateExpired(); // Refresh analytics
+  }, [mutate, mutateActive, mutateExpired]);
+
+  const handleBidDelete = useCallback(() => {
+    console.log('[BidBoard] Bid deleted, refreshing...');
+    mutate(); // Refresh main data
+    mutateActive(); // Refresh analytics
+    mutateExpired(); // Refresh analytics
+  }, [mutate, mutateActive, mutateExpired]);
+
+  // Subscribe to real-time updates for telegram_bids (single subscription for all updates)
+  // Note: Removed filter temporarily to debug subscription error
+  // Filter can be re-added once subscription works: filter: 'published=eq.true'
   useRealtimeBids({
     enabled: true,
-    filter: 'published=eq.true',
-    onInsert: () => {
-      mutateActive();
-      mutateExpired();
-    },
-    onUpdate: () => {
-      mutateActive();
-      mutateExpired();
-    },
+    onInsert: handleBidInsert,
+    onUpdate: handleBidUpdate,
+    onDelete: handleBidDelete,
   });
 
   // Calculate today's counts properly - matching admin page

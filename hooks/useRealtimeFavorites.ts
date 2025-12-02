@@ -24,6 +24,12 @@ export function useRealtimeFavorites(options: UseRealtimeFavoritesOptions = {}) 
   } = options;
 
   const channelRef = useRef<ReturnType<typeof getSupabaseBrowser>['channel'] | null>(null);
+  const callbacksRef = useRef({ onInsert, onUpdate, onDelete });
+  
+  // Update callbacks ref when they change (without triggering re-subscription)
+  useEffect(() => {
+    callbacksRef.current = { onInsert, onUpdate, onDelete };
+  }, [onInsert, onUpdate, onDelete]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -44,15 +50,17 @@ export function useRealtimeFavorites(options: UseRealtimeFavoritesOptions = {}) 
       .on('postgres_changes', postgresChanges, (payload) => {
         console.log('[Realtime] carrier_favorites change:', payload.eventType, payload);
         
+        // Use ref to get latest callbacks without re-subscribing
+        const callbacks = callbacksRef.current;
         switch (payload.eventType) {
           case 'INSERT':
-            onInsert?.(payload);
+            callbacks.onInsert?.(payload);
             break;
           case 'UPDATE':
-            onUpdate?.(payload);
+            callbacks.onUpdate?.(payload);
             break;
           case 'DELETE':
-            onDelete?.(payload);
+            callbacks.onDelete?.(payload);
             break;
         }
       })
@@ -72,6 +80,6 @@ export function useRealtimeFavorites(options: UseRealtimeFavoritesOptions = {}) 
         channelRef.current = null;
       }
     };
-  }, [enabled, userId, onInsert, onUpdate, onDelete]);
+  }, [enabled, userId]); // Removed callbacks from dependencies
 }
 

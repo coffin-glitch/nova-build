@@ -24,6 +24,12 @@ export function useRealtimeBids(options: UseRealtimeBidsOptions = {}) {
   } = options;
 
   const channelRef = useRef<ReturnType<typeof getSupabaseBrowser>['channel'] | null>(null);
+  const callbacksRef = useRef({ onInsert, onUpdate, onDelete });
+  
+  // Update callbacks ref when they change (without triggering re-subscription)
+  useEffect(() => {
+    callbacksRef.current = { onInsert, onUpdate, onDelete };
+  }, [onInsert, onUpdate, onDelete]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -46,15 +52,17 @@ export function useRealtimeBids(options: UseRealtimeBidsOptions = {}) {
       .on('postgres_changes', postgresChanges, (payload) => {
         console.log('[Realtime] telegram_bids change:', payload.eventType, payload);
         
+        // Use ref to get latest callbacks without re-subscribing
+        const callbacks = callbacksRef.current;
         switch (payload.eventType) {
           case 'INSERT':
-            onInsert?.(payload);
+            callbacks.onInsert?.(payload);
             break;
           case 'UPDATE':
-            onUpdate?.(payload);
+            callbacks.onUpdate?.(payload);
             break;
           case 'DELETE':
-            onDelete?.(payload);
+            callbacks.onDelete?.(payload);
             break;
         }
       })
@@ -79,6 +87,6 @@ export function useRealtimeBids(options: UseRealtimeBidsOptions = {}) {
         channelRef.current = null;
       }
     };
-  }, [enabled, filter, onInsert, onUpdate, onDelete]);
+  }, [enabled, filter]); // Removed callbacks from dependencies
 }
 
