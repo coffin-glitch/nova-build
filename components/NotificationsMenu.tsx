@@ -1,20 +1,19 @@
 "use client";
 
-import { useCallback, useState, useEffect } from "react";
-import useSWR from "swr";
-import { Bell, Check, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { CardGlass } from "@/components/ui/CardGlass";
-import { useRealtimeNotifications } from "@/hooks/useRealtimeNotifications";
-import { useUnifiedUser } from "@/hooks/useUnifiedUser";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
+  DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
+import { useRealtimeNotifications } from "@/hooks/useRealtimeNotifications";
+import { useUnifiedUser } from "@/hooks/useUnifiedUser";
 import { formatDistanceToNow } from "date-fns";
+import { Bell, Check } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import useSWR from "swr";
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
@@ -78,17 +77,34 @@ export default function NotificationsMenu() {
     onUpdate: handleNotificationUpdate,
   });
 
-  const notifications = data?.data || [];
+  // Handle both response formats: { data: [...] } or { data: { notifications: [...] } }
+  const notifications = data?.data?.notifications || data?.data || [];
   const unreadCount = notifications.filter((n: Notification) => !n.read).length;
 
   const handleMarkAllRead = async () => {
     // Optimistic update: Mark all as read immediately in UI
     mutate((current: any) => {
       if (!current?.data) return current;
-      return {
-        ...current,
-        data: current.data.map((n: Notification) => ({ ...n, read: true }))
-      };
+      
+      // Handle both data structures
+      if (Array.isArray(current.data)) {
+        // Format: { data: [...] }
+        return {
+          ...current,
+          data: current.data.map((n: Notification) => ({ ...n, read: true }))
+        };
+      } else if (current.data?.notifications) {
+        // Format: { data: { notifications: [...], unreadCount: ... } }
+        return {
+          ...current,
+          data: {
+            ...current.data,
+            notifications: current.data.notifications.map((n: Notification) => ({ ...n, read: true })),
+            unreadCount: 0
+          }
+        };
+      }
+      return current;
     }, false); // false = don't revalidate yet, let Realtime handle it
 
     try {
@@ -109,12 +125,31 @@ export default function NotificationsMenu() {
     // Optimistic update: Mark as read immediately in UI
     mutate((current: any) => {
       if (!current?.data) return current;
-      return {
-        ...current,
-        data: current.data.map((n: Notification) => 
+      
+      // Handle both data structures
+      if (Array.isArray(current.data)) {
+        // Format: { data: [...] }
+        return {
+          ...current,
+          data: current.data.map((n: Notification) => 
+            n.id === notificationId ? { ...n, read: true } : n
+          )
+        };
+      } else if (current.data?.notifications) {
+        // Format: { data: { notifications: [...], unreadCount: ... } }
+        const updatedNotifications = current.data.notifications.map((n: Notification) => 
           n.id === notificationId ? { ...n, read: true } : n
-        )
-      };
+        );
+        return {
+          ...current,
+          data: {
+            ...current.data,
+            notifications: updatedNotifications,
+            unreadCount: updatedNotifications.filter((n: Notification) => !n.read).length
+          }
+        };
+      }
+      return current;
     }, false); // false = don't revalidate yet, let Realtime handle it
 
     try {

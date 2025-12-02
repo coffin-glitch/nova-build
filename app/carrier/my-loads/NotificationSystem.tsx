@@ -4,23 +4,22 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { formatPickupDateTime } from "@/lib/format";
-import { useUnifiedUser } from "@/hooks/useUnifiedUser";
 import { useRealtimeNotifications } from "@/hooks/useRealtimeNotifications";
-import { useCallback } from "react";
+import { useUnifiedUser } from "@/hooks/useUnifiedUser";
+import { formatPickupDateTime } from "@/lib/format";
 import {
-    Bell,
-    BellOff,
-    CheckCircle,
-    Clock,
-    Info,
-    Mail,
-    MessageSquare,
-    Settings,
-    Truck,
-    X
+  Bell,
+  BellOff,
+  CheckCircle,
+  Clock,
+  Info,
+  Mail,
+  MessageSquare,
+  Settings,
+  Truck,
+  X
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import useSWR from "swr";
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());

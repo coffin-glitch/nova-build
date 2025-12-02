@@ -307,3 +307,110 @@ export async function PUT(request: NextRequest) {
     return addSecurityHeaders(response, request);
   }
 }
+
+export async function PATCH(request: NextRequest) {
+  try {
+    // Ensure user is authenticated (Supabase-only)
+    const auth = await requireApiAuth(request);
+    const userId = auth.userId;
+
+    // Check rate limit for authenticated write operation
+    const rateLimit = await checkApiRateLimit(request, {
+      userId,
+      routeType: 'authenticated'
+    });
+
+    if (!rateLimit.allowed) {
+      const response = NextResponse.json(
+        {
+          success: false,
+          error: 'Rate limit exceeded',
+          message: `Too many requests. Please try again after ${rateLimit.retryAfter} seconds.`,
+          retryAfter: rateLimit.retryAfter
+        },
+        { status: 429 }
+      );
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
+    }
+
+    const body = await request.json();
+    const { mark_all_read, notification_id } = body;
+
+    // Handle mark all as read
+    if (mark_all_read === true) {
+      // Mark all notifications as read for this user
+      await sql`
+        UPDATE notifications 
+        SET read = true
+        WHERE user_id = ${userId} AND read = false
+      `;
+
+      logSecurityEvent('notifications_marked_read_all', userId);
+      
+      const response = NextResponse.json({
+        success: true,
+        message: "All notifications marked as read"
+      });
+      
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
+    }
+
+    // Handle single notification mark as read
+    if (notification_id) {
+      const result = await sql`
+        UPDATE notifications 
+        SET read = true
+        WHERE id = ${notification_id} AND user_id = ${userId}
+        RETURNING id
+      `;
+
+      if (result.length === 0) {
+        logSecurityEvent('notification_mark_read_not_found', userId, { notification_id });
+        const response = NextResponse.json(
+          { error: "Notification not found" },
+          { status: 404 }
+        );
+        return addSecurityHeaders(response, request);
+      }
+
+      logSecurityEvent('notification_marked_read', userId, { notification_id });
+      
+      const response = NextResponse.json({
+        success: true,
+        message: "Notification marked as read"
+      });
+      
+      return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
+    }
+
+    // Invalid request
+    const response = NextResponse.json(
+      { error: "Invalid request. Provide either mark_all_read: true or notification_id" },
+      { status: 400 }
+    );
+    return addSecurityHeaders(response, request);
+
+  } catch (error: any) {
+    console.error("Error in notifications PATCH:", error);
+    
+    if (error.message === "Unauthorized") {
+      return unauthorizedResponse();
+    }
+    
+    logSecurityEvent('notification_patch_error', undefined, { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    
+    const response = NextResponse.json(
+      { 
+        error: "Failed to update notifications",
+        details: process.env.NODE_ENV === 'development' 
+          ? (error instanceof Error ? error.message : 'Unknown error')
+          : undefined
+      },
+      { status: 500 }
+    );
+    
+    return addSecurityHeaders(response, request);
+  }
+}

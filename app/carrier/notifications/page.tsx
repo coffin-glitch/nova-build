@@ -8,9 +8,9 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { useAccentColor } from "@/hooks/useAccentColor";
+import { useRealtimeNotifications } from "@/hooks/useRealtimeNotifications";
 import { useUnifiedRole } from "@/hooks/useUnifiedRole";
 import { useUnifiedUser } from "@/hooks/useUnifiedUser";
-import { useRealtimeNotifications } from "@/hooks/useRealtimeNotifications";
 import { swrFetcher } from "@/lib/safe-fetcher";
 import {
   AlertTriangle,
