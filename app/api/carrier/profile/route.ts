@@ -238,6 +238,8 @@ export async function POST(request: NextRequest) {
     }
     
     const body = await request.json();
+    console.log('[Carrier Profile] Incoming POST payload:', JSON.stringify(body, null, 2));
+    
     const {
       legal_name: companyName,
       mc_number: mcNumber,
@@ -290,21 +292,23 @@ export async function POST(request: NextRequest) {
     const safeFormattedPhone = formattedPhone || null;
 
     // Check if MC is disabled in access control
+    // Cast parameter explicitly to avoid type inference issues
     const mcAccessCheck = await sql`
       SELECT is_active, disabled_reason
       FROM mc_access_control
-      WHERE mc_number = ${safeMcNumber}
+      WHERE mc_number = ${safeMcNumber}::text
       LIMIT 1
     `;
     
     // Check if MC or DOT is on DNU list
+    // Cast parameters explicitly to avoid type inference issues
     const dnuCheck = await sql`
       SELECT id, mc_number, dot_number, status
       FROM dnu_tracking
       WHERE status = 'active'
       AND (
-        mc_number = ${safeMcNumber}
-        OR (${safeDotNumber} IS NOT NULL AND dot_number = ${safeDotNumber})
+        mc_number = ${safeMcNumber}::text
+        OR (${safeDotNumber}::text IS NOT NULL AND dot_number = ${safeDotNumber}::text)
       )
       LIMIT 1
     `;
@@ -345,19 +349,19 @@ export async function POST(request: NextRequest) {
         // Also set profile_completed_at and is_first_login=false for first-time submissions
         await sql`
           UPDATE carrier_profiles SET
-            legal_name = ${safeCompanyName},
-            company_name = ${safeCompanyName},
-            mc_number = ${safeMcNumber},
-            dot_number = ${safeDotNumber},
-            contact_name = ${safeContactName},
-            phone = ${safeFormattedPhone},
-            profile_status = 'pending',
+            legal_name = ${safeCompanyName}::text,
+            company_name = ${safeCompanyName}::text,
+            mc_number = ${safeMcNumber}::text,
+            dot_number = ${safeDotNumber}::text,
+            contact_name = ${safeContactName}::text,
+            phone = ${safeFormattedPhone}::text,
+            profile_status = 'pending'::text,
             submitted_at = NOW(),
-            edits_enabled = false,
+            edits_enabled = false::boolean,
             profile_completed_at = COALESCE(profile_completed_at, NOW()),
-            is_first_login = false,
+            is_first_login = false::boolean,
             updated_at = NOW()
-          WHERE supabase_user_id = ${userId}
+          WHERE supabase_user_id = ${userId}::text
         `;
         
         // Sync contact_name to Supabase user metadata (firstName/lastName)
@@ -371,14 +375,14 @@ export async function POST(request: NextRequest) {
         // Regular update - only update if edits are enabled
         await sql`
           UPDATE carrier_profiles SET
-            legal_name = ${safeCompanyName},
-            company_name = ${safeCompanyName},
-            mc_number = ${safeMcNumber},
-            dot_number = ${safeDotNumber},
-            contact_name = ${safeContactName},
-            phone = ${safeFormattedPhone},
+            legal_name = ${safeCompanyName}::text,
+            company_name = ${safeCompanyName}::text,
+            mc_number = ${safeMcNumber}::text,
+            dot_number = ${safeDotNumber}::text,
+            contact_name = ${safeContactName}::text,
+            phone = ${safeFormattedPhone}::text,
             updated_at = NOW()
-          WHERE supabase_user_id = ${userId} AND edits_enabled = true
+          WHERE supabase_user_id = ${userId}::text AND edits_enabled = true::boolean
         `;
         
         // Sync contact_name to Supabase user metadata (firstName/lastName)
@@ -391,6 +395,7 @@ export async function POST(request: NextRequest) {
       }
     } else {
       // Create new profile (Supabase-only)
+      // Explicitly cast all parameters to avoid PostgreSQL type inference issues
       await sql`
         INSERT INTO carrier_profiles (
           supabase_user_id,
@@ -406,18 +411,18 @@ export async function POST(request: NextRequest) {
           profile_completed_at,
           is_first_login
         ) VALUES (
-          ${userId},
-          ${safeCompanyName},
-          ${safeCompanyName}, 
-          ${safeMcNumber}, 
-          ${safeDotNumber}, 
-          ${safeContactName}, 
-          ${safeFormattedPhone},
-          ${submit_for_approval ? 'pending' : 'open'},
-          ${submit_for_approval ? new Date() : null},
-          ${submit_for_approval ? false : true},
-          ${submit_for_approval ? new Date() : null},
-          ${submit_for_approval ? false : true}
+          ${userId}::text,
+          ${safeCompanyName}::text,
+          ${safeCompanyName}::text, 
+          ${safeMcNumber}::text, 
+          ${safeDotNumber}::text, 
+          ${safeContactName}::text, 
+          ${safeFormattedPhone}::text,
+          ${(submit_for_approval ? 'pending' : 'open')}::text,
+          ${submit_for_approval ? new Date() : null}::timestamp with time zone,
+          ${submit_for_approval ? false : true}::boolean,
+          ${submit_for_approval ? new Date() : null}::timestamp with time zone,
+          ${submit_for_approval ? false : true}::boolean
         )
       `;
       
@@ -473,23 +478,46 @@ export async function POST(request: NextRequest) {
     
     return addRateLimitHeaders(addSecurityHeaders(response, request), rateLimit);
 
-  } catch (error) {
-    console.error("Error updating carrier profile:", error);
-    console.error("Error details:", {
-      message: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
-      name: error instanceof Error ? error.name : undefined
+  } catch (error: any) {
+    console.error("[Carrier Profile] Error updating carrier profile:", error);
+    console.error("[Carrier Profile] Error details:", {
+      message: error?.message || String(error),
+      stack: error?.stack,
+      name: error?.name,
+      code: error?.code,
+      detail: error?.detail,
+      hint: error?.hint,
+      position: error?.position,
+      internalPosition: error?.internalPosition,
+      internalQuery: error?.internalQuery,
+      where: error?.where,
+      schema: error?.schema,
+      table: error?.table,
+      column: error?.column,
+      dataType: error?.dataType,
+      constraint: error?.constraint,
+      file: error?.file,
+      line: error?.line,
+      routine: error?.routine
     });
-    logSecurityEvent('carrier_profile_update_error', undefined, { error: error instanceof Error ? error.message : String(error) });
     
-    const errorMessage = error instanceof Error 
-      ? (error.message || "Failed to update profile")
-      : "Failed to update profile";
+    logSecurityEvent('carrier_profile_update_error', undefined, { 
+      error: error?.message || String(error),
+      code: error?.code,
+      detail: error?.detail
+    });
+    
+    // Extract PostgreSQL error details if available
+    const errorMessage = error?.message || "Failed to update profile";
+    const errorDetail = error?.detail || undefined;
+    const errorHint = error?.hint || undefined;
     
     const response = NextResponse.json({ 
       error: errorMessage,
+      detail: errorDetail,
+      hint: errorHint,
       details: process.env.NODE_ENV === 'development' 
-        ? (error instanceof Error ? error.stack : String(error))
+        ? (error?.stack || String(error))
         : undefined
     }, { status: 500 });
     
