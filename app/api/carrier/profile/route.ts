@@ -247,24 +247,12 @@ export async function POST(request: NextRequest) {
       submit_for_approval = false
     } = body;
     
-    // Ensure all values are properly typed (convert undefined/empty to null for SQL)
-    // Required fields must be strings, optional fields can be null
-    const safeCompanyName = (companyName && typeof companyName === 'string' && companyName.trim()) ? companyName.trim() : null;
-    const safeMcNumber = (mcNumber && typeof mcNumber === 'string' && mcNumber.trim()) ? mcNumber.trim() : null;
-    const safeDotNumber = (dotNumber && typeof dotNumber === 'string' && dotNumber.trim()) ? dotNumber.trim() : null;
-    const safeContactName = (contactName && typeof contactName === 'string' && contactName.trim()) ? contactName.trim() : null;
-    const safePhone = (phone && typeof phone === 'string' && phone.trim()) ? phone.trim() : null;
-
-    // Format phone number - remove all non-numeric characters and ensure it's a valid US phone number
-    const formattedPhone = safePhone ? safePhone.replace(/\D/g, '') : null;
-    const isValidPhone = formattedPhone ? (formattedPhone.length >= 10 && formattedPhone.length <= 11) : false;
-
-    // Input validation
+    // Input validation - validate BEFORE converting to safe values
     const validation = validateInput({ 
-      companyName: safeCompanyName, 
-      mcNumber: safeMcNumber, 
-      contactName: safeContactName, 
-      phone: safePhone, 
+      companyName, 
+      mcNumber, 
+      contactName, 
+      phone, 
       submit_for_approval 
     }, {
       companyName: { required: true, type: 'string', minLength: 2, maxLength: 100 },
@@ -273,6 +261,10 @@ export async function POST(request: NextRequest) {
       phone: { required: true, type: 'string', minLength: 10 },
       submit_for_approval: { type: 'boolean' }
     });
+
+    // Format phone number - remove all non-numeric characters and ensure it's a valid US phone number
+    const formattedPhone = phone ? phone.replace(/\D/g, '') : '';
+    const isValidPhone = formattedPhone.length >= 10 && formattedPhone.length <= 11;
 
     // Add custom phone validation error
     if (!isValidPhone) {
@@ -286,6 +278,16 @@ export async function POST(request: NextRequest) {
         error: `Invalid input: ${validation.errors.join(', ')}` 
       }, { status: 400 });
     }
+
+    // After validation passes, ensure all values are properly typed for SQL
+    // Required fields are guaranteed to be strings at this point, but we'll trim them
+    // Optional fields (like dotNumber) can be null
+    const safeCompanyName = typeof companyName === 'string' ? companyName.trim() : String(companyName || '').trim();
+    const safeMcNumber = typeof mcNumber === 'string' ? mcNumber.trim() : String(mcNumber || '').trim();
+    const safeDotNumber = (dotNumber && typeof dotNumber === 'string' && dotNumber.trim()) ? dotNumber.trim() : null;
+    const safeContactName = typeof contactName === 'string' ? contactName.trim() : String(contactName || '').trim();
+    const safePhone = typeof phone === 'string' ? phone.trim() : String(phone || '').trim();
+    const safeFormattedPhone = formattedPhone || null;
 
     // Check if MC is disabled in access control
     const mcAccessCheck = await sql`
@@ -348,7 +350,7 @@ export async function POST(request: NextRequest) {
             mc_number = ${safeMcNumber},
             dot_number = ${safeDotNumber},
             contact_name = ${safeContactName},
-            phone = ${formattedPhone},
+            phone = ${safeFormattedPhone},
             profile_status = 'pending',
             submitted_at = NOW(),
             edits_enabled = false,
@@ -374,7 +376,7 @@ export async function POST(request: NextRequest) {
             mc_number = ${safeMcNumber},
             dot_number = ${safeDotNumber},
             contact_name = ${safeContactName},
-            phone = ${formattedPhone},
+            phone = ${safeFormattedPhone},
             updated_at = NOW()
           WHERE supabase_user_id = ${userId} AND edits_enabled = true
         `;
@@ -410,7 +412,7 @@ export async function POST(request: NextRequest) {
           ${safeMcNumber}, 
           ${safeDotNumber}, 
           ${safeContactName}, 
-          ${formattedPhone},
+          ${safeFormattedPhone},
           ${submit_for_approval ? 'pending' : 'open'},
           ${submit_for_approval ? new Date() : null},
           ${submit_for_approval ? false : true},
