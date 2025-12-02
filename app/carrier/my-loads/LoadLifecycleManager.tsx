@@ -8,6 +8,8 @@ import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { formatMoney, formatPickupDateTime } from "@/lib/format";
 import { useUnifiedUser } from "@/hooks/useUnifiedUser";
+import { useRealtimeLoads } from "@/hooks/useRealtimeLoads";
+import { useRealtimeAssignments } from "@/hooks/useRealtimeAssignments";
 import {
     Camera,
     CheckCircle,
@@ -47,8 +49,34 @@ export function LoadLifecycleManager({ loadId, loadData }: LoadLifecycleManagerP
   const { data: eventsData, mutate } = useSWR(
     user ? `/api/carrier/load-lifecycle/${loadId}` : null,
     fetcher,
-    { refreshInterval: 30000 } // Update every 30 seconds
+    { refreshInterval: 60000 } // Reduced from 30s - Realtime handles instant updates
   );
+
+  // Realtime updates for loads
+  useRealtimeLoads({
+    userId: user?.id,
+    loadId: loadId,
+    onUpdate: () => {
+      mutate();
+    },
+    enabled: !!user && !!loadId,
+  });
+
+  // Realtime updates for assignments
+  useRealtimeAssignments({
+    userId: user?.id,
+    loadId: loadId,
+    onInsert: () => {
+      mutate();
+    },
+    onUpdate: () => {
+      mutate();
+    },
+    onDelete: () => {
+      mutate();
+    },
+    enabled: !!user && !!loadId,
+  });
 
   const events: LifecycleEvent[] = eventsData?.events || [];
   const currentStatus = eventsData?.currentStatus || 'pending';

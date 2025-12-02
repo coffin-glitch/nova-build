@@ -9,26 +9,28 @@ import { Input } from "@/components/ui/input";
 import { MapboxMap } from "@/components/ui/MapboxMap";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAccentColor } from "@/hooks/useAccentColor";
+import { useRealtimeCarrierBids } from "@/hooks/useRealtimeCarrierBids";
+import { useUnifiedUser } from "@/hooks/useUnifiedUser";
 import { formatDistance, formatPickupDateTime, formatStopCount, formatStops, formatStopsDetailed } from "@/lib/format";
 import {
-    Activity,
-    AlertCircle,
-    BarChart3,
-    Calendar,
-    CheckCircle,
-    Clock,
-    DollarSign,
-    Edit,
-    Gavel,
-    MapPin,
-    Navigation,
-    Search,
-    Target,
-    TrendingDown,
-    TrendingUp,
-    Truck,
-    X,
-    XCircle
+  Activity,
+  AlertCircle,
+  BarChart3,
+  Calendar,
+  CheckCircle,
+  Clock,
+  DollarSign,
+  Edit,
+  Gavel,
+  MapPin,
+  Navigation,
+  Search,
+  Target,
+  TrendingDown,
+  TrendingUp,
+  Truck,
+  X,
+  XCircle
 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
@@ -59,6 +61,7 @@ interface ActiveBid {
 }
 
 export default function CarrierActiveBidsClient() {
+  const { user } = useUnifiedUser();
   const [searchTerm, setSearchTerm] = useState("");
   const [viewDetailsBid, setViewDetailsBid] = useState<ActiveBid | null>(null);
   const [modifyBidDialog, setModifyBidDialog] = useState<ActiveBid | null>(null);
@@ -74,10 +77,25 @@ export default function CarrierActiveBidsClient() {
     `/api/carrier/bids`,
     fetcher,
     {
-      refreshInterval: 10000,
+      refreshInterval: 60000, // Reduced from 10s - Realtime handles instant updates
       fallbackData: { ok: true, data: [] }
     }
   );
+
+  // Realtime updates for carrier_bids
+  useRealtimeCarrierBids({
+    userId: user?.id,
+    onInsert: () => {
+      mutate();
+    },
+    onUpdate: () => {
+      mutate();
+    },
+    onDelete: () => {
+      mutate();
+    },
+    enabled: !!user,
+  });
 
   const bids: ActiveBid[] = data?.data || [];
 

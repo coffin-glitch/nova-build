@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { useUnifiedUser } from "@/hooks/useUnifiedUser";
+import { useRealtimeAssignments } from "@/hooks/useRealtimeAssignments";
 import {
     CheckCircle,
     Clock,
@@ -32,8 +33,24 @@ export function LoadStatusTracker({ loadId, currentStatus, onStatusUpdate }: Loa
   const { data: statusData, mutate } = useSWR(
     user ? `/api/carrier/load-status/${loadId}` : null,
     fetcher,
-    { refreshInterval: 10000 } // Update every 10 seconds
+    { refreshInterval: 60000 } // Reduced from 10s - Realtime handles instant updates
   );
+
+  // Realtime updates for assignments
+  useRealtimeAssignments({
+    userId: user?.id,
+    loadId: loadId,
+    onInsert: () => {
+      mutate();
+    },
+    onUpdate: () => {
+      mutate();
+    },
+    onDelete: () => {
+      mutate();
+    },
+    enabled: !!user && !!loadId,
+  });
 
   const status = statusData?.status || currentStatus;
   const lastUpdated = statusData?.lastUpdated;

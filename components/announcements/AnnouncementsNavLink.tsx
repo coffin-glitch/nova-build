@@ -1,22 +1,54 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
+import { useRealtimeAnnouncementReads } from "@/hooks/useRealtimeAnnouncementReads";
+import { useRealtimeAnnouncements } from "@/hooks/useRealtimeAnnouncements";
+import { useUnifiedUser } from "@/hooks/useUnifiedUser";
 import { Megaphone } from "lucide-react";
+import Link from "next/link";
 import useSWR from "swr";
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
 export default function AnnouncementsNavLink() {
-  const { data } = useSWR(
+  const { user } = useUnifiedUser();
+  const { data, mutate } = useSWR(
     "/api/announcements/unread-count",
     fetcher,
     {
-      refreshInterval: 30000, // Refresh every 30 seconds
+      refreshInterval: 60000, // Reduced from 30s - Realtime handles instant updates
       revalidateOnFocus: true,
     }
   );
+
+  // Realtime updates for announcements
+  useRealtimeAnnouncements({
+    onInsert: () => {
+      mutate();
+    },
+    onUpdate: () => {
+      mutate();
+    },
+    onDelete: () => {
+      mutate();
+    },
+    enabled: true,
+  });
+
+  // Realtime updates for announcement_reads
+  useRealtimeAnnouncementReads({
+    userId: user?.id,
+    onInsert: () => {
+      mutate();
+    },
+    onUpdate: () => {
+      mutate();
+    },
+    onDelete: () => {
+      mutate();
+    },
+    enabled: !!user,
+  });
 
   const unreadCount = data?.unreadCount || 0;
 

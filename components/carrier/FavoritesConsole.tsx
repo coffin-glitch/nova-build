@@ -11,6 +11,8 @@ import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAccentColor } from "@/hooks/useAccentColor";
+import { useRealtimeFavorites } from "@/hooks/useRealtimeFavorites";
+import { useUnifiedUser } from "@/hooks/useUnifiedUser";
 import { extractCityStateForMatching, formatAddressForCard, formatDistance, formatStopCount, formatStops, formatStopsDetailed, ParsedAddress } from "@/lib/format";
 import {
   Activity,
@@ -129,18 +131,34 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
   
   const { accentColor, accentBgStyle, accentColorStyle } = useAccentColor();
+  const { user } = useUnifiedUser();
 
   // Fetch favorites data using SWR (following ManageBidsConsole pattern)
   const { data, mutate, isLoading } = useSWR(
     isOpen ? `/api/carrier/favorites` : null,
     fetcher,
     { 
-      refreshInterval: 10000,
+      refreshInterval: 60000, // Reduced from 10s - Realtime handles instant updates
       fallbackData: { ok: true, data: [] },
       revalidateOnFocus: true,
       revalidateOnReconnect: true
     }
   );
+
+  // Realtime updates for carrier_favorites
+  useRealtimeFavorites({
+    userId: user?.id,
+    onInsert: () => {
+      mutate();
+    },
+    onUpdate: () => {
+      mutate();
+    },
+    onDelete: () => {
+      mutate();
+    },
+    enabled: isOpen && !!user,
+  });
 
   // Fetch notification preferences
   const { data: preferencesData, mutate: mutatePreferences } = useSWR(

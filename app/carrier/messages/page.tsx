@@ -19,6 +19,7 @@ import useSWR from "swr";
 import { useRealtimeConversations } from "@/hooks/useRealtimeConversations";
 import { useRealtimeAdminMessages } from "@/hooks/useRealtimeAdminMessages";
 import { useRealtimeCarrierChatMessages } from "@/hooks/useRealtimeCarrierChatMessages";
+import { useRealtimeCarrierResponses } from "@/hooks/useRealtimeCarrierResponses";
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
@@ -44,6 +45,20 @@ export default function CarrierMessagesPage() {
     fetcher,
     { refreshInterval: 0 } // Disable polling - using Realtime instead
   );
+
+  // Subscribe to real-time carrier responses
+  useRealtimeCarrierResponses({
+    enabled: !!user?.id,
+    userId: user?.id,
+    onInsert: () => {
+      console.log('[CarrierMessages] New carrier response received, refreshing...');
+      mutateResponses();
+    },
+    onUpdate: () => {
+      console.log('[CarrierMessages] Carrier response updated, refreshing...');
+      mutateResponses();
+    },
+  });
 
   // Fetch admin users for new chat
   const { data: adminsData } = useSWR(

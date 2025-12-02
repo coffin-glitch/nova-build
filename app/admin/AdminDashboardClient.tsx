@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useAccentColor } from "@/hooks/useAccentColor";
+import { useRealtimeSystemSettings } from "@/hooks/useRealtimeSystemSettings";
 import {
   FileText,
   Store,
@@ -11,7 +12,7 @@ import {
   Users
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
 
@@ -35,11 +36,19 @@ export default function AdminDashboardClient({ stats }: AdminDashboardClientProp
   const { data: shopStatusData, mutate: mutateShopStatus } = useSWR(
     '/api/admin/shop-status',
     fetcher,
-    { refreshInterval: 5000 }
+    { refreshInterval: 60000 } // Reduced from 5s - Realtime handles instant updates
   );
   
   const shopStatus = shopStatusData?.status || 'open';
   const isShopOpen = shopStatus === 'open';
+
+  // Realtime updates for system_settings (shop status)
+  useRealtimeSystemSettings({
+    onUpdate: () => {
+      mutateShopStatus();
+    },
+    enabled: true,
+  });
   
   const handleToggleShop = async () => {
     setIsToggling(true);

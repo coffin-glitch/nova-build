@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useAccentColor } from "@/hooks/useAccentColor";
+import { useRealtimeCarrierBids } from "@/hooks/useRealtimeCarrierBids";
 import { TelegramBid } from "@/lib/auctions";
 import { formatDistance, formatMoney, formatPickupDateTime, formatStopCount, formatStops, formatStopsDetailed, ParsedAddress } from "@/lib/format";
 import { usStatesSVGPaths } from "@/lib/us-states-svg-paths";
@@ -95,8 +96,23 @@ function BidAdjudicationConsole({ bid, accentColor, onClose, onAwarded }: {
   const { data: bidData, error: bidDataError, mutate: mutateBidData } = useSWR(
     bid ? `/api/admin/bids/${bid.bid_number}/award` : null,
     fetcher,
-    { refreshInterval: 30000 } // Reduced from 5s to 30s to prevent rate limiting
+    { refreshInterval: 60000 } // Reduced from 30s - Realtime handles instant updates
   );
+
+  // Realtime updates for carrier_bids (admin sees all bids)
+  useRealtimeCarrierBids({
+    bidNumber: bid?.bid_number,
+    onInsert: () => {
+      mutateBidData();
+    },
+    onUpdate: () => {
+      mutateBidData();
+    },
+    onDelete: () => {
+      mutateBidData();
+    },
+    enabled: !!bid,
+  });
 
   React.useEffect(() => {
     if (bidDataError) {
@@ -4567,10 +4583,24 @@ function AdjudicationConsole({
     '/api/admin/bids-with-carrier-bids',
     fetcher,
     { 
-      refreshInterval: 10000,
+      refreshInterval: 60000, // Reduced from 10s - Realtime handles instant updates
       revalidateOnFocus: true // Refresh when user returns to tab - ensures profile updates appear immediately
     }
   );
+
+  // Realtime updates for carrier_bids (admin sees all bids)
+  useRealtimeCarrierBids({
+    onInsert: () => {
+      mutate();
+    },
+    onUpdate: () => {
+      mutate();
+    },
+    onDelete: () => {
+      mutate();
+    },
+    enabled: true,
+  });
 
   const bidsWithCarrierBids = data?.data || [];
 

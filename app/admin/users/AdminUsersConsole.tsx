@@ -1,8 +1,8 @@
 "use client";
 
 import { CarrierHealthConsole } from "@/components/admin/CarrierHealthConsole";
-import { MCAccessControlConsole } from "@/components/admin/MCAccessControlConsole";
 import { DNUTrackerConsole } from "@/components/admin/DNUTrackerConsole";
+import { MCAccessControlConsole } from "@/components/admin/MCAccessControlConsole";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,8 +11,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { cn } from "@/lib/utils";
 import { useAccentColor } from "@/hooks/useAccentColor";
+import { useRealtimeCarrierProfiles } from "@/hooks/useRealtimeCarrierProfiles";
+import { cn } from "@/lib/utils";
 import {
   Activity,
   AlertTriangle,
@@ -34,7 +35,7 @@ import {
   X,
   Zap
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
 import { CarrierHealthCard } from "./CarrierHealthCard";
@@ -143,8 +144,22 @@ export function AdminUsersConsole() {
   const { data: carriersData, mutate: mutateCarriers } = useSWR(
     "/api/admin/carriers",
     fetcher,
-    { refreshInterval: 10000 }
+    { refreshInterval: 60000 } // Reduced from 10s - Realtime handles instant updates
   );
+
+  // Realtime updates for carrier_profiles (admin sees all profiles)
+  useRealtimeCarrierProfiles({
+    onInsert: () => {
+      mutateCarriers();
+    },
+    onUpdate: () => {
+      mutateCarriers();
+    },
+    onDelete: () => {
+      mutateCarriers();
+    },
+    enabled: true,
+  });
   
   // Ensure consistent defaults to prevent hydration mismatches
   const carriers: CarrierProfile[] = Array.isArray(carriersData?.data) ? carriersData.data : [];

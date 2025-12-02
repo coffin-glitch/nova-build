@@ -10,23 +10,26 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { formatDistance, formatMoney } from "@/lib/format";
+import { useRealtimeAssignments } from "@/hooks/useRealtimeAssignments";
+import { useRealtimeLoadOffers } from "@/hooks/useRealtimeLoadOffers";
+import { useRealtimeLoads } from "@/hooks/useRealtimeLoads";
 import { useUnifiedUser } from "@/hooks/useUnifiedUser";
+import { formatDistance, formatMoney } from "@/lib/format";
 import {
-    AlertCircle,
-    Calendar,
-    CheckCircle,
-    ChevronDown,
-    ChevronRight,
-    Clock,
-    DollarSign,
-    MapPin,
-    MessageSquare,
-    Package,
-    RefreshCw,
-    TrendingUp,
-    Truck,
-    XCircle
+  AlertCircle,
+  Calendar,
+  CheckCircle,
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  DollarSign,
+  MapPin,
+  MessageSquare,
+  Package,
+  RefreshCw,
+  TrendingUp,
+  Truck,
+  XCircle
 } from "lucide-react";
 import { useState } from "react";
 import useSWR from "swr";
@@ -166,15 +169,59 @@ export function CarrierLoadsConsole() {
   const { data: offersData, mutate: mutateOffers } = useSWR(
     user ? "/api/carrier/load-offers" : null,
     fetcher,
-    { refreshInterval: 30000 }
+    { refreshInterval: 60000 } // Reduced from 30s - Realtime handles instant updates
   );
 
   // Fetch booked loads
   const { data: bookedData, mutate: mutateBooked } = useSWR(
     user ? "/api/carrier/booked-loads" : null,
     fetcher,
-    { refreshInterval: 30000 }
+    { refreshInterval: 60000 } // Reduced from 30s - Realtime handles instant updates
   );
+
+  // Realtime updates for load_offers
+  useRealtimeLoadOffers({
+    userId: user?.id,
+    onInsert: () => {
+      mutateOffers();
+    },
+    onUpdate: () => {
+      mutateOffers();
+    },
+    onDelete: () => {
+      mutateOffers();
+    },
+    enabled: !!user,
+  });
+
+  // Realtime updates for loads and assignments (booked loads)
+  useRealtimeLoads({
+    userId: user?.id,
+    onInsert: () => {
+      mutateBooked();
+    },
+    onUpdate: () => {
+      mutateBooked();
+    },
+    onDelete: () => {
+      mutateBooked();
+    },
+    enabled: !!user,
+  });
+
+  useRealtimeAssignments({
+    userId: user?.id,
+    onInsert: () => {
+      mutateBooked();
+    },
+    onUpdate: () => {
+      mutateBooked();
+    },
+    onDelete: () => {
+      mutateBooked();
+    },
+    enabled: !!user,
+  });
 
   // Fetch load statistics
   const { data: statsData } = useSWR(

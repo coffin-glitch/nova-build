@@ -7,20 +7,22 @@ import { Countdown } from "@/components/ui/Countdown";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useAccentColor } from "@/hooks/useAccentColor";
+import { useRealtimeCarrierBids } from "@/hooks/useRealtimeCarrierBids";
+import { useUnifiedUser } from "@/hooks/useUnifiedUser";
 import { formatDistance, formatPickupDateTime, formatStopCount } from "@/lib/format";
 import { originDestFromStops } from "@/lib/geo";
 import {
-    AlertTriangle,
-    Clock,
-    DollarSign,
-    Eye,
-    MapPin,
-    RefreshCw,
-    Search,
-    TrendingUp,
-    Trophy,
-    Truck,
-    XCircle
+  AlertTriangle,
+  Clock,
+  DollarSign,
+  Eye,
+  MapPin,
+  RefreshCw,
+  Search,
+  TrendingUp,
+  Trophy,
+  Truck,
+  XCircle
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -56,6 +58,7 @@ interface Bid {
 }
 
 export function CarrierBidsClient() {
+  const { user } = useUnifiedUser();
   const [searchTerm, setSearchTerm] = useState("");
   const [viewDetailsBid, setViewDetailsBid] = useState<Bid | null>(null);
   const [modifyBidDialog, setModifyBidDialog] = useState<Bid | null>(null);
@@ -69,10 +72,25 @@ export function CarrierBidsClient() {
     `/api/carrier/bids`,
     fetcher,
     {
-      refreshInterval: 10000, // Refresh every 10 seconds like bid-board
+      refreshInterval: 60000, // Reduced from 10s - Realtime handles instant updates
       fallbackData: { ok: true, data: [] }
     }
   );
+
+  // Realtime updates for carrier_bids
+  useRealtimeCarrierBids({
+    userId: user?.id,
+    onInsert: () => {
+      mutate();
+    },
+    onUpdate: () => {
+      mutate();
+    },
+    onDelete: () => {
+      mutate();
+    },
+    enabled: !!user,
+  });
 
   const bids = data?.data || [];
 

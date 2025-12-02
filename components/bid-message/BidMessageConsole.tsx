@@ -7,6 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useAccentColor } from "@/hooks/useAccentColor";
+import { useRealtimeBidMessages } from "@/hooks/useRealtimeBidMessages";
 import { EyeOff, MessageSquare, Send, Shield, Truck } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -34,8 +35,23 @@ export function BidMessageConsole({ bidNumber, userRole, userId, onClose }: BidM
   const { data, mutate } = useSWR(
     `/api/bid-messages/${bidNumber}`,
     fetcher,
-    { refreshInterval: 5000 }
+    { refreshInterval: 60000 } // Reduced from 5s - Realtime handles instant updates
   );
+
+  // Realtime updates for bid_messages
+  useRealtimeBidMessages({
+    bidNumber: bidNumber,
+    onInsert: () => {
+      mutate();
+    },
+    onUpdate: () => {
+      mutate();
+    },
+    onDelete: () => {
+      mutate();
+    },
+    enabled: !!bidNumber,
+  });
 
   const allMessages = data?.data?.messages || [];
   const unreadCount = data?.data?.unreadCount || 0;

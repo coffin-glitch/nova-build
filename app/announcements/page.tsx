@@ -1,20 +1,24 @@
 "use client";
 
-import { useState } from "react";
-import useSWR from "swr";
 import AnnouncementCard from "@/components/announcements/AnnouncementCard";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
-import { Search, Filter } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAccentColor } from "@/hooks/useAccentColor";
+import { useRealtimeAnnouncementReads } from "@/hooks/useRealtimeAnnouncementReads";
+import { useRealtimeAnnouncements } from "@/hooks/useRealtimeAnnouncements";
+import { useUnifiedUser } from "@/hooks/useUnifiedUser";
+import { Filter, Search } from "lucide-react";
+import { useState } from "react";
+import useSWR from "swr";
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
 export default function AnnouncementsPage() {
   const { accentColor, accentColorStyle, accentBgStyle } = useAccentColor();
+  const { user } = useUnifiedUser();
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState<string | null>(null);
@@ -23,10 +27,39 @@ export default function AnnouncementsPage() {
     `/api/announcements?include_read=${activeTab === 'all' ? 'true' : 'false'}${priorityFilter ? `&priority=${priorityFilter}` : ''}`,
     fetcher,
     {
-      refreshInterval: 30000, // Refresh every 30 seconds
+      refreshInterval: 60000, // Reduced from 30s - Realtime handles instant updates
       revalidateOnFocus: true,
     }
   );
+
+  // Realtime updates for announcements
+  useRealtimeAnnouncements({
+    onInsert: () => {
+      mutate();
+    },
+    onUpdate: () => {
+      mutate();
+    },
+    onDelete: () => {
+      mutate();
+    },
+    enabled: true,
+  });
+
+  // Realtime updates for announcement_reads
+  useRealtimeAnnouncementReads({
+    userId: user?.id,
+    onInsert: () => {
+      mutate();
+    },
+    onUpdate: () => {
+      mutate();
+    },
+    onDelete: () => {
+      mutate();
+    },
+    enabled: !!user,
+  });
 
   const announcements = data?.data || [];
   const unreadCount = data?.unreadCount || 0;

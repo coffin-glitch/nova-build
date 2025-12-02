@@ -9,29 +9,31 @@ import { Input } from "@/components/ui/input";
 import { MapboxMap } from "@/components/ui/MapboxMap";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAccentColor } from "@/hooks/useAccentColor";
+import { useRealtimeFavorites } from "@/hooks/useRealtimeFavorites";
+import { useUnifiedUser } from "@/hooks/useUnifiedUser";
 import { formatDistance, formatPickupDateTime, formatStopCount, formatStops, formatStopsDetailed } from "@/lib/format";
 import {
-    Activity,
-    BarChart3,
-    Bell,
-    Calendar,
-    Clock,
-    DollarSign,
-    Eye,
-    EyeOff,
-    Heart,
-    MapPin,
-    Navigation,
-    RefreshCw,
-    Search,
-    Settings,
-    SortAsc,
-    SortDesc,
-    Star,
-    Target,
-    Truck,
-    X,
-    Zap
+  Activity,
+  BarChart3,
+  Bell,
+  Calendar,
+  Clock,
+  DollarSign,
+  Eye,
+  EyeOff,
+  Heart,
+  MapPin,
+  Navigation,
+  RefreshCw,
+  Search,
+  Settings,
+  SortAsc,
+  SortDesc,
+  Star,
+  Target,
+  Truck,
+  X,
+  Zap
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -104,14 +106,31 @@ export default function CarrierFavoritesClient() {
     }
   }, [accentColor]);
 
+  const { user } = useUnifiedUser();
+
   const { data, mutate, isLoading } = useSWR(
     `/api/carrier/favorites`,
     fetcher,
     { 
-      refreshInterval: 10000,
+      refreshInterval: 60000, // Reduced from 10s - Realtime handles instant updates
       fallbackData: { ok: true, data: [] }
     }
   );
+
+  // Realtime updates for carrier_favorites
+  useRealtimeFavorites({
+    userId: user?.id,
+    onInsert: () => {
+      mutate();
+    },
+    onUpdate: () => {
+      mutate();
+    },
+    onDelete: () => {
+      mutate();
+    },
+    enabled: !!user,
+  });
 
   const favorites: FavoriteBid[] = data?.data || [];
 

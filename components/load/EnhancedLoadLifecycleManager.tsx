@@ -9,15 +9,17 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { useRealtimeAssignments } from "@/hooks/useRealtimeAssignments";
+import { useRealtimeLoads } from "@/hooks/useRealtimeLoads";
 import { useUnifiedUser } from "@/hooks/useUnifiedUser";
 import {
-    CheckCircle,
-    Clock,
-    MapPin,
-    Navigation,
-    Plus,
-    Truck,
-    User
+  CheckCircle,
+  Clock,
+  MapPin,
+  Navigation,
+  Plus,
+  Truck,
+  User
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -73,8 +75,34 @@ export function EnhancedLoadLifecycleManager({ loadId, loadData }: EnhancedLoadL
   const { data: eventsData, mutate } = useSWR(
     user ? `/api/carrier/load-lifecycle/${loadId}` : null,
     fetcher,
-    { refreshInterval: 30000 }
+    { refreshInterval: 60000 } // Reduced from 30s - Realtime handles instant updates
   );
+
+  // Realtime updates for loads
+  useRealtimeLoads({
+    userId: user?.id,
+    loadId: loadId,
+    onUpdate: () => {
+      mutate();
+    },
+    enabled: !!user && !!loadId,
+  });
+
+  // Realtime updates for assignments
+  useRealtimeAssignments({
+    userId: user?.id,
+    loadId: loadId,
+    onInsert: () => {
+      mutate();
+    },
+    onUpdate: () => {
+      mutate();
+    },
+    onDelete: () => {
+      mutate();
+    },
+    enabled: !!user && !!loadId,
+  });
 
   const events: LifecycleEvent[] = eventsData?.data?.events || [];
   const currentStatus = eventsData?.data?.currentStatus || 'pending';

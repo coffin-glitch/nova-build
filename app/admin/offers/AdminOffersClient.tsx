@@ -11,6 +11,8 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useAccentColor } from "@/hooks/useAccentColor";
+import { useRealtimeLoadOffers } from "@/hooks/useRealtimeLoadOffers";
+import useSWR from "swr";
 import { getButtonTextColor as getTextColor } from "@/lib/utils";
 import {
     ArrowUpDown,
@@ -36,6 +38,8 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import OfferAnalytics from "./OfferAnalytics";
 import OfferComments from "./OfferComments";
+
+const fetcher = (url: string) => fetch(url).then(r => r.json());
 
 interface OfferHistory {
   id: string;
@@ -90,8 +94,6 @@ interface Offer {
 }
 
 export default function AdminOffersClient() {
-  const [offers, setOffers] = useState<Offer[]>([]);
-  const [loading, setLoading] = useState(true);
   const [selectedOffer, setSelectedOffer] = useState<Offer | null>(null);
   const [offerHistory, setOfferHistory] = useState<OfferHistory[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -125,30 +127,38 @@ export default function AdminOffersClient() {
     return getTextColor(accentColor, theme);
   };
 
-  useEffect(() => {
-    fetchOffers();
-    expireOffers(); // Check for expired offers on load
-    // Set up real-time updates every 30 seconds
-    const interval = setInterval(() => {
-      fetchOffers();
-      expireOffers(); // Check for expired offers periodically
-    }, 30000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const fetchOffers = async () => {
-    try {
-      const response = await fetch('/api/admin/offers');
-      if (!response.ok) throw new Error('Failed to fetch offers');
-      
-      const data = await response.json();
-      setOffers(data.offers || []);
-    } catch (error) {
-      toast.error('Failed to load offers');
-    } finally {
-      setLoading(false);
+  // Fetch offers using SWR with Realtime
+  const { data: offersData, mutate: mutateOffers, isLoading: loading } = useSWR(
+    '/api/admin/offers',
+    fetcher,
+    { 
+      refreshInterval: 60000, // Reduced from 30s - Realtime handles instant updates
+      onSuccess: (data) => {
+        // Check for expired offers when data loads
+        expireOffers();
+      }
     }
-  };
+  );
+
+  const offers: Offer[] = offersData?.offers || [];
+
+  // Realtime updates for load_offers (admin sees all offers)
+  useRealtimeLoadOffers({
+    onInsert: () => {
+      mutateOffers();
+    },
+    onUpdate: () => {
+      mutateOffers();
+    },
+    onDelete: () => {
+      mutateOffers();
+    },
+    enabled: true,
+  });
+
+  useEffect(() => {
+    expireOffers(); // Check for expired offers on load
+  }, []);
 
   const expireOffers = async () => {
     try {
@@ -213,7 +223,7 @@ export default function AdminOffersClient() {
       setSelectedOffer(null);
       setCounterAmount("");
       setAdminNotes("");
-      fetchOffers();
+      mutateOffers();
     } catch (error: any) {
       toast.error(error.message || 'Failed to process offer');
     } finally {
@@ -265,7 +275,7 @@ export default function AdminOffersClient() {
       setBulkActionDialogOpen(false);
       setSelectedOffers([]);
       setBulkAdminNotes("");
-      fetchOffers();
+      mutateOffers();
     } catch (error: any) {
       toast.error(error.message || 'Failed to process bulk action');
     } finally {
@@ -528,7 +538,7 @@ export default function AdminOffersClient() {
             <Button
               variant="outline"
               size="sm"
-              onClick={fetchOffers}
+              onClick={() => mutateOffers()}
               disabled={loading}
             >
               <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />

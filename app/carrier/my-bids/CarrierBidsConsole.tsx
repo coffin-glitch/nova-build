@@ -8,6 +8,8 @@ import { Countdown } from "@/components/ui/Countdown";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAccentColor } from "@/hooks/useAccentColor";
+import { useRealtimeAuctionAwards } from "@/hooks/useRealtimeAuctionAwards";
+import { useRealtimeCarrierBids } from "@/hooks/useRealtimeCarrierBids";
 import { useUnifiedUser } from "@/hooks/useUnifiedUser";
 import { formatDistance, formatMoney, formatPickupDateTime, formatStopCount } from "@/lib/format";
 import {
@@ -169,8 +171,23 @@ export function CarrierBidsConsole() {
   const { data: bidsData, mutate: mutateBids } = useSWR(
     user ? "/api/carrier/awarded-bids" : null,
     fetcher,
-    { refreshInterval: 60000 } // Increased to prevent rate limiting
+    { refreshInterval: 60000 } // Reduced - Realtime handles instant updates
   );
+
+  // Realtime updates for auction_awards
+  useRealtimeAuctionAwards({
+    userId: user?.id,
+    onInsert: () => {
+      mutateBids();
+    },
+    onUpdate: () => {
+      mutateBids();
+    },
+    onDelete: () => {
+      mutateBids();
+    },
+    enabled: !!user,
+  });
 
   // Fetch bid statistics
   const { data: statsData } = useSWR(
@@ -183,8 +200,24 @@ export function CarrierBidsConsole() {
   const { data: activeBidsData, mutate: mutateActiveBids } = useSWR(
     user ? "/api/carrier/bids" : null,
     fetcher,
-    { refreshInterval: 10000 } // Refresh every 10 seconds for active bids
+    { refreshInterval: 60000 } // Reduced from 10s - Realtime handles instant updates
   );
+
+  // Realtime updates for carrier_bids
+  useRealtimeCarrierBids({
+    userId: user?.id,
+    onInsert: () => {
+      mutateActiveBids();
+    },
+    onUpdate: () => {
+      mutateActiveBids();
+      mutateBids(); // Also refresh awarded bids in case status changed
+    },
+    onDelete: () => {
+      mutateActiveBids();
+    },
+    enabled: !!user,
+  });
 
   const awardedBids: AwardedBid[] = bidsData?.data || [];
   const serverStats: BidStats = statsData?.data || {

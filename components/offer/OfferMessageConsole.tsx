@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useUnifiedUser } from "@/hooks/useUnifiedUser";
+import { useRealtimeOfferComments } from "@/hooks/useRealtimeOfferComments";
 import { MessageSquare, Send } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -43,8 +44,23 @@ export function OfferMessageConsole({ offerId, isOpen, onClose }: OfferMessageCo
   const { data: commentsData, mutate: mutateComments } = useSWR(
     offerId ? `/api/offers/${offerId}/comments` : null,
     fetcher,
-    { refreshInterval: 5000 }
+    { refreshInterval: 60000 } // Reduced from 5s - Realtime handles instant updates
   );
+
+  // Realtime updates for offer_comments
+  useRealtimeOfferComments({
+    offerId: offerId,
+    onInsert: () => {
+      mutateComments();
+    },
+    onUpdate: () => {
+      mutateComments();
+    },
+    onDelete: () => {
+      mutateComments();
+    },
+    enabled: !!offerId && isOpen,
+  });
 
   const comments = commentsData?.comments || [];
 

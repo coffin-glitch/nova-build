@@ -6,6 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { useAccentColor } from "@/hooks/useAccentColor";
+import { useUnifiedUser } from "@/hooks/useUnifiedUser";
+import { useRealtimeCarrierResponses } from "@/hooks/useRealtimeCarrierResponses";
 import {
     AlertCircle,
     CheckCircle,
@@ -45,6 +47,7 @@ interface CarrierResponse {
 
 export function CarrierMessagesClient() {
   const { accentColor } = useAccentColor();
+  const { user } = useUnifiedUser();
   const [selectedMessage, setSelectedMessage] = useState<AdminMessage | null>(null);
   const [showMessageDialog, setShowMessageDialog] = useState(false);
   const [showResponseDialog, setShowResponseDialog] = useState(false);
@@ -54,8 +57,20 @@ export function CarrierMessagesClient() {
   const { data: messagesData, mutate: mutateMessages } = useSWR(
     "/api/carrier/messages",
     fetcher,
-    { refreshInterval: 10000 }
+    { refreshInterval: 60000 } // Reduced from 10s - Realtime handles instant updates
   );
+
+  // Realtime updates for carrier_responses (to show responses in the UI)
+  useRealtimeCarrierResponses({
+    userId: user?.id,
+    onInsert: () => {
+      mutateMessages(); // Refresh to show new responses
+    },
+    onUpdate: () => {
+      mutateMessages();
+    },
+    enabled: !!user,
+  });
 
   const messages = messagesData?.data || [];
 

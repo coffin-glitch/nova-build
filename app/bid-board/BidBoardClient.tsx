@@ -10,6 +10,9 @@ import { Glass } from "@/components/ui/glass";
 import { Input } from "@/components/ui/input";
 import { MapboxMap } from "@/components/ui/MapboxMap";
 import { useAccentColor } from "@/hooks/useAccentColor";
+import { useRealtimeCarrierProfiles } from "@/hooks/useRealtimeCarrierProfiles";
+import { useRealtimeSystemSettings } from "@/hooks/useRealtimeSystemSettings";
+import { useUnifiedUser } from "@/hooks/useUnifiedUser";
 import { useIsAdmin } from "@/hooks/useUserRole";
 import { TelegramBid } from "@/lib/auctions";
 import { formatDistance, formatPickupDateTime, formatStopCount, formatStops, formatStopsDetailed, ParsedAddress } from "@/lib/format";
@@ -52,9 +55,8 @@ const parseStops = (stops: string | string[] | null): string[] => {
   return [];
 };
 
+import { useRealtimeBids } from "@/hooks/useRealtimeBids";
 import { swrFetcher } from "@/lib/safe-fetcher";
-import { useRealtimeBids } from "@/hooks/useRealtimeBids";
-import { useRealtimeBids } from "@/hooks/useRealtimeBids";
 
 interface BidBoardClientProps {
   initialBids: TelegramBid[];
@@ -96,26 +98,45 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
   const { theme } = useTheme();
   
   // Fetch shop status
-  const { data: shopStatusData } = useSWR(
+  const { data: shopStatusData, mutate: mutateShopStatus } = useSWR(
     '/api/shop-status',
     swrFetcher,
-    { refreshInterval: 30000 } // Refresh every 30 seconds
+    { refreshInterval: 60000 } // Reduced from 30s - Realtime handles instant updates
   );
   
   const shopStatus = shopStatusData?.status || 'open';
+
+  // Realtime updates for system_settings (shop status)
+  useRealtimeSystemSettings({
+    onUpdate: () => {
+      mutateShopStatus();
+    },
+    enabled: true,
+  });
   const isShopOpen = shopStatus === 'open';
   
+  const { user } = useUnifiedUser();
+
   // Check profile status for access restriction - use swrFetcher with credentials
   const { data: profileData, isLoading: profileLoading, mutate: mutateProfile } = useSWR(
     `/api/carrier/profile`,
     swrFetcher,
     {
-      refreshInterval: 10000, // Refresh every 10 seconds to catch approval updates
+      refreshInterval: 60000, // Reduced from 10s - Realtime handles instant updates
       revalidateOnFocus: true,
       revalidateOnReconnect: true,
       dedupingInterval: 5000,
     }
   );
+
+  // Realtime updates for carrier_profiles (current user's profile)
+  useRealtimeCarrierProfiles({
+    userId: user?.id,
+    onUpdate: () => {
+      mutateProfile();
+    },
+    enabled: !!user,
+  });
 
   const profile = profileData?.data;
   

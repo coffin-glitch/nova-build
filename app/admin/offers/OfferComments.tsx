@@ -7,6 +7,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useRealtimeOfferComments } from "@/hooks/useRealtimeOfferComments";
+import { useUnifiedUser } from "@/hooks/useUnifiedUser";
 import { 
   MessageSquare, 
   Send, 
@@ -18,6 +20,9 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
+import useSWR from "swr";
+
+const fetcher = (url: string) => fetch(url).then(r => r.json());
 
 interface OfferComment {
   id: string;
@@ -38,30 +43,34 @@ interface OfferCommentsProps {
 }
 
 export default function OfferComments({ offerId, userRole }: OfferCommentsProps) {
-  const [comments, setComments] = useState<OfferComment[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { user } = useUnifiedUser();
   const [newComment, setNewComment] = useState("");
   const [isInternal, setIsInternal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    fetchComments();
-  }, [offerId]);
+  // Fetch comments using SWR with Realtime
+  const { data: commentsData, mutate: mutateComments, isLoading: loading } = useSWR(
+    offerId ? `/api/offers/${offerId}/comments` : null,
+    fetcher,
+    { refreshInterval: 60000 } // Reduced from polling - Realtime handles instant updates
+  );
 
-  const fetchComments = async () => {
-    try {
-      const response = await fetch(`/api/offers/${offerId}/comments`);
-      if (!response.ok) throw new Error('Failed to fetch comments');
-      
-      const data = await response.json();
-      setComments(data.comments || []);
-    } catch (error) {
-      console.error('Error fetching comments:', error);
-      toast.error('Failed to load comments');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const comments: OfferComment[] = commentsData?.comments || [];
+
+  // Realtime updates for offer_comments
+  useRealtimeOfferComments({
+    offerId: offerId,
+    onInsert: () => {
+      mutateComments();
+    },
+    onUpdate: () => {
+      mutateComments();
+    },
+    onDelete: () => {
+      mutateComments();
+    },
+    enabled: !!offerId,
+  });
 
   const handleSubmitComment = async () => {
     if (!newComment.trim()) {
@@ -88,7 +97,7 @@ export default function OfferComments({ offerId, userRole }: OfferCommentsProps)
       }
 
       const data = await response.json();
-      setComments(prev => [...prev, data.comment]);
+      mutateComments(); // Refresh comments via SWR
       setNewComment("");
       setIsInternal(false);
       toast.success('Comment added successfully');
