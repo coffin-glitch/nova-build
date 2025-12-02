@@ -10,6 +10,8 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { useAccentColor } from "@/hooks/useAccentColor";
 import { useUnifiedRole } from "@/hooks/useUnifiedRole";
+import { useUnifiedUser } from "@/hooks/useUnifiedUser";
+import { useRealtimeNotifications } from "@/hooks/useRealtimeNotifications";
 import { swrFetcher } from "@/lib/safe-fetcher";
 import { AlertTriangle, Bell, CheckCircle, FileText, Info, MessageSquare, Settings, Target, Volume2, VolumeX, XCircle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -84,11 +86,27 @@ export function NotificationBell() {
   const notificationsEndpoint = isAdmin ? '/api/notifications' : '/api/carrier/notifications';
   
   const { data, mutate, error } = useSWR(notificationsEndpoint, swrFetcher, {
-    refreshInterval: 10000, // Refresh every 10 seconds to get new notifications
+    refreshInterval: 0, // Disable polling - using Realtime instead
     revalidateOnFocus: true, // Revalidate when window regains focus
     revalidateOnReconnect: true, // Revalidate when network reconnects
     keepPreviousData: true, // Keep previous data during refetch to prevent flashing
     onError: (err) => console.error('Notification fetch error:', err),
+  });
+
+  // Subscribe to real-time notification updates
+  const { user } = useUnifiedUser();
+  
+  useRealtimeNotifications({
+    enabled: !!user?.id,
+    userId: user?.id,
+    onInsert: () => {
+      console.log('[NotificationBell] New notification received, refreshing...');
+      mutate(); // Refresh when new notification is inserted
+    },
+    onUpdate: () => {
+      console.log('[NotificationBell] Notification updated, refreshing...');
+      mutate(); // Refresh when notification is updated (e.g., marked as read)
+    },
   });
 
   // Get notifications - handle both API response formats

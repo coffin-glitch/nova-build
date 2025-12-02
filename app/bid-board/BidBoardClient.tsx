@@ -53,6 +53,8 @@ const parseStops = (stops: string | string[] | null): string[] => {
 };
 
 import { swrFetcher } from "@/lib/safe-fetcher";
+import { useRealtimeBids } from "@/hooks/useRealtimeBids";
+import { useRealtimeBids } from "@/hooks/useRealtimeBids";
 
 interface BidBoardClientProps {
   initialBids: TelegramBid[];
@@ -133,26 +135,62 @@ export default function BidBoardClient({ initialBids }: BidBoardClientProps) {
   }, [accentColor]);
 
   // Fetch data for the main view - matching admin page exactly
+  // Using Realtime instead of 5-second polling
   const { data, mutate, isLoading } = useSWR(
     `/api/telegram-bids?q=${encodeURIComponent(q)}&tag=${encodeURIComponent(tag)}&limit=1000&showExpired=${showExpired}&isAdmin=false`,
     swrFetcher,
     {
-      refreshInterval: 5000
+      refreshInterval: 0, // Disable polling - using Realtime instead
+      revalidateOnFocus: false,
+      revalidateOnReconnect: true,
     }
   );
 
+  // Subscribe to real-time updates for telegram_bids
+  useRealtimeBids({
+    enabled: true,
+    filter: 'published=eq.true', // Only published bids
+    onInsert: () => {
+      console.log('[BidBoard] New bid inserted, refreshing...');
+      mutate(); // Refresh data when new bid is inserted
+    },
+    onUpdate: () => {
+      console.log('[BidBoard] Bid updated, refreshing...');
+      mutate(); // Refresh data when bid is updated (e.g., expires)
+    },
+    onDelete: () => {
+      console.log('[BidBoard] Bid deleted, refreshing...');
+      mutate(); // Refresh data when bid is deleted
+    },
+  });
+
   // Fetch data for analytics regardless of showExpired filter - matching admin page exactly
-  const { data: activeData } = useSWR(
+  // Using longer intervals for analytics since they're less critical
+  const { data: activeData, mutate: mutateActive } = useSWR(
     `/api/telegram-bids?q=&tag=&limit=1000&showExpired=false&isAdmin=false`,
     swrFetcher,
-    { refreshInterval: 30000 } // Match admin page refresh interval (30s for stats)
+    { refreshInterval: 60000 } // Increased to 60s for analytics (less critical)
   );
 
-  const { data: expiredData } = useSWR(
+  const { data: expiredData, mutate: mutateExpired } = useSWR(
     `/api/telegram-bids?q=&tag=&limit=1000&showExpired=true&isAdmin=false`,
     swrFetcher,
-    { refreshInterval: 30000 } // Match admin page refresh interval (30s for stats)
+    { refreshInterval: 60000 } // Increased to 60s for analytics (less critical)
   );
+
+  // Realtime updates will also refresh analytics when main data changes
+  useRealtimeBids({
+    enabled: true,
+    filter: 'published=eq.true',
+    onInsert: () => {
+      mutateActive();
+      mutateExpired();
+    },
+    onUpdate: () => {
+      mutateActive();
+      mutateExpired();
+    },
+  });
 
   // Calculate today's counts properly - matching admin page
   const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
