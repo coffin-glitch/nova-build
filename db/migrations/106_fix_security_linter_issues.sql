@@ -22,15 +22,21 @@ AND (
 COMMENT ON VIEW public.active_telegram_bids IS 'View of active (non-archived) telegram bids. Uses security_invoker instead of SECURITY DEFINER.';
 
 -- Fix expired_bids view - remove SECURITY DEFINER
+-- Only create if archived_bids table exists
 DROP VIEW IF EXISTS public.expired_bids CASCADE;
 
-CREATE OR REPLACE VIEW public.expired_bids
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'archived_bids') THEN
+        EXECUTE 'CREATE OR REPLACE VIEW public.expired_bids
 WITH (security_invoker = true) AS
 SELECT * FROM public.archived_bids
 WHERE archived_at IS NULL
-ORDER BY received_at DESC;
-
-COMMENT ON VIEW public.expired_bids IS 'View of expired bids. Uses security_invoker instead of SECURITY DEFINER.';
+ORDER BY received_at DESC';
+        
+        EXECUTE 'COMMENT ON VIEW public.expired_bids IS ''View of expired bids. Uses security_invoker instead of SECURITY DEFINER.''';
+    END IF;
+END $$;
 
 -- ============================================================================
 -- PART 2: Enable RLS on Critical Tables
