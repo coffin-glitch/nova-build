@@ -1,6 +1,6 @@
 # Realtime Enablement Tracking
 
-## 📅 Last Updated: 2024-12-19 (21 Tables Enabled - Added user_roles_cache for Role Management)
+## 📅 Last Updated: 2024-12-19 (23 Tables Enabled - Added notification_triggers and carrier_notification_preferences)
 
 This document tracks the **exact status** of Realtime enablement across all tables. Use this as the single source of truth.
 
@@ -66,15 +66,24 @@ This document tracks the **exact status** of Realtime enablement across all tabl
 
 **Total Phase 5:** 1 table ✅ COMPLETE
 
+### Phase 6: Notification Configuration ✅ COMPLETE
+
+| # | Table Name | Enabled Date | Hook Created | Components Status | Priority |
+|---|------------|--------------|--------------|-------------------|----------|
+| 22 | `notification_triggers` | 2024-12-19 | ✅ `useRealtimeNotificationTriggers` | ✅ FavoritesConsole updated | 🟡 Medium |
+| 23 | `carrier_notification_preferences` | 2024-12-19 | ✅ `useRealtimeCarrierNotificationPreferences` | ✅ FavoritesConsole updated | 🟡 Medium |
+
+**Total Phase 6:** 2 tables ✅ COMPLETE
+
 ---
 
 ## 📊 Summary Statistics
 
 ### Overall Status:
-- **✅ Fully Complete:** 21 tables (ALL PHASES COMPLETE)
-- **Total Enabled in Supabase:** 21 tables (15 Phase 1-3 + 5 Phase 4 + 1 Phase 5)
-- **Total Hooks Created:** 21 hooks ✅ (ALL COMPLETE)
-- **Total Components Updated:** 26+ components ✅ (ALL COMPLETE)
+- **✅ Fully Complete:** 23 tables (ALL PHASES COMPLETE)
+- **Total Enabled in Supabase:** 23 tables (15 Phase 1-3 + 5 Phase 4 + 1 Phase 5 + 2 Phase 6)
+- **Total Hooks Created:** 23 hooks ✅ (ALL COMPLETE)
+- **Total Components Updated:** 27+ components ✅ (ALL COMPLETE)
 - **Total Components Pending:** 0 ✅
 
 ### Impact:
@@ -163,7 +172,7 @@ To verify a table is enabled in Supabase:
 
 ## 📌 Quick Reference
 
-**Enabled Tables (21) ✅ ALL COMPLETE:**
+**Enabled Tables (23) ✅ ALL COMPLETE:**
 1. telegram_bids ✅
 2. notifications ✅
 3. conversations ✅
@@ -185,8 +194,10 @@ To verify a table is enabled in Supabase:
 19. offer_comments ✅ (Phase 4)
 20. carrier_responses ✅ (Phase 4)
 21. user_roles_cache ✅ (Phase 5 - CRITICAL for role management)
+22. notification_triggers ✅ (Phase 6 - Notification configuration)
+23. carrier_notification_preferences ✅ (Phase 6 - Notification preferences)
 
-**Hooks Created (21) ✅ ALL COMPLETE:**
+**Hooks Created (23) ✅ ALL COMPLETE:**
 - useRealtimeBids ✅
 - useRealtimeNotifications ✅
 - useRealtimeConversations ✅
@@ -208,4 +219,6 @@ To verify a table is enabled in Supabase:
 - useRealtimeOfferComments ✅ (Phase 4)
 - useRealtimeCarrierResponses ✅ (Phase 4)
 - useRealtimeUserRoles ✅ (Phase 5 - CRITICAL)
+- useRealtimeNotificationTriggers ✅ (Phase 6)
+- useRealtimeCarrierNotificationPreferences ✅ (Phase 6)
 

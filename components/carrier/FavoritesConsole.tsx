@@ -12,6 +12,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAccentColor } from "@/hooks/useAccentColor";
 import { useRealtimeFavorites } from "@/hooks/useRealtimeFavorites";
+import { useRealtimeNotificationTriggers } from "@/hooks/useRealtimeNotificationTriggers";
+import { useRealtimeCarrierNotificationPreferences } from "@/hooks/useRealtimeCarrierNotificationPreferences";
 import { useUnifiedUser } from "@/hooks/useUnifiedUser";
 import { extractCityStateForMatching, formatAddressForCard, formatDistance, formatStopCount, formatStops, formatStopsDetailed, ParsedAddress } from "@/lib/format";
 import {
@@ -172,7 +174,7 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
     isOpen ? `/api/carrier/notification-preferences` : null,
     fetcher,
     { 
-      refreshInterval: 30000,
+      refreshInterval: 0, // Disable polling - using Realtime instead
       fallbackData: { ok: true, data: null }
     }
   );
@@ -185,7 +187,7 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
     isOpen ? `/api/carrier/notification-triggers` : null,
     fetcher,
     { 
-      refreshInterval: 30000,
+      refreshInterval: 0, // Disable polling - using Realtime instead
       fallbackData: { ok: true, data: [] },
       keepPreviousData: true,
       revalidateOnFocus: false,
@@ -199,6 +201,43 @@ export default function FavoritesConsole({ isOpen, onClose }: FavoritesConsolePr
       }
     }
   );
+
+  // Memoize callbacks to prevent unnecessary re-subscriptions
+  const handleTriggerInsert = useCallback(() => {
+    console.log('[FavoritesConsole] New notification trigger created, refreshing...');
+    mutateTriggers();
+  }, [mutateTriggers]);
+
+  const handleTriggerUpdate = useCallback(() => {
+    console.log('[FavoritesConsole] Notification trigger updated, refreshing...');
+    mutateTriggers();
+  }, [mutateTriggers]);
+
+  const handleTriggerDelete = useCallback(() => {
+    console.log('[FavoritesConsole] Notification trigger deleted, refreshing...');
+    mutateTriggers();
+  }, [mutateTriggers]);
+
+  const handlePreferenceUpdate = useCallback(() => {
+    console.log('[FavoritesConsole] Notification preferences updated, refreshing...');
+    mutatePreferences();
+  }, [mutatePreferences]);
+
+  // Subscribe to real-time updates for notification_triggers
+  useRealtimeNotificationTriggers({
+    enabled: isOpen && !!user?.id,
+    userId: user?.id,
+    onInsert: handleTriggerInsert,
+    onUpdate: handleTriggerUpdate,
+    onDelete: handleTriggerDelete,
+  });
+
+  // Subscribe to real-time updates for carrier_notification_preferences
+  useRealtimeCarrierNotificationPreferences({
+    enabled: isOpen && !!user?.id,
+    userId: user?.id,
+    onUpdate: handlePreferenceUpdate,
+  });
 
   // Fetch carrier tier information
   const { data: profileData } = useSWR(

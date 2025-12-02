@@ -1,6 +1,6 @@
 # Realtime Tables to Enable in Supabase Dashboard
 
-## ✅ Currently Enabled (16 tables)
+## ✅ Currently Enabled (18 tables)
 
 These tables are **already enabled** in Supabase and have hooks/components implemented:
 
@@ -20,6 +20,8 @@ These tables are **already enabled** in Supabase and have hooks/components imple
 14. ✅ `assignments` - Load assignments
 15. ✅ `announcement_reads` - Announcement read status
 16. ✅ `user_roles_cache` - User role cache (CRITICAL for admin/carrier access control)
+17. ✅ `notification_triggers` - Notification trigger configuration
+18. ✅ `carrier_notification_preferences` - Carrier notification preferences
 
 **Status:** All critical and medium priority tables are enabled ✅
 
