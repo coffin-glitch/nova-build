@@ -10,6 +10,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useUnifiedRole } from "@/hooks/useUnifiedRole";
 import { cn } from "@/lib/utils";
 import { useUnifiedUser } from "@/hooks/useUnifiedUser";
+import { useRealtimeConversationMessages } from "@/hooks/useRealtimeConversationMessages";
 import {
     ArrowLeft,
     Building2,
@@ -178,8 +179,27 @@ export default function FloatingAdminChatButton() {
         throw error;
       }
     },
-    { refreshInterval: 2000 } // Refresh messages every 2 seconds
+    { refreshInterval: 0 } // Disable polling - using Realtime instead
   );
+
+  // Memoize callbacks to prevent unnecessary re-subscriptions
+  const handleMessageInsert = useCallback(() => {
+    console.log('[FloatingAdminChat] New message received, refreshing...');
+    mutateMessages();
+  }, [mutateMessages]);
+
+  const handleMessageUpdate = useCallback(() => {
+    console.log('[FloatingAdminChat] Message updated, refreshing...');
+    mutateMessages();
+  }, [mutateMessages]);
+
+  // Subscribe to real-time message updates
+  useRealtimeConversationMessages({
+    enabled: !!selectedConversationId && isAdmin,
+    conversationId: selectedConversationId || undefined,
+    onInsert: handleMessageInsert,
+    onUpdate: handleMessageUpdate,
+  });
 
   // Fetcher already unwraps the data, so use directly
   const rawMessages: ConversationMessage[] = Array.isArray(messagesData) 
@@ -435,22 +455,51 @@ export default function FloatingAdminChatButton() {
     }
   }, [messages, isOpen, selectedConversationId, scrollToBottom]);
 
-  // Handle send message
+  // Handle send message with optimistic updates
   const handleSendMessage = useCallback(async () => {
     if (!selectedConversationId || (!newMessage.trim() && !selectedFile) || isSendingMessage) return;
 
+    const messageText = newMessage.trim();
+    const tempMessageId = `temp-${Date.now()}`;
+    
+    // Optimistic update: Add message to UI immediately
+    const optimisticMessage: ConversationMessage = {
+      id: tempMessageId,
+      conversation_id: selectedConversationId,
+      sender_id: user?.id || '',
+      sender_type: 'admin',
+      sender_name: user?.email || 'Admin',
+      message: messageText,
+      created_at: new Date().toISOString(),
+      file_url: null,
+      file_name: selectedFile?.name || null,
+      file_type: selectedFile?.type || null,
+    };
+
+    // Optimistically update messages
+    mutateMessages((current: ConversationMessage[] = []) => {
+      return [...current, optimisticMessage];
+    }, false); // false = don't revalidate yet
+
     setIsSendingMessage(true);
+    setNewMessage("");
+    const fileToSend = selectedFile;
+    setSelectedFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+    setTimeout(scrollToBottom, 100);
 
     try {
       let response;
       
-      if (selectedFile) {
+      if (fileToSend) {
         // Send file with optional message
         const formData = new FormData();
-        if (newMessage.trim()) {
-          formData.append('message', newMessage.trim());
+        if (messageText) {
+          formData.append('message', messageText);
         }
-        formData.append('file', selectedFile);
+        formData.append('file', fileToSend);
 
         response = await fetch(`/api/admin/conversations/${selectedConversationId}`, {
           method: 'POST',
@@ -461,21 +510,22 @@ export default function FloatingAdminChatButton() {
         response = await fetch(`/api/admin/conversations/${selectedConversationId}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: newMessage.trim() })
+          body: JSON.stringify({ message: messageText })
         });
       }
 
       if (response.ok) {
-        setNewMessage("");
-        setSelectedFile(null);
-        if (fileInputRef.current) {
-          fileInputRef.current.value = '';
-        }
+        // Revalidate to get the real message from server (replaces optimistic one)
         mutateMessages(); // Refresh messages in current conversation
         mutateConversations(); // Refresh conversations list (for last_message_at update)
         setTimeout(scrollToBottom, 100);
         toast.success("Message sent successfully!");
       } else {
+        // Revert optimistic update on error
+        mutateMessages((current: ConversationMessage[] = []) => {
+          return current.filter(msg => msg.id !== tempMessageId);
+        }, false);
+        
         const errorData = await response.json().catch(() => ({ error: 'Failed to send message' }));
         throw new Error(errorData.error || 'Failed to send message');
       }

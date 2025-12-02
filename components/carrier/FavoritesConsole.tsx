@@ -11,9 +11,9 @@ import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAccentColor } from "@/hooks/useAccentColor";
+import { useRealtimeCarrierNotificationPreferences } from "@/hooks/useRealtimeCarrierNotificationPreferences";
 import { useRealtimeFavorites } from "@/hooks/useRealtimeFavorites";
 import { useRealtimeNotificationTriggers } from "@/hooks/useRealtimeNotificationTriggers";
-import { useRealtimeCarrierNotificationPreferences } from "@/hooks/useRealtimeCarrierNotificationPreferences";
 import { useUnifiedUser } from "@/hooks/useUnifiedUser";
 import { extractCityStateForMatching, formatAddressForCard, formatDistance, formatStopCount, formatStops, formatStopsDetailed, ParsedAddress } from "@/lib/format";
 import {

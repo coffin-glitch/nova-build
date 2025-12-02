@@ -24,6 +24,12 @@ export function useRealtimeConversationMessages(options: UseRealtimeConversation
   } = options;
 
   const channelRef = useRef<ReturnType<typeof getSupabaseBrowser>['channel'] | null>(null);
+  const callbacksRef = useRef({ onInsert, onUpdate, onDelete });
+  
+  // Update callbacks ref when they change (without triggering re-subscription)
+  useEffect(() => {
+    callbacksRef.current = { onInsert, onUpdate, onDelete };
+  }, [onInsert, onUpdate, onDelete]);
 
   useEffect(() => {
     if (!enabled || !conversationId) return;
@@ -44,15 +50,17 @@ export function useRealtimeConversationMessages(options: UseRealtimeConversation
       .on('postgres_changes', postgresChanges, (payload) => {
         console.log('[Realtime] conversation_messages change:', payload.eventType, payload);
         
+        // Use ref to get latest callbacks without re-subscribing
+        const callbacks = callbacksRef.current;
         switch (payload.eventType) {
           case 'INSERT':
-            onInsert?.(payload);
+            callbacks.onInsert?.(payload);
             break;
           case 'UPDATE':
-            onUpdate?.(payload);
+            callbacks.onUpdate?.(payload);
             break;
           case 'DELETE':
-            onDelete?.(payload);
+            callbacks.onDelete?.(payload);
             break;
         }
       })
@@ -72,6 +80,6 @@ export function useRealtimeConversationMessages(options: UseRealtimeConversation
         channelRef.current = null;
       }
     };
-  }, [enabled, conversationId, onInsert, onUpdate, onDelete]);
+  }, [enabled, conversationId]); // Removed callbacks from dependencies
 }
 

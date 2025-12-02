@@ -34,6 +34,10 @@ export function useUnifiedRole() {
       return;
     }
 
+    // CRITICAL: Don't default to carrier immediately - wait for API response
+    // This prevents the race condition where admin logs in but sees carrier role
+    setIsLoading(true);
+
     try {
       // CRITICAL: Always query database first (source of truth)
       // User metadata may be stale after role changes
@@ -54,7 +58,7 @@ export function useUnifiedRole() {
           const userRole = (data.role || "carrier") as UserRole;
           setRole(userRole);
           setIsAdmin(userRole === "admin");
-          setIsCarrier(userRole === "carrier");
+          setIsCarrier(userRole === "carrier" || userRole === "admin");
           setIsLoading(false);
           return;
         } else {
@@ -72,12 +76,13 @@ export function useUnifiedRole() {
         const userRole = metadataRole as UserRole;
         setRole(userRole);
         setIsAdmin(userRole === "admin");
-        setIsCarrier(userRole === "carrier");
+        setIsCarrier(userRole === "carrier" || userRole === "admin");
         setIsLoading(false);
         return;
       }
       
-      // Final fallback: default to carrier
+      // Final fallback: default to carrier (but only after API has been tried)
+      console.warn('[useUnifiedRole] No role found in API or metadata, defaulting to carrier');
       setRole("carrier");
       setIsAdmin(false);
       setIsCarrier(true);
@@ -89,9 +94,10 @@ export function useUnifiedRole() {
         const userRole = metadataRole as UserRole;
         setRole(userRole);
         setIsAdmin(userRole === "admin");
-        setIsCarrier(userRole === "carrier");
+        setIsCarrier(userRole === "carrier" || userRole === "admin");
       } else {
-        // Default to carrier for authenticated users
+        // Default to carrier for authenticated users (only after all attempts fail)
+        console.warn('[useUnifiedRole] All role fetch attempts failed, defaulting to carrier');
         setRole("carrier");
         setIsAdmin(false);
         setIsCarrier(true);
@@ -101,10 +107,20 @@ export function useUnifiedRole() {
     }
   }, [user, supabaseLoading]);
 
-  // Initial fetch on mount or when user changes
+  // CRITICAL: Fetch role immediately when user changes (not just on mount)
+  // This ensures role is fetched as soon as user logs in, preventing race conditions
   useEffect(() => {
-    fetchRole();
-  }, [fetchRole]);
+    if (user && !supabaseLoading) {
+      // Force immediate role fetch when user changes
+      fetchRole();
+    } else if (!user) {
+      // Clear role when user logs out
+      setRole("none");
+      setIsAdmin(false);
+      setIsCarrier(false);
+      setIsLoading(false);
+    }
+  }, [user?.id, supabaseLoading, fetchRole]);
 
   // Subscribe to Realtime updates for user_roles_cache
   // This ensures role changes are reflected instantly without page refresh
