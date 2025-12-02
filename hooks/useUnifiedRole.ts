@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { useSupabaseUser } from "@/components/providers/SupabaseProvider";
 import { useRealtimeUserRoles } from "@/hooks/useRealtimeUserRoles";
 
@@ -9,6 +9,12 @@ export type UserRole = "admin" | "carrier" | "none";
 /**
  * Unified role hook - Now uses Supabase only with Realtime updates
  * Automatically refreshes role when user_roles_cache changes in database
+ * 
+ * CRITICAL FIXES:
+ * - Prevents role from switching back to carrier randomly
+ * - Preserves admin role if API fails (doesn't downgrade)
+ * - Debounces rapid role fetches to prevent race conditions
+ * - Stabilizes callbacks to prevent unnecessary re-renders
  */
 export function useUnifiedRole() {
   const [role, setRole] = useState<UserRole>("none");
@@ -19,8 +25,18 @@ export function useUnifiedRole() {
   // Always use Supabase (we're fully migrated)
   const { user, isLoading: supabaseLoading } = useSupabaseUser();
 
-  // Fetch role from database
-  const fetchRole = useCallback(async () => {
+  // Store current role in ref to preserve it during API failures
+  const currentRoleRef = useRef<UserRole>("none");
+  const lastFetchTimeRef = useRef<number>(0);
+  const fetchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Update ref when role changes
+  useEffect(() => {
+    currentRoleRef.current = role;
+  }, [role]);
+
+  // Fetch role from database with debouncing and error handling
+  const fetchRole = useCallback(async (force: boolean = false) => {
     if (supabaseLoading) {
       setIsLoading(true);
       return;
@@ -31,8 +47,18 @@ export function useUnifiedRole() {
       setIsAdmin(false);
       setIsCarrier(false);
       setIsLoading(false);
+      currentRoleRef.current = "none";
       return;
     }
+
+    // Debounce: Don't fetch if we just fetched recently (unless forced)
+    const now = Date.now();
+    if (!force && now - lastFetchTimeRef.current < 1000) {
+      console.log('[useUnifiedRole] Debouncing role fetch (too soon after last fetch)');
+      return;
+    }
+
+    lastFetchTimeRef.current = now;
 
     // CRITICAL: Don't default to carrier immediately - wait for API response
     // This prevents the race condition where admin logs in but sees carrier role
@@ -56,51 +82,83 @@ export function useUnifiedRole() {
         if (contentType && contentType.includes('application/json')) {
           const data = await response.json();
           const userRole = (data.role || "carrier") as UserRole;
-          setRole(userRole);
-          setIsAdmin(userRole === "admin");
-          setIsCarrier(userRole === "carrier" || userRole === "admin");
+          
+          // Only update if role actually changed (prevents unnecessary re-renders)
+          if (userRole !== currentRoleRef.current) {
+            console.log(`[useUnifiedRole] Role updated: ${currentRoleRef.current} -> ${userRole}`);
+            setRole(userRole);
+            setIsAdmin(userRole === "admin");
+            setIsCarrier(userRole === "carrier" || userRole === "admin");
+            currentRoleRef.current = userRole;
+          }
           setIsLoading(false);
           return;
         } else {
           // Response is not JSON (probably HTML error page)
-          console.warn('Role API returned non-JSON response, falling back to metadata');
+          console.warn('Role API returned non-JSON response, preserving current role');
         }
       } else {
-        // API returned an error, fall back to metadata
-        console.warn('Role API error, falling back to user metadata');
+        // API returned an error, preserve current role if it's admin
+        console.warn('Role API error, preserving current role');
       }
       
-      // Fallback: Check user metadata if API fails
+      // CRITICAL: If we have a valid role (especially admin), preserve it on API failure
+      // Don't downgrade from admin to carrier just because API failed
+      if (currentRoleRef.current === "admin") {
+        console.log('[useUnifiedRole] API failed but preserving admin role');
+        setIsLoading(false);
+        return; // Keep admin role
+      }
+      
+      // Fallback: Check user metadata if API fails (only if we don't have admin role)
       const metadataRole = user.user_metadata?.role;
       if (metadataRole === "admin" || metadataRole === "carrier") {
         const userRole = metadataRole as UserRole;
-        setRole(userRole);
-        setIsAdmin(userRole === "admin");
-        setIsCarrier(userRole === "carrier" || userRole === "admin");
+        if (userRole !== currentRoleRef.current) {
+          setRole(userRole);
+          setIsAdmin(userRole === "admin");
+          setIsCarrier(userRole === "carrier" || userRole === "admin");
+          currentRoleRef.current = userRole;
+        }
         setIsLoading(false);
         return;
       }
       
-      // Final fallback: default to carrier (but only after API has been tried)
-      console.warn('[useUnifiedRole] No role found in API or metadata, defaulting to carrier');
-      setRole("carrier");
-      setIsAdmin(false);
-      setIsCarrier(true);
+      // Final fallback: default to carrier (but only if we don't have admin role)
+      if (currentRoleRef.current !== "admin") {
+        console.warn('[useUnifiedRole] No role found in API or metadata, defaulting to carrier');
+        setRole("carrier");
+        setIsAdmin(false);
+        setIsCarrier(true);
+        currentRoleRef.current = "carrier";
+      }
     } catch (error) {
       console.error("Error fetching role:", error);
-      // Fallback to metadata if available
+      
+      // CRITICAL: Preserve admin role on error - don't downgrade
+      if (currentRoleRef.current === "admin") {
+        console.log('[useUnifiedRole] Error fetching role but preserving admin role');
+        setIsLoading(false);
+        return; // Keep admin role
+      }
+      
+      // Fallback to metadata if available (only if not admin)
       const metadataRole = user.user_metadata?.role;
       if (metadataRole === "admin" || metadataRole === "carrier") {
         const userRole = metadataRole as UserRole;
-        setRole(userRole);
-        setIsAdmin(userRole === "admin");
-        setIsCarrier(userRole === "carrier" || userRole === "admin");
-      } else {
-        // Default to carrier for authenticated users (only after all attempts fail)
+        if (userRole !== currentRoleRef.current) {
+          setRole(userRole);
+          setIsAdmin(userRole === "admin");
+          setIsCarrier(userRole === "carrier" || userRole === "admin");
+          currentRoleRef.current = userRole;
+        }
+      } else if (currentRoleRef.current !== "admin") {
+        // Default to carrier for authenticated users (only after all attempts fail and not admin)
         console.warn('[useUnifiedRole] All role fetch attempts failed, defaulting to carrier');
         setRole("carrier");
         setIsAdmin(false);
         setIsCarrier(true);
+        currentRoleRef.current = "carrier";
       }
     } finally {
       setIsLoading(false);
@@ -110,38 +168,72 @@ export function useUnifiedRole() {
   // CRITICAL: Fetch role immediately when user changes (not just on mount)
   // This ensures role is fetched as soon as user logs in, preventing race conditions
   useEffect(() => {
+    // Clear any pending fetch timeout
+    if (fetchTimeoutRef.current) {
+      clearTimeout(fetchTimeoutRef.current);
+      fetchTimeoutRef.current = null;
+    }
+
     if (user && !supabaseLoading) {
       // Force immediate role fetch when user changes
-      fetchRole();
+      fetchRole(true); // Force fetch on user change
     } else if (!user) {
       // Clear role when user logs out
       setRole("none");
       setIsAdmin(false);
       setIsCarrier(false);
       setIsLoading(false);
+      currentRoleRef.current = "none";
     }
-  }, [user?.id, supabaseLoading, fetchRole]);
+  }, [user?.id, supabaseLoading]); // Removed fetchRole from dependencies to prevent loops
 
   // Subscribe to Realtime updates for user_roles_cache
   // This ensures role changes are reflected instantly without page refresh
-  useRealtimeUserRoles({
-    userId: user?.id,
-    onUpdate: (payload) => {
+  // Use ref for callbacks to prevent re-subscriptions
+  const realtimeCallbacksRef = useRef({
+    onUpdate: (payload: any) => {
       // Only refresh if this update is for the current user
       if (payload.new?.supabase_user_id === user?.id) {
         console.log('[useUnifiedRole] Role updated in database, refreshing...', payload.new);
-        fetchRole(); // Refresh role immediately
+        // Debounce: Wait a bit before fetching to avoid rapid updates
+        if (fetchTimeoutRef.current) {
+          clearTimeout(fetchTimeoutRef.current);
+        }
+        fetchTimeoutRef.current = setTimeout(() => {
+          fetchRole(true); // Force fetch on Realtime update
+        }, 500); // 500ms debounce
       }
     },
-    onInsert: (payload) => {
+    onInsert: (payload: any) => {
       // New role assigned to current user
       if (payload.new?.supabase_user_id === user?.id) {
         console.log('[useUnifiedRole] Role inserted for current user, refreshing...', payload.new);
-        fetchRole();
+        // Debounce: Wait a bit before fetching to avoid rapid updates
+        if (fetchTimeoutRef.current) {
+          clearTimeout(fetchTimeoutRef.current);
+        }
+        fetchTimeoutRef.current = setTimeout(() => {
+          fetchRole(true); // Force fetch on Realtime update
+        }, 500); // 500ms debounce
       }
     },
+  });
+
+  useRealtimeUserRoles({
+    userId: user?.id,
+    onUpdate: realtimeCallbacksRef.current.onUpdate,
+    onInsert: realtimeCallbacksRef.current.onInsert,
     enabled: !!user?.id, // Only subscribe when user is logged in
   });
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (fetchTimeoutRef.current) {
+        clearTimeout(fetchTimeoutRef.current);
+      }
+    };
+  }, []);
 
   return {
     role,

@@ -91,7 +91,7 @@ interface UserInfo {
 
 export default function FloatingAdminChatButton() {
   const { user, isLoaded } = useUnifiedUser();
-  const { isAdmin } = useUnifiedRole();
+  const { isAdmin, isLoading: roleLoading } = useUnifiedRole();
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [position, setPosition] = useState({ x: 100, y: 100 }); // Safe default for SSR
@@ -753,7 +753,8 @@ export default function FloatingAdminChatButton() {
 
   const carrierProfile = carrierProfileData || null;
 
-  if (!isLoaded || !user || !isAdmin) return null;
+  // Don't render until user and role are loaded - prevents both buttons from showing
+  if (!isLoaded || !user || roleLoading || !isAdmin) return null;
 
   return (
     <>

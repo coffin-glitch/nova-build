@@ -85,7 +85,7 @@ interface UserInfo {
 
 export default function FloatingCarrierChatButton() {
   const { user, isLoaded } = useUnifiedUser();
-  const { isCarrier } = useUnifiedRole();
+  const { isCarrier, isLoading: roleLoading } = useUnifiedRole();
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [position, setPosition] = useState({ x: 100, y: 100 });
@@ -623,7 +623,8 @@ export default function FloatingCarrierChatButton() {
     };
   }, []);
 
-  if (!isLoaded || !user || !isCarrier) return null;
+  // Don't render until user and role are loaded - prevents both buttons from showing
+  if (!isLoaded || !user || roleLoading || !isCarrier) return null;
 
   return (
     <>
