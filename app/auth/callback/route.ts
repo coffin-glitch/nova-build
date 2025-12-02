@@ -4,6 +4,20 @@ import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
 /**
+ * Get the base URL for redirects
+ * Uses NEXT_PUBLIC_APP_URL or NEXT_PUBLIC_BASE_URL if set, otherwise falls back to request origin
+ */
+function getBaseUrl(requestUrl: URL): string {
+  const envUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_BASE_URL;
+  if (envUrl) {
+    // Remove trailing slash if present
+    return envUrl.replace(/\/$/, '');
+  }
+  // Fallback to request origin (for local development)
+  return requestUrl.origin;
+}
+
+/**
  * Supabase Auth Callback Handler
  * 
  * Handles OAuth callbacks, email confirmations, password resets, and magic links
@@ -16,6 +30,7 @@ import { NextResponse } from 'next/server';
  */
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
+  const baseUrl = getBaseUrl(requestUrl);
   const code = requestUrl.searchParams.get('code');
   const token = requestUrl.searchParams.get('token');
   const type = requestUrl.searchParams.get('type');
@@ -37,7 +52,7 @@ export async function GET(request: NextRequest) {
   // Handle errors
   if (error) {
     console.error('[Auth Callback] Error:', error, errorDescription);
-    const errorUrl = new URL('/sign-in?error=auth_failed', requestUrl.origin);
+    const errorUrl = new URL('/sign-in?error=auth_failed', baseUrl);
     
     // Ensure error_description is always a string
     const safeErrorDescription = errorDescription || error || 'Authentication failed';
@@ -105,7 +120,7 @@ export async function GET(request: NextRequest) {
     
     if (!supabaseUrl || !supabaseAnonKey) {
       console.error('[Auth Callback] Supabase not configured');
-      return NextResponse.redirect(new URL('/sign-in?error=configuration_error', requestUrl.origin));
+      return NextResponse.redirect(new URL('/sign-in?error=configuration_error', baseUrl));
     }
     
     const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
@@ -174,7 +189,7 @@ export async function GET(request: NextRequest) {
           errorMessage = 'The authentication code has expired or is invalid. Please try signing in again.';
         }
         
-        const errorUrl = new URL('/sign-in?error=code_exchange_failed', requestUrl.origin);
+        const errorUrl = new URL('/sign-in?error=code_exchange_failed', baseUrl);
         
         // Sanitize error message for URL
         const safeErrorDesc = errorMessage
@@ -297,7 +312,7 @@ export async function GET(request: NextRequest) {
         }
         
         // Create response and set all queued cookies
-        const response = NextResponse.redirect(new URL(finalRedirectUrl, requestUrl.origin));
+        const response = NextResponse.redirect(new URL(finalRedirectUrl, baseUrl));
         
         // CRITICAL: Aggressively delete all Clerk cookies - we're using Supabase only now
         const allCookies = Array.from(cookieStore.getAll());
@@ -355,7 +370,7 @@ export async function GET(request: NextRequest) {
 
       // No session - redirect to sign in
       console.log('⚠️ [Auth Callback] No session data after code exchange');
-      return NextResponse.redirect(new URL('/sign-in?error=no_session', requestUrl.origin));
+      return NextResponse.redirect(new URL('/sign-in?error=no_session', baseUrl));
     }
 
     // Handle token-based auth (password reset, magic link)
@@ -373,7 +388,7 @@ export async function GET(request: NextRequest) {
 
           if (recoveryError) {
             console.error('[Auth Callback] Password recovery verification error:', recoveryError);
-            const errorUrl = new URL('/auth/reset-password?error=invalid_token', requestUrl.origin);
+            const errorUrl = new URL('/auth/reset-password?error=invalid_token', baseUrl);
             return NextResponse.redirect(errorUrl);
           }
 
@@ -390,7 +405,7 @@ export async function GET(request: NextRequest) {
 
           if (verifyError) {
             console.error('[Auth Callback] Magic link verification error:', verifyError);
-            const errorUrl = new URL('/sign-in?error=magiclink_failed', requestUrl.origin);
+            const errorUrl = new URL('/sign-in?error=magiclink_failed', baseUrl);
             return NextResponse.redirect(errorUrl);
           }
 
@@ -403,11 +418,11 @@ export async function GET(request: NextRequest) {
           redirectUrl = '/sign-in?error=invalid_token_type';
       }
 
-      return NextResponse.redirect(new URL(redirectUrl, requestUrl.origin));
+      return NextResponse.redirect(new URL(redirectUrl, baseUrl));
     }
 
     // No code or token - redirect to sign in
-    return NextResponse.redirect(new URL('/sign-in', requestUrl.origin));
+    return NextResponse.redirect(new URL('/sign-in', baseUrl));
 
   } catch (error: any) {
     console.error('[Auth Callback] Exception:', error);
@@ -416,7 +431,7 @@ export async function GET(request: NextRequest) {
     console.error('[Auth Callback] Error message value:', error?.message);
     console.error('[Auth Callback] Error stack:', error?.stack);
     
-    const errorUrl = new URL('/sign-in?error=callback_exception', requestUrl.origin);
+    const errorUrl = new URL('/sign-in?error=callback_exception', baseUrl);
     
     // Ensure error_description is always a simple string - catch any errors during conversion
     let errorDescription = 'Authentication callback failed';
