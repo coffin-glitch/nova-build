@@ -52,24 +52,14 @@ CREATE POLICY "Allow all access to telegram_bids" ON public.telegram_bids
 -- Enable RLS on carrier_profiles
 ALTER TABLE IF EXISTS public.carrier_profiles ENABLE ROW LEVEL SECURITY;
 
--- Create policy: users can only access their own profile
-DROP POLICY IF EXISTS "Users can view own carrier profile" ON public.carrier_profiles;
-CREATE POLICY "Users can view own carrier profile" ON public.carrier_profiles
-    FOR SELECT
-    USING (auth.uid()::text = supabase_user_id);
-
--- Create policy: users can update their own profile
-DROP POLICY IF EXISTS "Users can update own carrier profile" ON public.carrier_profiles;
-CREATE POLICY "Users can update own carrier profile" ON public.carrier_profiles
-    FOR UPDATE
-    USING (auth.uid()::text = supabase_user_id)
-    WITH CHECK (auth.uid()::text = supabase_user_id);
-
--- Create policy: users can insert their own profile
-DROP POLICY IF EXISTS "Users can insert own carrier profile" ON public.carrier_profiles;
-CREATE POLICY "Users can insert own carrier profile" ON public.carrier_profiles
-    FOR INSERT
-    WITH CHECK (auth.uid()::text = supabase_user_id);
+-- Create permissive policy for carrier_profiles
+-- Note: Since we use direct PostgreSQL connections (not PostgREST), 
+-- we use permissive policies. Access control is handled in application code.
+DROP POLICY IF EXISTS "Allow all access to carrier_profiles" ON public.carrier_profiles;
+CREATE POLICY "Allow all access to carrier_profiles" ON public.carrier_profiles
+    FOR ALL
+    USING (true)
+    WITH CHECK (true);
 
 -- Note: For tables accessed only via direct PostgreSQL connections (not PostgREST),
 -- we'll create permissive policies. You can tighten these later.
