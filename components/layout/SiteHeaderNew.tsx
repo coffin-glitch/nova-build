@@ -198,8 +198,9 @@ export default function SiteHeader() {
             {/* Notifications */}
             <NotificationBell />
 
-            {/* Messages for Carriers */}
-            {isCarrier && (
+            {/* Messages - Show correct link based on role */}
+            {/* CRITICAL: Only show carrier messages for actual carriers, not admins */}
+            {isCarrier && !isAdmin && role === "carrier" && (
               <Button variant="ghost" size="icon" asChild>
                 <Link href="/carrier/messages">
                   <Mail className="h-5 w-5" />
@@ -208,7 +209,7 @@ export default function SiteHeader() {
             )}
 
             {/* Messages for Admins */}
-            {isAdmin && (
+            {isAdmin && role === "admin" && (
               <Button variant="ghost" size="icon" asChild>
                 <Link href="/admin/messages">
                   <Mail className="h-5 w-5" />
@@ -321,7 +322,7 @@ export default function SiteHeader() {
                       <div className="flex items-center justify-between">
                         <span className="text-sm text-muted-foreground">Messages</span>
                         <Button variant="ghost" size="sm" asChild className="relative">
-                          <Link href={isAdmin ? "/admin/messages" : "/carrier/messages"}>
+                          <Link href={isAdmin && role === "admin" ? "/admin/messages" : "/carrier/messages"}>
                             {unreadMessageCount > 0 ? (
                               <Mail className="h-4 w-4 mr-2" />
                             ) : (

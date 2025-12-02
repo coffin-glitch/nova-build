@@ -156,6 +156,24 @@ export async function POST(req: NextRequest) {
     const auth = await requireApiAdmin(req);
     const userId = auth.userId;
 
+    // Check rate limit for admin write operation
+    const rateLimit = await checkApiRateLimit(req, {
+      userId,
+      routeType: 'admin'
+    });
+
+    if (!rateLimit.allowed) {
+      const response = NextResponse.json(
+        {
+          error: 'Rate limit exceeded',
+          message: `Too many requests. Please try again after ${rateLimit.retryAfter} seconds.`,
+          retryAfter: rateLimit.retryAfter
+        },
+        { status: 429 }
+      );
+      return addRateLimitHeaders(addSecurityHeaders(response, req), rateLimit);
+    }
+
     const body = await req.json();
     const { user_id, carrier_user_id, admin_user_id } = body;
     
@@ -178,14 +196,14 @@ export async function POST(req: NextRequest) {
         { error: `Invalid input: ${validation.errors.join(', ')}` },
         { status: 400 }
       );
-      return addSecurityHeaders(response, request);
+      return addSecurityHeaders(response, req);
     }
 
     if (!targetUserId) {
       const response = NextResponse.json({ 
         error: "Missing required field: user_id, carrier_user_id, or admin_user_id" 
       }, { status: 400 });
-      return addSecurityHeaders(response, request);
+      return addSecurityHeaders(response, req);
     }
 
     // CRITICAL: Prevent self-conversations (user chatting with themselves)

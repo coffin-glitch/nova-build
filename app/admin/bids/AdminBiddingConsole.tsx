@@ -12,8 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useAccentColor } from "@/hooks/useAccentColor";
-import { useRealtimeCarrierBids } from "@/hooks/useRealtimeCarrierBids";
 import { useRealtimeAuctionAwards } from "@/hooks/useRealtimeAuctionAwards";
+import { useRealtimeCarrierBids } from "@/hooks/useRealtimeCarrierBids";
 import { TelegramBid } from "@/lib/auctions";
 import { formatDistance, formatMoney, formatPickupDateTime, formatStopCount, formatStops, formatStopsDetailed, ParsedAddress } from "@/lib/format";
 import { usStatesSVGPaths } from "@/lib/us-states-svg-paths";
