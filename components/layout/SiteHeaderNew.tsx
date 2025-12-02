@@ -317,12 +317,12 @@ export default function SiteHeader() {
                       />
                     </div>
                     
-                    {/* Messages for Mobile */}
-                    {(isAdmin || isCarrier) && (
+                    {/* Messages for Mobile - Wait for role to load */}
+                    {!roleLoading && (isAdmin || isCarrier) && (
                       <div className="flex items-center justify-between">
                         <span className="text-sm text-muted-foreground">Messages</span>
                         <Button variant="ghost" size="sm" asChild className="relative">
-                          <Link href={isAdmin && role === "admin" ? "/admin/messages" : "/carrier/messages"}>
+                          <Link href={!roleLoading && isAdmin && role === "admin" ? "/admin/messages" : "/carrier/messages"}>
                             {unreadMessageCount > 0 ? (
                               <Mail className="h-4 w-4 mr-2" />
                             ) : (
