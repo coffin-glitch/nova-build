@@ -31,8 +31,6 @@ import { toast } from "sonner";
 import useSWR from "swr";
 import { useRealtimeConversations } from "@/hooks/useRealtimeConversations";
 import { useRealtimeConversationMessages } from "@/hooks/useRealtimeConversationMessages";
-import { useRealtimeConversations } from "@/hooks/useRealtimeConversations";
-import { useRealtimeConversationMessages } from "@/hooks/useRealtimeConversationMessages";
 
 const fetcher = async (url: string) => {
   const response = await fetch(url);

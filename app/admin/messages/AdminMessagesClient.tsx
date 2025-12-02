@@ -79,6 +79,32 @@ export function AdminMessagesClient() {
   const chatMessages = chatMessagesData?.data || [];
   const adminMessages = adminMessagesData?.data || [];
 
+  // Subscribe to real-time carrier chat messages (all carriers for admin)
+  useRealtimeCarrierChatMessages({
+    enabled: true,
+    onInsert: () => {
+      console.log('[AdminMessages] New carrier chat message, refreshing...');
+      mutateChatMessages();
+    },
+    onUpdate: () => {
+      console.log('[AdminMessages] Carrier chat message updated, refreshing...');
+      mutateChatMessages();
+    },
+  });
+
+  // Subscribe to real-time admin messages (all carriers for admin)
+  useRealtimeAdminMessages({
+    enabled: true,
+    onInsert: () => {
+      console.log('[AdminMessages] New admin message, refreshing...');
+      mutateAdminMessages();
+    },
+    onUpdate: () => {
+      console.log('[AdminMessages] Admin message updated, refreshing...');
+      mutateAdminMessages();
+    },
+  });
+
   // Get unique carrier user IDs
   const carrierUserIds = Array.from(new Set([
     ...chatMessages.map((msg: ChatMessage) => msg.carrier_user_id),

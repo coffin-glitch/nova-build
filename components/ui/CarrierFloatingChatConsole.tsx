@@ -79,6 +79,34 @@ export function CarrierFloatingChatConsole() {
   const messages = messagesData?.data || [];
   const responses = responsesData?.data || [];
 
+  // Subscribe to real-time admin messages
+  useRealtimeAdminMessages({
+    enabled: !!user?.id,
+    carrierUserId: user?.id,
+    onInsert: () => {
+      console.log('[CarrierFloatingChat] New admin message received, refreshing...');
+      mutateMessages();
+    },
+    onUpdate: () => {
+      console.log('[CarrierFloatingChat] Admin message updated, refreshing...');
+      mutateMessages();
+    },
+  });
+
+  // Subscribe to real-time carrier chat messages
+  useRealtimeCarrierChatMessages({
+    enabled: !!user?.id,
+    userId: user?.id,
+    onInsert: () => {
+      console.log('[CarrierFloatingChat] New carrier chat message, refreshing...');
+      mutateResponses();
+    },
+    onUpdate: () => {
+      console.log('[CarrierFloatingChat] Carrier chat message updated, refreshing...');
+      mutateResponses();
+    },
+  });
+
   // Get unique admin user IDs
   const adminUserIds = useMemo(() => {
     return Array.from(new Set(messages.map((msg: AdminMessage) => msg.admin_user_id)));

@@ -64,6 +64,48 @@ export default function CarrierMessagesPage() {
   const admins = Array.isArray(adminsData) ? adminsData : [];
   const conversations = conversationsData?.data || [];
 
+  // Subscribe to real-time conversation updates
+  useRealtimeConversations({
+    enabled: !!user?.id,
+    userId: user?.id,
+    onInsert: () => {
+      console.log('[CarrierMessages] New conversation created, refreshing...');
+      mutateConversations();
+    },
+    onUpdate: () => {
+      console.log('[CarrierMessages] Conversation updated, refreshing...');
+      mutateConversations();
+    },
+  });
+
+  // Subscribe to real-time admin messages
+  useRealtimeAdminMessages({
+    enabled: !!user?.id,
+    carrierUserId: user?.id,
+    onInsert: () => {
+      console.log('[CarrierMessages] New admin message received, refreshing...');
+      mutateMessages();
+    },
+    onUpdate: () => {
+      console.log('[CarrierMessages] Admin message updated, refreshing...');
+      mutateMessages();
+    },
+  });
+
+  // Subscribe to real-time carrier chat messages
+  useRealtimeCarrierChatMessages({
+    enabled: !!user?.id,
+    userId: user?.id,
+    onInsert: () => {
+      console.log('[CarrierMessages] New carrier chat message, refreshing...');
+      mutateResponses();
+    },
+    onUpdate: () => {
+      console.log('[CarrierMessages] Carrier chat message updated, refreshing...');
+      mutateResponses();
+    },
+  });
+
   // Get unique admin user IDs for user info fetching
   // Include admins from messages, responses, AND the full admins list for "Start New Chat"
   const adminUserIds = Array.from(new Set([
