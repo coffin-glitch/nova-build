@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useAccentColor } from "@/hooks/useAccentColor";
 import { useRealtimeCarrierBids } from "@/hooks/useRealtimeCarrierBids";
+import { useRealtimeAuctionAwards } from "@/hooks/useRealtimeAuctionAwards";
 import { TelegramBid } from "@/lib/auctions";
 import { formatDistance, formatMoney, formatPickupDateTime, formatStopCount, formatStops, formatStopsDetailed, ParsedAddress } from "@/lib/format";
 import { usStatesSVGPaths } from "@/lib/us-states-svg-paths";
@@ -109,6 +110,20 @@ function BidAdjudicationConsole({ bid, accentColor, onClose, onAwarded }: {
       mutateBidData();
     },
     onDelete: () => {
+      mutateBidData();
+    },
+    enabled: !!bid,
+  });
+
+  // Realtime updates for auction_awards (bid award status changes)
+  useRealtimeAuctionAwards({
+    bidNumber: bid?.bid_number,
+    onInsert: () => {
+      console.log('[BidAdjudicationConsole] Award created, refreshing...');
+      mutateBidData();
+    },
+    onUpdate: () => {
+      console.log('[BidAdjudicationConsole] Award updated, refreshing...');
       mutateBidData();
     },
     enabled: !!bid,
