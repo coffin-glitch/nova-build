@@ -246,17 +246,24 @@ export async function POST(request: NextRequest) {
       phone,
       submit_for_approval = false
     } = body;
+    
+    // Ensure all values are properly typed (convert undefined to null for SQL)
+    const safeCompanyName = companyName || null;
+    const safeMcNumber = mcNumber || null;
+    const safeDotNumber = (dotNumber && dotNumber.trim()) ? dotNumber.trim() : null;
+    const safeContactName = contactName || null;
+    const safePhone = phone || null;
 
     // Format phone number - remove all non-numeric characters and ensure it's a valid US phone number
-    const formattedPhone = phone?.replace(/\D/g, '') || '';
-    const isValidPhone = formattedPhone.length >= 10 && formattedPhone.length <= 11;
+    const formattedPhone = safePhone ? safePhone.replace(/\D/g, '') : null;
+    const isValidPhone = formattedPhone ? (formattedPhone.length >= 10 && formattedPhone.length <= 11) : false;
 
     // Input validation
     const validation = validateInput({ 
-      companyName, 
-      mcNumber, 
-      contactName, 
-      phone, 
+      companyName: safeCompanyName, 
+      mcNumber: safeMcNumber, 
+      contactName: safeContactName, 
+      phone: safePhone, 
       submit_for_approval 
     }, {
       companyName: { required: true, type: 'string', minLength: 2, maxLength: 100 },
@@ -283,7 +290,7 @@ export async function POST(request: NextRequest) {
     const mcAccessCheck = await sql`
       SELECT is_active, disabled_reason
       FROM mc_access_control
-      WHERE mc_number = ${mcNumber}
+      WHERE mc_number = ${safeMcNumber}
       LIMIT 1
     `;
     
@@ -293,16 +300,16 @@ export async function POST(request: NextRequest) {
       FROM dnu_tracking
       WHERE status = 'active'
       AND (
-        mc_number = ${mcNumber}
-        OR (${dotNumber || null} IS NOT NULL AND dot_number = ${dotNumber || null})
+        mc_number = ${safeMcNumber}
+        OR (${safeDotNumber} IS NOT NULL AND dot_number = ${safeDotNumber})
       )
       LIMIT 1
     `;
     
     if (dnuCheck.length > 0) {
       logSecurityEvent('dnu_profile_blocked', userId, { 
-        mc_number: mcNumber, 
-        dot_number: dotNumber,
+        mc_number: safeMcNumber, 
+        dot_number: safeDotNumber,
         dnu_entry: dnuCheck[0]
       });
       return NextResponse.json({ 
@@ -312,9 +319,9 @@ export async function POST(request: NextRequest) {
     
     if (mcAccessCheck.length > 0 && mcAccessCheck[0].is_active === false) {
       const reason = mcAccessCheck[0].disabled_reason || 'DNU by USPS';
-      logSecurityEvent('blocked_signup_disabled_mc', userId, { mc_number: mcNumber, reason });
+      logSecurityEvent('blocked_signup_disabled_mc', userId, { mc_number: safeMcNumber, reason });
       return NextResponse.json({ 
-        error: `Your MC number (${mcNumber}) is not allowed access to the bid board. ${reason}. Please contact support if you believe this is an error.` 
+        error: `Your MC number (${safeMcNumber}) is not allowed access to the bid board. ${reason}. Please contact support if you believe this is an error.` 
       }, { status: 403 });
     }
 
@@ -335,11 +342,11 @@ export async function POST(request: NextRequest) {
         // Also set profile_completed_at and is_first_login=false for first-time submissions
         await sql`
           UPDATE carrier_profiles SET
-            legal_name = ${companyName},
-            company_name = ${companyName},
-            mc_number = ${mcNumber},
-            dot_number = ${dotNumber},
-            contact_name = ${contactName},
+            legal_name = ${safeCompanyName},
+            company_name = ${safeCompanyName},
+            mc_number = ${safeMcNumber},
+            dot_number = ${safeDotNumber},
+            contact_name = ${safeContactName},
             phone = ${formattedPhone},
             profile_status = 'pending',
             submitted_at = NOW(),
@@ -351,8 +358,8 @@ export async function POST(request: NextRequest) {
         `;
         
         // Sync contact_name to Supabase user metadata (firstName/lastName)
-        if (contactName) {
-          await syncContactNameToUserMetadata(userId, contactName);
+        if (safeContactName) {
+          await syncContactNameToUserMetadata(userId, safeContactName);
         }
         
         // Clear caches to ensure updated data appears immediately
@@ -361,19 +368,19 @@ export async function POST(request: NextRequest) {
         // Regular update - only update if edits are enabled
         await sql`
           UPDATE carrier_profiles SET
-            legal_name = ${companyName},
-            company_name = ${companyName},
-            mc_number = ${mcNumber},
-            dot_number = ${dotNumber},
-            contact_name = ${contactName},
+            legal_name = ${safeCompanyName},
+            company_name = ${safeCompanyName},
+            mc_number = ${safeMcNumber},
+            dot_number = ${safeDotNumber},
+            contact_name = ${safeContactName},
             phone = ${formattedPhone},
             updated_at = NOW()
           WHERE supabase_user_id = ${userId} AND edits_enabled = true
         `;
         
         // Sync contact_name to Supabase user metadata (firstName/lastName)
-        if (contactName) {
-          await syncContactNameToUserMetadata(userId, contactName);
+        if (safeContactName) {
+          await syncContactNameToUserMetadata(userId, safeContactName);
         }
         
         // Clear caches to ensure updated data appears immediately
@@ -397,11 +404,11 @@ export async function POST(request: NextRequest) {
           is_first_login
         ) VALUES (
           ${userId},
-          ${companyName},
-          ${companyName}, 
-          ${mcNumber}, 
-          ${dotNumber || null}, 
-          ${contactName}, 
+          ${safeCompanyName},
+          ${safeCompanyName}, 
+          ${safeMcNumber}, 
+          ${safeDotNumber}, 
+          ${safeContactName}, 
           ${formattedPhone},
           ${submit_for_approval ? 'pending' : 'open'},
           ${submit_for_approval ? new Date() : null},
@@ -412,8 +419,8 @@ export async function POST(request: NextRequest) {
       `;
       
       // Sync contact_name to Supabase user metadata (firstName/lastName)
-      if (contactName) {
-        await syncContactNameToUserMetadata(userId, contactName);
+      if (safeContactName) {
+        await syncContactNameToUserMetadata(userId, safeContactName);
       }
     }
 
@@ -427,14 +434,14 @@ export async function POST(request: NextRequest) {
         const { notifyAllAdmins } = await import('@/lib/notifications');
         
         // Use variables already extracted from body
-        const companyNameForNotification = companyName || 'Unknown Company';
-        const mcNumberForNotification = mcNumber || 'N/A';
-        const dotNumberForNotification = dotNumber || null;
+        const companyNameForNotification = safeCompanyName || 'Unknown Company';
+        const mcNumberForNotification = safeMcNumber || 'N/A';
+        const dotNumberForNotification = safeDotNumber || null;
         
         await notifyAllAdmins(
           'profile_submission',
           '📋 New Profile Submission',
-          `${companyName} (MC: ${mcNumber})${dotNumber ? `, DOT: ${dotNumber}` : ''} submitted their profile for approval`,
+          `${safeCompanyName} (MC: ${safeMcNumber})${safeDotNumber ? `, DOT: ${safeDotNumber}` : ''} submitted their profile for approval`,
           {
             carrier_user_id: userId,
             company_name: companyNameForNotification,
