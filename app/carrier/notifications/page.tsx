@@ -9,6 +9,8 @@ import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { useAccentColor } from "@/hooks/useAccentColor";
 import { useUnifiedRole } from "@/hooks/useUnifiedRole";
+import { useUnifiedUser } from "@/hooks/useUnifiedUser";
+import { useRealtimeNotifications } from "@/hooks/useRealtimeNotifications";
 import { swrFetcher } from "@/lib/safe-fetcher";
 import {
   AlertTriangle,
@@ -21,7 +23,7 @@ import {
   Volume2,
   XCircle
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
 
@@ -43,6 +45,7 @@ const FILTER_OPTIONS = [
 
 export default function NotificationsPage() {
   const { isCarrier } = useUnifiedRole();
+  const { user } = useUnifiedUser();
   const { accentColor } = useAccentColor();
   const [filter, setFilter] = useState<string>('all');
   
@@ -105,11 +108,30 @@ export default function NotificationsPage() {
     isCarrier ? notificationsEndpoint : null,
     swrFetcher,
     {
-      refreshInterval: 10000,
+      refreshInterval: 0, // Disable polling - using Realtime instead
       revalidateOnFocus: true,
       revalidateOnReconnect: true,
     }
   );
+
+  // Memoize callbacks to prevent unnecessary re-subscriptions
+  const handleNotificationInsert = useCallback(() => {
+    console.log('[NotificationsPage] New notification received, refreshing...');
+    mutate();
+  }, [mutate]);
+
+  const handleNotificationUpdate = useCallback(() => {
+    console.log('[NotificationsPage] Notification updated, refreshing...');
+    mutate();
+  }, [mutate]);
+
+  // Subscribe to real-time notification updates
+  useRealtimeNotifications({
+    enabled: !!user?.id && isCarrier,
+    userId: user?.id,
+    onInsert: handleNotificationInsert,
+    onUpdate: handleNotificationUpdate,
+  });
 
   const notifications: Notification[] = data?.notifications || [];
 

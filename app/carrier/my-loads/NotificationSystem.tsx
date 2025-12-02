@@ -6,6 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatPickupDateTime } from "@/lib/format";
 import { useUnifiedUser } from "@/hooks/useUnifiedUser";
+import { useRealtimeNotifications } from "@/hooks/useRealtimeNotifications";
+import { useCallback } from "react";
 import {
     Bell,
     BellOff,
@@ -48,8 +50,27 @@ export function NotificationSystem({ className }: NotificationSystemProps) {
   const { data: notificationsData, mutate } = useSWR(
     user ? "/api/carrier/notifications" : null,
     fetcher,
-    { refreshInterval: 30000 } // Update every 30 seconds
+    { refreshInterval: 0 } // Disable polling - using Realtime instead
   );
+
+  // Memoize callbacks to prevent unnecessary re-subscriptions
+  const handleNotificationInsert = useCallback(() => {
+    console.log('[NotificationSystem] New notification received, refreshing...');
+    mutate();
+  }, [mutate]);
+
+  const handleNotificationUpdate = useCallback(() => {
+    console.log('[NotificationSystem] Notification updated, refreshing...');
+    mutate();
+  }, [mutate]);
+
+  // Subscribe to real-time notification updates
+  useRealtimeNotifications({
+    enabled: !!user?.id,
+    userId: user?.id,
+    onInsert: handleNotificationInsert,
+    onUpdate: handleNotificationUpdate,
+  });
 
   const notifications: Notification[] = notificationsData?.notifications || [];
 

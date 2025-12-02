@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useCallback, useState, useEffect } from "react";
 import useSWR from "swr";
 import { Bell, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { CardGlass } from "@/components/ui/CardGlass";
+import { useRealtimeNotifications } from "@/hooks/useRealtimeNotifications";
+import { useUnifiedUser } from "@/hooks/useUnifiedUser";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -43,17 +45,38 @@ export default function NotificationsMenu() {
     return () => clearInterval(interval);
   }, []);
 
+  const { user } = useUnifiedUser();
+
   const { data, mutate, isLoading } = useSWR(
     "/api/notifications?unread=1",
     fetcher,
     { 
-      refreshInterval: 30000, // Poll every 30 seconds
+      refreshInterval: 0, // Disable polling - using Realtime instead
       revalidateOnFocus: true, // Revalidate when window regains focus
       revalidateOnReconnect: true, // Revalidate when network reconnects
       keepPreviousData: true, // Keep previous data during refetch to prevent flashing
       fallbackData: { ok: true, data: [] }
     }
   );
+
+  // Memoize callbacks to prevent unnecessary re-subscriptions
+  const handleNotificationInsert = useCallback(() => {
+    console.log('[NotificationsMenu] New notification received, refreshing...');
+    mutate();
+  }, [mutate]);
+
+  const handleNotificationUpdate = useCallback(() => {
+    console.log('[NotificationsMenu] Notification updated, refreshing...');
+    mutate();
+  }, [mutate]);
+
+  // Subscribe to real-time notification updates
+  useRealtimeNotifications({
+    enabled: !!user?.id,
+    userId: user?.id,
+    onInsert: handleNotificationInsert,
+    onUpdate: handleNotificationUpdate,
+  });
 
   const notifications = data?.data || [];
   const unreadCount = notifications.filter((n: Notification) => !n.read).length;

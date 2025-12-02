@@ -22,6 +22,12 @@ export function useRealtimeNotifications(options: UseRealtimeNotificationsOption
   } = options;
 
   const channelRef = useRef<ReturnType<typeof getSupabaseBrowser>['channel'] | null>(null);
+  const callbacksRef = useRef({ onInsert, onUpdate });
+  
+  // Update callbacks ref when they change (without triggering re-subscription)
+  useEffect(() => {
+    callbacksRef.current = { onInsert, onUpdate };
+  }, [onInsert, onUpdate]);
 
   useEffect(() => {
     if (!enabled || !userId) return;
@@ -42,12 +48,14 @@ export function useRealtimeNotifications(options: UseRealtimeNotificationsOption
       .on('postgres_changes', postgresChanges, (payload) => {
         console.log('[Realtime] notification change:', payload.eventType, payload);
         
+        // Use ref to get latest callbacks without re-subscribing
+        const callbacks = callbacksRef.current;
         switch (payload.eventType) {
           case 'INSERT':
-            onInsert?.(payload);
+            callbacks.onInsert?.(payload);
             break;
           case 'UPDATE':
-            onUpdate?.(payload);
+            callbacks.onUpdate?.(payload);
             break;
         }
       })
@@ -67,6 +75,6 @@ export function useRealtimeNotifications(options: UseRealtimeNotificationsOption
         channelRef.current = null;
       }
     };
-  }, [enabled, userId, onInsert, onUpdate]);
+  }, [enabled, userId]); // Removed callbacks from dependencies
 }
 
