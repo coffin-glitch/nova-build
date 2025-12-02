@@ -4617,6 +4617,19 @@ function AdjudicationConsole({
     enabled: true,
   });
 
+  // Realtime updates for auction_awards (bid award status changes)
+  useRealtimeAuctionAwards({
+    onInsert: () => {
+      console.log('[AdjudicationConsole] Award created, refreshing...');
+      mutate();
+    },
+    onUpdate: () => {
+      console.log('[AdjudicationConsole] Award updated, refreshing...');
+      mutate();
+    },
+    enabled: true,
+  });
+
   const bidsWithCarrierBids = data?.data || [];
 
   // Filter and sort bids
