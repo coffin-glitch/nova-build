@@ -1,6 +1,6 @@
-import { useEffect, useRef } from 'react';
 import { getSupabaseBrowser } from '@/lib/supabase';
 import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
+import { useEffect, useRef } from 'react';
 
 interface UseRealtimeNotificationsOptions {
   userId?: string; // Filter by user ID
@@ -19,6 +19,7 @@ export function useRealtimeNotifications(options: UseRealtimeNotificationsOption
     userId,
     onInsert,
     onUpdate,
+    onDelete,
     enabled = true,
   } = options;
 

@@ -1,26 +1,26 @@
 "use client";
 
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
+import { useSupabase } from "@/components/providers/SupabaseProvider";
 import { useUserPreferences } from "@/components/providers/UserPreferencesProvider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ColorPalette } from "@/components/ui/ColorPalette";
-import FloatingBubbleLanding from "@/components/ui/FloatingBubbleLanding";
-import { NotificationBell } from "@/components/ui/NotificationBell";
-import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { useAccentColor } from "@/hooks/useAccentColor";
-import { useUnreadMessageCount } from "@/hooks/useUnreadMessageCount";
-import { useUnifiedRole } from "@/hooks/useUnifiedRole";
-import { useUnifiedUser } from "@/hooks/useUnifiedUser";
-import { useSupabase } from "@/components/providers/SupabaseProvider";
-import { cn } from "@/lib/utils";
-import { Mail, MailOpen, Menu, Truck, User, X, LogOut } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import FloatingBubbleLanding from "@/components/ui/FloatingBubbleLanding";
+import { NotificationBell } from "@/components/ui/NotificationBell";
+import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { useAccentColor } from "@/hooks/useAccentColor";
+import { useUnifiedRole } from "@/hooks/useUnifiedRole";
+import { useUnifiedUser } from "@/hooks/useUnifiedUser";
+import { useUnreadMessageCount } from "@/hooks/useUnreadMessageCount";
+import { cn } from "@/lib/utils";
+import { LogOut, Mail, MailOpen, Menu, Truck, User, X } from "lucide-react";
 import { useTheme } from "next-themes";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
