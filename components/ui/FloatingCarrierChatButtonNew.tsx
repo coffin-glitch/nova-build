@@ -1183,83 +1183,32 @@ export default function FloatingCarrierChatButton() {
 
                             {/* Messages */}
                             <ScrollArea className="flex-1 p-4">
-                              <div className="space-y-4">
-                                {messages.map((message: Message) => (
-                                  <div
-                                    key={message.id}
-                                    className={`flex ${message.sender_type === 'carrier' ? 'justify-end' : 'justify-start'}`}
-                                  >
-                                    <div
-                                      className={`max-w-[80%] rounded-lg px-3 py-2 ${
-                                        message.sender_type === 'carrier'
-                                          ? 'bg-primary text-primary-foreground'
-                                          : 'bg-muted'
-                                      }`}
-                                    >
-                                      {/* Attachment */}
-                                      {message.attachment_url && (
-                                        <div className="mb-2">
-                                          {message.attachment_type?.startsWith('image/') ? (
-                                            <a 
-                                              href={message.attachment_url} 
-                                              target="_blank" 
-                                              rel="noopener noreferrer"
-                                              className="block rounded-lg overflow-hidden border border-border/50 hover:opacity-90 transition-opacity max-w-xs"
-                                            >
-                                              <img 
-                                                src={message.attachment_url} 
-                                                alt={message.attachment_name || 'Attachment'} 
-                                                className="max-w-full max-h-64 w-auto h-auto object-contain rounded"
-                                                onError={(e) => {
-                                                  // Fallback if image fails to load
-                                                  const target = e.target as HTMLImageElement;
-                                                  target.style.display = 'none';
-                                                  const parent = target.parentElement;
-                                                  if (parent) {
-                                                    parent.innerHTML = `
-                                                      <div class="flex items-center gap-2 p-2 rounded border bg-muted/50">
-                                                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                                        </svg>
-                                                        <span class="text-sm">${message.attachment_name || 'Image'}</span>
-                                                      </div>
-                                                    `;
-                                                  }
-                                                }}
-                                              />
-                                            </a>
-                                          ) : (
-                                            <a
-                                              href={message.attachment_url}
-                                              target="_blank"
-                                              rel="noopener noreferrer"
-                                              className={`flex items-center gap-2 p-2 rounded border ${
-                                                message.sender_type === 'carrier'
-                                                  ? 'bg-primary/20 border-primary/30'
-                                                  : 'bg-muted/50 border-border/50'
-                                              } hover:opacity-80 transition-opacity max-w-xs`}
-                                            >
-                                              <FileText className="h-4 w-4 flex-shrink-0" />
-                                              <span className="text-sm truncate">{message.attachment_name || 'Document'}</span>
-                                            </a>
-                                          )}
-                                        </div>
-                                      )}
-                                      {/* Message text */}
-                                      {message.message && (
-                                        <p className="text-sm">{message.message}</p>
-                                      )}
-                                      <p className={`text-xs mt-1 ${
-                                        message.sender_type === 'carrier' 
-                                          ? 'text-primary-foreground/70' 
-                                          : 'text-muted-foreground'
-                                      }`}>
-                                        {formatTime(message.created_at)}
-                                      </p>
-                                    </div>
+                              <div ref={messagesContainerRef} className="space-y-1">
+                                {messages.length === 0 ? (
+                                  <div className="text-center text-sm text-muted-foreground py-8">
+                                    No messages yet. Start the conversation!
                                   </div>
-                                ))}
-                                <div ref={messagesEndRef} />
+                                ) : (
+                                  messages.map((message: Message, index: number) => {
+                                    const chatMessage = convertToChatMessage(message);
+                                    const isCurrentUser = message.sender_type === 'carrier';
+                                    const prevMessage = index > 0 ? messages[index - 1] : null;
+                                    const showHeader = !prevMessage || prevMessage.sender_id !== message.sender_id;
+                                    
+                                    return (
+                                      <div
+                                        key={message.id}
+                                        className="animate-in fade-in slide-in-from-bottom-4 duration-300"
+                                      >
+                                        <ChatMessageItem
+                                          message={chatMessage}
+                                          isOwnMessage={isCurrentUser}
+                                          showHeader={showHeader}
+                                        />
+                                      </div>
+                                    );
+                                  })
+                                )}
                               </div>
                             </ScrollArea>
 
