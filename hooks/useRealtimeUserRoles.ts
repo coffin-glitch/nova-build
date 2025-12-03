@@ -53,48 +53,63 @@ export function useRealtimeUserRoles(options: UseRealtimeUserRolesOptions = {}) 
     const channelName = `user_roles_cache_${Date.now()}`;
     const channel = supabase.channel(channelName);
 
-    const postgresChanges = {
+    // Build postgres_changes config
+    // Note: If userId filter causes RLS issues, we can subscribe to all changes and filter in the callback
+    const postgresChanges: any = {
       event: '*' as const,
       schema: 'public',
       table: 'user_roles_cache',
-      ...(userId && { filter: `supabase_user_id=eq.${userId}` }),
     };
+
+    // Only add filter if userId is provided and valid
+    // If RLS is blocking filtered subscriptions, remove the filter and filter in callback instead
+    if (userId) {
+      postgresChanges.filter = `supabase_user_id=eq.${userId}`;
+    }
 
     channel
       .on('postgres_changes', postgresChanges, (payload) => {
-        console.log('[Realtime] user_roles_cache change:', payload.eventType, payload);
-        
-        // Use ref to get latest callbacks without re-subscribing
-        const callbacks = callbacksRef.current;
-        switch (payload.eventType) {
-          case 'INSERT':
-            callbacks.onInsert?.(payload);
-            break;
-          case 'UPDATE':
-            callbacks.onUpdate?.(payload);
-            break;
-          case 'DELETE':
-            callbacks.onDelete?.(payload);
-            break;
+        // If no userId filter was applied, filter here instead
+        if (!userId || payload.new?.supabase_user_id === userId || payload.old?.supabase_user_id === userId) {
+          console.log('[Realtime] user_roles_cache change:', payload.eventType, payload);
+          
+          // Use ref to get latest callbacks without re-subscribing
+          const callbacks = callbacksRef.current;
+          switch (payload.eventType) {
+            case 'INSERT':
+              callbacks.onInsert?.(payload);
+              break;
+            case 'UPDATE':
+              callbacks.onUpdate?.(payload);
+              break;
+            case 'DELETE':
+              callbacks.onDelete?.(payload);
+              break;
+          }
         }
       })
-      .subscribe((status) => {
+      .subscribe((status, err) => {
         if (status === 'SUBSCRIBED') {
-          console.log('[Realtime] Subscribed to user_roles_cache');
+          console.log('[Realtime] Successfully subscribed to user_roles_cache', userId ? `(filtered for user: ${userId})` : '(all changes)');
         } else if (status === 'CHANNEL_ERROR') {
+          // Log the actual error if available
+          if (err) {
+            console.error('[Realtime] Channel error details:', err);
+          }
           // This error typically means:
-          // 1. Realtime is not enabled for user_roles_cache table in Supabase Dashboard
-          // 2. RLS policies are blocking the subscription
+          // 1. RLS policies are blocking the subscription (most common when Realtime is enabled)
+          // 2. The filter syntax is incorrect
           // 3. The table doesn't exist or has incorrect schema
-          console.warn('[Realtime] Channel error subscribing to user_roles_cache. This is usually because:');
-          console.warn('  1. Realtime is not enabled for user_roles_cache in Supabase Dashboard → Database → Replication');
-          console.warn('  2. RLS policies may be blocking the subscription');
-          console.warn('  3. The app will continue to work, but role updates may be delayed until page refresh');
-          console.warn('  To fix: Enable Realtime for user_roles_cache table in Supabase Dashboard');
+          console.warn('[Realtime] Channel error subscribing to user_roles_cache. Common causes:');
+          console.warn('  1. RLS policies may be blocking the subscription (even if Realtime is enabled)');
+          console.warn('  2. Check RLS policies for user_roles_cache table in Supabase Dashboard → Authentication → Policies');
+          console.warn('  3. The filter might be causing issues - try removing userId filter if RLS is strict');
+          console.warn('  4. The app will continue to work, but role updates may be delayed until page refresh');
         } else if (status === 'TIMED_OUT') {
           console.warn('[Realtime] Subscription to user_roles_cache timed out');
         } else if (status === 'CLOSED') {
-          console.warn('[Realtime] Subscription to user_roles_cache closed');
+          // This is normal during cleanup, but log if it happens unexpectedly
+          console.debug('[Realtime] Subscription to user_roles_cache closed (this is normal during component unmount)');
         }
       });
 
