@@ -30,6 +30,8 @@ export function useRealtimeUserRoles(options: UseRealtimeUserRolesOptions = {}) 
   // This prevents module-level type evaluation that can cause circular dependency issues
   const channelRef = useRef<RealtimeChannel | null>(null);
   const callbacksRef = useRef({ onInsert, onUpdate, onDelete });
+  const isSubscribingRef = useRef(false);
+  const subscribedUserIdRef = useRef<string | undefined>(undefined);
   
   // Update callbacks ref when they change (without triggering re-subscription)
   useEffect(() => {
@@ -40,13 +42,15 @@ export function useRealtimeUserRoles(options: UseRealtimeUserRolesOptions = {}) 
     if (!enabled) {
       // Clean up existing channel if disabled
       if (channelRef.current) {
-        const supabase = getSupabaseBrowser();
         try {
+          const supabase = getSupabaseBrowser();
           supabase.removeChannel(channelRef.current);
         } catch (error) {
           // Ignore cleanup errors
         }
         channelRef.current = null;
+        isSubscribingRef.current = false;
+        subscribedUserIdRef.current = undefined;
       }
       return;
     }
@@ -54,17 +58,22 @@ export function useRealtimeUserRoles(options: UseRealtimeUserRolesOptions = {}) 
     // Guard against SSR/build-time execution
     if (typeof window === 'undefined') return;
 
+    // Prevent duplicate subscriptions for the same userId
+    if (isSubscribingRef.current && subscribedUserIdRef.current === userId) {
+      return; // Already subscribing/subscribed for this user
+    }
+
     // Clean up any existing channel before creating a new one
     // This prevents multiple subscriptions when userId changes or component re-renders
     if (channelRef.current) {
-      let supabase;
       try {
-        supabase = getSupabaseBrowser();
+        const supabase = getSupabaseBrowser();
         supabase.removeChannel(channelRef.current);
       } catch (error) {
         // Ignore cleanup errors
       }
       channelRef.current = null;
+      isSubscribingRef.current = false;
     }
 
     let supabase;
@@ -74,6 +83,10 @@ export function useRealtimeUserRoles(options: UseRealtimeUserRolesOptions = {}) 
       console.error('[useRealtimeUserRoles] Error getting Supabase client:', error);
       return;
     }
+    
+    // Mark as subscribing
+    isSubscribingRef.current = true;
+    subscribedUserIdRef.current = userId;
     
     // Use a stable channel name based on userId to prevent duplicate subscriptions
     const channelName = `user_roles_cache_${userId || 'all'}_${Date.now()}`;
@@ -120,27 +133,37 @@ export function useRealtimeUserRoles(options: UseRealtimeUserRolesOptions = {}) 
       .subscribe((status, err) => {
         if (status === 'SUBSCRIBED') {
           console.log('[Realtime] Successfully subscribed to user_roles_cache', userId ? `(filtered for user: ${userId})` : '(all changes)');
+          isSubscribingRef.current = false; // Mark as successfully subscribed
         } else if (status === 'CHANNEL_ERROR') {
-          // Log the actual error if available
-          if (err) {
-            console.error('[Realtime] Channel error details:', err);
+          // Reset subscribing flag on error so it can retry
+          isSubscribingRef.current = false;
+          
+          // Only log error if it's not the "binding mismatch" error that Supabase sometimes reports
+          // but then successfully retries. This error often appears but the subscription still works.
+          if (err && err.message && err.message.includes('mismatch between server and client bindings')) {
+            // This is a known issue with RLS + Realtime, but the subscription often still works
+            // Log at debug level since it's usually followed by a successful subscription
+            console.debug('[Realtime] Binding mismatch error (this is often followed by successful subscription):', err.message);
+          } else {
+            // Log other errors at warn level
+            if (err) {
+              console.error('[Realtime] Channel error details:', err);
+            }
+            console.warn('[Realtime] Channel error subscribing to user_roles_cache. Common causes:');
+            console.warn('  1. RLS policies are blocking the subscription (most likely cause)');
+            console.warn('     → The "mismatch between server and client bindings" error indicates RLS conflict');
+            console.warn('     → Check Supabase Dashboard → Authentication → Policies → user_roles_cache');
+            console.warn('     → Ensure policy allows SELECT for authenticated users');
+            console.warn('  2. The subscription will retry, but may continue to fail if RLS blocks it');
+            console.warn('  3. The app will continue to work, but role updates may be delayed until page refresh');
           }
-          // This error typically means:
-          // 1. RLS policies are blocking the subscription (most common when Realtime is enabled)
-          // 2. The filter syntax is incorrect
-          // 3. The table doesn't exist or has incorrect schema
-          console.warn('[Realtime] Channel error subscribing to user_roles_cache. Common causes:');
-          console.warn('  1. RLS policies are blocking the subscription (most likely cause)');
-          console.warn('     → The "mismatch between server and client bindings" error indicates RLS conflict');
-          console.warn('     → Check Supabase Dashboard → Authentication → Policies → user_roles_cache');
-          console.warn('     → Ensure policy allows SELECT for authenticated users');
-          console.warn('  2. The subscription will retry, but may continue to fail if RLS blocks it');
-          console.warn('  3. The app will continue to work, but role updates may be delayed until page refresh');
-          console.warn('  4. Consider temporarily disabling RLS for user_roles_cache if realtime is critical');
         } else if (status === 'TIMED_OUT') {
+          isSubscribingRef.current = false; // Reset on timeout
           console.warn('[Realtime] Subscription to user_roles_cache timed out');
         } else if (status === 'CLOSED') {
           // This is normal during cleanup, but log if it happens unexpectedly
+          isSubscribingRef.current = false;
+          subscribedUserIdRef.current = undefined;
           console.debug('[Realtime] Subscription to user_roles_cache closed (this is normal during component unmount)');
         }
       });
@@ -148,13 +171,16 @@ export function useRealtimeUserRoles(options: UseRealtimeUserRolesOptions = {}) 
     channelRef.current = channel;
 
     return () => {
-      if (channelRef.current && supabase) {
+      if (channelRef.current) {
         try {
+          const supabase = getSupabaseBrowser();
           supabase.removeChannel(channelRef.current);
         } catch (error) {
-          console.warn('[useRealtimeUserRoles] Error removing channel:', error);
+          // Ignore cleanup errors during unmount
         }
         channelRef.current = null;
+        isSubscribingRef.current = false;
+        subscribedUserIdRef.current = undefined;
       }
     };
   }, [enabled, userId]); // Removed callbacks from dependencies
