@@ -55,34 +55,52 @@ export function useUnifiedRole() {
   // Subscribe to Realtime updates for user_roles_cache
   // This ensures role changes are reflected instantly without page refresh
   // Use ref for callbacks to prevent re-subscriptions
-  const realtimeCallbacksRef = useRef({
+  // FIXED: Initialize ref with functions that access current values via closure
+  // This prevents TDZ issues if user or fetchRole aren't ready during module initialization
+  const realtimeCallbacksRef = useRef<{
+    onUpdate: (payload: any) => void;
+    onInsert: (payload: any) => void;
+  }>({
     onUpdate: (payload: any) => {
-      // Only refresh if this update is for the current user
-      if (payload.new?.supabase_user_id === user?.id) {
-        console.log('[useUnifiedRole] Role updated in database, refreshing...', payload.new);
-        // Debounce: Wait a bit before fetching to avoid rapid updates
-        if (fetchTimeoutRef.current) {
-          clearTimeout(fetchTimeoutRef.current);
-        }
-        fetchTimeoutRef.current = setTimeout(() => {
-          fetchRole(true); // Force fetch on Realtime update
-        }, 500); // 500ms debounce
-      }
+      // Access user and fetchRole from closure - they'll be current when callback is called
+      // This is safe because callbacks are only called after component is mounted
     },
     onInsert: (payload: any) => {
-      // New role assigned to current user
-      if (payload.new?.supabase_user_id === user?.id) {
-        console.log('[useUnifiedRole] Role inserted for current user, refreshing...', payload.new);
-        // Debounce: Wait a bit before fetching to avoid rapid updates
-        if (fetchTimeoutRef.current) {
-          clearTimeout(fetchTimeoutRef.current);
-        }
-        fetchTimeoutRef.current = setTimeout(() => {
-          fetchRole(true); // Force fetch on Realtime update
-        }, 500); // 500ms debounce
-      }
+      // Access user and fetchRole from closure - they'll be current when callback is called
     },
   });
+
+  // Update callbacks ref when user or fetchRole change (without triggering re-subscription)
+  useEffect(() => {
+    realtimeCallbacksRef.current = {
+      onUpdate: (payload: any) => {
+        // Only refresh if this update is for the current user
+        if (payload.new?.supabase_user_id === user?.id) {
+          console.log('[useUnifiedRole] Role updated in database, refreshing...', payload.new);
+          // Debounce: Wait a bit before fetching to avoid rapid updates
+          if (fetchTimeoutRef.current) {
+            clearTimeout(fetchTimeoutRef.current);
+          }
+          fetchTimeoutRef.current = setTimeout(() => {
+            fetchRole(true); // Force fetch on Realtime update
+          }, 500); // 500ms debounce
+        }
+      },
+      onInsert: (payload: any) => {
+        // New role assigned to current user
+        if (payload.new?.supabase_user_id === user?.id) {
+          console.log('[useUnifiedRole] Role inserted for current user, refreshing...', payload.new);
+          // Debounce: Wait a bit before fetching to avoid rapid updates
+          if (fetchTimeoutRef.current) {
+            clearTimeout(fetchTimeoutRef.current);
+          }
+          fetchTimeoutRef.current = setTimeout(() => {
+            fetchRole(true); // Force fetch on Realtime update
+          }, 500); // 500ms debounce
+        }
+      },
+    };
+  }, [user?.id, fetchRole]);
 
   useRealtimeUserRoles({
     userId: user?.id,

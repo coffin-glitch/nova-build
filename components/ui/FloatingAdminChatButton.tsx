@@ -236,6 +236,7 @@ export default function FloatingAdminChatButton() {
     mutateMessages(undefined, { revalidate: true });
   }, [mutateMessages]);
 
+
   // Subscribe to real-time message updates (postgres_changes for persistence)
   useRealtimeConversationMessages({
     enabled: !!selectedConversationId && isAdmin,
@@ -245,10 +246,12 @@ export default function FloatingAdminChatButton() {
   });
 
   // Subscribe to Broadcast for instant message delivery
+  // FIXED: Use simple fallback for username to avoid TDZ - getDisplayName depends on values computed later
+  // We'll use a proper display name in sendBroadcast calls instead
   const { sendBroadcast } = useRealtimeChat({
     roomName: selectedConversationId || '',
     userId: user?.id,
-    username: getDisplayName(user?.id || '', true),
+    username: user?.email || user?.id || 'Admin', // Simple fallback - avoids TDZ with getDisplayName
     enabled: !!selectedConversationId && isAdmin,
     onBroadcast: (broadcastMessage) => {
       // Show broadcast messages from other users for instant delivery
