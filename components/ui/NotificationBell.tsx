@@ -14,7 +14,7 @@ import { useUnifiedRole } from "@/hooks/useUnifiedRole";
 import { useUnifiedUser } from "@/hooks/useUnifiedUser";
 import { swrFetcher } from "@/lib/safe-fetcher";
 import { AlertTriangle, Bell, CheckCircle, FileText, Info, MessageSquare, Settings, Target, Volume2, VolumeX, XCircle } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
 
@@ -83,7 +83,12 @@ export function NotificationBell() {
   const previousUnreadIdsRef = useRef<Set<string>>(new Set());
   
   // Use appropriate endpoint based on user role
-  const notificationsEndpoint = isAdmin ? '/api/notifications' : '/api/carrier/notifications';
+  // FIXED: Use useMemo to compute endpoint lazily and avoid TDZ issues
+  // This ensures the endpoint is computed after isAdmin is available from useUnifiedRole
+  const notificationsEndpoint = useMemo(() => {
+    // Default to carrier endpoint if isAdmin is not yet determined
+    return isAdmin ? '/api/notifications' : '/api/carrier/notifications';
+  }, [isAdmin]);
   
   const { data, mutate, error } = useSWR(notificationsEndpoint, swrFetcher, {
     refreshInterval: 0, // Disable polling - using Realtime instead
