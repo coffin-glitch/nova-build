@@ -59,6 +59,9 @@ export function useRealtimeChat(options: UseRealtimeChatOptions = { roomName: ''
 
   useEffect(() => {
     if (!enabled || !roomName) return;
+    
+    // Guard against SSR/build-time execution
+    if (typeof window === 'undefined') return;
 
     const supabase = getSupabaseBrowser();
     
@@ -114,6 +117,12 @@ export function useRealtimeChat(options: UseRealtimeChatOptions = { roomName: ''
    * This provides low-latency updates before the message is persisted to the database
    */
   const sendBroadcast = useCallback((message: Omit<ChatMessage, 'id' | 'createdAt'>) => {
+    // Guard against SSR/build-time execution
+    if (typeof window === 'undefined') {
+      console.warn('[RealtimeChat] Cannot send broadcast: window is undefined (SSR)');
+      return false;
+    }
+    
     if (!channelRef.current || !userId || !username) {
       console.warn('[RealtimeChat] Cannot send broadcast: channel, userId, or username missing');
       return false;
