@@ -12,6 +12,8 @@ import { cn } from "@/lib/utils";
 import { useUnifiedUser } from "@/hooks/useUnifiedUser";
 import { useRealtimeConversationMessages } from "@/hooks/useRealtimeConversationMessages";
 import { useRealtimeChat } from "@/hooks/useRealtimeChat";
+import { ChatMessageItem, type ChatMessage } from "@/components/chat/ChatMessageItem";
+import { useChatScroll } from "@/hooks/use-chat-scroll";
 import {
     ArrowLeft,
     Building2,
@@ -183,13 +185,11 @@ export default function FloatingAdminChatButton() {
     { refreshInterval: 0 } // Disable polling - using Realtime instead
   );
 
-  // FIXED: Define scrollToBottom BEFORE handleMessageInsert to prevent TDZ error
-  // handleMessageInsert depends on scrollToBottom, so it must be defined first
-  const scrollToBottom = useCallback(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, []);
+  // Use the reusable chat scroll hook
+  const { containerRef: messagesContainerRef, scrollToBottom } = useChatScroll();
+  
+  // Keep messagesEndRef for backward compatibility (if needed elsewhere)
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Memoize callbacks to prevent unnecessary re-subscriptions
   const handleMessageInsert = useCallback((payload?: any) => {
@@ -467,6 +467,22 @@ export default function FloatingAdminChatButton() {
     
     return isAdmin ? "Admin" : "Carrier";
   }, [allUserInfos, user?.id, adminUserIds, isLoadingAdminInfos]);
+
+  // Convert ConversationMessage to ChatMessage format
+  const convertToChatMessage = useCallback((msg: ConversationMessage): ChatMessage => {
+    return {
+      id: msg.id,
+      content: msg.message || '',
+      user: {
+        id: msg.sender_id,
+        name: getDisplayName(msg.sender_id, msg.sender_type === 'admin'),
+      },
+      createdAt: msg.created_at,
+      attachment_url: msg.attachment_url,
+      attachment_type: msg.attachment_type,
+      attachment_name: msg.attachment_name,
+    };
+  }, [getDisplayName]);
 
   // Calculate total unread count for the button badge
   const totalUnreadCount = useMemo(() => {
@@ -1240,96 +1256,32 @@ export default function FloatingAdminChatButton() {
 
                             {/* Messages */}
                             <ScrollArea className="flex-1 p-4">
-                              <div className="space-y-4">
-                                {messages.map((message, index) => {
-                                  const isCurrentUser = message.sender_id === user?.id;
-                                  const senderDisplayName = getDisplayName(message.sender_id, message.sender_type === 'admin');
-                                  
-                                  return (
-                                    <div
-                                      key={`${message.id}-${index}-${message.created_at}`}
-                                      className={`flex ${isCurrentUser ? 'justify-end' : 'justify-start'}`}
-                                    >
-                                      <div className={`max-w-[80%] ${isCurrentUser ? 'items-end' : 'items-start'} flex flex-col`}>
-                                        {/* Sender name (only show if not current user or if admin-to-admin chat) */}
-                                        {!isCurrentUser && (
-                                          <p className="text-xs text-muted-foreground mb-1 px-1">
-                                            {senderDisplayName}
-                                          </p>
-                                        )}
-                                        <div
-                                          className={`rounded-lg px-3 py-2 ${
-                                            isCurrentUser
-                                              ? 'bg-primary text-primary-foreground'
-                                              : 'bg-muted'
-                                          }`}
-                                        >
-                                          {/* Attachment */}
-                                          {message.attachment_url && (
-                                        <div className="mb-2">
-                                          {message.attachment_type?.startsWith('image/') ? (
-                                            <a 
-                                              href={message.attachment_url} 
-                                              target="_blank" 
-                                              rel="noopener noreferrer"
-                                              className="block rounded-lg overflow-hidden border border-border/50 hover:opacity-90 transition-opacity max-w-xs"
-                                            >
-                                              <img 
-                                                src={message.attachment_url} 
-                                                alt={message.attachment_name || 'Attachment'} 
-                                                className="max-w-full max-h-64 w-auto h-auto object-contain rounded"
-                                                onError={(e) => {
-                                                  // Fallback if image fails to load
-                                                  const target = e.target as HTMLImageElement;
-                                                  target.style.display = 'none';
-                                                  const parent = target.parentElement;
-                                                  if (parent) {
-                                                    parent.innerHTML = `
-                                                      <div class="flex items-center gap-2 p-2 rounded border bg-muted/50">
-                                                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                                        </svg>
-                                                        <span class="text-sm">${message.attachment_name || 'Image'}</span>
-                                                      </div>
-                                                    `;
-                                                  }
-                                                }}
-                                              />
-                                            </a>
-                                          ) : (
-                                            <a
-                                              href={message.attachment_url}
-                                              target="_blank"
-                                              rel="noopener noreferrer"
-                                              className={`flex items-center gap-2 p-2 rounded border ${
-                                                message.sender_id === user?.id
-                                                  ? 'bg-primary/20 border-primary/30'
-                                                  : 'bg-muted/50 border-border/50'
-                                              } hover:opacity-80 transition-opacity max-w-xs`}
-                                            >
-                                              <FileText className="h-4 w-4 flex-shrink-0" />
-                                              <span className="text-sm truncate">{message.attachment_name || 'Document'}</span>
-                                            </a>
-                                          )}
-                                        </div>
-                                          )}
-                                          {/* Message text */}
-                                          {message.message && (
-                                            <p className="text-sm">{message.message}</p>
-                                          )}
-                                          <p className={`text-xs mt-1 ${
-                                            isCurrentUser
-                                              ? 'opacity-70' 
-                                              : 'text-muted-foreground'
-                                          }`}>
-                                            {new Date(message.created_at).toLocaleTimeString()}
-                                          </p>
-                                        </div>
+                              <div ref={messagesContainerRef} className="space-y-1">
+                                {messages.length === 0 ? (
+                                  <div className="text-center text-sm text-muted-foreground py-8">
+                                    No messages yet. Start the conversation!
+                                  </div>
+                                ) : (
+                                  messages.map((message, index) => {
+                                    const chatMessage = convertToChatMessage(message);
+                                    const isCurrentUser = message.sender_id === user?.id;
+                                    const prevMessage = index > 0 ? messages[index - 1] : null;
+                                    const showHeader = !prevMessage || prevMessage.sender_id !== message.sender_id;
+                                    
+                                    return (
+                                      <div
+                                        key={`${message.id}-${index}-${message.created_at}`}
+                                        className="animate-in fade-in slide-in-from-bottom-4 duration-300"
+                                      >
+                                        <ChatMessageItem
+                                          message={chatMessage}
+                                          isOwnMessage={isCurrentUser}
+                                          showHeader={showHeader}
+                                        />
                                       </div>
-                                    </div>
-                                  );
-                                })}
-                                <div ref={messagesEndRef} />
+                                    );
+                                  })
+                                )}
                               </div>
                             </ScrollArea>
 
