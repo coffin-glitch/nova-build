@@ -82,7 +82,19 @@ export function useRealtimeUserRoles(options: UseRealtimeUserRolesOptions = {}) 
         if (status === 'SUBSCRIBED') {
           console.log('[Realtime] Subscribed to user_roles_cache');
         } else if (status === 'CHANNEL_ERROR') {
-          console.error('[Realtime] Channel error subscribing to user_roles_cache');
+          // This error typically means:
+          // 1. Realtime is not enabled for user_roles_cache table in Supabase Dashboard
+          // 2. RLS policies are blocking the subscription
+          // 3. The table doesn't exist or has incorrect schema
+          console.warn('[Realtime] Channel error subscribing to user_roles_cache. This is usually because:');
+          console.warn('  1. Realtime is not enabled for user_roles_cache in Supabase Dashboard → Database → Replication');
+          console.warn('  2. RLS policies may be blocking the subscription');
+          console.warn('  3. The app will continue to work, but role updates may be delayed until page refresh');
+          console.warn('  To fix: Enable Realtime for user_roles_cache table in Supabase Dashboard');
+        } else if (status === 'TIMED_OUT') {
+          console.warn('[Realtime] Subscription to user_roles_cache timed out');
+        } else if (status === 'CLOSED') {
+          console.warn('[Realtime] Subscription to user_roles_cache closed');
         }
       });
 
