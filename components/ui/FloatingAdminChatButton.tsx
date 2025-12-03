@@ -208,11 +208,12 @@ export default function FloatingAdminChatButton() {
       // Add or replace the message (replace if it's an optimistic update)
       mutateMessages((current: ConversationMessage[] = []) => {
         // Remove any optimistic message with matching content from same sender
+        // Also check for temp messages with matching sender and similar timestamp
         const filtered = current.filter(msg => 
           !(msg.id.startsWith('temp-') && 
             msg.message === newMessage.message && 
             msg.sender_id === newMessage.sender_id &&
-            Math.abs(new Date(msg.created_at).getTime() - new Date(newMessage.created_at).getTime()) < 5000)
+            Math.abs(new Date(msg.created_at).getTime() - new Date(newMessage.created_at).getTime()) < 10000) // 10 second window
         );
         
         // Check if message already exists
@@ -221,9 +222,18 @@ export default function FloatingAdminChatButton() {
         }
         
         // Add the new message and sort
-        return [...filtered, newMessage].sort((a, b) => 
+        const updated = [...filtered, newMessage].sort((a, b) => 
           new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
         );
+        
+        // Log for debugging
+        console.log('[FloatingAdminChat] Realtime message inserted, replaced optimistic:', {
+          newMessageId: newMessage.id,
+          hadOptimistic: current.some(msg => msg.id.startsWith('temp-')),
+          totalMessages: updated.length
+        });
+        
+        return updated;
       }, false);
     } else {
       // Fallback: revalidate if no payload data
