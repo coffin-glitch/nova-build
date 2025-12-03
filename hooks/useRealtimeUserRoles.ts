@@ -37,10 +37,35 @@ export function useRealtimeUserRoles(options: UseRealtimeUserRolesOptions = {}) 
   }, [onInsert, onUpdate, onDelete]);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) {
+      // Clean up existing channel if disabled
+      if (channelRef.current) {
+        const supabase = getSupabaseBrowser();
+        try {
+          supabase.removeChannel(channelRef.current);
+        } catch (error) {
+          // Ignore cleanup errors
+        }
+        channelRef.current = null;
+      }
+      return;
+    }
     
     // Guard against SSR/build-time execution
     if (typeof window === 'undefined') return;
+
+    // Clean up any existing channel before creating a new one
+    // This prevents multiple subscriptions when userId changes or component re-renders
+    if (channelRef.current) {
+      let supabase;
+      try {
+        supabase = getSupabaseBrowser();
+        supabase.removeChannel(channelRef.current);
+      } catch (error) {
+        // Ignore cleanup errors
+      }
+      channelRef.current = null;
+    }
 
     let supabase;
     try {
@@ -50,7 +75,8 @@ export function useRealtimeUserRoles(options: UseRealtimeUserRolesOptions = {}) 
       return;
     }
     
-    const channelName = `user_roles_cache_${Date.now()}`;
+    // Use a stable channel name based on userId to prevent duplicate subscriptions
+    const channelName = `user_roles_cache_${userId || 'all'}_${Date.now()}`;
     const channel = supabase.channel(channelName);
 
     // Build postgres_changes config
