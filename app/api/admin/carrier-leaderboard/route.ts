@@ -242,6 +242,7 @@ export async function GET(request: NextRequest) {
           
           -- Win statistics (from authoritative auction_awards)
           COALESCE(ws.total_wins, 0) as total_wins,
+          COALESCE(ws.wins_in_timeframe, 0) as wins_in_timeframe,
           COALESCE(ws.avg_winning_bid_cents, 0) as avg_winning_bid_cents,
           COALESCE(ws.total_revenue_cents, 0) as total_revenue_cents,
           ws.first_win_at,
