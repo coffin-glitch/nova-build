@@ -87,17 +87,17 @@ export async function GET(request: NextRequest) {
 
     switch (action) {
       case "overview":
-        return await getBidOverview(startDate, endDate);
+        return await getBidOverview(startDate, endDate, request);
       case "trends":
-        return await getBidTrends(startDate, hourlyTimeframe, endDate);
+        return await getBidTrends(startDate, hourlyTimeframe, endDate, request);
       case "performance":
-        return await getPerformanceMetrics(startDate, endDate);
+        return await getPerformanceMetrics(startDate, endDate, request);
       case "carrier_activity":
-        return await getCarrierActivity(startDate, endDate);
+        return await getCarrierActivity(startDate, endDate, request);
       case "auction_insights":
-        return await getAuctionInsights(startDate, endDate);
+        return await getAuctionInsights(startDate, endDate, request);
       default:
-        return await getBidOverview(startDate, endDate);
+        return await getBidOverview(startDate, endDate, request);
     }
 
   } catch (error: any) {
@@ -126,15 +126,8 @@ export async function GET(request: NextRequest) {
   }
 }
 
-async function getBidOverview(startDate: Date, endDate: Date | null = null) {
+async function getBidOverview(startDate: Date, endDate: Date | null = null, request: NextRequest) {
   // Get comprehensive bid overview statistics
-  const dateFilter = endDate 
-    ? sql`tb.received_at >= ${startDate.toISOString()} AND tb.received_at <= ${endDate.toISOString()}`
-    : sql`tb.received_at >= ${startDate.toISOString()}`;
-  const bidDateFilter = endDate
-    ? sql`cb.created_at >= ${startDate.toISOString()} AND cb.created_at <= ${endDate.toISOString()}`
-    : sql`cb.created_at >= ${startDate.toISOString()}`;
-  
   const overview = await sql`
     WITH bid_stats AS (
       SELECT 
@@ -142,7 +135,7 @@ async function getBidOverview(startDate: Date, endDate: Date | null = null) {
         COUNT(CASE WHEN NOW() <= (tb.received_at::timestamp + INTERVAL '25 minutes') THEN 1 END) as active_auctions,
         COUNT(CASE WHEN NOW() > (tb.received_at::timestamp + INTERVAL '25 minutes') THEN 1 END) as expired_auctions,
         COUNT(CASE 
-          ${endDate ? sql`WHEN tb.received_at >= ${startDate.toISOString()} AND tb.received_at <= ${endDate.toISOString()} THEN 1` : startDate ? sql`WHEN tb.received_at >= ${startDate.toISOString()} THEN 1` : sql`WHEN 1=1 THEN 1`}
+          ${endDate ? sql`WHEN tb.received_at >= ${startDate.toISOString()} AND tb.received_at <= ${endDate.toISOString()} THEN 1` : sql`WHEN tb.received_at >= ${startDate.toISOString()} THEN 1`}
         END) as recent_auctions,
         
         -- Today's specific counts
@@ -152,13 +145,13 @@ async function getBidOverview(startDate: Date, endDate: Date | null = null) {
         
         COUNT(cb.id) as total_carrier_bids,
         COUNT(CASE 
-          ${endDate ? sql`WHEN cb.created_at >= ${startDate.toISOString()} AND cb.created_at <= ${endDate.toISOString()} THEN 1` : startDate ? sql`WHEN cb.created_at >= ${startDate.toISOString()} THEN 1` : sql`WHEN 1=1 THEN 1`}
+          ${endDate ? sql`WHEN cb.created_at >= ${startDate.toISOString()} AND cb.created_at <= ${endDate.toISOString()} THEN 1` : sql`WHEN cb.created_at >= ${startDate.toISOString()} THEN 1`}
         END) as recent_carrier_bids,
         COUNT(CASE WHEN cb.created_at::date = CURRENT_DATE THEN 1 END) as total_carrier_bids_today,
         
         COUNT(DISTINCT cb.supabase_user_id) as unique_carriers_bid,
         COUNT(DISTINCT CASE 
-          ${endDate ? sql`WHEN cb.created_at >= ${startDate.toISOString()} AND cb.created_at <= ${endDate.toISOString()} THEN cb.supabase_user_id` : startDate ? sql`WHEN cb.created_at >= ${startDate.toISOString()} THEN cb.supabase_user_id` : sql`WHEN 1=1 THEN cb.supabase_user_id`}
+          ${endDate ? sql`WHEN cb.created_at >= ${startDate.toISOString()} AND cb.created_at <= ${endDate.toISOString()} THEN cb.supabase_user_id` : sql`WHEN cb.created_at >= ${startDate.toISOString()} THEN cb.supabase_user_id`}
         END) as recent_carriers_bid,
         
         COALESCE(AVG(cb.amount_cents), 0) as avg_bid_amount,
@@ -170,7 +163,9 @@ async function getBidOverview(startDate: Date, endDate: Date | null = null) {
         COALESCE(MAX(tb.distance_miles), 0) as max_distance
       FROM telegram_bids tb
       LEFT JOIN carrier_bids cb ON tb.bid_number = cb.bid_number
-      ${endDate ? sql`WHERE ${dateFilter} AND (cb.id IS NULL OR ${bidDateFilter})` : startDate ? sql`WHERE ${dateFilter} AND (cb.id IS NULL OR ${bidDateFilter})` : sql``}
+      WHERE tb.received_at >= ${startDate.toISOString()}
+        ${endDate ? sql`AND tb.received_at <= ${endDate.toISOString()}` : sql``}
+        AND (cb.id IS NULL OR (cb.created_at >= ${startDate.toISOString()} ${endDate ? sql`AND cb.created_at <= ${endDate.toISOString()}` : sql``}))
     ),
     
     winning_stats AS (
@@ -321,7 +316,7 @@ function getHourlyTrendsDateRange(timeframe: string): { startDate: Date; endDate
   return { startDate, endDate };
 }
 
-async function getBidTrends(startDate: Date, hourlyTimeframe: string = "today", endDate: Date | null = null) {
+async function getBidTrends(startDate: Date, hourlyTimeframe: string = "today", endDate: Date | null = null, request: NextRequest) {
   // Get daily bid trends (filtered by date range when endDate is provided)
   const dailyTrends = await sql`
     SELECT 
@@ -373,12 +368,8 @@ async function getBidTrends(startDate: Date, hourlyTimeframe: string = "today", 
   return addSecurityHeaders(response, request);
 }
 
-async function getPerformanceMetrics(startDate: Date, endDate: Date | null = null) {
+async function getPerformanceMetrics(startDate: Date, endDate: Date | null = null, request: NextRequest) {
   // Get performance metrics by different dimensions
-  const dateFilter = endDate 
-    ? sql`tb.received_at >= ${startDate.toISOString()} AND tb.received_at <= ${endDate.toISOString()}`
-    : sql`tb.received_at >= ${startDate.toISOString()}`;
-  
   const distancePerformance = await sql`
     SELECT 
       CASE 
@@ -394,7 +385,8 @@ async function getPerformanceMetrics(startDate: Date, endDate: Date | null = nul
       COALESCE(AVG(tb.distance_miles), 0) as avg_distance
     FROM telegram_bids tb
     LEFT JOIN carrier_bids cb ON tb.bid_number = cb.bid_number
-    WHERE ${dateFilter}
+    WHERE tb.received_at >= ${startDate.toISOString()}
+      ${endDate ? sql`AND tb.received_at <= ${endDate.toISOString()}` : sql``}
     GROUP BY distance_category
     ORDER BY avg_distance
   `;
@@ -408,7 +400,8 @@ async function getPerformanceMetrics(startDate: Date, endDate: Date | null = nul
       COALESCE(AVG(cb.amount_cents), 0) as avg_bid_amount
     FROM telegram_bids tb
     LEFT JOIN carrier_bids cb ON tb.bid_number = cb.bid_number
-    WHERE ${dateFilter}
+    WHERE tb.received_at >= ${startDate.toISOString()}
+      ${endDate ? sql`AND tb.received_at <= ${endDate.toISOString()}` : sql``}
     GROUP BY tb.tag
     ORDER BY auction_count DESC
     LIMIT 100
@@ -428,7 +421,8 @@ async function getPerformanceMetrics(startDate: Date, endDate: Date | null = nul
       COALESCE(AVG(cb.amount_cents), 0) as avg_bid_amount
     FROM telegram_bids tb
     LEFT JOIN carrier_bids cb ON tb.bid_number = cb.bid_number
-    WHERE ${dateFilter}
+    WHERE tb.received_at >= ${startDate.toISOString()}
+      ${endDate ? sql`AND tb.received_at <= ${endDate.toISOString()}` : sql``}
     GROUP BY time_category
     ORDER BY auction_count DESC
   `;
@@ -452,19 +446,15 @@ async function getPerformanceMetrics(startDate: Date, endDate: Date | null = nul
   return addSecurityHeaders(response, request);
 }
 
-async function getCarrierActivity(startDate: Date, endDate: Date | null = null) {
+async function getCarrierActivity(startDate: Date, endDate: Date | null = null, request: NextRequest) {
   // Get carrier activity patterns
-  const dateFilter = endDate
-    ? sql`cb.created_at >= ${startDate.toISOString()} AND cb.created_at <= ${endDate.toISOString()}`
-    : sql`cb.created_at >= ${startDate.toISOString()}`;
-  
   const activityPatterns = await sql`
     SELECT 
       cp.company_name,
       cp.legal_name,
       cp.mc_number,
       COUNT(cb.id) as total_bids,
-      COUNT(CASE WHEN ${dateFilter} THEN 1 END) as recent_bids,
+      COUNT(cb.id) as recent_bids,
       MIN(cb.created_at) as first_bid_at,
       MAX(cb.created_at) as last_bid_at,
       COALESCE(AVG(cb.amount_cents), 0) as avg_bid_amount,
@@ -484,7 +474,8 @@ async function getCarrierActivity(startDate: Date, endDate: Date | null = null) 
     INNER JOIN carrier_bids cb ON cp.supabase_user_id = cb.supabase_user_id
     LEFT JOIN auction_awards aa ON aa.bid_number = cb.bid_number 
       AND aa.supabase_winner_user_id = cp.supabase_user_id
-    WHERE ${dateFilter}
+    WHERE cb.created_at >= ${startDate.toISOString()}
+      ${endDate ? sql`AND cb.created_at <= ${endDate.toISOString()}` : sql``}
     GROUP BY cp.supabase_user_id, cp.company_name, cp.legal_name, cp.mc_number
     ORDER BY recent_bids DESC
     LIMIT 50
@@ -507,21 +498,8 @@ async function getCarrierActivity(startDate: Date, endDate: Date | null = null) 
   return addSecurityHeaders(response, request);
 }
 
-async function getAuctionInsights(startDate: Date, endDate: Date | null = null) {
+async function getAuctionInsights(startDate: Date, endDate: Date | null = null, request: NextRequest) {
   // Enhanced auction insights with new metrics
-  const dateFilter = endDate
-    ? sql`tb.received_at >= ${startDate.toISOString()} AND tb.received_at <= ${endDate.toISOString()}`
-    : sql`tb.received_at >= ${startDate.toISOString()}`;
-  // Note: bidDateFilter doesn't use table alias since it's used in contexts where the table name varies
-  const bidDateFilter = endDate
-    ? sql`created_at >= ${startDate.toISOString()} AND created_at <= ${endDate.toISOString()}`
-    : sql`created_at >= ${startDate.toISOString()}`;
-  
-  // Build WHERE clause for bid_timing CTE to avoid nested sql templates
-  // Combine both dateFilter conditions into a single sql template
-  const bidTimingWhereClause = endDate
-    ? sql`tb.received_at >= ${startDate.toISOString()} AND tb.received_at <= ${endDate.toISOString()} AND cb.created_at >= ${startDate.toISOString()} AND cb.created_at <= ${endDate.toISOString()}`
-    : sql`tb.received_at >= ${startDate.toISOString()} AND cb.created_at >= ${startDate.toISOString()}`;
   
   // Debug logging
   if (process.env.NODE_ENV === 'development') {
@@ -550,7 +528,8 @@ async function getAuctionInsights(startDate: Date, endDate: Date | null = null) 
         EXTRACT(EPOCH FROM (MIN(cb.created_at) - tb.received_at)) / 60 as minutes_to_first_bid
       FROM telegram_bids tb
       LEFT JOIN carrier_bids cb ON tb.bid_number = cb.bid_number
-      WHERE ${dateFilter}
+      WHERE tb.received_at >= ${startDate.toISOString()}
+        ${endDate ? sql`AND tb.received_at <= ${endDate.toISOString()}` : sql``}
       GROUP BY tb.bid_number, tb.distance_miles, tb.tag, tb.received_at, tb.pickup_timestamp
     ),
     
@@ -586,7 +565,10 @@ async function getAuctionInsights(startDate: Date, endDate: Date | null = null) 
         COUNT(*) as bid_count
       FROM carrier_bids cb
       INNER JOIN telegram_bids tb ON cb.bid_number = tb.bid_number
-      WHERE ${bidTimingWhereClause}
+      WHERE tb.received_at >= ${startDate.toISOString()}
+        ${endDate ? sql`AND tb.received_at <= ${endDate.toISOString()}` : sql``}
+        AND cb.created_at >= ${startDate.toISOString()}
+        ${endDate ? sql`AND cb.created_at <= ${endDate.toISOString()}` : sql``}
       GROUP BY EXTRACT(HOUR FROM cb.created_at)
     ),
     
@@ -596,7 +578,8 @@ async function getAuctionInsights(startDate: Date, endDate: Date | null = null) 
         supabase_user_id,
         COUNT(*) as revision_count
       FROM carrier_bids
-      WHERE ${bidDateFilter}
+      WHERE created_at >= ${startDate.toISOString()}
+        ${endDate ? sql`AND created_at <= ${endDate.toISOString()}` : sql``}
       GROUP BY bid_number, supabase_user_id
       HAVING COUNT(*) > 1
     )
@@ -696,7 +679,8 @@ async function getAuctionInsights(startDate: Date, endDate: Date | null = null) 
         supabase_user_id,
         COUNT(*) as revision_count
       FROM carrier_bids
-      WHERE ${bidDateFilter}
+      WHERE created_at >= ${startDate.toISOString()}
+        ${endDate ? sql`AND created_at <= ${endDate.toISOString()}` : sql``}
       GROUP BY bid_number, supabase_user_id
       HAVING COUNT(*) > 1
     ) revisions
@@ -719,7 +703,8 @@ async function getAuctionInsights(startDate: Date, endDate: Date | null = null) 
       FROM carrier_bids
       GROUP BY bid_number
     ) route_stats ON tb.bid_number = route_stats.bid_number
-    WHERE ${dateFilter}
+    WHERE tb.received_at >= ${startDate.toISOString()}
+      ${endDate ? sql`AND tb.received_at <= ${endDate.toISOString()}` : sql``}
       AND tb.tag IS NOT NULL
     GROUP BY tb.tag
     HAVING COUNT(DISTINCT tb.bid_number) >= 3
@@ -742,7 +727,8 @@ async function getAuctionInsights(startDate: Date, endDate: Date | null = null) 
       EXTRACT(EPOCH FROM (MIN(cb.created_at) - tb.received_at)) / 60 as minutes_to_first_bid
     FROM telegram_bids tb
     LEFT JOIN carrier_bids cb ON tb.bid_number = cb.bid_number
-    WHERE ${dateFilter}
+    WHERE tb.received_at >= ${startDate.toISOString()}
+      ${endDate ? sql`AND tb.received_at <= ${endDate.toISOString()}` : sql``}
     GROUP BY tb.bid_number, tb.distance_miles, tb.tag, tb.received_at
     HAVING COUNT(cb.id) > 0
     ORDER BY COUNT(cb.id) DESC, (MAX(cb.amount_cents) - MIN(cb.amount_cents)) DESC
