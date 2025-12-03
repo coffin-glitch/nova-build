@@ -69,9 +69,37 @@ export default function NotificationsMenu() {
     mutate();
   }, [mutate]);
 
-  const handleNotificationDelete = useCallback(() => {
-    console.log('[NotificationsMenu] Notification deleted, refreshing...');
-    mutate();
+  const handleNotificationDelete = useCallback((payload: any) => {
+    console.log('[NotificationsMenu] Notification deleted, removing from cache...', payload);
+    // Optimistically remove the deleted notification from cache
+    mutate((current: any) => {
+      if (!current?.data) return current;
+      
+      const deletedId = payload.old?.id?.toString() || payload.old?.id;
+      
+      // Handle both data structures
+      if (Array.isArray(current.data)) {
+        // Format: { data: [...] }
+        return {
+          ...current,
+          data: current.data.filter((n: Notification) => n.id?.toString() !== deletedId)
+        };
+      } else if (current.data?.notifications) {
+        // Format: { data: { notifications: [...], unreadCount: ... } }
+        const updatedNotifications = current.data.notifications.filter((n: Notification) => 
+          n.id?.toString() !== deletedId
+        );
+        return {
+          ...current,
+          data: {
+            ...current.data,
+            notifications: updatedNotifications,
+            unreadCount: updatedNotifications.filter((n: Notification) => !n.read).length
+          }
+        };
+      }
+      return current;
+    }, false); // Don't revalidate - we've already updated the cache
   }, [mutate]);
 
   // Subscribe to real-time notification updates

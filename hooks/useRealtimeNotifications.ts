@@ -43,7 +43,7 @@ export function useRealtimeNotifications(options: UseRealtimeNotificationsOption
       event: '*' as const,
       schema: 'public',
       table: 'notifications',
-      filter: `recipient_user_id=eq.${userId}`,
+      filter: `user_id=eq.${userId}`,
     };
 
     channel

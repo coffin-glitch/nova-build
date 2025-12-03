@@ -63,9 +63,31 @@ export function NotificationSystem({ className }: NotificationSystemProps) {
     mutate();
   }, [mutate]);
 
-  const handleNotificationDelete = useCallback(() => {
-    console.log('[NotificationSystem] Notification deleted, refreshing...');
-    mutate();
+  const handleNotificationDelete = useCallback((payload: any) => {
+    console.log('[NotificationSystem] Notification deleted, removing from cache...', payload);
+    // Optimistically remove the deleted notification from cache
+    mutate((current: any) => {
+      if (!current) return current;
+      
+      const deletedId = payload.old?.id?.toString() || payload.old?.id;
+      
+      // Handle carrier notifications API response: { ok: true, data: { notifications: [...] } }
+      if (current?.data?.notifications) {
+        const updatedNotifications = current.data.notifications.filter((n: Notification) => 
+          n.id?.toString() !== deletedId
+        );
+        return {
+          ...current,
+          data: {
+            ...current.data,
+            notifications: updatedNotifications
+          }
+        };
+      } else if (Array.isArray(current)) {
+        return current.filter((n: Notification) => n.id?.toString() !== deletedId);
+      }
+      return current;
+    }, false); // Don't revalidate - we've already updated the cache
   }, [mutate]);
 
   // Subscribe to real-time notification updates

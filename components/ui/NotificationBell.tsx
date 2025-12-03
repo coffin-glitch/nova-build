@@ -107,9 +107,54 @@ export function NotificationBell() {
       console.log('[NotificationBell] Notification updated, refreshing...');
       mutate(); // Refresh when notification is updated (e.g., marked as read)
     },
-    onDelete: () => {
-      console.log('[NotificationBell] Notification deleted, refreshing...');
-      mutate(); // Refresh when notification is deleted (e.g., clear all)
+    onDelete: (payload: any) => {
+      console.log('[NotificationBell] Notification deleted, removing from cache...', payload);
+      // Optimistically remove the deleted notification from cache
+      mutate((current: any) => {
+        if (!current) return current;
+        
+        const deletedId = payload.old?.id?.toString() || payload.old?.id;
+        if (!deletedId) return current; // Safety check
+        
+        // Handle different response structures
+        if (current?.data?.notifications) {
+          // Check if notification exists in cache before removing
+          const exists = current.data.notifications.some((n: any) => n.id?.toString() === deletedId);
+          if (!exists) return current; // Already removed or never existed
+          
+          const updatedNotifications = current.data.notifications.filter((n: any) => 
+            n.id?.toString() !== deletedId
+          );
+          return {
+            ...current,
+            data: {
+              ...current.data,
+              notifications: updatedNotifications,
+              unreadCount: updatedNotifications.filter((n: any) => !n.read).length
+            }
+          };
+        } else if (current?.notifications) {
+          // Check if notification exists in cache before removing
+          const exists = current.notifications.some((n: any) => n.id?.toString() === deletedId);
+          if (!exists) return current; // Already removed or never existed
+          
+          const updatedNotifications = current.notifications.filter((n: any) => 
+            n.id?.toString() !== deletedId
+          );
+          return {
+            ...current,
+            notifications: updatedNotifications,
+            unreadCount: updatedNotifications.filter((n: any) => !n.read).length
+          };
+        } else if (Array.isArray(current)) {
+          // Check if notification exists in cache before removing
+          const exists = current.some((n: any) => n.id?.toString() === deletedId);
+          if (!exists) return current; // Already removed or never existed
+          
+          return current.filter((n: any) => n.id?.toString() !== deletedId);
+        }
+        return current;
+      }, false); // Don't revalidate - we've already updated the cache
     },
   });
 
@@ -363,12 +408,28 @@ export function NotificationBell() {
     }
 
     // Optimistic update: Clear all immediately in UI
+    // Update cache to empty array and prevent revalidation from overwriting it
     mutate((current: any) => {
-      if (!current?.notifications) return current;
-      return {
-        ...current,
-        notifications: []
-      };
+      // Handle different response structures
+      if (current?.data?.notifications) {
+        return {
+          ...current,
+          data: {
+            ...current.data,
+            notifications: [],
+            unreadCount: 0
+          }
+        };
+      } else if (current?.notifications) {
+        return {
+          ...current,
+          notifications: [],
+          unreadCount: 0
+        };
+      } else if (Array.isArray(current)) {
+        return [];
+      }
+      return { notifications: [], unreadCount: 0 };
     }, false); // false = don't revalidate yet, let Realtime handle it
 
     try {
@@ -388,7 +449,30 @@ export function NotificationBell() {
         return;
       }
       
-      // Realtime will sync the actual state, so we don't need to mutate again
+      // Explicitly update cache to empty to prevent revalidation from bringing them back
+      // This ensures that even if revalidateOnFocus triggers, the cache stays empty
+      mutate((current: any) => {
+        if (current?.data?.notifications) {
+          return {
+            ...current,
+            data: {
+              ...current.data,
+              notifications: [],
+              unreadCount: 0
+            }
+          };
+        } else if (current?.notifications) {
+          return {
+            ...current,
+            notifications: [],
+            unreadCount: 0
+          };
+        } else if (Array.isArray(current)) {
+          return [];
+        }
+        return { notifications: [], unreadCount: 0 };
+      }, false); // Don't revalidate - we know they're deleted
+      
       toast.success('All notifications cleared');
     } catch (error) {
       console.error('Error clearing all notifications:', error);
