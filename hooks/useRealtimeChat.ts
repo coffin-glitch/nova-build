@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { getSupabaseBrowser } from '@/lib/supabase';
-import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
+import type { RealtimePostgresChangesPayload, RealtimeChannel } from '@supabase/supabase-js';
 
 export interface ChatMessage {
   id: string;
@@ -49,7 +49,9 @@ export function useRealtimeChat(options: UseRealtimeChatOptions = { roomName: ''
     enabled = true,
   } = options;
 
-  const channelRef = useRef<ReturnType<typeof getSupabaseBrowser>['channel'] | null>(null);
+  // FIXED: Use RealtimeChannel type directly instead of ReturnType<typeof getSupabaseBrowser>
+  // This prevents module-level type evaluation that can cause circular dependency issues
+  const channelRef = useRef<RealtimeChannel | null>(null);
   const callbacksRef = useRef({ onMessage, onBroadcast });
   
   // Update callbacks ref when they change (without triggering re-subscription)
@@ -169,4 +171,3 @@ export function useRealtimeChat(options: UseRealtimeChatOptions = { roomName: ''
     channel: channelRef.current,
   };
 }
-

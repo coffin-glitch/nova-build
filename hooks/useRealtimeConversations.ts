@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { getSupabaseBrowser } from '@/lib/supabase';
-import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
+import type { RealtimePostgresChangesPayload, RealtimeChannel } from '@supabase/supabase-js';
 
 interface UseRealtimeConversationsOptions {
   onInsert?: (payload: RealtimePostgresChangesPayload<any>) => void;
@@ -23,7 +23,9 @@ export function useRealtimeConversations(options: UseRealtimeConversationsOption
     enabled = true,
   } = options;
 
-  const channelRef = useRef<ReturnType<typeof getSupabaseBrowser>['channel'] | null>(null);
+  // FIXED: Use RealtimeChannel type directly instead of ReturnType<typeof getSupabaseBrowser>
+  // This prevents module-level type evaluation that can cause circular dependency issues
+  const channelRef = useRef<RealtimeChannel | null>(null);
   const callbacksRef = useRef({ onInsert, onUpdate, onDelete });
   
   // Update callbacks ref when they change (without triggering re-subscription)
@@ -33,8 +35,17 @@ export function useRealtimeConversations(options: UseRealtimeConversationsOption
 
   useEffect(() => {
     if (!enabled) return;
+    
+    // Guard against SSR/build-time execution
+    if (typeof window === 'undefined') return;
 
-    const supabase = getSupabaseBrowser();
+    let supabase;
+    try {
+      supabase = getSupabaseBrowser();
+    } catch (error) {
+      console.error('[useRealtimeConversations] Error getting Supabase client:', error);
+      return;
+    }
     
     const channelName = `conversations_${Date.now()}`;
     const channel = supabase.channel(channelName);
@@ -75,11 +86,14 @@ export function useRealtimeConversations(options: UseRealtimeConversationsOption
     channelRef.current = channel;
 
     return () => {
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
+      if (channelRef.current && supabase) {
+        try {
+          supabase.removeChannel(channelRef.current);
+        } catch (error) {
+          console.warn('[useRealtimeConversations] Error removing channel:', error);
+        }
         channelRef.current = null;
       }
     };
   }, [enabled, userId]); // Removed callbacks from dependencies
 }
-

@@ -1,5 +1,5 @@
 import { getSupabaseBrowser } from '@/lib/supabase';
-import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
+import type { RealtimePostgresChangesPayload, RealtimeChannel } from '@supabase/supabase-js';
 import { useEffect, useRef } from 'react';
 
 interface UseRealtimeBidsOptions {
@@ -23,7 +23,7 @@ export function useRealtimeBids(options: UseRealtimeBidsOptions = {}) {
     enabled = true,
   } = options;
 
-  const channelRef = useRef<ReturnType<typeof getSupabaseBrowser>['channel'] | null>(null);
+  const channelRef = useRef<RealtimeChannel | null>(null);
   const callbacksRef = useRef({ onInsert, onUpdate, onDelete });
   
   // Update callbacks ref when they change (without triggering re-subscription)
@@ -33,8 +33,16 @@ export function useRealtimeBids(options: UseRealtimeBidsOptions = {}) {
 
   useEffect(() => {
     if (!enabled) return;
+    // Guard against SSR/build-time execution
+    if (typeof window === 'undefined') return;
 
-    const supabase = getSupabaseBrowser();
+    let supabase;
+    try {
+      supabase = getSupabaseBrowser();
+    } catch (error) {
+      console.error('[] Error getting Supabase client:', error);
+      return;
+    }
     
     // Create a unique channel name to avoid conflicts
     const channelName = `telegram_bids_${Date.now()}`;
@@ -82,11 +90,14 @@ export function useRealtimeBids(options: UseRealtimeBidsOptions = {}) {
 
     // Cleanup on unmount
     return () => {
-      if (channelRef.current) {
+      if (channelRef.current && supabase) {
+        try {
         supabase.removeChannel(channelRef.current);
+        } catch (error) {
+          console.warn('[] Error removing channel:', error);
+        }
         channelRef.current = null;
       }
     };
   }, [enabled, filter]); // Removed callbacks from dependencies
 }
-

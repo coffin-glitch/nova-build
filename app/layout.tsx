@@ -2,10 +2,38 @@ import { UserPreferencesProvider } from "@/components/providers/UserPreferencesP
 import { SupabaseProvider } from "@/components/providers/SupabaseProvider";
 import { ClerkCookieCleanup } from "@/components/ClerkCookieCleanup";
 import { LayoutContent } from "@/components/layout/LayoutContent";
+import { ErrorHandler } from "@/components/ErrorHandler";
 import type { Metadata } from "next";
 import { ThemeProvider } from "next-themes";
 import { Inter } from "next/font/google";
 import "./globals.css";
+
+// Client-side error handler for unhandled errors
+if (typeof window !== 'undefined') {
+  window.addEventListener('error', (event) => {
+    // Enhanced error logging for unhandled errors
+    const errorInfo = {
+      message: event.message,
+      filename: event.filename,
+      lineno: event.lineno,
+      colno: event.colno,
+      error: event.error,
+      // Check if it's a temporal dead zone error
+      isTDZError: event.message.includes("Cannot access") && event.message.includes("before initialization"),
+    };
+    
+    console.error("🚨 [WindowError] Unhandled error:", errorInfo);
+    
+    if (errorInfo.isTDZError) {
+      console.error("🚨 [WindowError] TDZ error detected. This indicates a circular dependency or initialization order issue.");
+      console.error("🚨 [WindowError] File:", event.filename, "Line:", event.lineno);
+    }
+  });
+  
+  window.addEventListener('unhandledrejection', (event) => {
+    console.error("🚨 [WindowError] Unhandled promise rejection:", event.reason);
+  });
+}
 
 const inter = Inter({ 
   subsets: ["latin"], 
@@ -29,6 +57,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           enableSystem
           disableTransitionOnChange
         >
+          <ErrorHandler />
           <UserPreferencesProvider>
             <SupabaseProvider>
               <ClerkCookieCleanup />

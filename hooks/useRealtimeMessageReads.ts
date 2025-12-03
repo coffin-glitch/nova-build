@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { getSupabaseBrowser } from '@/lib/supabase';
-import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
+import type { RealtimePostgresChangesPayload, RealtimeChannel } from '@supabase/supabase-js';
 
 interface UseRealtimeMessageReadsOptions {
   onInsert?: (payload: RealtimePostgresChangesPayload<any>) => void;
@@ -27,12 +27,20 @@ export function useRealtimeMessageReads(options: UseRealtimeMessageReadsOptions 
     enabled = true,
   } = options;
 
-  const channelRef = useRef<ReturnType<typeof getSupabaseBrowser>['channel'] | null>(null);
+  const channelRef = useRef<RealtimeChannel | null>(null);
 
   useEffect(() => {
     if (!enabled) return;
+    // Guard against SSR/build-time execution
+    if (typeof window === 'undefined') return;
 
-    const supabase = getSupabaseBrowser();
+    let supabase;
+    try {
+      supabase = getSupabaseBrowser();
+    } catch (error) {
+      console.error('[] Error getting Supabase client:', error);
+      return;
+    }
     
     const channelName = `message_reads_${Date.now()}`;
     const channel = supabase.channel(channelName);
@@ -85,11 +93,14 @@ export function useRealtimeMessageReads(options: UseRealtimeMessageReadsOptions 
     channelRef.current = channel;
 
     return () => {
-      if (channelRef.current) {
+      if (channelRef.current && supabase) {
+        try {
         supabase.removeChannel(channelRef.current);
+        } catch (error) {
+          console.warn('[] Error removing channel:', error);
+        }
         channelRef.current = null;
       }
     };
   }, [enabled, userId, messageId, conversationId, onInsert, onUpdate, onDelete]);
 }
-

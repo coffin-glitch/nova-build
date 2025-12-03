@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { getSupabaseBrowser } from '@/lib/supabase';
-import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
+import type { RealtimePostgresChangesPayload, RealtimeChannel } from '@supabase/supabase-js';
 
 interface UseRealtimeFavoritesOptions {
   onInsert?: (payload: RealtimePostgresChangesPayload<any>) => void;
@@ -23,7 +23,7 @@ export function useRealtimeFavorites(options: UseRealtimeFavoritesOptions = {}) 
     enabled = true,
   } = options;
 
-  const channelRef = useRef<ReturnType<typeof getSupabaseBrowser>['channel'] | null>(null);
+  const channelRef = useRef<RealtimeChannel | null>(null);
   const callbacksRef = useRef({ onInsert, onUpdate, onDelete });
   
   // Update callbacks ref when they change (without triggering re-subscription)
@@ -33,8 +33,16 @@ export function useRealtimeFavorites(options: UseRealtimeFavoritesOptions = {}) 
 
   useEffect(() => {
     if (!enabled) return;
+    // Guard against SSR/build-time execution
+    if (typeof window === 'undefined') return;
 
-    const supabase = getSupabaseBrowser();
+    let supabase;
+    try {
+      supabase = getSupabaseBrowser();
+    } catch (error) {
+      console.error('[] Error getting Supabase client:', error);
+      return;
+    }
     
     const channelName = `carrier_favorites_${Date.now()}`;
     const channel = supabase.channel(channelName);
@@ -75,11 +83,14 @@ export function useRealtimeFavorites(options: UseRealtimeFavoritesOptions = {}) 
     channelRef.current = channel;
 
     return () => {
-      if (channelRef.current) {
+      if (channelRef.current && supabase) {
+        try {
         supabase.removeChannel(channelRef.current);
+        } catch (error) {
+          console.warn('[] Error removing channel:', error);
+        }
         channelRef.current = null;
       }
     };
   }, [enabled, userId]); // Removed callbacks from dependencies
 }
-

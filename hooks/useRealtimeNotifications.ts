@@ -1,5 +1,5 @@
 import { getSupabaseBrowser } from '@/lib/supabase';
-import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
+import type { RealtimePostgresChangesPayload, RealtimeChannel } from '@supabase/supabase-js';
 import { useEffect, useRef } from 'react';
 
 interface UseRealtimeNotificationsOptions {
@@ -23,7 +23,7 @@ export function useRealtimeNotifications(options: UseRealtimeNotificationsOption
     enabled = true,
   } = options;
 
-  const channelRef = useRef<ReturnType<typeof getSupabaseBrowser>['channel'] | null>(null);
+  const channelRef = useRef<RealtimeChannel | null>(null);
   const callbacksRef = useRef({ onInsert, onUpdate, onDelete });
   
   // Update callbacks ref when they change (without triggering re-subscription)
@@ -33,8 +33,17 @@ export function useRealtimeNotifications(options: UseRealtimeNotificationsOption
 
   useEffect(() => {
     if (!enabled || !userId) return;
+    
+    // Guard against SSR/build-time execution
+    if (typeof window === 'undefined') return;
 
-    const supabase = getSupabaseBrowser();
+    let supabase;
+    try {
+      supabase = getSupabaseBrowser();
+    } catch (error) {
+      console.error('[useRealtimeNotifications] Error getting Supabase client:', error);
+      return;
+    }
     
     const channelName = `notifications_${userId}_${Date.now()}`;
     const channel = supabase.channel(channelName);
@@ -75,11 +84,14 @@ export function useRealtimeNotifications(options: UseRealtimeNotificationsOption
     channelRef.current = channel;
 
     return () => {
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
+      if (channelRef.current && supabase) {
+        try {
+          supabase.removeChannel(channelRef.current);
+        } catch (error) {
+          console.warn('[useRealtimeNotifications] Error removing channel:', error);
+        }
         channelRef.current = null;
       }
     };
   }, [enabled, userId]); // Removed callbacks from dependencies
 }
-

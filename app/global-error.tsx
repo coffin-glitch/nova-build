@@ -10,7 +10,26 @@ export default function GlobalError({
   reset: () => void;
 }) {
   useEffect(() => {
-    console.error("Global error:", error);
+    // Enhanced error logging with module information
+    const errorInfo = {
+      message: error.message,
+      name: error.name,
+      stack: error.stack,
+      digest: error.digest,
+      // Try to extract module/file information from stack trace
+      module: error.stack?.match(/at\s+.*?\(([^:]+):\d+:\d+\)/)?.[1] || 'unknown',
+      // Check if it's a temporal dead zone error
+      isTDZError: error.message.includes("Cannot access") && error.message.includes("before initialization"),
+    };
+    
+    console.error("🚨 [GlobalError] Critical error occurred:", errorInfo);
+    
+    // Log additional context for TDZ errors
+    if (errorInfo.isTDZError) {
+      console.error("🚨 [GlobalError] This appears to be a temporal dead zone (TDZ) error.");
+      console.error("🚨 [GlobalError] This usually indicates a circular dependency or use-before-declaration.");
+      console.error("🚨 [GlobalError] Check the stack trace above for the problematic module.");
+    }
   }, [error]);
 
   return (

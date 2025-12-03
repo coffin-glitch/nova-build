@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { getSupabaseBrowser } from '@/lib/supabase';
-import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
+import type { RealtimePostgresChangesPayload, RealtimeChannel } from '@supabase/supabase-js';
 
 interface UseRealtimeConversationMessagesOptions {
   conversationId?: string; // Filter by specific conversation ID
@@ -23,7 +23,9 @@ export function useRealtimeConversationMessages(options: UseRealtimeConversation
     enabled = true,
   } = options;
 
-  const channelRef = useRef<ReturnType<typeof getSupabaseBrowser>['channel'] | null>(null);
+  // FIXED: Use RealtimeChannel type directly instead of ReturnType<typeof getSupabaseBrowser>
+  // This prevents module-level type evaluation that can cause circular dependency issues
+  const channelRef = useRef<RealtimeChannel | null>(null);
   const callbacksRef = useRef({ onInsert, onUpdate, onDelete });
   
   // Update callbacks ref when they change (without triggering re-subscription)
@@ -33,8 +35,17 @@ export function useRealtimeConversationMessages(options: UseRealtimeConversation
 
   useEffect(() => {
     if (!enabled || !conversationId) return;
+    
+    // Guard against SSR/build-time execution
+    if (typeof window === 'undefined') return;
 
-    const supabase = getSupabaseBrowser();
+    let supabase;
+    try {
+      supabase = getSupabaseBrowser();
+    } catch (error) {
+      console.error('[useRealtimeConversationMessages] Error getting Supabase client:', error);
+      return;
+    }
     
     const channelName = `conversation_messages_${conversationId}_${Date.now()}`;
     const channel = supabase.channel(channelName);
@@ -75,11 +86,14 @@ export function useRealtimeConversationMessages(options: UseRealtimeConversation
     channelRef.current = channel;
 
     return () => {
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
+      if (channelRef.current && supabase) {
+        try {
+          supabase.removeChannel(channelRef.current);
+        } catch (error) {
+          console.warn('[useRealtimeConversationMessages] Error removing channel:', error);
+        }
         channelRef.current = null;
       }
     };
   }, [enabled, conversationId]); // Removed callbacks from dependencies
 }
-

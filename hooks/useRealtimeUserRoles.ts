@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { getSupabaseBrowser } from '@/lib/supabase';
-import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
+import type { RealtimePostgresChangesPayload, RealtimeChannel } from '@supabase/supabase-js';
 
 interface UseRealtimeUserRolesOptions {
   onInsert?: (payload: RealtimePostgresChangesPayload<any>) => void;
@@ -13,6 +13,9 @@ interface UseRealtimeUserRolesOptions {
 /**
  * Hook to subscribe to real-time changes on user_roles_cache table
  * Provides instant updates when user roles change (critical for admin/carrier access control)
+ * 
+ * FIXED: Removed ReturnType<typeof getSupabaseBrowser> to prevent module-level type evaluation
+ * that causes "Cannot access before initialization" errors in production builds.
  */
 export function useRealtimeUserRoles(options: UseRealtimeUserRolesOptions = {}) {
   const {
@@ -23,7 +26,9 @@ export function useRealtimeUserRoles(options: UseRealtimeUserRolesOptions = {}) 
     enabled = true,
   } = options;
 
-  const channelRef = useRef<ReturnType<typeof getSupabaseBrowser>['channel'] | null>(null);
+  // FIXED: Use RealtimeChannel type directly instead of ReturnType<typeof getSupabaseBrowser>
+  // This prevents module-level type evaluation that can cause circular dependency issues
+  const channelRef = useRef<RealtimeChannel | null>(null);
   const callbacksRef = useRef({ onInsert, onUpdate, onDelete });
   
   // Update callbacks ref when they change (without triggering re-subscription)
@@ -33,8 +38,17 @@ export function useRealtimeUserRoles(options: UseRealtimeUserRolesOptions = {}) 
 
   useEffect(() => {
     if (!enabled) return;
+    
+    // Guard against SSR/build-time execution
+    if (typeof window === 'undefined') return;
 
-    const supabase = getSupabaseBrowser();
+    let supabase;
+    try {
+      supabase = getSupabaseBrowser();
+    } catch (error) {
+      console.error('[useRealtimeUserRoles] Error getting Supabase client:', error);
+      return;
+    }
     
     const channelName = `user_roles_cache_${Date.now()}`;
     const channel = supabase.channel(channelName);
@@ -75,11 +89,14 @@ export function useRealtimeUserRoles(options: UseRealtimeUserRolesOptions = {}) 
     channelRef.current = channel;
 
     return () => {
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
+      if (channelRef.current && supabase) {
+        try {
+          supabase.removeChannel(channelRef.current);
+        } catch (error) {
+          console.warn('[useRealtimeUserRoles] Error removing channel:', error);
+        }
         channelRef.current = null;
       }
     };
   }, [enabled, userId]); // Removed callbacks from dependencies
 }
-
