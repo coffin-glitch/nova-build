@@ -54,14 +54,15 @@ export function useRealtimeUserRoles(options: UseRealtimeUserRolesOptions = {}) 
     const channel = supabase.channel(channelName);
 
     // Build postgres_changes config
-    // FIXED: Remove filter from subscription to avoid "mismatch between server and client bindings" error
-    // Filtering in the callback instead works better with RLS policies
+    // FIXED: Remove filter and use minimal config to avoid "mismatch between server and client bindings" error
+    // This error occurs when RLS policies conflict with the subscription binding
+    // Solution: Subscribe without filter, filter in callback instead
     const postgresChanges = {
       event: '*' as const,
       schema: 'public',
       table: 'user_roles_cache',
-      // Don't use filter here - it causes binding mismatch errors with RLS
-      // We'll filter in the callback instead
+      // CRITICAL: No filter here - causes binding mismatch with RLS
+      // Filter in callback instead (see below)
     };
 
     channel
@@ -103,10 +104,13 @@ export function useRealtimeUserRoles(options: UseRealtimeUserRolesOptions = {}) 
           // 2. The filter syntax is incorrect
           // 3. The table doesn't exist or has incorrect schema
           console.warn('[Realtime] Channel error subscribing to user_roles_cache. Common causes:');
-          console.warn('  1. RLS policies may be blocking the subscription (even if Realtime is enabled)');
-          console.warn('  2. Check RLS policies for user_roles_cache table in Supabase Dashboard → Authentication → Policies');
-          console.warn('  3. The filter might be causing issues - try removing userId filter if RLS is strict');
-          console.warn('  4. The app will continue to work, but role updates may be delayed until page refresh');
+          console.warn('  1. RLS policies are blocking the subscription (most likely cause)');
+          console.warn('     → The "mismatch between server and client bindings" error indicates RLS conflict');
+          console.warn('     → Check Supabase Dashboard → Authentication → Policies → user_roles_cache');
+          console.warn('     → Ensure policy allows SELECT for authenticated users');
+          console.warn('  2. The subscription will retry, but may continue to fail if RLS blocks it');
+          console.warn('  3. The app will continue to work, but role updates may be delayed until page refresh');
+          console.warn('  4. Consider temporarily disabling RLS for user_roles_cache if realtime is critical');
         } else if (status === 'TIMED_OUT') {
           console.warn('[Realtime] Subscription to user_roles_cache timed out');
         } else if (status === 'CLOSED') {
