@@ -11,6 +11,7 @@ import { useUnifiedRole } from "@/hooks/useUnifiedRole";
 import { cn } from "@/lib/utils";
 import { useUnifiedUser } from "@/hooks/useUnifiedUser";
 import { useRealtimeConversationMessages } from "@/hooks/useRealtimeConversationMessages";
+import { useRealtimeChat } from "@/hooks/useRealtimeChat";
 import {
     ArrowLeft,
     Building2,
@@ -183,22 +184,110 @@ export default function FloatingAdminChatButton() {
   );
 
   // Memoize callbacks to prevent unnecessary re-subscriptions
-  const handleMessageInsert = useCallback(() => {
-    console.log('[FloatingAdminChat] New message received, refreshing...');
-    mutateMessages();
+  const handleMessageInsert = useCallback((payload?: any) => {
+    console.log('[FloatingAdminChat] New message received via postgres_changes, refreshing...', payload);
+    
+    // If we have a new message from postgres_changes, update the messages list
+    if (payload?.new) {
+      const newMessage: ConversationMessage = {
+        id: payload.new.id,
+        conversation_id: payload.new.conversation_id,
+        sender_id: payload.new.supabase_sender_id,
+        sender_type: payload.new.sender_type,
+        message: payload.new.message,
+        created_at: payload.new.created_at,
+        attachment_url: payload.new.attachment_url,
+        attachment_type: payload.new.attachment_type,
+        attachment_name: payload.new.attachment_name,
+        is_read: payload.new.is_read || false,
+      };
+      
+      // Add or replace the message (replace if it's an optimistic update)
+      mutateMessages((current: ConversationMessage[] = []) => {
+        // Remove any optimistic message with matching content from same sender
+        const filtered = current.filter(msg => 
+          !(msg.id.startsWith('temp-') && 
+            msg.message === newMessage.message && 
+            msg.sender_id === newMessage.sender_id &&
+            Math.abs(new Date(msg.created_at).getTime() - new Date(newMessage.created_at).getTime()) < 5000)
+        );
+        
+        // Check if message already exists
+        if (filtered.some(msg => msg.id === newMessage.id)) {
+          return filtered;
+        }
+        
+        // Add the new message and sort
+        return [...filtered, newMessage].sort((a, b) => 
+          new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        );
+      }, false);
+    } else {
+      // Fallback: revalidate if no payload data
+      mutateMessages();
+    }
+    
+    setTimeout(scrollToBottom, 100);
+  }, [mutateMessages, scrollToBottom]);
+
+  const handleMessageUpdate = useCallback((payload?: any) => {
+    console.log('[FloatingAdminChat] Message updated via postgres_changes, refreshing...', payload);
+    // Force revalidation to get the latest messages
+    mutateMessages(undefined, { revalidate: true });
   }, [mutateMessages]);
 
-  const handleMessageUpdate = useCallback(() => {
-    console.log('[FloatingAdminChat] Message updated, refreshing...');
-    mutateMessages();
-  }, [mutateMessages]);
-
-  // Subscribe to real-time message updates
+  // Subscribe to real-time message updates (postgres_changes for persistence)
   useRealtimeConversationMessages({
     enabled: !!selectedConversationId && isAdmin,
     conversationId: selectedConversationId || undefined,
     onInsert: handleMessageInsert,
     onUpdate: handleMessageUpdate,
+  });
+
+  // Subscribe to Broadcast for instant message delivery
+  const { sendBroadcast } = useRealtimeChat({
+    roomName: selectedConversationId || '',
+    userId: user?.id,
+    username: getDisplayName(user?.id || '', true),
+    enabled: !!selectedConversationId && isAdmin,
+    onBroadcast: (broadcastMessage) => {
+      // Show broadcast messages from other users for instant delivery
+      // Our own messages are handled via optimistic updates
+      if (broadcastMessage.user.id !== user?.id) {
+        console.log('[FloatingAdminChat] Broadcast message received from other user:', broadcastMessage);
+        // Convert broadcast message to ConversationMessage format
+        const convertedMessage: ConversationMessage = {
+          id: broadcastMessage.id,
+          conversation_id: selectedConversationId || '',
+          sender_id: broadcastMessage.user.id,
+          sender_type: 'admin', // Will be updated by postgres_changes when real message arrives
+          message: broadcastMessage.content,
+          created_at: broadcastMessage.createdAt,
+          attachment_url: broadcastMessage.attachment_url,
+          attachment_type: broadcastMessage.attachment_type,
+          attachment_name: broadcastMessage.attachment_name,
+          is_read: false,
+        };
+        // Add to messages immediately for instant display
+        mutateMessages((current: ConversationMessage[] = []) => {
+          // Check if message already exists (avoid duplicates by checking content + sender + time)
+          const exists = current.some(msg => 
+            msg.id === convertedMessage.id || 
+            (msg.message === convertedMessage.message && 
+             msg.sender_id === convertedMessage.sender_id &&
+             Math.abs(new Date(msg.created_at).getTime() - new Date(convertedMessage.created_at).getTime()) < 2000)
+          );
+          if (exists) {
+            return current;
+          }
+          const updated = [...current, convertedMessage].sort((a, b) => 
+            new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+          );
+          return updated;
+        }, false);
+        setTimeout(scrollToBottom, 50);
+      }
+    },
   });
 
   // Fetcher already unwraps the data, so use directly
@@ -481,6 +570,20 @@ export default function FloatingAdminChatButton() {
       return [...current, optimisticMessage];
     }, false); // false = don't revalidate yet
 
+    // Send via Broadcast for instant delivery to other users
+    if (sendBroadcast) {
+      sendBroadcast({
+        content: messageText,
+        user: {
+          id: user?.id || '',
+          name: getDisplayName(user?.id || '', true),
+        },
+        attachment_url: null, // Files will be sent via API
+        attachment_type: selectedFile?.type,
+        attachment_name: selectedFile?.name,
+      });
+    }
+
     setIsSendingMessage(true);
     setNewMessage("");
     const fileToSend = selectedFile;
@@ -515,10 +618,17 @@ export default function FloatingAdminChatButton() {
       }
 
       if (response.ok) {
-        // Revalidate to get the real message from server (replaces optimistic one)
-        mutateMessages(); // Refresh messages in current conversation
-        mutateConversations(); // Refresh conversations list (for last_message_at update)
-        setTimeout(scrollToBottom, 100);
+        // Keep the optimistic message - postgres_changes will replace it with the real one
+        // This prevents the message from disappearing temporarily
+        // The handleMessageInsert callback will replace the temp message with the real one
+        
+        // Trigger revalidation after a short delay to let the database commit
+        setTimeout(() => {
+          mutateMessages(); // Revalidate to get real message from database
+          mutateConversations(); // Refresh conversations list
+        }, 300);
+        
+        setTimeout(scrollToBottom, 200);
         toast.success("Message sent successfully!");
       } else {
         // Revert optimistic update on error
@@ -535,7 +645,7 @@ export default function FloatingAdminChatButton() {
     } finally {
       setIsSendingMessage(false);
     }
-  }, [selectedConversationId, newMessage, selectedFile, isSendingMessage, mutateMessages, mutateConversations, scrollToBottom]);
+  }, [selectedConversationId, newMessage, selectedFile, isSendingMessage, mutateMessages, mutateConversations, scrollToBottom, sendBroadcast, user?.id, getDisplayName]);
 
   // Handle key press
   const handleKeyPress = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {

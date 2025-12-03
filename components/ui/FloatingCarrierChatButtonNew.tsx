@@ -31,6 +31,7 @@ import { toast } from "sonner";
 import useSWR from "swr";
 import { useRealtimeConversations } from "@/hooks/useRealtimeConversations";
 import { useRealtimeConversationMessages } from "@/hooks/useRealtimeConversationMessages";
+import { useRealtimeChat } from "@/hooks/useRealtimeChat";
 
 const fetcher = async (url: string) => {
   const response = await fetch(url);
@@ -145,17 +146,107 @@ export default function FloatingCarrierChatButton() {
     },
   });
 
-  // Subscribe to real-time message updates for selected conversation
+  // Subscribe to real-time message updates for selected conversation (postgres_changes for persistence)
   useRealtimeConversationMessages({
     enabled: !!selectedConversation?.conversation_id,
     conversationId: selectedConversation?.conversation_id,
-    onInsert: () => {
-      console.log('[FloatingCarrierChat] New message received, refreshing...');
+    onInsert: (payload?: any) => {
+      console.log('[FloatingCarrierChat] New message received via postgres_changes, refreshing...', payload);
+      
+      // If we have a new message from postgres_changes, update the messages list
+      if (payload?.new) {
+        const newMessage: Message = {
+          id: payload.new.id,
+          sender_id: payload.new.supabase_sender_id,
+          sender_type: payload.new.sender_type,
+          message: payload.new.message,
+          created_at: payload.new.created_at,
+          updated_at: payload.new.updated_at || payload.new.created_at,
+          attachment_url: payload.new.attachment_url,
+          attachment_type: payload.new.attachment_type,
+          attachment_name: payload.new.attachment_name,
+          attachment_size: payload.new.attachment_size,
+          is_read: payload.new.is_read || false,
+        };
+        
+        // Add or replace the message (replace if it's an optimistic update)
+        mutateMessages((current: any[] = []) => {
+          // Remove any optimistic message with matching content from same sender
+          const filtered = current.filter((msg: any) => 
+            !(msg.id.startsWith('temp-') && 
+              msg.message === newMessage.message && 
+              msg.sender_id === newMessage.sender_id &&
+              Math.abs(new Date(msg.created_at).getTime() - new Date(newMessage.created_at).getTime()) < 5000)
+          );
+          
+          // Check if message already exists
+          if (filtered.some((msg: any) => msg.id === newMessage.id)) {
+            return filtered;
+          }
+          
+          // Add the new message and sort
+          return [...filtered, newMessage].sort((a: any, b: any) => 
+            new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+          );
+        }, false);
+      } else {
+        // Fallback: revalidate if no payload data
+        mutateMessages();
+      }
+      
+      setTimeout(scrollToBottom, 100);
+    },
+    onUpdate: (payload?: any) => {
+      console.log('[FloatingCarrierChat] Message updated via postgres_changes, refreshing...', payload);
+      // Force revalidation to get the latest messages
       mutateMessages();
     },
-    onUpdate: () => {
-      console.log('[FloatingCarrierChat] Message updated, refreshing...');
-      mutateMessages();
+  });
+
+  // Subscribe to Broadcast for instant message delivery
+  // Note: username will be updated after getDisplayName is defined
+  const { sendBroadcast } = useRealtimeChat({
+    roomName: selectedConversation?.conversation_id || '',
+    userId: user?.id,
+    username: user?.email || 'Carrier',
+    enabled: !!selectedConversation?.conversation_id,
+    onBroadcast: (broadcastMessage) => {
+      // Show broadcast messages from other users for instant delivery
+      // Our own messages are handled via optimistic updates
+      if (broadcastMessage.user.id !== user?.id) {
+        console.log('[FloatingCarrierChat] Broadcast message received from other user:', broadcastMessage);
+        // Convert broadcast message to Message format
+        const convertedMessage: Message = {
+          id: broadcastMessage.id,
+          sender_id: broadcastMessage.user.id,
+          sender_type: 'admin', // Will be updated by postgres_changes when real message arrives
+          message: broadcastMessage.content,
+          created_at: broadcastMessage.createdAt,
+          updated_at: broadcastMessage.createdAt,
+          attachment_url: broadcastMessage.attachment_url,
+          attachment_type: broadcastMessage.attachment_type,
+          attachment_name: broadcastMessage.attachment_name,
+          is_read: false,
+        };
+        // Add to messages immediately for instant display
+        mutateMessages((current: any[] = []) => {
+          // Check if message already exists (avoid duplicates by checking content + sender + time)
+          const exists = current.some((msg: any) => 
+            msg.id === convertedMessage.id || 
+            (msg.message === convertedMessage.message && 
+             msg.sender_id === convertedMessage.sender_id &&
+             Math.abs(new Date(msg.created_at).getTime() - new Date(convertedMessage.created_at).getTime()) < 2000)
+          );
+          if (exists) {
+            return current;
+          }
+          const updated = [...current, convertedMessage].sort((a: any, b: any) => 
+            new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+          );
+          return updated;
+        }, false);
+        setTimeout(scrollToBottom, 50);
+      }
     },
   });
   const messages = Array.isArray(messagesData) ? messagesData : (messagesData?.data || []);
@@ -361,6 +452,21 @@ export default function FloatingCarrierChatButton() {
       return [...current, optimisticMessage];
     }, false); // false = don't revalidate yet
 
+    // Send via Broadcast for instant delivery to other users
+    if (sendBroadcast) {
+      const displayName = getDisplayName(user?.id || '', false);
+      sendBroadcast({
+        content: messageText,
+        user: {
+          id: user?.id || '',
+          name: displayName,
+        },
+        attachment_url: null, // Files will be sent via API
+        attachment_type: selectedFile?.type,
+        attachment_name: selectedFile?.name,
+      });
+    }
+
     setIsSendingMessage(true);
     setNewMessage("");
     const fileToSend = selectedFile;
@@ -395,10 +501,17 @@ export default function FloatingCarrierChatButton() {
       }
 
       if (response.ok) {
-        // Revalidate to get the real message from server (replaces optimistic one)
-        mutateMessages();
-        mutateConversations();
-        setTimeout(scrollToBottom, 100);
+        // Keep the optimistic message - postgres_changes will replace it with the real one
+        // This prevents the message from disappearing temporarily
+        // The handleMessageInsert callback will replace the temp message with the real one
+        
+        // Trigger revalidation after a short delay to let the database commit
+        setTimeout(() => {
+          mutateMessages(); // Revalidate to get real message from database
+          mutateConversations(); // Refresh conversations list
+        }, 300);
+        
+        setTimeout(scrollToBottom, 200);
         toast.success("Message sent successfully!");
       } else {
         // Revert optimistic update on error
@@ -415,7 +528,7 @@ export default function FloatingCarrierChatButton() {
     } finally {
       setIsSendingMessage(false);
     }
-  }, [selectedConversation, newMessage, selectedFile, isSendingMessage, user?.id, mutateMessages, mutateConversations, scrollToBottom]);
+  }, [selectedConversation, newMessage, selectedFile, isSendingMessage, user?.id, mutateMessages, mutateConversations, scrollToBottom, sendBroadcast, getDisplayName]);
 
   // Handle start new chat
   const handleStartNewChat = useCallback(async (adminId: string, adminDisplayName: string) => {
