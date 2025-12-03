@@ -895,11 +895,15 @@ export default function FloatingAdminChatButton() {
     : selectedConversation
     ? getDisplayName(selectedConversation.carrier_user_id || selectedConversation.admin_user_id || '', isOtherUserAdmin)
     : "Carrier";
-  const carrierUserId = otherUserId || selectedConversation?.carrier_user_id;
+  
+  // Only fetch carrier profile if the other user is actually a carrier (not an admin)
+  // For admin-to-admin conversations, we shouldn't fetch carrier profiles
+  const carrierUserId = !isOtherUserAdmin && (otherUserId || selectedConversation?.carrier_user_id);
 
   // Fetch carrier profile for preview (must be before any conditional returns)
+  // Only fetch if it's actually a carrier (not an admin-to-admin conversation)
   const { data: carrierProfileData, isLoading: isLoadingCarrierProfile, error: carrierProfileError } = useSWR(
-    user && isAdmin && carrierUserId && isProfilePopoverOpen 
+    user && isAdmin && carrierUserId && !isOtherUserAdmin && isProfilePopoverOpen 
       ? `/api/admin/carriers/${carrierUserId}` 
       : null,
     async (url: string) => {
@@ -1156,7 +1160,7 @@ export default function FloatingAdminChatButton() {
                                     {carrierDisplayName}
                                   </p>
                                   <p className="text-xs text-muted-foreground">
-                                    {carrierUserId || selectedConversation.carrier_user_id}
+                                    {isOtherUserAdmin ? 'Admin' : (carrierUserId || selectedConversation?.carrier_user_id || 'N/A')}
                                   </p>
                                 </div>
                               </div>
