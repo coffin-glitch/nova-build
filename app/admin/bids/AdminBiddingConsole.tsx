@@ -3189,9 +3189,20 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
     }
   );
 
-  const leaderboard = leaderboardData?.data?.leaderboard || [];
-  const summary = leaderboardData?.data?.summary || {};
-  const topPerformers = leaderboardData?.data?.topPerformers || [];
+  // Debug: Log the raw response structure
+  React.useEffect(() => {
+    if (leaderboardData) {
+      console.log('[CarrierLeaderboard] Raw leaderboardData:', leaderboardData);
+      console.log('[CarrierLeaderboard] leaderboardData.data:', leaderboardData.data);
+      console.log('[CarrierLeaderboard] leaderboardData.data?.leaderboard:', leaderboardData.data?.leaderboard);
+      console.log('[CarrierLeaderboard] leaderboardData.success:', leaderboardData.success);
+    }
+  }, [leaderboardData]);
+
+  // Handle both response formats: { success: true, data: {...} } and { data: {...} }
+  const leaderboard = leaderboardData?.data?.leaderboard || leaderboardData?.leaderboard || [];
+  const summary = leaderboardData?.data?.summary || leaderboardData?.summary || {};
+  const topPerformers = leaderboardData?.data?.topPerformers || leaderboardData?.topPerformers || [];
   const groups = groupedData?.data?.groups || [];
 
   // Helpers for Top Performers section
@@ -4177,24 +4188,51 @@ function CarrierDetailConsole({
 
 // Group carriers table with full MC/DOT match using wide timeframe fallback
 function GroupCarriersTable({ selectedGroup, groupBy, accentColor }: { selectedGroup: any; groupBy: 'mc' | 'dot'; accentColor: string; }) {
-  // Fetch a wide individual leaderboard to ensure we have all carriers if API didn't include them
+  // First, try to use carriers from the selectedGroup (from grouped API)
+  // This is the most reliable source as it queries all carriers with that MC/DOT
+  const carriersFromGroup = Array.isArray(selectedGroup?.carriers) && selectedGroup.carriers.length > 0
+    ? selectedGroup.carriers
+    : null;
+
+  // Only fetch from individual leaderboard if we don't have carriers from the group
   const { data: allLeaderboardData } = useSWR(
-    selectedGroup ? `/api/admin/carrier-leaderboard?timeframe=3650&limit=1000` : null,
+    selectedGroup && !carriersFromGroup ? `/api/admin/carrier-leaderboard?timeframe=3650&limit=1000` : null,
     fetcher,
     { refreshInterval: 0 }
   );
 
   const wideLeaderboard = allLeaderboardData?.data?.leaderboard || [];
 
-  // Always derive carriers from wide individual leaderboard to ensure per-user stats and names
-  const carriersInGroup = wideLeaderboard.filter((c: any) => {
-    const id = groupBy === 'mc' ? (c.mc_number || '') : (c.dot_number || '');
-    return String(id) === String(selectedGroup?.group_identifier);
-  });
+  // Use carriers from group if available, otherwise fall back to filtering individual leaderboard
+  let carriersInGroup: any[] = [];
+  if (carriersFromGroup) {
+    // Use carriers directly from the grouped API response
+    // Map the field names from grouped API format to display format
+    carriersInGroup = carriersFromGroup.map((c: any) => ({
+      ...c,
+      // Map grouped API fields to expected format
+      total_bids: c.carrier_bids ?? c.total_bids ?? 0,
+      total_revenue_cents: Number(c.carrier_revenue ?? c.total_revenue_cents ?? 0),
+      // Calculate win rate from wins and bids
+      win_rate_percentage: c.carrier_bids > 0 
+        ? Math.round((Number(c.carrier_wins ?? 0) / Number(c.carrier_bids ?? 1)) * 100)
+        : 0,
+      // Use company_name or legal_name for display
+      company_name: c.company_name || c.legal_name,
+      legal_name: c.legal_name || c.company_name,
+    }));
+  } else {
+    // Fallback: derive carriers from wide individual leaderboard
+    carriersInGroup = wideLeaderboard.filter((c: any) => {
+      const id = groupBy === 'mc' ? (c.mc_number || '') : (c.dot_number || '');
+      return String(id) === String(selectedGroup?.group_identifier);
+    });
+  }
 
   if (!selectedGroup) return null;
 
-  if (!allLeaderboardData) {
+  // Show loading only if we're fetching from individual leaderboard and don't have data yet
+  if (!carriersFromGroup && !allLeaderboardData) {
     return (
       <Glass className="p-4">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -4226,22 +4264,32 @@ function GroupCarriersTable({ selectedGroup, groupBy, accentColor }: { selectedG
               <th className="text-left p-3 text-sm font-semibold">Carrier</th>
               <th className="text-center p-3 text-sm font-semibold">Total Bids</th>
               <th className="text-center p-3 text-sm font-semibold">Win Rate</th>
-              <th className="text-center p-3 text-sm font-semibold">Avg Bid</th>
+              <th className="text-center p-3 text-sm font-semibold">Wins</th>
               <th className="text-center p-3 text-sm font-semibold">Revenue</th>
             </tr>
           </thead>
           <tbody>
-            {carriersInGroup.map((c: any, i: number) => (
-              <tr key={(c.supabase_user_id || c.company_name || i) + ''} className="border-t border-border/30">
-                <td className="p-3">
-                  <span className="font-semibold">{c.contact_name || c.legal_name || c.full_name || c.user_name || 'Unknown Carrier'}</span>
-                </td>
-                <td className="p-3 text-center font-semibold">{c.total_bids ?? c.bids_count ?? 0}</td>
-                <td className="p-3 text-center font-semibold" style={{ color: accentColor }}>{c.win_rate_percentage ?? c.win_rate ?? 0}%</td>
-                <td className="p-3 text-center font-semibold">{formatMoney(c.avg_bid_amount_cents ?? c.avg_bid_cents ?? 0)}</td>
-                <td className="p-3 text-center font-semibold text-green-600">{formatMoney(c.total_revenue_cents ?? 0)}</td>
-              </tr>
-            ))}
+            {carriersInGroup.map((c: any, i: number) => {
+              // Calculate win rate if not already calculated
+              const winRate = c.win_rate_percentage ?? 
+                (c.total_bids > 0 ? Math.round((Number(c.carrier_wins ?? c.wins ?? 0) / Number(c.total_bids ?? c.carrier_bids ?? 1)) * 100) : 0);
+              
+              return (
+                <tr key={(c.supabase_user_id || c.company_name || i) + ''} className="border-t border-border/30">
+                  <td className="p-3">
+                    <span className="font-semibold">
+                      {c.contact_name || c.company_name || c.legal_name || c.full_name || c.user_name || 'Unknown Carrier'}
+                    </span>
+                  </td>
+                  <td className="p-3 text-center font-semibold">{c.total_bids ?? c.carrier_bids ?? c.bids_count ?? 0}</td>
+                  <td className="p-3 text-center font-semibold" style={{ color: accentColor }}>{winRate}%</td>
+                  <td className="p-3 text-center font-semibold">{c.carrier_wins ?? c.wins ?? 0}</td>
+                  <td className="p-3 text-center font-semibold text-green-600">
+                    {formatMoney(c.total_revenue_cents ?? Number(c.carrier_revenue ?? 0))}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
