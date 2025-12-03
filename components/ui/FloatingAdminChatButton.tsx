@@ -183,6 +183,14 @@ export default function FloatingAdminChatButton() {
     { refreshInterval: 0 } // Disable polling - using Realtime instead
   );
 
+  // FIXED: Define scrollToBottom BEFORE handleMessageInsert to prevent TDZ error
+  // handleMessageInsert depends on scrollToBottom, so it must be defined first
+  const scrollToBottom = useCallback(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, []);
+
   // Memoize callbacks to prevent unnecessary re-subscriptions
   const handleMessageInsert = useCallback((payload?: any) => {
     console.log('[FloatingAdminChat] New message received via postgres_changes, refreshing...', payload);
@@ -533,12 +541,7 @@ export default function FloatingAdminChatButton() {
     }
   }, [conversationsData, messagesData, conversations, messages, selectedConversationId, filteredConversations]);
 
-  // Scroll to bottom function
-  const scrollToBottom = useCallback(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, []);
+  // NOTE: scrollToBottom is defined earlier (before handleMessageInsert) to prevent TDZ error
 
   // Auto-scroll when messages change or conversation changes
   useEffect(() => {

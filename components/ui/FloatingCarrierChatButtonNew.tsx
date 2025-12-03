@@ -132,6 +132,14 @@ export default function FloatingCarrierChatButton() {
   // Fetcher already unwraps the data, so use directly
   const conversations = Array.isArray(conversationsData) ? conversationsData : (conversationsData?.data || []);
 
+  // FIXED: Define scrollToBottom BEFORE useRealtimeConversationMessages to prevent TDZ error
+  // The onInsert callback uses scrollToBottom, so it must be defined first
+  const scrollToBottom = useCallback(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, []);
+
   // Subscribe to real-time conversation updates
   useRealtimeConversations({
     enabled: !!user?.id,
@@ -411,12 +419,7 @@ export default function FloatingCarrierChatButton() {
     return conversations.reduce((total: number, conv: Conversation) => total + conv.unread_count, 0);
   }, [conversations]);
 
-  // Scroll to bottom function
-  const scrollToBottom = useCallback(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, []);
+  // NOTE: scrollToBottom is defined earlier (before useRealtimeConversationMessages) to prevent TDZ error
 
   // Auto-scroll when messages change
   useEffect(() => {
