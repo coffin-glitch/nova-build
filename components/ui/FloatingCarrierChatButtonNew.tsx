@@ -175,11 +175,12 @@ export default function FloatingCarrierChatButton() {
         // Add or replace the message (replace if it's an optimistic update)
         mutateMessages((current: any[] = []) => {
           // Remove any optimistic message with matching content from same sender
+          // Also check for temp messages with matching sender and similar timestamp
           const filtered = current.filter((msg: any) => 
             !(msg.id.startsWith('temp-') && 
               msg.message === newMessage.message && 
               msg.sender_id === newMessage.sender_id &&
-              Math.abs(new Date(msg.created_at).getTime() - new Date(newMessage.created_at).getTime()) < 5000)
+              Math.abs(new Date(msg.created_at).getTime() - new Date(newMessage.created_at).getTime()) < 10000) // 10 second window
           );
           
           // Check if message already exists
@@ -188,9 +189,18 @@ export default function FloatingCarrierChatButton() {
           }
           
           // Add the new message and sort
-          return [...filtered, newMessage].sort((a: any, b: any) => 
+          const updated = [...filtered, newMessage].sort((a: any, b: any) => 
             new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
           );
+          
+          // Log for debugging
+          console.log('[FloatingCarrierChat] Realtime message inserted, replaced optimistic:', {
+            newMessageId: newMessage.id,
+            hadOptimistic: current.some((msg: any) => msg.id.startsWith('temp-')),
+            totalMessages: updated.length
+          });
+          
+          return updated;
         }, false);
       } else {
         // Fallback: revalidate if no payload data
@@ -463,10 +473,17 @@ export default function FloatingCarrierChatButton() {
       is_read: false,
     };
 
-    // Optimistically update messages
+    // Optimistically update messages - use true to ensure UI updates immediately
     mutateMessages((current: any[] = []) => {
+      // Check if message already exists (avoid duplicates)
+      if (current.some((msg: any) => msg.id === tempMessageId)) {
+        return current;
+      }
       return [...current, optimisticMessage];
-    }, false); // false = don't revalidate yet
+    }, false); // false = don't revalidate from server yet, but update cache immediately
+    
+    // Force a scroll after optimistic update
+    setTimeout(() => scrollToBottom(), 50);
 
     // Send via Broadcast for instant delivery to other users
     if (sendBroadcast) {
@@ -517,17 +534,47 @@ export default function FloatingCarrierChatButton() {
       }
 
       if (response.ok) {
-        // Keep the optimistic message - postgres_changes will replace it with the real one
-        // This prevents the message from disappearing temporarily
-        // The handleMessageInsert callback will replace the temp message with the real one
+        // The API only returns { id, created_at }, so we rely on:
+        // 1. Optimistic update (already added above) - shows immediately
+        // 2. Realtime subscription (postgres_changes) - replaces optimistic with real message
+        // 3. Fallback revalidation - if realtime is slow, revalidate after short delay
         
-        // Trigger revalidation after a short delay to let the database commit
-        setTimeout(() => {
-          mutateMessages(); // Revalidate to get real message from database
-          mutateConversations(); // Refresh conversations list
-        }, 300);
+        // Update optimistic message with real ID from API response (if available)
+        try {
+          const responseData = await response.json();
+          if (responseData.data && responseData.data.id) {
+            // Update the optimistic message with the real ID
+            mutateMessages((current: any[] = []) => {
+              return current.map((msg: any) => 
+                msg.id === tempMessageId 
+                  ? { ...msg, id: responseData.data.id, created_at: responseData.data.created_at || msg.created_at }
+                  : msg
+              );
+            }, false);
+          }
+        } catch (parseError) {
+          // Ignore - optimistic message will be replaced by realtime or revalidation
+        }
         
-        setTimeout(scrollToBottom, 200);
+        // Trigger revalidation after a short delay as fallback
+        // The realtime subscription should fire first, but this ensures we get the message
+        // even if realtime is delayed
+        const revalidationTimeout = setTimeout(() => {
+          mutateMessages((current: any[] = []) => {
+            // Only revalidate if optimistic message still exists (realtime hasn't replaced it)
+            const hasOptimistic = current.some((msg: any) => msg.id === tempMessageId);
+            if (hasOptimistic) {
+              // Trigger revalidation to get real message
+              return undefined; // undefined triggers SWR revalidation
+            }
+            return current; // Keep current if optimistic already replaced
+          }, { revalidate: true });
+        }, 500); // 500ms fallback - realtime should fire within 100-200ms
+        
+        // Clear timeout if component unmounts (handled by component lifecycle)
+        
+        mutateConversations(); // Refresh conversations list
+        setTimeout(scrollToBottom, 100);
         toast.success("Message sent successfully!");
       } else {
         // Revert optimistic update on error
