@@ -32,6 +32,8 @@ import useSWR from "swr";
 import { useRealtimeConversations } from "@/hooks/useRealtimeConversations";
 import { useRealtimeConversationMessages } from "@/hooks/useRealtimeConversationMessages";
 import { useRealtimeChat } from "@/hooks/useRealtimeChat";
+import { ChatMessageItem, type ChatMessage } from "@/components/chat/ChatMessageItem";
+import { useChatScroll } from "@/hooks/use-chat-scroll";
 
 const fetcher = async (url: string) => {
   const response = await fetch(url);
@@ -132,13 +134,11 @@ export default function FloatingCarrierChatButton() {
   // Fetcher already unwraps the data, so use directly
   const conversations = Array.isArray(conversationsData) ? conversationsData : (conversationsData?.data || []);
 
-  // FIXED: Define scrollToBottom BEFORE useRealtimeConversationMessages to prevent TDZ error
-  // The onInsert callback uses scrollToBottom, so it must be defined first
-  const scrollToBottom = useCallback(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, []);
+  // Use the reusable chat scroll hook
+  const { containerRef: messagesContainerRef, scrollToBottom } = useChatScroll();
+  
+  // Keep messagesEndRef for backward compatibility (if needed elsewhere)
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Subscribe to real-time conversation updates
   useRealtimeConversations({
@@ -351,6 +351,24 @@ export default function FloatingCarrierChatButton() {
     
     return "Admin";
   }, [mergedUserInfos]);
+
+  // Convert Message to ChatMessage format
+  const convertToChatMessage = useCallback((msg: Message): ChatMessage => {
+    return {
+      id: msg.id,
+      content: msg.message || '',
+      user: {
+        id: msg.sender_id,
+        name: msg.sender_type === 'carrier' 
+          ? (user?.email || 'Carrier')
+          : getDisplayName(msg.sender_id),
+      },
+      createdAt: msg.created_at,
+      attachment_url: msg.attachment_url,
+      attachment_type: msg.attachment_type,
+      attachment_name: msg.attachment_name,
+    };
+  }, [getDisplayName, user?.email]);
 
   // Filter conversations based on search
   const filteredConversations = useMemo(() => {
