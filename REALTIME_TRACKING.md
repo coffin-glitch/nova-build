@@ -1,6 +1,6 @@
 # Realtime Enablement Tracking
 
-## 📅 Last Updated: 2024-12-19 (23 Tables Enabled - Added notification_triggers and carrier_notification_preferences)
+## 📅 Last Updated: 2024-12-19 (23 Tables Enabled - Added notification_triggers and carrier_notification_preferences
 
 This document tracks the **exact status** of Realtime enablement across all tables. Use this as the single source of truth.
 

@@ -10,13 +10,21 @@ import { Toaster } from "sonner";
 import dynamic from "next/dynamic";
 
 // Dynamically import chat components to avoid build-time evaluation issues
-const FloatingAdminChatButton = dynamic(() => import("@/components/ui/FloatingAdminChatButton").then(mod => ({ default: mod.default })), {
-  ssr: false,
-});
+const FloatingAdminChatButton = dynamic(
+  () => import("@/components/ui/FloatingAdminChatButton"),
+  { 
+    ssr: false,
+    loading: () => null, // Don't show loading state
+  }
+);
 
-const FloatingCarrierChatButtonNew = dynamic(() => import("@/components/ui/FloatingCarrierChatButtonNew").then(mod => ({ default: mod.default })), {
-  ssr: false,
-});
+const FloatingCarrierChatButtonNew = dynamic(
+  () => import("@/components/ui/FloatingCarrierChatButtonNew"),
+  { 
+    ssr: false,
+    loading: () => null, // Don't show loading state
+  }
+);
 
 export function LayoutContent({ children }: { children: React.ReactNode }) {
   const { preferences } = useUserPreferences();
