@@ -3206,6 +3206,7 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
   React.useEffect(() => {
     if (leaderboardError) {
       console.error('[CarrierLeaderboard] Error fetching leaderboard:', leaderboardError);
+      console.error('[CarrierLeaderboard] Error details:', (leaderboardError as any)?.data);
     }
     if (leaderboardData) {
       console.log('[CarrierLeaderboard] Raw leaderboardData:', leaderboardData);
@@ -3215,6 +3216,15 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
       console.log('[CarrierLeaderboard] leaderboardData.error:', leaderboardData.error);
       console.log('[CarrierLeaderboard] leaderboardData.details:', leaderboardData.details);
       console.log('[CarrierLeaderboard] Array check:', Array.isArray(leaderboardData.data?.leaderboard));
+      
+      // If success is false, log the full error for debugging
+      if (leaderboardData.success === false) {
+        console.error('[CarrierLeaderboard] API Error Response:', {
+          error: leaderboardData.error,
+          details: leaderboardData.details,
+          fullResponse: leaderboardData
+        });
+      }
     }
   }, [leaderboardData, leaderboardError]);
 
