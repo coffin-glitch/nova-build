@@ -1,5 +1,6 @@
 "use client";
 
+import { ChatMessageItem, type ChatMessage } from "@/components/chat/ChatMessageItem";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -7,30 +8,27 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useUnifiedRole } from "@/hooks/useUnifiedRole";
-import { cn } from "@/lib/utils";
-import { useUnifiedUser } from "@/hooks/useUnifiedUser";
-import { useRealtimeConversationMessages } from "@/hooks/useRealtimeConversationMessages";
-import { useRealtimeChat } from "@/hooks/useRealtimeChat";
-import { ChatMessageItem, type ChatMessage } from "@/components/chat/ChatMessageItem";
 import { useChatScroll } from "@/hooks/use-chat-scroll";
+import { useRealtimeChat } from "@/hooks/useRealtimeChat";
+import { useRealtimeConversationMessages } from "@/hooks/useRealtimeConversationMessages";
+import { useUnifiedRole } from "@/hooks/useUnifiedRole";
+import { useUnifiedUser } from "@/hooks/useUnifiedUser";
+import { cn } from "@/lib/utils";
 import {
-    ArrowLeft,
-    Building2,
-    FileText,
-    Image,
-    Mail,
-    Maximize2,
-    MessageCircle,
-    Minimize2,
-    MoreVertical,
-    Paperclip,
-    Phone,
-    Search,
-    Send,
-    User,
-    Users,
-    X
+  ArrowLeft,
+  Building2,
+  Mail,
+  Maximize2,
+  MessageCircle,
+  Minimize2,
+  MoreVertical,
+  Paperclip,
+  Phone,
+  Search,
+  Send,
+  User,
+  Users,
+  X
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -187,9 +185,6 @@ export default function FloatingAdminChatButton() {
 
   // Use the reusable chat scroll hook
   const { containerRef: messagesContainerRef, scrollToBottom } = useChatScroll();
-  
-  // Keep messagesEndRef for backward compatibility (if needed elsewhere)
-  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Memoize callbacks to prevent unnecessary re-subscriptions
   const handleMessageInsert = useCallback((payload?: any) => {
