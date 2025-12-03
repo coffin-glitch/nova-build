@@ -3,12 +3,20 @@
 import { CarrierVerificationConsole } from "@/components/admin/CarrierVerificationConsole";
 import SiteFooter from "@/components/layout/SiteFooter";
 import SiteHeader from "@/components/layout/SiteHeaderNew";
-import FloatingAdminChatButton from "@/components/ui/FloatingAdminChatButton";
-import FloatingCarrierChatButtonNew from "@/components/ui/FloatingCarrierChatButtonNew";
 import FloatingDevAdminButton from "@/components/ui/FloatingDevAdminButton";
 import { GlowingBackground } from "@/components/ui/GlowingBackground";
 import { useUserPreferences } from "@/components/providers/UserPreferencesProvider";
 import { Toaster } from "sonner";
+import dynamic from "next/dynamic";
+
+// Dynamically import chat components to avoid build-time evaluation issues
+const FloatingAdminChatButton = dynamic(() => import("@/components/ui/FloatingAdminChatButton").then(mod => ({ default: mod.default })), {
+  ssr: false,
+});
+
+const FloatingCarrierChatButtonNew = dynamic(() => import("@/components/ui/FloatingCarrierChatButtonNew").then(mod => ({ default: mod.default })), {
+  ssr: false,
+});
 
 export function LayoutContent({ children }: { children: React.ReactNode }) {
   const { preferences } = useUserPreferences();
