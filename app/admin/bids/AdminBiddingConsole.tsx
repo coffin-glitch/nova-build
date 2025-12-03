@@ -58,7 +58,20 @@ import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
 
-const fetcher = (url: string) => fetch(url).then(r => r.json());
+const fetcher = async (url: string) => {
+  const response = await fetch(url);
+  const data = await response.json();
+  
+  // If the response is not ok, throw an error with the error message
+  if (!response.ok) {
+    const error = new Error(data.error || data.message || `HTTP ${response.status}`);
+    (error as any).status = response.status;
+    (error as any).data = data;
+    throw error;
+  }
+  
+  return data;
+};
 
 // Helper function to safely parse stops data
 const parseStops = (stops: string | string[] | null): string[] => {
@@ -3199,6 +3212,8 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
       console.log('[CarrierLeaderboard] leaderboardData.data:', leaderboardData.data);
       console.log('[CarrierLeaderboard] leaderboardData.data?.leaderboard:', leaderboardData.data?.leaderboard);
       console.log('[CarrierLeaderboard] leaderboardData.success:', leaderboardData.success);
+      console.log('[CarrierLeaderboard] leaderboardData.error:', leaderboardData.error);
+      console.log('[CarrierLeaderboard] leaderboardData.details:', leaderboardData.details);
       console.log('[CarrierLeaderboard] Array check:', Array.isArray(leaderboardData.data?.leaderboard));
     }
   }, [leaderboardData, leaderboardError]);
@@ -3208,12 +3223,14 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
   let leaderboard: any[] = [];
   let summary: any = {};
   let topPerformers: any[] = [];
+  let apiError: string | null = null;
 
   if (leaderboardData) {
     // Check if response indicates success
     if (leaderboardData.success === false) {
-      console.error('[CarrierLeaderboard] API returned error:', leaderboardData.error);
-    } else {
+      apiError = leaderboardData.error || leaderboardData.details || 'Unknown error from API';
+      console.error('[CarrierLeaderboard] API returned error:', apiError, leaderboardData);
+    } else if (leaderboardData.success === true || leaderboardData.data) {
       // Extract data from response
       leaderboard = leaderboardData?.data?.leaderboard || leaderboardData?.leaderboard || [];
       summary = leaderboardData?.data?.summary || leaderboardData?.summary || {};
@@ -3224,6 +3241,11 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
         console.warn('[CarrierLeaderboard] leaderboard is not an array:', leaderboard);
         leaderboard = [];
       }
+    } else {
+      // Try to extract data even if success field is missing
+      leaderboard = leaderboardData?.data?.leaderboard || leaderboardData?.leaderboard || [];
+      summary = leaderboardData?.data?.summary || leaderboardData?.summary || {};
+      topPerformers = leaderboardData?.data?.topPerformers || leaderboardData?.topPerformers || [];
     }
   }
   const groups = groupedData?.data?.groups || [];
@@ -3672,13 +3694,18 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
               <div key={i} className="h-16 bg-muted rounded animate-pulse"></div>
             ))}
           </div>
-        ) : leaderboardError ? (
+        ) : leaderboardError || apiError ? (
           <div className="text-center py-8">
             <Users className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
             <h3 className="text-lg font-semibold mb-2">Error Loading Data</h3>
-            <p className="text-muted-foreground mb-4">
-              {leaderboardError instanceof Error ? leaderboardError.message : 'Failed to load carrier leaderboard'}
+            <p className="text-muted-foreground mb-2">
+              {apiError || (leaderboardError instanceof Error ? leaderboardError.message : 'Failed to load carrier leaderboard')}
             </p>
+            {process.env.NODE_ENV === 'development' && leaderboardData && (
+              <p className="text-xs text-muted-foreground mb-4">
+                Response: {JSON.stringify(leaderboardData, null, 2)}
+              </p>
+            )}
             <Button variant="outline" onClick={() => mutateLeaderboard()}>
               <RefreshCw className="w-4 h-4 mr-2" />
               Retry
