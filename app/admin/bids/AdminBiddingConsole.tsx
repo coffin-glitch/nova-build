@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Countdown } from "@/components/ui/Countdown";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Glass } from "@/components/ui/glass";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -316,6 +316,9 @@ function BidAdjudicationConsole({ bid, accentColor, onClose, onAwarded }: {
               #{bid.bid_number}
             </Badge>
           </DialogTitle>
+          <DialogDescription className="sr-only">
+            Review and adjudicate bid #{bid.bid_number}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto space-y-4 pr-2 min-h-0">
@@ -1988,6 +1991,9 @@ function AdvancedAnalytics({
                 <MapPin className="w-5 h-5" style={{ color: accentColor }} />
                 {selectedTag} - Detailed Analytics
               </DialogTitle>
+              <DialogDescription className="sr-only">
+                Detailed analytics for {selectedTag} tag
+              </DialogDescription>
             </DialogHeader>
             {tagDetailsLoading ? (
               <div className="flex items-center justify-center py-12">
@@ -2844,6 +2850,9 @@ function AdvancedAnalytics({
                 <Navigation className="w-5 h-5" style={{ color: accentColor }} />
                 Backhaul Details: {selectedBackhaul && (stateAbbreviations[selectedBackhaul.state] || selectedBackhaul.state)} → {selectedState && (stateAbbreviations[selectedState] || selectedState)}
               </DialogTitle>
+              <DialogDescription className="sr-only">
+                Detailed backhaul analytics for the selected route
+              </DialogDescription>
             </DialogHeader>
             
             {selectedBackhaul && (
@@ -4027,6 +4036,9 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
         <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
           <DialogHeader className="sr-only">
             <DialogTitle>Carrier Details</DialogTitle>
+            <DialogDescription className="sr-only">
+              View detailed information about the selected carrier
+            </DialogDescription>
           </DialogHeader>
           <CarrierDetailConsole 
             carrierId={selectedCarrier} 
@@ -4043,6 +4055,9 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
         <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader className="sr-only">
             <DialogTitle>Group Details</DialogTitle>
+            <DialogDescription className="sr-only">
+              View detailed information about the selected carrier group
+            </DialogDescription>
           </DialogHeader>
           {selectedGroup && (
             <div className="space-y-6 mt-2">
@@ -4133,6 +4148,9 @@ function CarrierDetailConsole({
     return (
       <DialogHeader>
         <DialogTitle>Carrier Not Found</DialogTitle>
+        <DialogDescription className="sr-only">
+          The requested carrier could not be found
+        </DialogDescription>
       </DialogHeader>
     );
   }
@@ -4149,6 +4167,9 @@ function CarrierDetailConsole({
             <XCircle className="w-4 h-4" />
           </Button>
         </div>
+        <DialogDescription className="sr-only">
+          Detailed information about {carrier.company_name || carrier.legal_name}
+        </DialogDescription>
       </DialogHeader>
 
       <div className="space-y-6 mt-4">
@@ -4475,6 +4496,9 @@ function ReAwardDialog({
               #{bidNumber}
             </Badge>
           </DialogTitle>
+          <DialogDescription className="sr-only">
+            Re-award bid #{bidNumber} to a different carrier
+          </DialogDescription>
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto space-y-4 pr-2 min-h-0 p-6">
@@ -4920,6 +4944,9 @@ function AdjudicationConsole({
               {filteredAndSortedBids.length} Bids
             </Badge>
           </DialogTitle>
+          <DialogDescription className="sr-only">
+            Review and adjudicate bids from the bid board
+          </DialogDescription>
         </DialogHeader>
 
         {/* Filters and Search */}
@@ -5906,6 +5933,9 @@ export function AdminBiddingConsole() {
                 <Eye className="h-5 w-5" />
                 Bid Details - #{selectedBid?.bid_number}
               </DialogTitle>
+              <DialogDescription className="sr-only">
+                View detailed information about bid #{selectedBid?.bid_number}
+              </DialogDescription>
             </DialogHeader>
 
             {selectedBid && (
