@@ -54,23 +54,25 @@ export function useRealtimeUserRoles(options: UseRealtimeUserRolesOptions = {}) 
     const channel = supabase.channel(channelName);
 
     // Build postgres_changes config
-    // Note: If userId filter causes RLS issues, we can subscribe to all changes and filter in the callback
-    const postgresChanges: any = {
+    // FIXED: Remove filter from subscription to avoid "mismatch between server and client bindings" error
+    // Filtering in the callback instead works better with RLS policies
+    const postgresChanges = {
       event: '*' as const,
       schema: 'public',
       table: 'user_roles_cache',
+      // Don't use filter here - it causes binding mismatch errors with RLS
+      // We'll filter in the callback instead
     };
-
-    // Only add filter if userId is provided and valid
-    // If RLS is blocking filtered subscriptions, remove the filter and filter in callback instead
-    if (userId) {
-      postgresChanges.filter = `supabase_user_id=eq.${userId}`;
-    }
 
     channel
       .on('postgres_changes', postgresChanges, (payload) => {
-        // If no userId filter was applied, filter here instead
-        if (!userId || payload.new?.supabase_user_id === userId || payload.old?.supabase_user_id === userId) {
+        // Filter in callback to avoid server/client binding mismatch
+        // This works better with RLS policies and avoids the filter syntax error
+        const isRelevantChange = !userId || 
+          payload.new?.supabase_user_id === userId || 
+          payload.old?.supabase_user_id === userId;
+        
+        if (isRelevantChange) {
           console.log('[Realtime] user_roles_cache change:', payload.eventType, payload);
           
           // Use ref to get latest callbacks without re-subscribing
