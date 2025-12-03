@@ -8,26 +8,34 @@ import { GlowingBackground } from "@/components/ui/GlowingBackground";
 import { useUserPreferences } from "@/components/providers/UserPreferencesProvider";
 import { Toaster } from "sonner";
 import dynamic from "next/dynamic";
-
-// Dynamically import chat components to avoid build-time evaluation issues
-const FloatingAdminChatButton = dynamic(
-  () => import("@/components/ui/FloatingAdminChatButton"),
-  { 
-    ssr: false,
-    loading: () => null, // Don't show loading state
-  }
-);
-
-const FloatingCarrierChatButtonNew = dynamic(
-  () => import("@/components/ui/FloatingCarrierChatButtonNew"),
-  { 
-    ssr: false,
-    loading: () => null, // Don't show loading state
-  }
-);
+import { useMemo } from "react";
 
 export function LayoutContent({ children }: { children: React.ReactNode }) {
   const { preferences } = useUserPreferences();
+  
+  // Dynamically import chat components inside component to avoid module-level evaluation
+  // This prevents circular dependency issues during initialization
+  const FloatingAdminChatButton = useMemo(
+    () => dynamic(
+      () => import("@/components/ui/FloatingAdminChatButton"),
+      { 
+        ssr: false,
+        loading: () => null,
+      }
+    ),
+    []
+  );
+  
+  const FloatingCarrierChatButtonNew = useMemo(
+    () => dynamic(
+      () => import("@/components/ui/FloatingCarrierChatButtonNew"),
+      { 
+        ssr: false,
+        loading: () => null,
+      }
+    ),
+    []
+  );
   
   return (
     <>
