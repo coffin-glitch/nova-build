@@ -62,8 +62,10 @@ export function useRealtimeChat(options: UseRealtimeChatOptions = { roomName: ''
     
     // Guard against SSR/build-time execution
     if (typeof window === 'undefined') return;
-
-    const supabase = getSupabaseBrowser();
+    
+    // Additional guard - ensure we're in browser environment
+    try {
+      const supabase = getSupabaseBrowser();
     
     const channelName = `chat_${roomName}_${Date.now()}`;
     const channel = supabase.channel(channelName, {
@@ -102,14 +104,22 @@ export function useRealtimeChat(options: UseRealtimeChatOptions = { roomName: ''
         }
       });
 
-    channelRef.current = channel;
+      channelRef.current = channel;
 
-    return () => {
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
-        channelRef.current = null;
-      }
-    };
+      return () => {
+        if (channelRef.current) {
+          try {
+            supabase.removeChannel(channelRef.current);
+          } catch (error) {
+            console.warn('[RealtimeChat] Error removing channel:', error);
+          }
+          channelRef.current = null;
+        }
+      };
+    } catch (error) {
+      console.error('[RealtimeChat] Error initializing channel:', error);
+      return () => {}; // Return empty cleanup function
+    }
   }, [enabled, roomName]);
 
   /**
