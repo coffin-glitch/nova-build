@@ -3170,7 +3170,7 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
     }
   );
 
-  const { data: leaderboardData, mutate: mutateLeaderboard, isLoading: leaderboardLoading, isValidating: leaderboardValidating } = useSWR(
+  const { data: leaderboardData, error: leaderboardError, mutate: mutateLeaderboard, isLoading: leaderboardLoading, isValidating: leaderboardValidating } = useSWR(
     viewMode === 'individual' ? buildLeaderboardUrl('/api/admin/carrier-leaderboard') : null,
     fetcher,
     {
@@ -3189,20 +3189,43 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
     }
   );
 
-  // Debug: Log the raw response structure
+  // Debug: Log the raw response structure and errors
   React.useEffect(() => {
+    if (leaderboardError) {
+      console.error('[CarrierLeaderboard] Error fetching leaderboard:', leaderboardError);
+    }
     if (leaderboardData) {
       console.log('[CarrierLeaderboard] Raw leaderboardData:', leaderboardData);
       console.log('[CarrierLeaderboard] leaderboardData.data:', leaderboardData.data);
       console.log('[CarrierLeaderboard] leaderboardData.data?.leaderboard:', leaderboardData.data?.leaderboard);
       console.log('[CarrierLeaderboard] leaderboardData.success:', leaderboardData.success);
+      console.log('[CarrierLeaderboard] Array check:', Array.isArray(leaderboardData.data?.leaderboard));
     }
-  }, [leaderboardData]);
+  }, [leaderboardData, leaderboardError]);
 
   // Handle both response formats: { success: true, data: {...} } and { data: {...} }
-  const leaderboard = leaderboardData?.data?.leaderboard || leaderboardData?.leaderboard || [];
-  const summary = leaderboardData?.data?.summary || leaderboardData?.summary || {};
-  const topPerformers = leaderboardData?.data?.topPerformers || leaderboardData?.topPerformers || [];
+  // Also handle error responses: { success: false, error: "..." }
+  let leaderboard: any[] = [];
+  let summary: any = {};
+  let topPerformers: any[] = [];
+
+  if (leaderboardData) {
+    // Check if response indicates success
+    if (leaderboardData.success === false) {
+      console.error('[CarrierLeaderboard] API returned error:', leaderboardData.error);
+    } else {
+      // Extract data from response
+      leaderboard = leaderboardData?.data?.leaderboard || leaderboardData?.leaderboard || [];
+      summary = leaderboardData?.data?.summary || leaderboardData?.summary || {};
+      topPerformers = leaderboardData?.data?.topPerformers || leaderboardData?.topPerformers || [];
+      
+      // Ensure leaderboard is an array
+      if (!Array.isArray(leaderboard)) {
+        console.warn('[CarrierLeaderboard] leaderboard is not an array:', leaderboard);
+        leaderboard = [];
+      }
+    }
+  }
   const groups = groupedData?.data?.groups || [];
 
   // Helpers for Top Performers section
@@ -3649,11 +3672,30 @@ function CarrierLeaderboard({ accentColor }: { accentColor: string }) {
               <div key={i} className="h-16 bg-muted rounded animate-pulse"></div>
             ))}
           </div>
+        ) : leaderboardError ? (
+          <div className="text-center py-8">
+            <Users className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-lg font-semibold mb-2">Error Loading Data</h3>
+            <p className="text-muted-foreground mb-4">
+              {leaderboardError instanceof Error ? leaderboardError.message : 'Failed to load carrier leaderboard'}
+            </p>
+            <Button variant="outline" onClick={() => mutateLeaderboard()}>
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Retry
+            </Button>
+          </div>
         ) : (viewMode === 'individual' ? leaderboard.length === 0 : (groupedData?.data?.groups?.length || 0) === 0) ? (
           <div className="text-center py-8">
             <Users className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
             <h3 className="text-lg font-semibold mb-2">No Carrier Data</h3>
             <p className="text-muted-foreground">No carriers have placed bids in the selected timeframe.</p>
+            {viewMode === 'individual' && process.env.NODE_ENV === 'development' && (
+              <p className="text-xs text-muted-foreground mt-2">
+                Debug: leaderboardData={leaderboardData ? 'exists' : 'null'}, 
+                leaderboard.length={leaderboard.length},
+                data structure: {JSON.stringify(Object.keys(leaderboardData || {}))}
+              </p>
+            )}
           </div>
         ) : viewMode === 'grouped' ? (
           // Grouped View
