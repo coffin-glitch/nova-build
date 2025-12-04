@@ -1200,6 +1200,18 @@ export default function FloatingAdminChatButton() {
                                           hasCarrierProfile: !!carrierProfile
                                         });
                                         
+                                        // If this is an admin-to-admin conversation, don't show carrier profile
+                                        if (isOtherUserAdmin) {
+                                          return (
+                                            <div className="text-center py-4">
+                                              <p className="text-sm text-muted-foreground">Admin Profile</p>
+                                              <p className="text-xs text-muted-foreground mt-1">
+                                                {carrierDisplayName || 'Admin User'}
+                                              </p>
+                                            </div>
+                                          );
+                                        }
+                                        
                                         // Show loading only if we're actively loading AND we don't have the data yet
                                         if (isLoadingCarrierProfile && !carrierProfile) {
                                           return (
