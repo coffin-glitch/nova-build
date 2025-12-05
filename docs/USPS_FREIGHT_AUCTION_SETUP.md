@@ -16,6 +16,11 @@ USPS_FA_USER_AGENT="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/
 USPS_FA_REFERER="https://usps-aztms-sso-pr1.jdadelivers.com/tm/framework/Frame.jsp"
 USPS_FA_CONTENT_TYPE="text/xml"
 
+# Required: SYS_ID from your browser session
+# Get this from the XML request in browser DevTools (Network tab → view.x2ps → Payload)
+# Format: "0^CarrierView.3^WORKFLOW-xxxxx^xxxxx-xxxxx-xxxxx-xxxxx-xxxxxxxxxxxx"
+USPS_FA_SYS_ID="0^CarrierView.3^WORKFLOW-1531411461764956145715_-1310659240^016d6d06-275e-4f6b-b96a-07103be16936"
+
 # Optional: Service key for cron job authentication
 # Generate a secure random string for this
 USPS_FA_SERVICE_KEY="your-secret-service-key-here"

@@ -4,38 +4,9 @@
  */
 
 // Base XML template for USPS Freight Auction requests
-// This is a simplified version - you may need to adjust based on actual request format
-const BASE_XML_TEMPLATE = `<?xml version="1.0" encoding="UTF-8"?>
-<REQUEST>
-  <AJAX_UPDATE Value="true"/>
-  <SAVE_PARAMS Value="false"/>
-  <SYS_ID Value="1^CarrierView.3^WORKFLOW-1654283171764950899393_2076397853^939e8f10-67b0-47fa-abdd-d090357590e1"/>
-  <BUTTON_ID Value="SYS_RELOAD"/>
-  <COMPONENT_NBR Value="undefined"/>
-  <PAGE_NAME Value="FreightAuction.CarrierView.cfg/xservice/freightauction/workflows/Carrier_View.pgl"/>
-  <SUBMIT_AS_XML Value="false"/>
-  <PAGE Value="FreightAuction.CarrierView.cfg/xservice/freightauction/workflows/Carrier_View.pgl"/>
-  <SORT_BY Value="BidLoadID"/>
-  <SORT_ORDER Value="Descending"/>
-  <START_COUNT Value="0"/>
-  <RECORD_COUNT Value="41"/>
-  <MAX_ROWS Value="16"/>
-  <NO_OF_ROWS Value="16"/>
-  <pagenum Value="1"/>
-  <DATA>
-    <AvailableLoads>
-      <AvailableLoadsCount_N0 Value="41"/>
-      <CORE_SAVE_REPORT Value=""/>
-      <SORT_BY Value="BidLoadID"/>
-      <SORT_ORDER Value="Descending"/>
-      <START_COUNT Value="0"/>
-      <RECORD_COUNT Value="41"/>
-      <MAX_ROWS Value="16"/>
-      <NO_OF_ROWS Value="16"/>
-      <availableLoadsTable_globalrowselector Value="on" Checked="false"/>
-    </AvailableLoads>
-  </DATA>
-</REQUEST>`;
+// This matches the exact format from the browser request
+// SYS_ID should be set from environment variable or captured from browser session
+const BASE_XML_TEMPLATE = `<REQUEST><AJAX_UPDATE Value="true"/><SAVE_PARAMS Value="false"/><SYS_ID Value="SYS_ID_PLACEHOLDER"/><BUTTON_ID Value="SYS_RELOAD"/><COMPONENT_NBR Value="undefined"/><PAGE_NAME Value="FreightAuction.CarrierView.cfg/xservice/freightauction/workflows/Carrier_View.pgl"/><SUBMIT_AS_XML Value="false"/><PAGE Value="FreightAuction.CarrierView.cfg/xservice/freightauction/workflows/Carrier_View.pgl"/><POPUP_MENU_ROW_ID Value=""/><topContainer_STEP_ID Value="Tab1"/><topContainer_SELECTED_STEP Value="Tab1"/><saveSearchContainer_1_STEP_ID Value=""/><saveSearchContainer_1_SELECTED_STEP Value=""/><SAVED_SEARCH_HIDDEN Value=""/><SAVED_SEARCH_NAME Value=""/><SAVE_SEARCH_AS Value=""/><availableLoadsFilterContainer_STEP_ID Value=""/><availableLoadsFilterContainer_SELECTED_STEP Value=""/><ADVANCED_SEARCH Value=""/><ExternalLoadID Value=""/><StopsInTransit Value=""/><InTransitStops Value=""/><InTransitStops_MATCH_BY Value=""/><OriginLocationDescription Value=""/><OriginCountryCode Value=""/><OriginStateCode Value=""/><OriginCityName Value=""/><DestinationLocationDescription Value=""/><DestinationCountryCode Value=""/><DestinationStateCode Value=""/><DestinationCityName Value=""/><UserDefinedValue01 Value=""/><UserDefinedValue02 Value=""/><UserDefinedValue03 Value=""/><UserDefinedValue04 Value=""/><UserDefinedValue05 Value=""/><UserDefinedValue06 Value=""/><UserDefinedValue07 Value=""/><UserDefinedValue08 Value=""/><UserDefinedValue09 Value=""/><UserDefinedValue10 Value=""/><SourceSystemID Value="1"/><OriginSiteLocationCode Value=""/><AuctionTypeEnumVal Value=""/><ServiceCode Value=""/><FROM_FreightAuctionEntryDateTime_DC Value=""/><TO_FreightAuctionEntryDateTime_DC Value=""/><EquipmentTypeCode Value=""/><FROM_ScheduledPickupDateTime_DC Value=""/><TO_ScheduledPickupDateTime_DC Value=""/><AvailableLoadsCount_N0 Value="TOTAL_ITEMS_PLACEHOLDER"/><CORE_SAVE_REPORT Value=""/><SORT_BY Value="BidLoadID"/><SORT_ORDER Value="Descending"/><START_COUNT Value="START_COUNT_PLACEHOLDER"/><RECORD_COUNT Value="RECORD_COUNT_PLACEHOLDER"/><MAX_ROWS Value="MAX_ROWS_PLACEHOLDER"/><NO_OF_ROWS Value="NO_OF_ROWS_PLACEHOLDER"/><pagenum Value="PAGENUM_PLACEHOLDER"/><RATE_ADJUSTMENT_PLACEHOLDER/><DATA><topContainer_STEP_ID Value="Tab1"/><topContainer_SELECTED_STEP Value="Tab1"/><saveSearchContainer_1_STEP_ID Value=""/><saveSearchContainer_1_SELECTED_STEP Value=""/><SAVED_SEARCH_HIDDEN Value=""/><SAVE_SEARCH_AS Value=""/><availableLoadsFilterContainer_STEP_ID Value=""/><availableLoadsFilterContainer_SELECTED_STEP Value=""/><ADVANCED_SEARCH Value=""/><ExternalLoadID Value=""/><StopsInTransit Value=""/><InTransitStops Value=""/><InTransitStops_MATCH_BY Value=""/><OriginLocationDescription Value=""/><OriginCountryCode Value=""/><OriginStateCode Value=""/><OriginCityName Value=""/><DestinationLocationDescription Value=""/><DestinationCountryCode Value=""/><DestinationStateCode Value=""/><DestinationCityName Value=""/><UserDefinedValue01 Value=""/><UserDefinedValue02 Value=""/><UserDefinedValue03 Value=""/><UserDefinedValue04 Value=""/><UserDefinedValue05 Value=""/><UserDefinedValue06 Value=""/><UserDefinedValue07 Value=""/><UserDefinedValue08 Value=""/><UserDefinedValue09 Value=""/><UserDefinedValue10 Value=""/><SourceSystemID Value="1"/><OriginSiteLocationCode Value=""/><AuctionTypeEnumVal Value="ADJUSTED" Selected="false"/><AuctionTypeEnumVal Value="BASE" Selected="false"/><ServiceCode Value="DTTO" Selected="false"/><ServiceCode Value="EXCP" Selected="false"/><ServiceCode Value="SPOT" Selected="false"/><ServiceCode Value="TLFA" Selected="false"/><ServiceCode Value="TL" Selected="false"/><FROM_FreightAuctionEntryDateTime_DC Value=""/><TO_FreightAuctionEntryDateTime_DC Value=""/><EquipmentTypeCode Value=""/><FROM_ScheduledPickupDateTime_DC Value=""/><TO_ScheduledPickupDateTime_DC Value=""/><AvailableLoads><AvailableLoadsCount_N0 Value="TOTAL_ITEMS_PLACEHOLDER"/><CORE_SAVE_REPORT Value=""/><SORT_BY Value="BidLoadID"/><SORT_ORDER Value="Descending"/><START_COUNT OldValue="OLD_START_COUNT_PLACEHOLDER" Value="START_COUNT_PLACEHOLDER"/><RECORD_COUNT Value="RECORD_COUNT_PLACEHOLDER"/><MAX_ROWS Value="MAX_ROWS_PLACEHOLDER"/><NO_OF_ROWS Value="NO_OF_ROWS_PLACEHOLDER"/><availableLoadsTable_globalrowselector Value="on" Checked="false"/><FREIGHT_AUCTION_BID_LOADS_PLACEHOLDER/></AvailableLoads></DATA></REQUEST>`;
 
 export interface PaginationInfo {
   totalPages: number;
@@ -46,8 +17,14 @@ export interface PaginationInfo {
 /**
  * Builds the XML request body for a specific page
  */
-export function buildUspsXml(page: number, startCount: number, pageSize: number = 16): string {
-  return buildUspsXmlFromTemplate(BASE_XML_TEMPLATE, page, startCount, pageSize);
+export function buildUspsXml(
+  page: number, 
+  startCount: number, 
+  pageSize: number = 16,
+  totalItems: number = 0,
+  oldStartCount: number = 0
+): string {
+  return buildUspsXmlFromTemplate(BASE_XML_TEMPLATE, page, startCount, pageSize, totalItems, oldStartCount);
 }
 
 /**
@@ -57,7 +34,9 @@ export function buildUspsXmlFromTemplate(
   template: string,
   page: number,
   startCount: number,
-  pageSize: number = 16
+  pageSize: number = 16,
+  totalItems: number = 0,
+  oldStartCount: number = 0
 ): string {
   if (page < 1) {
     throw new Error(`Invalid page number: ${page}. Must be >= 1`);
@@ -66,13 +45,39 @@ export function buildUspsXmlFromTemplate(
     throw new Error(`Invalid start count: ${startCount}. Must be >= 0`);
   }
 
-  // Replace pagination values in the XML template
-  // Use global replace to update all occurrences
+  // Get SYS_ID from env or use placeholder
+  const sysId = process.env.USPS_FA_SYS_ID || 'SYS_ID_PLACEHOLDER';
+
+  // Calculate record count (total items or page size, whichever is smaller for current page)
+  const recordCount = totalItems > 0 ? Math.min(totalItems, startCount + pageSize) : startCount + pageSize;
+
+  // pagenum can be empty string for some pages, or the page number
+  // Based on the example, it seems to be empty for page 2+
+  const pagenumValue = page === 1 ? '1' : '';
+
+  // Generate FreightAuctionBidLoad entries (one per row on the page, up to pageSize)
+  // These are placeholders - the actual bid IDs will be in the response
+  const freightAuctionBidLoads = Array.from({ length: pageSize }, (_, i) => 
+    `<FreightAuctionBidLoad><SelectedBidID Value="" Checked="false"/><RateAdjustmentAmount_N2 Value=""/></FreightAuctionBidLoad>`
+  ).join('');
+
+  // Generate RateAdjustmentAmount_N2 entries (one per row, appears before DATA section)
+  const rateAdjustments = Array.from({ length: pageSize }, () => 
+    `<RateAdjustmentAmount_N2 Value=""/>`
+  ).join('');
+
+  // Replace all placeholders
   let xml = template
-    .replace(/<START_COUNT Value="[^"]*"\/>/g, `<START_COUNT Value="${startCount}"/>`)
-    .replace(/<pagenum Value="[^"]*"\/>/g, `<pagenum Value="${page}"/>`)
-    .replace(/<MAX_ROWS Value="[^"]*"\/>/g, `<MAX_ROWS Value="${pageSize}"/>`)
-    .replace(/<NO_OF_ROWS Value="[^"]*"\/>/g, `<NO_OF_ROWS Value="${pageSize}"/>`);
+    .replace(/SYS_ID_PLACEHOLDER/g, sysId)
+    .replace(/START_COUNT_PLACEHOLDER/g, String(startCount))
+    .replace(/OLD_START_COUNT_PLACEHOLDER/g, String(oldStartCount))
+    .replace(/RECORD_COUNT_PLACEHOLDER/g, String(recordCount))
+    .replace(/MAX_ROWS_PLACEHOLDER/g, String(pageSize))
+    .replace(/NO_OF_ROWS_PLACEHOLDER/g, String(pageSize))
+    .replace(/PAGENUM_PLACEHOLDER/g, pagenumValue)
+    .replace(/TOTAL_ITEMS_PLACEHOLDER/g, String(totalItems))
+    .replace(/RATE_ADJUSTMENT_PLACEHOLDER/g, rateAdjustments)
+    .replace(/FREIGHT_AUCTION_BID_LOADS_PLACEHOLDER/g, freightAuctionBidLoads);
 
   return xml;
 }
@@ -100,8 +105,13 @@ export async function fetchPageHtml(
   }
 
   const startCount = (page - 1) * pageSize;
+  const oldStartCount = page > 1 ? (page - 2) * pageSize : 0; // Previous page's start count
   const template = getXmlTemplate();
-  const xmlBody = buildUspsXmlFromTemplate(template, page, startCount, pageSize);
+  
+  // For first page, we don't know totalItems yet, so use 0
+  // For subsequent pages, we should pass the totalItems from the first page
+  // For now, we'll use 0 and let the server return the actual count
+  const xmlBody = buildUspsXmlFromTemplate(template, page, startCount, pageSize, 0, oldStartCount);
 
   // Generate correlation IDs (UUIDs)
   // Use a simple UUID v4 generator if crypto.randomUUID is not available
