@@ -201,9 +201,19 @@ export async function fetchPageHtml(
       const errorText = await response.text().catch(() => 'No error details');
       const errorPreview = errorText.length > 1000 ? errorText.substring(0, 1000) + '...' : errorText;
       
+      // Try to extract error message from HTML if possible
+      const errorMatch = errorText.match(/<title[^>]*>([^<]+)<\/title>/i) || 
+                        errorText.match(/<h[1-6][^>]*>([^<]+)<\/h[1-6]>/i) ||
+                        errorText.match(/error[^>]*>([^<]+)/i) ||
+                        errorText.match(/Exception[^>]*>([^<]+)/i);
+      const extractedError = errorMatch ? errorMatch[1] : null;
+      
       // Log full error for debugging
       console.error(`[USPS Client] HTTP ${response.status} error for page ${page}:`);
-      console.error(`[USPS Client] Response preview:`, errorPreview);
+      if (extractedError) {
+        console.error(`[USPS Client] Extracted error message:`, extractedError);
+      }
+      console.error(`[USPS Client] Full error response (first 3000 chars):`, errorText.substring(0, 3000));
       console.error(`[USPS Client] Request URL:`, url);
       console.error(`[USPS Client] Request headers:`, {
         'Content-Type': contentType,
@@ -211,6 +221,7 @@ export async function fetchPageHtml(
         'User-Agent': userAgent,
         'Referer': referer,
       });
+      console.error(`[USPS Client] XML body (first 2000 chars):`, xmlBody.substring(0, 2000));
       
       throw new Error(
         `HTTP error! status: ${response.status}, statusText: ${response.statusText}\n${errorPreview}`
