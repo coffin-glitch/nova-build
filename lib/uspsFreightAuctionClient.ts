@@ -59,20 +59,18 @@ export function buildUspsXmlFromTemplate(
   // Get SYS_ID from env or use placeholder
   const sysId = process.env.USPS_FA_SYS_ID || 'SYS_ID_PLACEHOLDER';
 
+  // For first page, we might not know totalItems yet
+  // Use a reasonable default if totalItems is 0 (server will return actual count)
+  const totalItemsValue = totalItems > 0 ? String(totalItems) : '30'; // Default to 30 for first request
+
   // Calculate record count
-  // For first page, we might not know totalItems, so use a reasonable default
-  // The server will return the actual count in the response
-  const recordCount = totalItems > 0 
-    ? totalItems  // Use total items if known
-    : (startCount + pageSize); // Otherwise estimate
+  // For page 1, RECORD_COUNT should be the total items (or our estimate)
+  // For subsequent pages, it should also be the total items
+  const recordCount = totalItems > 0 ? totalItems : parseInt(totalItemsValue, 10);
 
   // pagenum can be empty string for some pages, or the page number
   // Based on the example, it seems to be empty for page 2+
   const pagenumValue = page === 1 ? '1' : '';
-
-  // For first page, we might not know totalItems yet
-  // Use empty string or a reasonable default if totalItems is 0
-  const totalItemsValue = totalItems > 0 ? String(totalItems) : '30'; // Default to 30 for first request
 
   // Generate FreightAuctionBidLoad entries (one per row on the page, up to pageSize)
   // For first page, these can be empty. For subsequent pages, they should contain bid IDs from previous page
@@ -86,8 +84,19 @@ export function buildUspsXmlFromTemplate(
     `<RateAdjustmentAmount_N2 Value=""/>`
   ).join('');
 
-  // Replace all placeholders
-  let xml = template
+  // For page 1, START_COUNT in DATA section should NOT have OldValue attribute
+  // For page 2+, it should have OldValue
+  // We need to handle this BEFORE replacing other placeholders
+  const startCountInDataPattern = /<START_COUNT OldValue="OLD_START_COUNT_PLACEHOLDER" Value="START_COUNT_PLACEHOLDER"\/>/;
+  const startCountInData = page === 1
+    ? `<START_COUNT Value="START_COUNT_PLACEHOLDER"/>`
+    : `<START_COUNT OldValue="OLD_START_COUNT_PLACEHOLDER" Value="START_COUNT_PLACEHOLDER"/>`;
+
+  // Replace START_COUNT in DATA section first (before other replacements)
+  let xml = template.replace(startCountInDataPattern, startCountInData);
+
+  // Now replace all other placeholders
+  xml = xml
     .replace(/SYS_ID_PLACEHOLDER/g, sysId)
     .replace(/START_COUNT_PLACEHOLDER/g, String(startCount))
     .replace(/OLD_START_COUNT_PLACEHOLDER/g, String(oldStartCount))
