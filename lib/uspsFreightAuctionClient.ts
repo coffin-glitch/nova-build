@@ -15,6 +15,17 @@ export interface PaginationInfo {
 }
 
 /**
+ * Gets the XML template from environment variable or returns the base template
+ */
+function getXmlTemplate(): string {
+  const envTemplate = process.env.USPS_FA_PAGE_XML_TEMPLATE;
+  if (envTemplate) {
+    return envTemplate;
+  }
+  return BASE_XML_TEMPLATE;
+}
+
+/**
  * Builds the XML request body for a specific page
  */
 export function buildUspsXml(
