@@ -59,8 +59,12 @@ export function buildUspsXmlFromTemplate(
   // Get SYS_ID from env or use placeholder
   const sysId = process.env.USPS_FA_SYS_ID || 'SYS_ID_PLACEHOLDER';
 
-  // Calculate record count (total items or page size, whichever is smaller for current page)
-  const recordCount = totalItems > 0 ? Math.min(totalItems, startCount + pageSize) : startCount + pageSize;
+  // Calculate record count
+  // For first page, we might not know totalItems, so use a reasonable default
+  // The server will return the actual count in the response
+  const recordCount = totalItems > 0 
+    ? totalItems  // Use total items if known
+    : (startCount + pageSize); // Otherwise estimate
 
   // pagenum can be empty string for some pages, or the page number
   // Based on the example, it seems to be empty for page 2+
@@ -149,7 +153,15 @@ export async function fetchPageHtml(
   if (page === 1 && retryCount === 0) {
     console.log('[USPS Client] Making request to:', url);
     console.log('[USPS Client] XML body length:', xmlBody.length);
-    console.log('[USPS Client] XML preview:', xmlBody.substring(0, 500));
+    console.log('[USPS Client] Full XML being sent:');
+    console.log(xmlBody);
+    console.log('[USPS Client] Headers:', {
+      'Content-Type': contentType,
+      'Cookie': cookie ? `${cookie.substring(0, 100)}...` : 'NOT SET',
+      'User-Agent': userAgent,
+      'Referer': referer,
+      'Origin': 'https://usps-aztms-sso-pr1.jdadelivers.com',
+    });
   }
 
   try {
