@@ -164,7 +164,7 @@ export async function fetchPageHtml(
  * Extracts pagination information from HTML
  */
 export function getTotalPagesFromHtml(html: string): PaginationInfo {
-  const cheerio = require('cheerio');
+  const cheerio = require('cheerio') as typeof import('cheerio');
   const $ = cheerio.load(html);
 
   // Find the hidden input fields
