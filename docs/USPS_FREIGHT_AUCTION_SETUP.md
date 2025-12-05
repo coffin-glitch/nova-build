@@ -11,24 +11,45 @@ Add these to your `.env.local` file:
 ```bash
 # USPS Freight Auction API Configuration
 USPS_FA_BASE_URL="https://usps-aztms-fa-pr1.jdadelivers.com/base/view.x2ps"
-USPS_FA_COOKIE="JSESSIONID=...; other_cookies_here=..."
+USPS_FA_COOKIE="tmsprd293834=!TnlnFD8fUleOnGj6DR+gxaZBCtquKNKl28Nqw9dl7O0J857174NK/Gj455pcfwBltj2Y24rmrHl+kw==; JSESSIONID=BA34A39FF8C9492839AA861C7A024D5D; __cf_bm=P0LK0XaJevT37z64W0gTE_fQk0OT8oMCi8bI_l9tAXM-1764950120-1.0.1.1-cx8vvneDmPEtoiupqnPw26XN2WM8v.GUmUN8xZySqJTMfWXu5h3lp2cBw6KALP4.7Wwennolm_lAfUVmxS2fTD3_PK2fXLRx2Muvw4RlMxs; xsd-i2-cis-xsd=5532a357-e9c0-4915-ae27-be0124f205ce; xsd-by-liam-xsd=eyJlbmMiOiJBMTI4Q0JDLUhTMjU2IiwiYWxnIjoiZGlyIn0..tuyMduGFy-58VM_MMIrGjQ.wa1qSxa-JChemRvmVBAx5D_EU_8InAbXVm09_kSjq0Y-u7hWP4ew0uWXx7_ZphonLuSmsVuJfe_B-HqMazyWKa8QG9JwI-MRs1ZDVNhYPS2ABznqXWfxkvC6K9Lfso_JOG_Bme7ayDXQgS82gCf63TWOFQzY2NHABjKj2-1ddahXBu9VMtBMuBa6kGReTOxWygRuphxagQgX0VjpDQ2cMixkkqpcWbYqXm2snB_osC9QQBfPbYgYKlKWGzvlpkRXBzdZBfDZgbe_G9hAI2mqpI2RcuCUNUOmA7mMYMYu5Jzr3AIZ2csybeM4MqVS0Pdk.VJZVXP-reHUrTyZH1jqNVw"
 USPS_FA_USER_AGENT="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
 USPS_FA_REFERER="https://usps-aztms-sso-pr1.jdadelivers.com/tm/framework/Frame.jsp"
 USPS_FA_CONTENT_TYPE="text/xml"
 
 # Optional: Service key for cron job authentication
+# Generate a secure random string for this
 USPS_FA_SERVICE_KEY="your-secret-service-key-here"
 ```
+
+**Note**: The cookies above are example values. You'll need to get fresh cookies from your browser session. Cookies expire, so you may need to update them periodically.
 
 ## Getting the Cookie
 
 1. Open your browser and navigate to the USPS Freight Auction page
 2. Open Developer Tools (F12)
-3. Go to Network tab
-4. Make a request to the Freight Auction page
-5. Find the request to `view.x2ps`
-6. Copy the `Cookie` header value
+3. Go to **Application** tab (Chrome) or **Storage** tab (Firefox)
+4. Click on **Cookies** in the left sidebar
+5. Select `usps-aztms-fa-pr1.jdadelivers.com`
+6. Copy all cookies in the format: `name1=value1; name2=value2; name3=value3`
 7. Paste it into `USPS_FA_COOKIE` in `.env.local`
+
+**Alternative Method (Network Tab)**:
+1. Open Developer Tools (F12)
+2. Go to **Network** tab
+3. Make a request to the Freight Auction page
+4. Find the request to `view.x2ps`
+5. Click on it and go to **Headers** section
+6. Find the `Cookie` header in Request Headers
+7. Copy the entire cookie string
+8. Paste it into `USPS_FA_COOKIE` in `.env.local`
+
+**Cookie Format**:
+The cookie string should look like:
+```
+tmsprd293834=value1; JSESSIONID=value2; __cf_bm=value3; xsd-i2-cis-xsd=value4; xsd-by-liam-xsd=value5
+```
+
+**Important**: Cookies expire! If you get 401 errors, refresh your browser session and get new cookies.
 
 ## Manual Testing
 
