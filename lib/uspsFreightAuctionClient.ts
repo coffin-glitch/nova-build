@@ -70,8 +70,13 @@ export function buildUspsXmlFromTemplate(
   // Based on the example, it seems to be empty for page 2+
   const pagenumValue = page === 1 ? '1' : '';
 
+  // For first page, we might not know totalItems yet
+  // Use empty string or a reasonable default if totalItems is 0
+  const totalItemsValue = totalItems > 0 ? String(totalItems) : '30'; // Default to 30 for first request
+
   // Generate FreightAuctionBidLoad entries (one per row on the page, up to pageSize)
-  // These are placeholders - the actual bid IDs will be in the response
+  // For first page, these can be empty. For subsequent pages, they should contain bid IDs from previous page
+  // But since we don't have them yet, we'll use empty placeholders
   const freightAuctionBidLoads = Array.from({ length: pageSize }, (_, i) => 
     `<FreightAuctionBidLoad><SelectedBidID Value="" Checked="false"/><RateAdjustmentAmount_N2 Value=""/></FreightAuctionBidLoad>`
   ).join('');
@@ -90,7 +95,7 @@ export function buildUspsXmlFromTemplate(
     .replace(/MAX_ROWS_PLACEHOLDER/g, String(pageSize))
     .replace(/NO_OF_ROWS_PLACEHOLDER/g, String(pageSize))
     .replace(/PAGENUM_PLACEHOLDER/g, pagenumValue)
-    .replace(/TOTAL_ITEMS_PLACEHOLDER/g, String(totalItems))
+    .replace(/TOTAL_ITEMS_PLACEHOLDER/g, totalItemsValue)
     .replace(/RATE_ADJUSTMENT_PLACEHOLDER/g, rateAdjustments)
     .replace(/FREIGHT_AUCTION_BID_LOADS_PLACEHOLDER/g, freightAuctionBidLoads);
 
