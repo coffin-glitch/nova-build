@@ -47,6 +47,18 @@ export interface PaginationInfo {
  * Builds the XML request body for a specific page
  */
 export function buildUspsXml(page: number, startCount: number, pageSize: number = 16): string {
+  return buildUspsXmlFromTemplate(BASE_XML_TEMPLATE, page, startCount, pageSize);
+}
+
+/**
+ * Builds XML from a custom template
+ */
+export function buildUspsXmlFromTemplate(
+  template: string,
+  page: number,
+  startCount: number,
+  pageSize: number = 16
+): string {
   if (page < 1) {
     throw new Error(`Invalid page number: ${page}. Must be >= 1`);
   }
@@ -55,14 +67,12 @@ export function buildUspsXml(page: number, startCount: number, pageSize: number 
   }
 
   // Replace pagination values in the XML template
-  let xml = BASE_XML_TEMPLATE
-    .replace(/<START_COUNT Value="[^"]*"\/>/, `<START_COUNT Value="${startCount}"/>`)
-    .replace(/<pagenum Value="[^"]*"\/>/, `<pagenum Value="${page}"/>`)
-    .replace(/<MAX_ROWS Value="[^"]*"\/>/, `<MAX_ROWS Value="${pageSize}"/>`)
-    .replace(/<NO_OF_ROWS Value="[^"]*"\/>/, `<NO_OF_ROWS Value="${pageSize}"/>`);
-
-  // Also update START_COUNT in DATA section
-  xml = xml.replace(/<START_COUNT Value="[^"]*"\/>/g, `<START_COUNT Value="${startCount}"/>`);
+  // Use global replace to update all occurrences
+  let xml = template
+    .replace(/<START_COUNT Value="[^"]*"\/>/g, `<START_COUNT Value="${startCount}"/>`)
+    .replace(/<pagenum Value="[^"]*"\/>/g, `<pagenum Value="${page}"/>`)
+    .replace(/<MAX_ROWS Value="[^"]*"\/>/g, `<MAX_ROWS Value="${pageSize}"/>`)
+    .replace(/<NO_OF_ROWS Value="[^"]*"\/>/g, `<NO_OF_ROWS Value="${pageSize}"/>`);
 
   return xml;
 }
@@ -90,7 +100,8 @@ export async function fetchPageHtml(
   }
 
   const startCount = (page - 1) * pageSize;
-  const xmlBody = buildUspsXml(page, startCount, pageSize);
+  const template = getXmlTemplate();
+  const xmlBody = buildUspsXmlFromTemplate(template, page, startCount, pageSize);
 
   // Generate correlation IDs (UUIDs)
   // Use a simple UUID v4 generator if crypto.randomUUID is not available
@@ -109,7 +120,16 @@ export async function fetchPageHtml(
   const correlationId = generateUUID();
   const correlationGroupId = generateUUID();
 
-  const url = `${baseUrl}?X-Correlation-Id=${correlationId}&X-Correlation-Group-Id=${correlationGroupId}&action=SYS_RELOAD`;
+  // Build URL - check if baseUrl already has query params
+  const separator = baseUrl.includes('?') ? '&' : '?';
+  const url = `${baseUrl}${separator}X-Correlation-Id=${correlationId}&X-Correlation-Group-Id=${correlationGroupId}&action=SYS_RELOAD`;
+
+  // Log request details for debugging (first request only)
+  if (page === 1 && retryCount === 0) {
+    console.log('[USPS Client] Making request to:', url);
+    console.log('[USPS Client] XML body length:', xmlBody.length);
+    console.log('[USPS Client] XML preview:', xmlBody.substring(0, 500));
+  }
 
   try {
     const response = await fetch(url, {
@@ -123,14 +143,29 @@ export async function fetchPageHtml(
         'Accept-Language': 'en-US,en;q=0.9',
         'Cache-Control': 'no-cache',
         'Pragma': 'no-cache',
+        'Origin': 'https://usps-aztms-sso-pr1.jdadelivers.com',
+        'X-Requested-With': 'XMLHttpRequest',
       },
       body: xmlBody,
     });
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'No error details');
+      const errorPreview = errorText.length > 1000 ? errorText.substring(0, 1000) + '...' : errorText;
+      
+      // Log full error for debugging
+      console.error(`[USPS Client] HTTP ${response.status} error for page ${page}:`);
+      console.error(`[USPS Client] Response preview:`, errorPreview);
+      console.error(`[USPS Client] Request URL:`, url);
+      console.error(`[USPS Client] Request headers:`, {
+        'Content-Type': contentType,
+        'Cookie': cookie ? `${cookie.substring(0, 50)}...` : 'NOT SET',
+        'User-Agent': userAgent,
+        'Referer': referer,
+      });
+      
       throw new Error(
-        `HTTP error! status: ${response.status}, statusText: ${response.statusText}\n${errorText.substring(0, 500)}`
+        `HTTP error! status: ${response.status}, statusText: ${response.statusText}\n${errorPreview}`
       );
     }
 
