@@ -73,14 +73,12 @@ export function buildUspsXmlFromTemplate(
   const pagenumValue = page === 1 ? '1' : '';
 
   // Generate FreightAuctionBidLoad entries (one per row on the page, up to pageSize)
-  // For first page, these should contain actual bid IDs from a previous session/load
-  // Since we don't have them for the initial request, we'll omit them for page 1
+  // The server requires these even for page 1, but they can have empty bid IDs for initial request
   // For subsequent pages, they should contain bid IDs from the previous page response
-  const freightAuctionBidLoads = page === 1 
-    ? '' // Omit for first page - server might reject empty ones
-    : Array.from({ length: pageSize }, (_, i) => 
-        `<FreightAuctionBidLoad><SelectedBidID Value="" Checked="false"/><RateAdjustmentAmount_N2 Value=""/></FreightAuctionBidLoad>`
-      ).join('');
+  // Based on the user's working example, page 1 had actual bid IDs, but we'll try empty ones first
+  const freightAuctionBidLoads = Array.from({ length: pageSize }, (_, i) => 
+    `<FreightAuctionBidLoad><SelectedBidID Value="" Checked="false"/><RateAdjustmentAmount_N2 Value=""/></FreightAuctionBidLoad>`
+  ).join('');
 
   // Generate RateAdjustmentAmount_N2 entries (one per row, appears before DATA section)
   const rateAdjustments = Array.from({ length: pageSize }, () => 
